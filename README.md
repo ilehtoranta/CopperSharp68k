@@ -10,11 +10,11 @@ separate so additional targets such as MorphOS/PPC can be added later.
 
 ## Projects
 
-- `Copper68k.Compiler` - compiler core, 68k backend, HUNK/ROM/assembly output.
-- `Copper68k.Compiler.Tool` - command-line driver.
-- `Copper68k.Compiler.Amiga` - Amiga library-call resolver and platform helpers.
-- `Copper68k.AmigaSdk` - Amiga ABI declarations for compiled code.
-- `Copper68k.Compiler.Tests` - compiler tests. These use a sibling
+- `Compiler` - compiler core, 68k backend, HUNK/ROM/assembly output.
+- `Compiler.Cli` - command-line driver.
+- `Targets.Amiga` - Amiga library-call resolver and platform helpers.
+- `Sdk.Amiga` - Amiga ABI declarations for compiled code.
+- `Compiler.Tests` - compiler tests. These use a sibling
   `MedPlayer/Copper68k` checkout when available, otherwise the `Copper68k`
   package.
 

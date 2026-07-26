@@ -1,7 +1,7 @@
 <Solution>
-  <Project Path="Copper68k.AmigaSdk/Copper68k.AmigaSdk.csproj" />
-  <Project Path="Copper68k.Compiler.Amiga/Copper68k.Compiler.Amiga.csproj" />
-  <Project Path="Copper68k.Compiler.Tests/Copper68k.Compiler.Tests.csproj" />
-  <Project Path="Copper68k.Compiler.Tool/Copper68k.Compiler.Tool.csproj" />
-  <Project Path="Copper68k.Compiler/Copper68k.Compiler.csproj" />
+  <Project Path="Compiler/CopperSharp.Compiler.csproj" />
+  <Project Path="Compiler.Cli/CopperSharp.Compiler.Cli.csproj" />
+  <Project Path="Compiler.Tests/CopperSharp.Compiler.Tests.csproj" />
+  <Project Path="Sdk.Amiga/CopperSharp.Sdk.Amiga.csproj" />
+  <Project Path="Targets.Amiga/CopperSharp.Targets.Amiga.csproj" />
 </Solution>

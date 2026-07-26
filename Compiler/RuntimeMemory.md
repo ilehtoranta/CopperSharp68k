@@ -1,0 +1,103 @@
+<!--
+- Copyright (C) 2026 Ilkka Lehtoranta
+- SPDX-License-Identifier: MIT
+ -->
+
+# Runtime Memory
+
+Managed allocation is controlled by `M68kCompilationRequest.MemoryManagement`.
+When it is omitted, ROM profile uses `None` and other profiles use
+`ExternalAllocator`.
+
+## Policies
+
+- `None` rejects managed `new` and array allocation at compile time.
+- `ExternalAllocator` emits calls to user-provided `__c68k_alloc` and optional
+  `__c68k_dispose`.
+- `BumpAllocator` is reserved for generated startup/runtime code.
+- `ManagedPoolMarkSweepGc` emits a built-in non-compacting pool runtime over
+  a memory range described by `M68kHeapOptions`.
+- `ExecPoolMarkSweepGc` emits the same compiler/runtime contract, but is
+  intended for an Amiga-backed alternative using
+  `CreatePool`, `AllocPooled`, and `FreePooled`.
+
+The GC backends are intentionally non-compacting. Managed object addresses must
+remain stable because Amiga APIs commonly work with raw pointers and handles.
+
+The managed pool backend owns its block metadata, free list, allocation list,
+and block splitting. Explicit dispose returns blocks to the free list. Explicit
+collection marks compiler-known roots, sweeps unmarked allocated blocks back to
+the free list, traces object reference fields and reference-array elements, and
+coalesces adjacent free physical blocks. It does not depend on Exec pool
+internals.
+
+## Sweep Strategies
+
+`M68kCompilationRequest.GcSweepStrategy` controls when the linked GC runtime
+runs collection:
+
+- `OnDemand` runs only when user code calls `M68kRuntime.Collect()`.
+- `OnAllocationFailure` tries allocation first, collects once on failure, then
+  retries allocation. This is the default for GC backends.
+- `EveryAllocation` runs root-aware collection before each allocation. It is
+  useful for tests but is intentionally expensive.
+- `TelemetryTriggered` lets a background telemetry pass publish approximate
+  stale block and byte counts. Allocation triggers a normal stop-the-world
+  collection when those counters exceed `M68kGcTelemetryOptions` thresholds.
+
+The option is valid only with `ManagedPoolMarkSweepGc` or `ExecPoolMarkSweepGc`.
+Telemetry does not free memory in the background; it only estimates whether a
+foreground collection is worth running.
+
+The current built-in `ManagedPoolMarkSweepGc` runtime uses exact static and
+current-frame roots for explicit `M68kRuntime.Collect()` calls and compiler-
+emitted allocation-site collection. It also uses typed evaluation-stack maps so
+only stack slots known to hold managed references are marked. Object reference
+fields and reference-array elements are traced from descriptor metadata.
+
+## Runtime Hooks
+
+The compiler/runtime boundary uses these symbols:
+
+- `__c68k_alloc(size)` returns a zero-filled managed payload pointer or zero.
+- `__c68k_dispose(slot)` may free the managed payload stored in a four-byte
+  reference slot and should clear that slot.
+- `__c68k_gc_init(config)` initializes a linked managed runtime before `Main`
+  and returns nonzero on success.
+- `__c68k_gc_collect()` runs an explicit collection cycle.
+- `__c68k_gc_shutdown()` shuts down a linked managed runtime after `Main`.
+
+`ManagedPoolMarkSweepGc` provides these symbols internally. `ExternalAllocator`
+and `ExecPoolMarkSweepGc` resolve them as imports.
+
+The generated config block contains these 32-bit fields:
+
+```text
+memoryManagement
+gcSweepStrategy
+heapStartAddress
+heapSize
+staleBytesThreshold
+staleBlocksThreshold
+telemetryIntervalTicks
+```
+
+## GC Block Layout
+
+GC-managed heaps should store a header immediately before the managed payload:
+
+```text
+GcHeader:
+  next   uint
+  prev   uint
+  size   uint   ; total block size, including header
+  flags  uint   ; mark bit and backend-private flags
+
+payload + 0  descriptor pointer
+payload + 4  object size in bytes
+payload + 8  array length, for arrays and strings
+payload + 12 first array/string element
+```
+
+The compiler-generated managed pointer is always the payload address, not the
+header address.
