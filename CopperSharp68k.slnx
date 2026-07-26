@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Copper68k.AmigaSdk/Copper68k.AmigaSdk.csproj" />
+  <Project Path="Copper68k.Compiler.Amiga/Copper68k.Compiler.Amiga.csproj" />
+  <Project Path="Copper68k.Compiler.Tests/Copper68k.Compiler.Tests.csproj" />
+  <Project Path="Copper68k.Compiler.Tool/Copper68k.Compiler.Tool.csproj" />
+  <Project Path="Copper68k.Compiler/Copper68k.Compiler.csproj" />
+</Solution>

@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <Copper68kCompilerCommand Condition="'$(Copper68kCompilerCommand)' == ''">copper68kc</Copper68kCompilerCommand>
+    <Copper68kCpu Condition="'$(Copper68kCpu)' == ''">68000</Copper68kCpu>
+    <Copper68kOutputFormat Condition="'$(Copper68kOutputFormat)' == ''">hunk</Copper68kOutputFormat>
+    <Copper68kOutputPath Condition="'$(Copper68kOutputPath)' == ''">$(TargetDir)$(AssemblyName).$(Copper68kOutputFormat)</Copper68kOutputPath>
+  </PropertyGroup>
+
+  <Target Name="CompileCopper68kImage"
+          AfterTargets="Build"
+          Condition="'$(Copper68kCompile)' == 'true'"
+          Inputs="$(TargetPath)"
+          Outputs="$(Copper68kOutputPath)">
+    <Error Condition="'$(Copper68kEntry)' == ''"
+           Text="Copper68kEntry must name an entry point as Namespace.Type::Method." />
+    <Exec Command="&quot;$(Copper68kCompilerCommand)&quot; &quot;$(TargetPath)&quot; --cpu $(Copper68kCpu) --format $(Copper68kOutputFormat) --entry &quot;$(Copper68kEntry)&quot; --output &quot;$(Copper68kOutputPath)&quot; $(Copper68kAdditionalArguments)" />
+  </Target>
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Copper68k.Compiler\Copper68k.Compiler.csproj" />
+    <ProjectReference Include="..\..\Copper68k.AmigaSdk.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1591</NoWarn>
+    <PackageId>Copper68k.AmigaSdk</PackageId>
+    <PackageVersion>0.1.0-preview.1</PackageVersion>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Examples\**\*.cs" />
+    <ProjectReference Include="..\Copper68k.Compiler\Copper68k.Compiler.csproj" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
