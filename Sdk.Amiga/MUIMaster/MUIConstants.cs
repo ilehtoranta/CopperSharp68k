@@ -16,7 +16,7 @@ public static class Aboutbox
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Build = 0xfed1001eu;
 	public const uint Credits = 0xfed10001u;
@@ -43,7 +43,7 @@ public static class Aboutmui
 	public const string Name = "Aboutmui.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Aboutpage
@@ -54,7 +54,7 @@ public static class Aboutpage
 	public const string Name = "Aboutpage.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Application
@@ -63,7 +63,7 @@ public static class Application
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Active = 0x804260abu;
 	public const uint Author = 0x80424842u;
@@ -156,7 +156,7 @@ public static class Applist
 	public const string Name = "Applist.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Area
@@ -167,7 +167,7 @@ public static class Area
 	public const string Name = "Area.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Argstring
@@ -180,7 +180,7 @@ public static class Argstring
 	public const uint Template = 0x80422904u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Attribute
@@ -261,7 +261,7 @@ public static class Audiocontrols
 	public const string Name = "Audiocontrols.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Audiomixer
@@ -272,7 +272,7 @@ public static class Audiomixer
 	public const string Name = "Audiomixer.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Backgroundadjust
@@ -283,7 +283,7 @@ public static class Backgroundadjust
 	public const string Name = "Backgroundadjust.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Balance
@@ -295,7 +295,7 @@ public static class Balance
 	public const uint Quiet = 0x80427486u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class BetterBalance
@@ -306,7 +306,7 @@ public static class BetterBalance
 	public const string Name = "BetterBalance.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Bitmap
@@ -327,7 +327,7 @@ public static class Bitmap
 	public const uint Width = 0x8042eb3au;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Bodychunk
@@ -342,7 +342,7 @@ public static class Bodychunk
 	public const string Name = "Bodychunk.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Boopsi
@@ -365,7 +365,7 @@ public static class Boopsi
 	public const uint TagWindow = 0x8042e11du;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Busy
@@ -374,7 +374,7 @@ public static class Busy
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public static class Method
 	{
@@ -399,7 +399,7 @@ public static class Calendar
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint BrowserChanged = 0xfde08216u;
 	public const uint CalendarDate = 0xfde0820au;
@@ -460,7 +460,7 @@ public static class Calltips
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Layout = 0xfecf1005u;
 	public const uint MarginLeft = 0xfecf1008u;
@@ -496,7 +496,7 @@ public static class Cclist
 	public const string Name = "Cclist.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Chart
@@ -505,7 +505,7 @@ public static class Chart
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Colors = 0xfece2000u;
 	public const uint Count = 0xfece2001u;
@@ -534,7 +534,7 @@ public static class Clock
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Hour = 0xfecd0030u;
 	public static class Method
@@ -558,7 +558,7 @@ public static class ColorButton
 	public const uint Pens = 0xaa124320u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class ColorSlider
@@ -569,7 +569,7 @@ public static class ColorSlider
 	public const string Name = "ColorSlider.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Coloradjust
@@ -589,7 +589,7 @@ public static class Coloradjust
 	public const uint XRGB = 0x8042cc13u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Colorfield
@@ -605,7 +605,7 @@ public static class Colorfield
 	public const uint Red = 0x804279f6u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Colorring
@@ -616,7 +616,7 @@ public static class Colorring
 	public const string Name = "Colorring.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Configdata
@@ -627,7 +627,7 @@ public static class Configdata
 	public const string Name = "Configdata.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Cpumonitor
@@ -636,7 +636,7 @@ public static class Cpumonitor
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint DnetcMode = 0xfed1000fu;
 	public const uint FilterTask = 0xfed1000cu;
@@ -666,7 +666,7 @@ public static class Crawling
 	public const string Name = "Crawling.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Cycle
@@ -675,7 +675,7 @@ public static class Cycle
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Active = 0x80421788u;
 	public const uint Entries = 0x80420629u;
@@ -696,7 +696,7 @@ public static class Datamap
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint AutoLock = 0x8042fbe4u;
 	public const uint CopyKeys = 0x8042a179u;
@@ -721,7 +721,7 @@ public static class Dataspace
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Count = 0x8042e7eau;
 	public static class Method
@@ -745,7 +745,7 @@ public static class Dirlist
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint AcceptPattern = 0x8042760au;
 	public const uint Directory = 0x8042ea41u;
@@ -831,7 +831,7 @@ public static class Dtpic
 	public const string NameClass = "Dtpic.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(NameClass), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(NameClass), tags);
 }
 
 public static class Error
@@ -854,7 +854,7 @@ public static class FSProtectionBits
 	public const string Name = "FSProtectionBits.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Family
@@ -863,7 +863,7 @@ public static class Family
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Child = 0x8042c696u;
 	public const uint ChildCount = 0x8042b25au;
@@ -900,7 +900,7 @@ public static class Filepanel
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint AcceptPattern = 0x80426f3bu;
 	public const uint DoMultiSelect = 0x8042fd78u;
@@ -966,7 +966,7 @@ public static class Floattext
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Justify = 0x8042dc03u;
 	public static class Method
@@ -987,7 +987,7 @@ public static class Fontdisplay
 	public const string Name = "Fontdisplay.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Fontpanel
@@ -996,7 +996,7 @@ public static class Fontpanel
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const string Name = "Fontpanel.mui";
 	public const uint ShowCollection = 0x804225eau;
@@ -1021,7 +1021,7 @@ public static class Frameadjust
 	public const string Name = "Frameadjust.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Framedisplay
@@ -1032,7 +1032,7 @@ public static class Framedisplay
 	public const string Name = "Framedisplay.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Frimagedisplay
@@ -1043,7 +1043,7 @@ public static class Frimagedisplay
 	public const string Name = "Frimagedisplay.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Gadget
@@ -1055,7 +1055,7 @@ public static class Gadget
 	public const uint Value = 0x8042ec1au;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Gauge
@@ -1072,7 +1072,7 @@ public static class Gauge
 	public const string Name = "Gauge.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Graph
@@ -1081,7 +1081,7 @@ public static class Graph
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint DrawBackCurve = 0xfed10007u;
 	public const uint Max = 0xfed10006u;
@@ -1102,7 +1102,7 @@ public static class Group
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint ActivePage = 0x80424199u;
 	public const uint Child = 0x804226e6u;
@@ -1167,7 +1167,7 @@ public static class Hex
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint CursorChanged = 0xfecf4e2eu;
 	public const uint CursorSize = 0xfecf4e2au;
@@ -1230,7 +1230,7 @@ public static class Hyperlink
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint HoverTip = 0xfed10036u;
 	public static class Method
@@ -1348,7 +1348,7 @@ public static class Image
 	public const int WindowBack = 0;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Imageadjust
@@ -1359,7 +1359,7 @@ public static class Imageadjust
 	public const string Name = "Imageadjust.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Imagebrowser
@@ -1370,7 +1370,7 @@ public static class Imagebrowser
 	public const string Name = "Imagebrowser.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Imagedisplay
@@ -1381,7 +1381,7 @@ public static class Imagedisplay
 	public const string Name = "Imagedisplay.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Imagespace
@@ -1392,7 +1392,7 @@ public static class Imagespace
 	public const string Name = "Imagespace.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Keyadjust
@@ -1409,7 +1409,7 @@ public static class Keyadjust
 	public const string Name = "Keyadjust.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Knob
@@ -1420,7 +1420,7 @@ public static class Knob
 	public const string Name = "Knob.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Lamp
@@ -1429,7 +1429,7 @@ public static class Lamp
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Blue = 0x85b90006u;
 	public const uint Color = 0x85b90002u;
@@ -1488,7 +1488,7 @@ public static class Levelmeter
 	public const string Name = "Levelmeter.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class List
@@ -1497,7 +1497,7 @@ public static class List
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Active = 0x8042391cu;
 	public const uint AdjustHeight = 0x8042850du;
@@ -1720,7 +1720,7 @@ public static class Listtree
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Active = 0x80020020u;
 	public const uint CloseHook = 0x80020033u;
@@ -2042,7 +2042,7 @@ public static class Listview
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint AgainClick = 0x804214c2u;
 	public const uint ClickColumn = 0x8042d1b3u;
@@ -2087,7 +2087,7 @@ public static class Login
 	public const string Name = "Login.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class MakeObject
@@ -2134,7 +2134,7 @@ public static class Mccprefs
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public static class Method
 	{
@@ -2156,7 +2156,7 @@ public static class Menu
 	public const uint Title = 0x8042a0e3u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Menubar
@@ -2167,7 +2167,7 @@ public static class Menubar
 	public const string Name = "Menubar.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Menudisplay
@@ -2178,7 +2178,7 @@ public static class Menudisplay
 	public const string Name = "Menudisplay.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Menuitem
@@ -2187,7 +2187,7 @@ public static class Menuitem
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Checked = 0x8042562au;
 	public const uint Checkit = 0x80425aceu;
@@ -2216,7 +2216,7 @@ public static class Menustrip
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint CaseSensitive = 0x8042d718u;
 	public const uint Enabled = 0x8042815bu;
@@ -2295,7 +2295,7 @@ public static class Notify
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Method = 0x8042c9cbu;
 	public const string Name = "Notify.mui";
@@ -2316,7 +2316,7 @@ public static class Numeric
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint CheckAllSizes = 0x80421594u;
 	public const uint Default = 0x804263e8u;
@@ -2348,7 +2348,7 @@ public static class NumericList
 	public const string Name = "NumericList.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class NumericString
@@ -2359,7 +2359,7 @@ public static class NumericString
 	public const string Name = "NumericString.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Numericbutton
@@ -2370,7 +2370,7 @@ public static class Numericbutton
 	public const string Name = "Numericbutton.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Objectmap
@@ -2379,7 +2379,7 @@ public static class Objectmap
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint AutoLock = 0x8042e65fu;
 	public const uint CopyKeys = 0x8042b964u;
@@ -2402,7 +2402,7 @@ public static class Palette
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Entries = 0x8042a3d8u;
 	public const uint Groupable = 0x80423e67u;
@@ -2423,7 +2423,7 @@ public static class Panel
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public static class Method
 	{
@@ -2441,7 +2441,7 @@ public static class Penadjust
 	public const uint PSIMode = 0x80421cbbu;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Pendisplay
@@ -2450,7 +2450,7 @@ public static class Pendisplay
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint ARGB = 0x804278d0u;
 	public static class Method
@@ -2473,7 +2473,7 @@ public static class Piano
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint KeyColor = 0xfed90001u;
 	public static class Method
@@ -2509,7 +2509,7 @@ public static class Popasl
 	public const uint Type = 0x8042df3du;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popcolor
@@ -2521,7 +2521,7 @@ public static class Popcolor
 	public const uint ShowAlpha = 0x8042e102u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popframe
@@ -2532,7 +2532,7 @@ public static class Popframe
 	public const string Name = "Popframe.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popfrimage
@@ -2543,7 +2543,7 @@ public static class Popfrimage
 	public const string Name = "Popfrimage.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popimage
@@ -2554,7 +2554,7 @@ public static class Popimage
 	public const string Name = "Popimage.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Poplist
@@ -2566,7 +2566,7 @@ public static class Poplist
 	public const string Name = "Poplist.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popmenu
@@ -2577,7 +2577,7 @@ public static class Popmenu
 	public const string Name = "Popmenu.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popobject
@@ -2595,7 +2595,7 @@ public static class Popobject
 	public const uint WindowHook = 0x8042f194u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Poppen
@@ -2606,7 +2606,7 @@ public static class Poppen
 	public const string Name = "Poppen.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popscreen
@@ -2617,7 +2617,7 @@ public static class Popscreen
 	public const string Name = "Popscreen.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Popstring
@@ -2626,7 +2626,7 @@ public static class Popstring
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Button = 0x8042d0b9u;
 	public const uint CloseHook = 0x804256bfu;
@@ -2647,7 +2647,7 @@ public static class PowerTerm
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint CRasCRLF = 0xfecf0829u;
 	public const uint ClickX = 0xfecf0825u;
@@ -2758,7 +2758,7 @@ public static class Process
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(NameClass), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(NameClass), tags);
 
 	public const uint AutoLaunch = 0x80428855u;
 	public static class Method
@@ -2783,7 +2783,7 @@ public static class Prop
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint DeltaFactor = 0x80427c5eu;
 	public const uint Entries = 0x8042fbdbu;
@@ -2818,7 +2818,7 @@ public static class Pubscreen
 	public const string Name = "Pubscreen.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Pubscreenadjust
@@ -2829,7 +2829,7 @@ public static class Pubscreenadjust
 	public const string Name = "Pubscreenadjust.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Pubscreenlist
@@ -2841,7 +2841,7 @@ public static class Pubscreenlist
 	public const uint Selection = 0x8042fe58u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Pubscreenpanel
@@ -2852,7 +2852,7 @@ public static class Pubscreenpanel
 	public const string Name = "Pubscreenpanel.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Radio
@@ -2865,7 +2865,7 @@ public static class Radio
 	public const string Name = "Radio.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Rawimage
@@ -2877,7 +2877,7 @@ public static class Rawimage
 	public const string Name = "Rawimage.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Rectangle
@@ -2891,7 +2891,7 @@ public static class Rectangle
 	public const uint VBar = 0x80422204u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Register
@@ -2900,7 +2900,7 @@ public static class Register
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Frame = 0x8042349bu;
 	public const string Name = "Register.mui";
@@ -2923,7 +2923,7 @@ public static class Rootgrp
 	public const string Name = "Rootgrp.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Scale
@@ -2935,7 +2935,7 @@ public static class Scale
 	public const string Name = "Scale.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Scintilla
@@ -2944,7 +2944,7 @@ public static class Scintilla
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint ActiveEditor = 0xfecca001u;
 	public const uint ClipStripANSI = 0xfecca022u;
@@ -2974,7 +2974,7 @@ public static class Screenmodepanel
 	public const string Name = "Screenmodepanel.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Screenspace
@@ -2985,7 +2985,7 @@ public static class Screenspace
 	public const string Name = "Screenspace.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Scrmodelist
@@ -2996,7 +2996,7 @@ public static class Scrmodelist
 	public const string Name = "Scrmodelist.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Scrollbar
@@ -3005,7 +3005,7 @@ public static class Scrollbar
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const string Name = "Scrollbar.mui";
 	public const uint Type = 0x8042fb6bu;
@@ -3039,7 +3039,7 @@ public static class Scrollgroup
 	public const uint VertBar = 0x8042cdc0u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Selectgroup
@@ -3048,7 +3048,7 @@ public static class Selectgroup
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Active = 0x80421788u;
 	public const string Name = "Selectgroup.mui";
@@ -3068,7 +3068,7 @@ public static class Semaphore
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public static class Method
 	{
@@ -3089,7 +3089,7 @@ public static class Settings
 	public const string Name = "Settings.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Settingsgroup
@@ -3098,7 +3098,7 @@ public static class Settingsgroup
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public static class Method
 	{
@@ -3114,7 +3114,7 @@ public static class Slave
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Application = 0x80427767u;
 	public const uint Class = 0x80420f8cu;
@@ -3144,7 +3144,7 @@ public static class Slider
 	public const uint Reverse = 0x8042f2a0u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class String
@@ -3153,7 +3153,7 @@ public static class String
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Accept = 0x8042e3e1u;
 	public const uint Acknowledge = 0x8042026cu;
@@ -3208,7 +3208,7 @@ public static class Stringscroll
 	public const uint VertScrollerOnly = 0x8042873bu;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Switchitem
@@ -3217,7 +3217,7 @@ public static class Switchitem
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public static class Method
 	{
@@ -3232,7 +3232,7 @@ public static class Switchpanel
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Current = 0x80427e97u;
 	public static class Method
@@ -3260,7 +3260,7 @@ public static class Text
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Contents = 0x8042f8dcu;
 	public const uint ControlChar = 0x8042e6d0u;
@@ -3305,7 +3305,7 @@ public static class Textinput
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint AcceptChars = 0x851b078cu;
 	public const uint Acknowledge = 0x851b0783u;
@@ -3474,7 +3474,7 @@ public static class Textinputscroll
 	public const uint VertScrollerOnly = 0x851b0799u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Title
@@ -3483,7 +3483,7 @@ public static class Title
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Clickable = 0x80425959u;
 	public const uint Closable = 0x80420402u;
@@ -3528,7 +3528,7 @@ public static class Transition
 	public const string Name = "Transition.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Urltext
@@ -3537,7 +3537,7 @@ public static class Urltext
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Active = 0xfec900d2u;
 	public const uint DoOpenURL = 0xfec900d8u;
@@ -3566,7 +3566,7 @@ public static class VGraphics
 	public const string Name = "VGraphics.mcc";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Value
@@ -3687,7 +3687,7 @@ public static class Virtgroup
 	public const uint Width = 0x80427c49u;
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Volumelist
@@ -3699,7 +3699,7 @@ public static class Volumelist
 	public const string Name = "Volumelist.mui";
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 }
 
 public static class Window
@@ -3708,7 +3708,7 @@ public static class Window
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 
 	public static uint New(uint tags) =>
-		global::Amiga.MUIMaster.MUI_NewObject(global::Amiga.CString.FromLiteral(Name), tags);
+		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
 	public const uint Activate = 0x80428d2fu;
 	public const uint ActiveObject = 0x80427925u;

@@ -28,6 +28,11 @@ these as alib/direct-dispatch helpers rather than Intuition library vectors, so
 the SDK declares runtime-resolved imports for `DoMethodA()`,
 `DoSuperMethodA()`, and `CoerceMethodA()`. Callers pass the guest address of the
 method message whose first ULONG is the method ID.
+`BOOPSI.DoMethod(obj, methodId, ...)` overloads for zero to three method
+arguments, plus `BOOPSI.DoMethod(obj, params uint[])` for wider messages, are
+compiler-lowered conveniences. They build the temporary BOOPSI message on the
+68k stack and call `DoMethodA()`; prebuilt messages can still use `DoMethodA()`
+directly.
 
 `Amiga.Graphics` is generated from the m68k ABI vector surface. Header macros
 without standalone library vectors, such as `AreaCircle()` and `SetOPen()`, are
@@ -102,12 +107,16 @@ does not publish callable SDK vectors. No MorphOS ppcinline m68k register
 mapping is published for either library.
 
 `Amiga.MUIMaster` exposes the MorphOS MUI `muimaster.library` vector surface.
-The MUI stdarg conveniences (`MUI_NewObject()`, `MUI_MakeObject()`,
-`MUI_Request()`, `MUI_RequestObject()`, `MUI_AllocAslRequestTags()`, and
-`MUI_AslRequestTags()`) are represented as wrappers over the corresponding
-`A`/tag-list entry points. Their final argument is the guest address of the
-already-built tag or parameter array, matching the MorphOS inline stdarg macros'
-lowering to the real library calls.
+`MUI_NewObject(CString, params uint[])` and
+`MUI_MakeObject(int, params uint[])` are compiler-lowered: the inline `params`
+values are written to the 68k stack, the matching pointer register receives
+that stack address, and the real `A` library vector is called without
+allocating a managed array. The pointer-style `A`/tag-list entry points remain
+available for prebuilt guest taglists. The other MUI stdarg conveniences
+(`MUI_Request()`, `MUI_RequestObject()`, `MUI_AllocAslRequestTags()`, and
+`MUI_AslRequestTags()`) are currently represented as wrappers over the
+corresponding `A`/tag-list entry points; their final argument is the guest
+address of the already-built tag or parameter array.
 `Amiga.MUI.MUIObject`, `ApplicationObject`, and `WindowObject` are thin typed
 wrappers around raw MUI object pointers. They expose `Raw`, `DoMethod()`,
 `SetAttrs()`, `Dispose()`, and class-specific `New()` factories while keeping

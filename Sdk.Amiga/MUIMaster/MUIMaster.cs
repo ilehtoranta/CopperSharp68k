@@ -180,11 +180,31 @@ public static class MUIMaster
 		[M68kRegister(M68kRegister.A3)] CString format,
 		[M68kRegister(M68kRegister.A4)] uint parameters);
 
-	public static uint MUI_NewObject(CString className, uint tags) =>
+	public static uint MUI_NewObjectTags(CString className, uint tags) =>
 		MUI_NewObjectA(className, tags);
 
-	public static uint MUI_MakeObject(int type, uint parameters) =>
+	[AmigaLvo(-30)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static uint MUI_NewObject(
+		[M68kRegister(M68kRegister.A0)] CString className,
+		[M68kRegister(M68kRegister.A1)]
+		[AmigaStackVarargs]
+		params uint[] tags) =>
+		throw new System.NotSupportedException(
+			"MUI_NewObject stack varargs are lowered by CopperSharp.");
+
+	public static uint MUI_MakeObjectParameters(int type, uint parameters) =>
 		MUI_MakeObjectA(type, parameters);
+
+	[AmigaLvo(-120)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static uint MUI_MakeObject(
+		[M68kRegister(M68kRegister.D0)] int type,
+		[M68kRegister(M68kRegister.A0)]
+		[AmigaStackVarargs]
+		params uint[] parameters) =>
+		throw new System.NotSupportedException(
+			"MUI_MakeObject stack varargs are lowered by CopperSharp.");
 
 	public static int MUI_Request(
 		uint app,

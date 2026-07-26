@@ -27,6 +27,16 @@ internal sealed class M68kCodeGenerator
 	private ImmutableArray<CilStackValueKind> _currentStackTypes = ImmutableArray<CilStackValueKind>.Empty;
 	private GeneratedPlatformBase? _loadedPlatformBase;
 
+	private enum StackVarargsCallKind
+	{
+		MuiNewObject,
+		MuiMakeObject
+	}
+
+	private readonly record struct StackVarargValue(
+		CilInstruction? Instruction,
+		bool IsCStringLiteral = false);
+
 	private bool UsesBuiltInManagedPool =>
 		_memoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc;
 
@@ -150,7 +160,7 @@ internal sealed class M68kCodeGenerator
 		}
 	}
 
-	private static void ValidateType(CilType type, CilMethod method, string role)
+	private void ValidateType(CilType type, CilMethod method, string role)
 	{
 		if (type.IsVoid)
 		{
@@ -170,7 +180,8 @@ internal sealed class M68kCodeGenerator
 				method.DisplayName);
 		}
 
-		if (!type.IsSupportedScalar || type.Size > 4)
+		if ((!type.IsSupportedScalar || type.Size > 4) &&
+			!_module.IsTransparentScalarType(type))
 		{
 			throw UnsupportedType(type, method, role);
 		}
@@ -235,6 +246,22 @@ internal sealed class M68kCodeGenerator
 				_loadedPlatformBase = null;
 			}
 			_assembler.Mark(IlLabel(method, instruction.Offset));
+			if (TryEmitStackVarargsCall(
+				method,
+				method.Instructions,
+				instructionIndex,
+				branchTargets,
+				out var stackVarargsConsumed))
+			{
+				for (var skipped = 1; skipped < stackVarargsConsumed; skipped++)
+				{
+					_assembler.Mark(IlLabel(
+						method,
+						method.Instructions[instructionIndex + skipped].Offset));
+				}
+				instructionIndex += stackVarargsConsumed - 1;
+				continue;
+			}
 			if (TryEmitDirectExternalCall(
 				method,
 				method.Instructions,
@@ -274,6 +301,350 @@ internal sealed class M68kCodeGenerator
 			}
 			EmitInstruction(method, instruction);
 		}
+	}
+
+	private bool TryEmitStackVarargsCall(
+		CilMethod caller,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		IReadOnlySet<int> branchTargets,
+		out int consumed)
+	{
+		consumed = 0;
+		if (!TryGetConstant(instructions[startIndex], out var tagCount) ||
+			tagCount < 0 ||
+			startIndex + 2 >= instructions.Count ||
+			instructions[startIndex + 1].OpCode != OpCodes.Newarr ||
+			!IsUInt32NewArray(caller, instructions[startIndex + 1]))
+		{
+			return false;
+		}
+
+		var values = new StackVarargValue[tagCount];
+		var index = startIndex + 2;
+		var expectedIndex = 0;
+		while (index < instructions.Count &&
+			instructions[index].OpCode == OpCodes.Dup)
+		{
+			if (index + 2 >= instructions.Count ||
+				HasBranchTarget(branchTargets, instructions, startIndex, index, index + 2) ||
+				!TryGetConstant(instructions[index + 1], out var actualIndex) ||
+				actualIndex < expectedIndex ||
+				actualIndex >= tagCount ||
+				!TryGetStackVarargValueExpression(
+					caller,
+					instructions,
+					index + 2,
+					out var value,
+					out var valueConsumed))
+			{
+				return false;
+			}
+
+			var storeIndex = index + 2 + valueConsumed;
+			var storeOp = storeIndex < instructions.Count
+				? instructions[storeIndex].OpCode
+				: default;
+			if (storeIndex >= instructions.Count ||
+				HasBranchTarget(branchTargets, instructions, startIndex, index + 3, storeIndex) ||
+				(storeOp != OpCodes.Stelem_I4 &&
+				 storeOp != OpCodes.Stelem_I))
+			{
+				return false;
+			}
+
+			values[actualIndex] = value;
+			expectedIndex = actualIndex + 1;
+			index = storeIndex + 1;
+		}
+
+		if (index >= instructions.Count ||
+			HasBranchTarget(branchTargets, instructions, startIndex, index, index) ||
+			(instructions[index].OpCode != OpCodes.Call &&
+			 instructions[index].OpCode != OpCodes.Callvirt))
+		{
+			return false;
+		}
+
+		var target = _module.ResolveMethodToken(
+			(int)instructions[index].Operand!,
+			caller,
+			instructions[index].Offset);
+		if (target.ImportName == "intrinsic:boopsi-do-method-stack-varargs")
+		{
+			EmitBoopsiDoMethodStackVarargs(caller, values);
+			_loadedPlatformBase = null;
+			consumed = index - startIndex + 1;
+			return true;
+		}
+
+		if (!TryGetMuiStackVarargsKind(target, out var kind) ||
+			target.Definition?.ExternalCall is not { } externalCall)
+		{
+			return false;
+		}
+
+		EmitMuiStackVarargs(caller, target.Definition, externalCall, kind, values);
+		_loadedPlatformBase = null;
+		consumed = index - startIndex + 1;
+		return true;
+	}
+
+	private bool IsUInt32NewArray(CilMethod caller, CilInstruction instruction)
+	{
+		var elementType = _module.ResolveTypeToken(
+			(int)instruction.Operand!,
+			caller,
+			instruction.Offset);
+		return elementType.DisplayName == "uint";
+	}
+
+	private static bool HasBranchTarget(
+		IReadOnlySet<int> branchTargets,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		int firstIndex,
+		int lastIndex)
+	{
+		for (var index = firstIndex; index <= lastIndex; index++)
+		{
+			if (index != startIndex &&
+				branchTargets.Contains(instructions[index].Offset))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsStackVarargValueInstruction(CilInstruction instruction) =>
+		TryGetConstant(instruction, out _) ||
+		instruction.OpCode == OpCodes.Ldnull ||
+		TryGetLoadLocalIndex(instruction, out _) ||
+		TryGetArgumentIndex(instruction, out _);
+
+	private bool TryGetStackVarargValueExpression(
+		CilMethod caller,
+		IReadOnlyList<CilInstruction> instructions,
+		int valueIndex,
+		out StackVarargValue value,
+		out int consumed)
+	{
+		value = default;
+		consumed = 0;
+		if (valueIndex >= instructions.Count)
+		{
+			return false;
+		}
+
+		if (instructions[valueIndex].OpCode == OpCodes.Ldstr &&
+			valueIndex + 2 < instructions.Count &&
+			instructions[valueIndex + 1].OpCode is { } fromLiteralOp &&
+			(fromLiteralOp == OpCodes.Call || fromLiteralOp == OpCodes.Callvirt) &&
+			instructions[valueIndex + 2].OpCode is { } toUInt32Op &&
+			(toUInt32Op == OpCodes.Call || toUInt32Op == OpCodes.Callvirt))
+		{
+			var fromLiteral = _module.ResolveMethodToken(
+				(int)instructions[valueIndex + 1].Operand!,
+				caller,
+				instructions[valueIndex + 1].Offset);
+			var toUInt32 = _module.ResolveMethodToken(
+				(int)instructions[valueIndex + 2].Operand!,
+				caller,
+				instructions[valueIndex + 2].Offset);
+			if (fromLiteral.ImportName == "intrinsic:cstring-from-literal" &&
+				toUInt32.ImportName == "intrinsic:cstring-to-uint32")
+			{
+				value = new StackVarargValue(instructions[valueIndex], IsCStringLiteral: true);
+				consumed = 3;
+				return true;
+			}
+		}
+
+		if (!IsStackVarargValueInstruction(instructions[valueIndex]))
+		{
+			return false;
+		}
+
+		value = new StackVarargValue(instructions[valueIndex]);
+		consumed = 1;
+		if (valueIndex + 1 >= instructions.Count)
+		{
+			return true;
+		}
+
+		var op = instructions[valueIndex + 1].OpCode;
+		if (op != OpCodes.Call && op != OpCodes.Callvirt)
+		{
+			return true;
+		}
+
+		var target = _module.ResolveMethodToken(
+			(int)instructions[valueIndex + 1].Operand!,
+			caller,
+			instructions[valueIndex + 1].Offset);
+		if (target.ImportName == "intrinsic:cstring-to-uint32" ||
+			IsTransparentScalarToUInt32Conversion(target))
+		{
+			consumed = 2;
+		}
+
+		return true;
+	}
+
+	private bool IsTransparentScalarToUInt32Conversion(MethodReference target) =>
+		target.Signature.ReturnType.DisplayName == "uint" &&
+		target.Signature.ParameterTypes.Length == 1 &&
+		(target.Definition?.Name is "op_Implicit" or "ToUInt32") &&
+		_module.IsTransparentScalarType(target.Signature.ParameterTypes[0]);
+
+	private static bool TryGetMuiStackVarargsKind(
+		MethodReference target,
+		out StackVarargsCallKind kind)
+	{
+		kind = default;
+		if (target.Signature.ParameterTypes.Length != 2 ||
+			target.Signature.ParameterTypes[1].DisplayName != "uint[]" ||
+			target.Signature.ParameterTypes[1].ElementType?.DisplayName != "uint")
+		{
+			return false;
+		}
+
+		if (target.Definition?.DisplayName == "Amiga.MUIMaster::MUI_NewObject" &&
+			target.Signature.ParameterTypes[0].DisplayName == "Amiga.CString")
+		{
+			kind = StackVarargsCallKind.MuiNewObject;
+			return true;
+		}
+
+		if (target.Definition?.DisplayName == "Amiga.MUIMaster::MUI_MakeObject" &&
+			target.Signature.ParameterTypes[0].DisplayName == "int")
+		{
+			kind = StackVarargsCallKind.MuiMakeObject;
+			return true;
+		}
+
+		return false;
+	}
+
+	private void EmitMuiStackVarargs(
+		CilMethod caller,
+		CilMethod target,
+		CilExternalCall externalCall,
+		StackVarargsCallKind kind,
+		IReadOnlyList<StackVarargValue> values)
+	{
+		if (kind == StackVarargsCallKind.MuiNewObject)
+		{
+			EmitPopRegister(M68kRegister.A0);
+		}
+		else
+		{
+			EmitPopRegister(M68kRegister.D0);
+		}
+		var valueStackDepth = checked(_currentStackDepth - 1);
+		for (var index = values.Count - 1; index >= 0; index--)
+		{
+			EmitStackVarargValue(caller, values[index], valueStackDepth);
+			valueStackDepth++;
+		}
+
+		if (kind == StackVarargsCallKind.MuiNewObject)
+		{
+			_assembler.EmitWord(0x224F); // MOVEA.L A7,A1
+		}
+		else
+		{
+			_assembler.EmitWord(0x204F); // MOVEA.L A7,A0
+		}
+		EmitEnsurePlatformBase(externalCall.Convention, target);
+		EmitBaseRelativeJsr(
+			externalCall.Convention.BaseRegister,
+			externalCall.Convention.Displacement);
+		if (!target.Signature.ReturnType.IsVoid)
+		{
+			EmitMoveRegisterToD0(externalCall.Abi.ReturnRegister);
+		}
+		EmitDiscardStackArguments(values.Count);
+		if (!target.Signature.ReturnType.IsVoid)
+		{
+			EmitPushD0();
+		}
+	}
+
+	private void EmitBoopsiDoMethodStackVarargs(
+		CilMethod caller,
+		IReadOnlyList<StackVarargValue> values)
+	{
+		EmitPopRegister(M68kRegister.A0);
+		var valueStackDepth = checked(_currentStackDepth - 1);
+		for (var index = values.Count - 1; index >= 0; index--)
+		{
+			EmitStackVarargValue(caller, values[index], valueStackDepth);
+			valueStackDepth++;
+		}
+
+		_assembler.EmitWord(0x224F); // MOVEA.L A7,A1
+		_assembler.EmitJsr("amiga.boopsi.DoMethodA", external: true);
+		EmitDiscardStackArguments(values.Count);
+		EmitPushD0();
+	}
+
+	private void EmitStackVarargValue(
+		CilMethod caller,
+		StackVarargValue value,
+		int stackDepth)
+	{
+		if (value.Instruction is not { } instruction)
+		{
+			EmitPushConstant(0);
+			return;
+		}
+
+		if (value.IsCStringLiteral)
+		{
+			var token = (int)instruction.Operand!;
+			_cStringLiterals.TryAdd(token, _module.GetUserString(token));
+			_assembler.EmitWord(0x2F3C); // MOVE.L #cstring,-(A7)
+			_assembler.EmitAddress(CStringLabel(token));
+			return;
+		}
+
+		if (TryGetConstant(instruction, out var constant))
+		{
+			EmitPushConstant(constant);
+			return;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldnull)
+		{
+			EmitPushConstant(0);
+			return;
+		}
+
+		if (TryGetArgumentIndex(instruction, out var argumentIndex))
+		{
+			EmitPushFrameSlot(FrameDisplacement(
+				ArgumentOffset(caller, argumentIndex),
+				stackDepth));
+			return;
+		}
+
+		if (TryGetLoadLocalIndex(instruction, out var localIndex))
+		{
+			ValidateLocal(caller, instruction, localIndex);
+			EmitPushFrameSlot(FrameDisplacement(
+				LocalOffset(caller, localIndex),
+				stackDepth));
+			return;
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.UnsupportedInstruction,
+			$"Opcode '{instruction.OpCode.Name}' is not supported in stack varargs.",
+			caller.DisplayName,
+			instruction.Offset);
 	}
 
 	private bool TryEmitDirectExternalCall(
@@ -463,6 +834,30 @@ internal sealed class M68kCodeGenerator
 				LocalOffset(method, loadLocal),
 				_currentStackDepth));
 			return;
+		}
+
+		if (TryGetLoadLocalAddressIndex(instruction, out var loadLocalAddress))
+		{
+			ValidateLocal(method, instruction, loadLocalAddress);
+			if (_module.IsTransparentScalarType(method.Locals[loadLocalAddress]))
+			{
+				EmitPushFrameAddress(FrameDisplacement(
+					LocalOffset(method, loadLocalAddress),
+					_currentStackDepth));
+				return;
+			}
+		}
+
+		if (TryGetLoadArgumentAddressIndex(instruction, out var loadArgumentAddress))
+		{
+			ValidateArgument(method, instruction, loadArgumentAddress);
+			if (IsTransparentScalarArgument(method, loadArgumentAddress))
+			{
+				EmitPushFrameAddress(FrameDisplacement(
+					ArgumentOffset(method, loadArgumentAddress),
+					_currentStackDepth));
+				return;
+			}
 		}
 
 		if (TryGetStoreLocalIndex(instruction, out var storeLocal))
@@ -869,6 +1264,13 @@ internal sealed class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName == "intrinsic:boopsi-do-method")
+			{
+				EmitBoopsiDoMethod(target.ParameterCount);
+				_loadedPlatformBase = null;
+				return;
+			}
+
 			if (target.ImportName == "intrinsic:runtime-dispose")
 			{
 				EmitRuntimeJsr(RuntimeDisposeLabel, M68kRuntimeImports.Dispose);
@@ -997,6 +1399,34 @@ internal sealed class M68kCodeGenerator
 		_assembler.EmitAddress(CStringLabel(token));
 	}
 
+	private void EmitBoopsiDoMethod(int parameterCount)
+	{
+		var argumentCount = checked(parameterCount - 2);
+		if (argumentCount is < 0 or > 6)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedSignature,
+				"BOOPSI.DoMethod supports zero to six method arguments.");
+		}
+
+		for (var index = argumentCount; index >= 1; index--)
+		{
+			EmitPopRegister((M68kRegister)((int)M68kRegister.D1 + index));
+		}
+		EmitPopRegister(M68kRegister.D1); // method id
+		EmitPopRegister(M68kRegister.D0); // object
+		for (var index = argumentCount; index >= 1; index--)
+		{
+			EmitPushRegister((M68kRegister)((int)M68kRegister.D1 + index));
+		}
+		EmitPushRegister(M68kRegister.D1);
+		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0
+		_assembler.EmitWord(0x224F); // MOVEA.L A7,A1
+		_assembler.EmitJsr("amiga.boopsi.DoMethodA", external: true);
+		EmitDiscardStackArguments(argumentCount + 1);
+		EmitPushD0();
+	}
+
 	private void EmitMarkManagedRoots(CilMethod method)
 	{
 		for (var index = 0; index < _currentStackTypes.Length; index++)
@@ -1056,19 +1486,42 @@ internal sealed class M68kCodeGenerator
 		}
 	}
 
-	private static bool IsReferenceParameter(CilMethod method, int index)
+	private bool IsReferenceParameter(CilMethod method, int index)
 	{
 		if (method.Signature.Header.IsInstance)
 		{
 			if (index == 0)
 			{
-				return true;
+				var declaringType = new CilType(
+					CilTypeKind.ValueType,
+					4,
+					method.DisplayName.Split("::", StringSplitOptions.None)[0]);
+				return !_module.IsTransparentScalarType(declaringType);
 			}
 
 			index--;
 		}
 
 		return method.Signature.ParameterTypes[index].IsReference;
+	}
+
+	private bool IsTransparentScalarArgument(CilMethod method, int index)
+	{
+		if (method.Signature.Header.IsInstance)
+		{
+			if (index == 0)
+			{
+				var declaringType = new CilType(
+					CilTypeKind.ValueType,
+					4,
+					method.DisplayName.Split("::", StringSplitOptions.None)[0]);
+				return _module.IsTransparentScalarType(declaringType);
+			}
+
+			index--;
+		}
+
+		return _module.IsTransparentScalarType(method.Signature.ParameterTypes[index]);
 	}
 
 	private void EmitExternalCall(CilMethod method, CilExternalCall call)
@@ -1140,7 +1593,7 @@ internal sealed class M68kCodeGenerator
 	{
 		if (_usedPlatformBases.TryGetValue(binding.Identity, out var existing))
 		{
-			if (existing.Binding != binding)
+			if (!PlatformBasesMatch(existing.Binding, binding))
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.InvalidMetadata,
@@ -1184,6 +1637,17 @@ internal sealed class M68kCodeGenerator
 		_usedPlatformBases.Add(binding.Identity, generated);
 		return generated;
 	}
+
+	private static bool PlatformBasesMatch(
+		M68kExternalCallConvention left,
+		M68kExternalCallConvention right) =>
+		left.Identity == right.Identity &&
+		left.BaseSource == right.BaseSource &&
+		left.BaseRegister == right.BaseRegister &&
+		left.CacheRegister == right.CacheRegister &&
+		left.SourceAddress == right.SourceAddress &&
+		left.InitialValue == right.InitialValue &&
+		left.SlotSymbol == right.SlotSymbol;
 
 	private bool TryEmitTailCall(CilMethod caller, CilInstruction instruction)
 	{
@@ -1320,7 +1784,6 @@ internal sealed class M68kCodeGenerator
 
 	private void EmitNewObject(CilMethod caller, CilInstruction instruction)
 	{
-		EnsureManagedAllocationAllowed(caller, instruction, "object construction");
 		var constructor = _module.ResolveMethodToken(
 			(int)instruction.Operand!,
 			caller,
@@ -1334,6 +1797,12 @@ internal sealed class M68kCodeGenerator
 				instruction.Offset);
 		}
 
+		if (_module.IsTransparentScalarConstructor(constructor))
+		{
+			return;
+		}
+
+		EnsureManagedAllocationAllowed(caller, instruction, "object construction");
 		if (!constructor.Signature.Header.IsInstance)
 		{
 			throw new M68kCompilationException(
@@ -1591,6 +2060,27 @@ internal sealed class M68kCodeGenerator
 		var field = _module.ResolveFieldToken((int)instruction.Operand!, method, instruction.Offset);
 		ValidateType(field.Type, method, "field");
 		var op = instruction.OpCode;
+		if (!field.IsStatic && _module.IsTransparentScalarField(field))
+		{
+			if (op == OpCodes.Ldfld)
+			{
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+				EmitPushD0();
+				return;
+			}
+
+			if (op == OpCodes.Stfld)
+			{
+				EmitPopD0();
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
+				return;
+			}
+
+			throw FieldMismatch(method, instruction, field);
+		}
+
 		if (field.IsStatic)
 		{
 			_staticFields.TryAdd(field.Handle, field);
@@ -2836,6 +3326,12 @@ internal sealed class M68kCodeGenerator
 		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
+	private void EmitPushFrameAddress(short displacement)
+	{
+		_assembler.EmitWord(0x486F); // PEA d16(A7)
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
 	private void EmitPopFrameSlot(short displacement)
 	{
 		_assembler.EmitWord(0x2F5F); // MOVE.L (A7)+,d16(A7)
@@ -2961,6 +3457,32 @@ internal sealed class M68kCodeGenerator
 		}
 
 		if (op == OpCodes.Ldloc || op == OpCodes.Ldloc_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+
+		index = 0;
+		return false;
+	}
+
+	private static bool TryGetLoadLocalAddressIndex(CilInstruction instruction, out int index)
+	{
+		var op = instruction.OpCode;
+		if (op == OpCodes.Ldloca || op == OpCodes.Ldloca_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+
+		index = 0;
+		return false;
+	}
+
+	private static bool TryGetLoadArgumentAddressIndex(CilInstruction instruction, out int index)
+	{
+		var op = instruction.OpCode;
+		if (op == OpCodes.Ldarga || op == OpCodes.Ldarga_S)
 		{
 			index = Convert.ToInt32(instruction.Operand);
 			return true;

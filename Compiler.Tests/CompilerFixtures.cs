@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Amiga;
 using CopperSharp.Sdk.Amiga;
 
 namespace CopperSharp.Compiler.Tests;
@@ -91,6 +92,48 @@ public static class CompilerFixtures
 	public static extern int ImportedAdd(
 		[M68kRegister(M68kRegister.D0)] int left,
 		[M68kRegister(M68kRegister.D1)] int right);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallBoopsiDoMethod() =>
+		BOOPSI.DoMethod(0x0000_1234, 0x8042_3BA6, 7, 9);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallBoopsiDoMethodStackVarargs()
+	{
+		var method = 0x8042_C9CBu;
+		var attribute = 0x8042_E86Eu;
+		var everyTime = 0x4987_9DB1u;
+		var target = 0x0000_5678u;
+		var argCount = 2u;
+		var returnId = 0x8042_76EFu;
+		var quit = 0xffff_ffffu;
+		return BOOPSI.DoMethod(
+			0x0000_1234,
+			method,
+			attribute,
+			everyTime,
+			target,
+			argCount,
+			returnId,
+			quit);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallMuiNewObjectStackTags()
+	{
+		var title = CString.FromLiteral("Fixture Window");
+		return MUIMaster.MUI_NewObject(
+			CString.FromLiteral(global::Amiga.MUI.Window.Name),
+			global::Amiga.MUI.Window.Title, title,
+			global::Amiga.MUI.Tag.Done);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallMuiMakeObjectStackParameters()
+	{
+		var label = CString.FromLiteral("Fixture Button");
+		return MUIMaster.MUI_MakeObject(global::Amiga.MUI.MakeObject.Button, label);
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallExecLibrary()

@@ -19,6 +19,7 @@ internal sealed class CompilationModule : IDisposable
 	private readonly Dictionary<MethodDefinitionHandle, CilMethod> _methodCache = new();
 	private readonly Dictionary<FieldDefinitionHandle, CilField> _fieldCache = new();
 	private readonly Dictionary<TypeDefinitionHandle, CilTypeLayout> _layoutCache = new();
+	private readonly Dictionary<string, bool> _transparentScalarTypeCache = new(StringComparer.Ordinal);
 	private readonly IReadOnlyList<IM68kExternalCallResolver> _externalCallResolvers;
 	private readonly string _assemblyDirectory;
 	private string _assemblyName = string.Empty;
@@ -472,6 +473,103 @@ internal sealed class CompilationModule : IDisposable
 		return layout;
 	}
 
+	public bool IsTransparentScalarType(CilType type)
+	{
+		if (type.Kind != CilTypeKind.ValueType)
+		{
+			return false;
+		}
+
+		if (_transparentScalarTypeCache.TryGetValue(type.DisplayName, out var cached))
+		{
+			return cached;
+		}
+
+		var result = IsTransparentScalarType(type.DisplayName);
+		_transparentScalarTypeCache.Add(type.DisplayName, result);
+		return result;
+	}
+
+	public bool IsTransparentScalarConstructor(CilMethod method) =>
+		method.Signature.Header.IsInstance &&
+		method.Name == ".ctor" &&
+		method.Signature.ParameterTypes.Length == 1 &&
+		IsTransparentScalarType(new CilType(
+			CilTypeKind.ValueType,
+			4,
+			Reader.GetTypeDefinition(method.DeclaringType) is { } type
+				? GetTypeName(type)
+				: method.DisplayName.Split("::", StringSplitOptions.None)[0]));
+
+	public bool IsTransparentScalarField(CilField field) =>
+		IsTransparentScalarType(new CilType(
+			CilTypeKind.ValueType,
+			4,
+			field.DisplayName.Split("::", StringSplitOptions.None)[0])) &&
+		field.Type.IsSupportedScalar &&
+		field.Type.Size == 4;
+
+	private bool IsTransparentScalarType(string displayName)
+	{
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			if (GetTypeName(definition) == displayName)
+			{
+				return IsTransparentScalarType(definition);
+			}
+		}
+
+		foreach (var path in Directory.EnumerateFiles(_assemblyDirectory, "*.dll"))
+		{
+			try
+			{
+				var type = Assembly.LoadFrom(path).GetType(displayName, throwOnError: false);
+				if (type is not null)
+				{
+					var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+					return type.IsValueType &&
+						fields.Length == 1 &&
+						IsReflectionTransparentScalarField(fields[0].FieldType);
+				}
+			}
+			catch (BadImageFormatException)
+			{
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsTransparentScalarType(TypeDefinition definition)
+	{
+		if (definition.BaseType.Kind != HandleKind.TypeReference ||
+			GetTypeName(Reader.GetTypeReference((TypeReferenceHandle)definition.BaseType)) != "System.ValueType")
+		{
+			return false;
+		}
+
+		var fields = definition.GetFields()
+			.Select(GetField)
+			.Where(static field => !field.IsStatic)
+			.ToArray();
+		return fields.Length == 1 &&
+			fields[0].Type.IsSupportedScalar &&
+			fields[0].Type.Size == 4;
+	}
+
+	private static bool IsReflectionTransparentScalarField(Type type) =>
+		type == typeof(bool) ||
+		type == typeof(char) ||
+		type == typeof(sbyte) ||
+		type == typeof(byte) ||
+		type == typeof(short) ||
+		type == typeof(ushort) ||
+		type == typeof(int) ||
+		type == typeof(uint) ||
+		type == typeof(IntPtr) ||
+		type == typeof(UIntPtr);
+
 	public string GetUserString(int token)
 	{
 		var handle = MetadataTokens.Handle(token);
@@ -527,8 +625,8 @@ internal sealed class CompilationModule : IDisposable
 
 		return handle.Kind switch
 		{
-			HandleKind.MethodDefinition => MethodReference.ForDefinition(
-				GetMethod((MethodDefinitionHandle)handle)),
+			HandleKind.MethodDefinition => ResolveMethodDefinition(
+				(MethodDefinitionHandle)handle),
 			HandleKind.MemberReference => ResolveMemberReference(
 				(MemberReferenceHandle)handle,
 				caller,
@@ -543,6 +641,18 @@ internal sealed class CompilationModule : IDisposable
 				caller.DisplayName,
 				ilOffset)
 		};
+	}
+
+	private MethodReference ResolveMethodDefinition(MethodDefinitionHandle handle)
+	{
+		var method = GetMethod(handle);
+		var declaringType = Reader.GetTypeDefinition(
+			Reader.GetMethodDefinition(handle).GetDeclaringType());
+		return TryResolveIntrinsicReference(
+				GetTypeName(declaringType),
+				method.Name,
+				method.Signature) ??
+			MethodReference.ForDefinition(method);
 	}
 
 	private MethodReference ResolveMethodSpecification(
@@ -668,7 +778,7 @@ internal sealed class CompilationModule : IDisposable
 		string assemblyName,
 		string typeName,
 		string methodName,
-		int parameterCount,
+		MethodSignature<CilType> signature,
 		bool isStatic)
 	{
 		if (string.IsNullOrEmpty(assemblyName))
@@ -708,7 +818,7 @@ internal sealed class CompilationModule : IDisposable
 			.Where(method =>
 				method.Name == methodName &&
 				method.IsStatic == isStatic &&
-				method.GetParameters().Length == parameterCount)
+				ParametersMatch(method, signature))
 			.ToArray() ?? Array.Empty<MethodInfo>();
 		if (candidates.Length != 1)
 		{
@@ -733,6 +843,57 @@ internal sealed class CompilationModule : IDisposable
 			DecodeReflectionAttributes(declaration.ReturnParameter.CustomAttributes));
 	}
 
+	private static bool ParametersMatch(MethodInfo method, MethodSignature<CilType> signature)
+	{
+		var parameters = method.GetParameters();
+		if (parameters.Length != signature.ParameterTypes.Length)
+		{
+			return false;
+		}
+
+		for (var index = 0; index < parameters.Length; index++)
+		{
+			if (!ParameterMatches(parameters[index].ParameterType, signature.ParameterTypes[index]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool ParameterMatches(Type reflectionType, CilType cilType)
+	{
+		if (reflectionType.IsArray)
+		{
+			return reflectionType.GetArrayRank() == 1 &&
+				cilType.ElementType is not null &&
+				ParameterMatches(reflectionType.GetElementType()!, cilType.ElementType);
+		}
+
+		return ReflectionDisplayName(reflectionType) == cilType.DisplayName;
+	}
+
+	private static string ReflectionDisplayName(Type type) =>
+		type.FullName switch
+		{
+			"System.Void" => "void",
+			"System.Boolean" => "bool",
+			"System.Char" => "char",
+			"System.SByte" => "sbyte",
+			"System.Byte" => "byte",
+			"System.Int16" => "short",
+			"System.UInt16" => "ushort",
+			"System.Int32" => "int",
+			"System.UInt32" => "uint",
+			"System.Int64" => "long",
+			"System.UInt64" => "ulong",
+			"System.IntPtr" => "nint",
+			"System.UIntPtr" => "nuint",
+			"System.String" => "string",
+			_ => type.FullName ?? type.Name
+		};
+
 	private static IReadOnlyList<M68kMetadataAttribute> DecodeReflectionAttributes(
 		IEnumerable<CustomAttributeData> attributes) =>
 		attributes.Select(attribute => new M68kMetadataAttribute(
@@ -755,6 +916,12 @@ internal sealed class CompilationModule : IDisposable
 		if (member.Parent.Kind == HandleKind.TypeDefinition)
 		{
 			var type = Reader.GetTypeDefinition((TypeDefinitionHandle)member.Parent);
+			var typeName = GetTypeName(type);
+			if (TryResolveIntrinsicReference(typeName, name, signature) is { } intrinsic)
+			{
+				return intrinsic;
+			}
+
 			foreach (var methodHandle in type.GetMethods())
 			{
 				var candidate = GetMethod(methodHandle);
@@ -770,40 +937,9 @@ internal sealed class CompilationModule : IDisposable
 		{
 			var parent = Reader.GetTypeReference((TypeReferenceHandle)member.Parent);
 			var typeName = GetTypeName(parent);
-			if (typeName == "System.Object" && name == ".ctor" &&
-				signature.ParameterTypes.Length == 0)
+			if (TryResolveIntrinsicReference(typeName, name, signature) is { } intrinsic)
 			{
-				return MethodReference.ForIntrinsic("intrinsic:object-ctor", signature);
-			}
-
-			if (typeName == "System.String" && name == "get_Length" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:string-length", signature);
-			}
-
-			if (typeName == "Amiga.CString")
-			{
-				if (name == "FromLiteral" &&
-					signature.ParameterTypes.Length == 1 &&
-					signature.ParameterTypes[0].DisplayName == "string")
-				{
-					return MethodReference.ForIntrinsic("intrinsic:cstring-from-literal", signature);
-				}
-
-				if ((name == "FromPointer" || name == "op_Implicit") &&
-					signature.ParameterTypes.Length == 1 &&
-					signature.ParameterTypes[0].DisplayName == "uint")
-				{
-					return MethodReference.ForIntrinsic("intrinsic:cstring-from-pointer", signature);
-				}
-
-				if ((name == "ToUInt32" || name == "op_Implicit") &&
-					signature.ParameterTypes.Length == 1 &&
-					signature.ParameterTypes[0].DisplayName == "Amiga.CString")
-				{
-					return MethodReference.ForIntrinsic("intrinsic:cstring-to-uint32", signature);
-				}
+				return intrinsic;
 			}
 
 			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
@@ -833,7 +969,7 @@ internal sealed class CompilationModule : IDisposable
 				assemblyName,
 				typeName,
 				name,
-				signature.ParameterTypes.Length,
+				signature,
 				!signature.Header.IsInstance);
 			var convention = ResolveExternalCall(externalMethod);
 			if (convention is not null)
@@ -869,6 +1005,66 @@ internal sealed class CompilationModule : IDisposable
 			$"External method reference '{name}' must be represented by a local [M68kImport] declaration.",
 			caller.DisplayName,
 			ilOffset);
+	}
+
+	private static MethodReference? TryResolveIntrinsicReference(
+		string typeName,
+		string name,
+		MethodSignature<CilType> signature)
+	{
+		if (typeName == "System.Object" && name == ".ctor" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:object-ctor", signature);
+		}
+
+		if (typeName == "System.String" && name == "get_Length" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:string-length", signature);
+		}
+
+		if (typeName == "Amiga.CString")
+		{
+			if ((name == "FromLiteral" || name == "op_Implicit") &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "string")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:cstring-from-literal", signature);
+			}
+
+			if ((name == "FromPointer" || name == "op_Implicit") &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "uint")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:cstring-from-pointer", signature);
+			}
+
+			if ((name == "ToUInt32" || name == "op_Implicit") &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.CString")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:cstring-to-uint32", signature);
+			}
+		}
+
+		if (typeName == "Amiga.BOOPSI" &&
+			name == "DoMethod" &&
+			signature.ParameterTypes.Length == 2 &&
+			signature.ParameterTypes[1].DisplayName == "uint[]" &&
+			signature.ParameterTypes[1].ElementType?.DisplayName == "uint")
+		{
+			return MethodReference.ForIntrinsic("intrinsic:boopsi-do-method-stack-varargs", signature);
+		}
+
+		if (typeName == "Amiga.BOOPSI" &&
+			name == "DoMethod" &&
+			signature.ParameterTypes.Length is >= 2 and <= 8)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:boopsi-do-method", signature);
+		}
+
+		return null;
 	}
 
 	private CilField GetField(FieldDefinitionHandle handle)

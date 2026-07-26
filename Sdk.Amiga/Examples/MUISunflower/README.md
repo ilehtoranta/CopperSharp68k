@@ -12,18 +12,19 @@ Application.mui
       MakeObject.Button
 ```
 
+It attaches a `Window.CloseRequest` notification to
+`Application.Method.ReturnID`, opens the window, runs
+`Application.Method.Run`, and disposes the application object after the event
+loop returns.
+
 Build the managed example assembly:
 
 ```powershell
 dotnet build .\Sdk.Amiga\Examples\MUISunflower\MUISunflower.csproj
 ```
 
-The SDK models Amiga pointers as `uint` guest addresses. This example therefore
-uses two runtime-supplied imports:
-
-- `examples.cstring`: returns the guest address of a NUL-terminated string.
-- `examples.u32array1`, `examples.u32array3`, `examples.u32array5`, and
-  `examples.u32array13`: return the guest address of a contiguous ULONG array.
-
-Those imports are deliberately local to the example. They keep the MUI binding
-itself ABI-pure while still making the tag-list style readable.
+The SDK models Amiga pointers as `uint` guest addresses. `CString.FromLiteral`
+emits NUL-terminated guest strings, while the `MUI_NewObject()` and
+`MUI_MakeObject()` `params uint[]` overloads are compiler-lowered to temporary
+68k stack arrays. The example therefore does not need helper imports for
+temporary taglists.

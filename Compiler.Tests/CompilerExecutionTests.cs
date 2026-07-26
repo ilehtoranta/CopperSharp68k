@@ -123,6 +123,159 @@ public sealed class CompilerExecutionTests
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
+	public void LowersBoopsiDoMethodConvenienceToDoMethodA(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint doMethodAddress = 0x0000_2400;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallBoopsiDoMethod",
+			Cpu = target,
+			Imports = new Dictionary<string, uint>
+			{
+				["amiga.boopsi.DoMethodA"] = doMethodAddress
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(doMethodAddress, state =>
+		{
+			Assert.Equal(0x0000_1234u, state.A[0]);
+			var message = state.A[1];
+			Assert.Equal(0x8042_3BA6u, bus.ReadLong(message));
+			Assert.Equal(7u, bus.ReadLong(message + 4));
+			Assert.Equal(9u, bus.ReadLong(message + 8));
+			state.D[0] = 42;
+		});
+
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void LowersBoopsiDoMethodParamsToDoMethodA(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint doMethodAddress = 0x0000_2600;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallBoopsiDoMethodStackVarargs",
+			Cpu = target,
+			Imports = new Dictionary<string, uint>
+			{
+				["amiga.boopsi.DoMethodA"] = doMethodAddress
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(doMethodAddress, state =>
+		{
+			Assert.Equal(0x0000_1234u, state.A[0]);
+			var message = state.A[1];
+			Assert.Equal(0x8042_C9CBu, bus.ReadLong(message));
+			Assert.Equal(0x8042_E86Eu, bus.ReadLong(message + 4));
+			Assert.Equal(0x4987_9DB1u, bus.ReadLong(message + 8));
+			Assert.Equal(0x0000_5678u, bus.ReadLong(message + 12));
+			Assert.Equal(2u, bus.ReadLong(message + 16));
+			Assert.Equal(0x8042_76EFu, bus.ReadLong(message + 20));
+			Assert.Equal(0xffff_ffffu, bus.ReadLong(message + 24));
+			state.D[0] = 43;
+		});
+
+		Assert.Equal(43u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void LowersMuiNewObjectParamsTagsToStackTagList(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint libraryBase = 0x0000_3800;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallMuiNewObjectStackTags",
+			Cpu = target
+		}, new AmigaCompilationOptions
+		{
+			LibraryBases = new Dictionary<string, uint>
+			{
+				["muimaster.library"] = libraryBase
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(libraryBase - 30, state =>
+		{
+			Assert.Equal("Window.mui", ReadCString(bus, state.A[0]));
+			var tags = state.A[1];
+			Assert.Equal(global::Amiga.MUI.Window.Title, bus.ReadLong(tags));
+			Assert.Equal("Fixture Window", ReadCString(bus, bus.ReadLong(tags + 4)));
+			Assert.Equal(global::Amiga.MUI.Tag.Done, bus.ReadLong(tags + 8));
+			state.D[0] = 0x0000_4242;
+		});
+
+		Assert.Equal(0x0000_4242u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void LowersMuiMakeObjectParamsToStackParameterList(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint libraryBase = 0x0000_3A00;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallMuiMakeObjectStackParameters",
+			Cpu = target
+		}, new AmigaCompilationOptions
+		{
+			LibraryBases = new Dictionary<string, uint>
+			{
+				["muimaster.library"] = libraryBase
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(libraryBase - 120, state =>
+		{
+			Assert.Equal((uint)global::Amiga.MUI.MakeObject.Button, state.D[0]);
+			Assert.Equal("Fixture Button", ReadCString(bus, bus.ReadLong(state.A[0])));
+			state.D[0] = 0x0000_4343;
+		});
+
+		Assert.Equal(0x0000_4343u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void CompilesMuiSunflowerSampleEventLoop()
+	{
+		var sdkAssembly = typeof(global::Amiga.MUIMaster).Assembly.Location;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = sdkAssembly,
+			EntryPoint = "MUISunflower.Program::Main",
+			Cpu = M68kCpuTarget.M68000,
+			Imports = new Dictionary<string, uint>
+			{
+				["amiga.boopsi.DoMethodA"] = 0x0000_2600
+			}
+		}, new AmigaCompilationOptions
+		{
+			LibraryBases = new Dictionary<string, uint>
+			{
+				["muimaster.library"] = 0x0000_3800
+			}
+		});
+
+		Assert.NotEmpty(result.Code);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
 	public void CallsExecLibraryVectorsAndReusesA6WithinABasicBlock(
 		M68kCpuTarget target,
 		M68kCpuModel model)
@@ -1358,6 +1511,21 @@ public sealed class CompilerExecutionTests
 
 		throw new Xunit.Sdk.XunitException(
 			$"{model} did not return after 200000 instructions; PC=${cpu.State.ProgramCounter:X8}.");
+	}
+
+	private static string ReadCString(TestBus bus, uint address)
+	{
+		var chars = new List<char>();
+		for (var offset = 0u; ; offset++)
+		{
+			var value = bus.Memory[(int)(address + offset)];
+			if (value == 0)
+			{
+				return new string(chars.ToArray());
+			}
+
+			chars.Add((char)value);
+		}
 	}
 
 	private static IEnumerable<uint> EnumerateLongWords(byte[] data)

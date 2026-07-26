@@ -18,64 +18,49 @@ public static class Program
 		var button = MUIButton("Grow");
 		var label = MUIText("A tiny MUI window from CopperSharp.Sdk.Amiga.");
 
-		var group = Group.New(Guest.U32Array5(
+		var group = MUIMaster.MUI_NewObject(
+			CString.FromLiteral(Group.Name),
 			Group.Child, label,
 			Group.Child, button,
-			Tag.Done));
+			Tag.Done);
 
-		var window = WindowObject.New(Guest.U32Array5(
+		var window = new WindowObject(MUIMaster.MUI_NewObject(
+			CString.FromLiteral(Window.Name),
 			Window.Title, title,
 			Window.RootObject, group,
 			Tag.Done));
 
-		return ApplicationObject.New(Guest.U32Array13(
-			Application.Author, CString.FromLiteral("Copper68k"),
-			Application.Base, CString.FromLiteral("SUNFLOWER"),
-			Application.Description, CString.FromLiteral("Simple MUI window and button example."),
-			Application.Title, title,
-			Application.Version, CString.FromLiteral("$VER: MUISunflower 1.0"),
-			Application.Window, window,
-			Tag.Done));
+		var applicationAuthor = Application.Author;
+		var applicationBase = Application.Base;
+		var applicationDescription = Application.Description;
+		var applicationTitle = Application.Title;
+		var applicationVersion = Application.Version;
+		var applicationWindow = Application.Window;
+		var done = Tag.Done;
+		var app = new ApplicationObject(MUIMaster.MUI_NewObject(
+			CString.FromLiteral(Application.Name),
+			applicationAuthor, CString.FromLiteral("CopperSharp68k"),
+			applicationBase, CString.FromLiteral("SUNFLOWER"),
+			applicationDescription, CString.FromLiteral("Simple MUI window and button example."),
+			applicationTitle, title,
+			applicationVersion, CString.FromLiteral("$VER: MUISunflower 1.0"),
+			applicationWindow, window,
+			done));
+
+		app.ConnectCloseRequest(window);
+		window.SetOpen(true);
+
+		var result = app.Run();
+		app.Dispose();
+		return result;
 	}
 
 	private static uint MUIText(CString contents) =>
-		Text.New(Guest.U32Array3(
+		MUIMaster.MUI_NewObject(
+			CString.FromLiteral(Text.Name),
 			Text.Contents, contents,
-			Tag.Done));
+			Tag.Done);
 
 	private static uint MUIButton(CString label) =>
-		MUIMaster.MUI_MakeObject(MakeObject.Button, Guest.U32Array1(label));
-}
-
-public static class Guest
-{
-	[M68kImport("examples.u32array1")]
-	public static extern uint U32Array1(uint value0);
-
-	[M68kImport("examples.u32array3")]
-	public static extern uint U32Array3(uint value0, uint value1, uint value2);
-
-	[M68kImport("examples.u32array5")]
-	public static extern uint U32Array5(
-		uint value0,
-		uint value1,
-		uint value2,
-		uint value3,
-		uint value4);
-
-	[M68kImport("examples.u32array13")]
-	public static extern uint U32Array13(
-		uint value0,
-		uint value1,
-		uint value2,
-		uint value3,
-		uint value4,
-		uint value5,
-		uint value6,
-		uint value7,
-		uint value8,
-		uint value9,
-		uint value10,
-		uint value11,
-		uint value12);
+		MUIMaster.MUI_MakeObject(MakeObject.Button, label);
 }

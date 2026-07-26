@@ -4,11 +4,38 @@
  */
 
 using CopperSharp.Compiler;
+using CopperSharp.Sdk.Amiga;
 
 namespace Amiga;
 
 public static class BOOPSI
 {
+	public static uint DoMethod(uint obj, uint methodId) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(uint obj, uint methodId, uint arg1) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4, uint arg5) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4, uint arg5, uint arg6) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
+	public static uint DoMethod(
+		uint obj,
+		[AmigaStackVarargs] params uint[] message) =>
+		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
+
 	[M68kImport("amiga.boopsi.DoMethodA")]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint DoMethodA(

@@ -337,6 +337,32 @@ internal static class CilStackAnalyzer
 		return false;
 	}
 
+	private static bool TryGetLoadLocalAddressIndex(CilInstruction instruction, out int index)
+	{
+		var op = instruction.OpCode;
+		if (op == OpCodes.Ldloca || op == OpCodes.Ldloca_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+
+		index = default;
+		return false;
+	}
+
+	private static bool TryGetLoadArgumentAddressIndex(CilInstruction instruction, out int index)
+	{
+		var op = instruction.OpCode;
+		if (op == OpCodes.Ldarga || op == OpCodes.Ldarga_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+
+		index = default;
+		return false;
+	}
+
 	private static bool TryGetStoreLocalIndex(CilInstruction instruction, out int index)
 	{
 		var op = instruction.OpCode;
@@ -485,12 +511,22 @@ internal static class CilStackAnalyzer
 
 		if (TryGetArgumentIndex(instruction, out var argumentIndex))
 		{
-			return Push(stack, StackKindForParameter(method, argumentIndex));
+			return Push(stack, StackKindForParameter(module, method, argumentIndex));
 		}
 
 		if (TryGetLoadLocalIndex(instruction, out var loadLocal))
 		{
 			return Push(stack, StackKindForType(method.Locals[loadLocal]));
+		}
+
+		if (TryGetLoadLocalAddressIndex(instruction, out var loadLocalAddress))
+		{
+			return Push(stack, CilStackValueKind.ManagedPointer);
+		}
+
+		if (TryGetLoadArgumentAddressIndex(instruction, out var loadArgumentAddress))
+		{
+			return Push(stack, CilStackValueKind.ManagedPointer);
 		}
 
 		if (TryGetStoreLocalIndex(instruction, out _) || op == OpCodes.Starg || op == OpCodes.Starg_S)
@@ -668,13 +704,22 @@ internal static class CilStackAnalyzer
 		}
 	}
 
-	private static CilStackValueKind StackKindForParameter(CilMethod method, int index)
+	private static CilStackValueKind StackKindForParameter(
+		CompilationModule module,
+		CilMethod method,
+		int index)
 	{
 		if (method.Signature.Header.IsInstance)
 		{
 			if (index == 0)
 			{
-				return CilStackValueKind.Reference;
+				var declaringType = new CilType(
+					CilTypeKind.ValueType,
+					4,
+					method.DisplayName.Split("::", StringSplitOptions.None)[0]);
+				return module.IsTransparentScalarType(declaringType)
+					? CilStackValueKind.Int32
+					: CilStackValueKind.Reference;
 			}
 
 			index--;
