@@ -820,6 +820,13 @@ internal sealed class CompilationModule : IDisposable
 				return MethodReference.ForIntrinsic("intrinsic:runtime-gc-collect", signature);
 			}
 
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name is "GetGcStaleBytes" or "GetGcStaleBlocks" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return MethodReference.ForIntrinsic($"intrinsic:runtime-{name}", signature);
+			}
+
 			var displayName = $"{typeName}::{name}";
 			var assemblyName = GetReferencedAssemblyName(parent.ResolutionScope);
 			var externalMethod = LoadExternalMethod(

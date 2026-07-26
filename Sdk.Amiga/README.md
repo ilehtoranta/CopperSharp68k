@@ -108,6 +108,10 @@ The MUI stdarg conveniences (`MUI_NewObject()`, `MUI_MakeObject()`,
 `A`/tag-list entry points. Their final argument is the guest address of the
 already-built tag or parameter array, matching the MorphOS inline stdarg macros'
 lowering to the real library calls.
+`Amiga.MUI.MUIObject`, `ApplicationObject`, and `WindowObject` are thin typed
+wrappers around raw MUI object pointers. They expose `Raw`, `DoMethod()`,
+`SetAttrs()`, `Dispose()`, and class-specific `New()` factories while keeping
+taglists and method messages as guest pointers.
 
 See `Examples/MUISunflower` for a minimal MUI object tree with an application,
 window, group, text object, and button.

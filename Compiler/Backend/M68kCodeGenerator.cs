@@ -888,6 +888,22 @@ internal sealed class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName == "intrinsic:runtime-GetGcStaleBytes")
+			{
+				EmitRuntimeJsr(RuntimeGetStaleBytesLabel, M68kRuntimeImports.GcGetStaleBytes);
+				_loadedPlatformBase = null;
+				EmitPushD0();
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:runtime-GetGcStaleBlocks")
+			{
+				EmitRuntimeJsr(RuntimeGetStaleBlocksLabel, M68kRuntimeImports.GcGetStaleBlocks);
+				_loadedPlatformBase = null;
+				EmitPushD0();
+				return;
+			}
+
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
 				"Unresolved call target.",
@@ -1318,12 +1334,21 @@ internal sealed class M68kCodeGenerator
 				instruction.Offset);
 		}
 
-		if (!constructor.Signature.Header.IsInstance ||
-			constructor.Signature.ParameterTypes.Length != 0)
+		if (!constructor.Signature.Header.IsInstance)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
-				"Object construction currently requires a parameterless instance constructor.",
+				"Object construction requires an instance constructor.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+
+		var constructorAbi = GetInternalRegisterAbi(constructor);
+		if (constructorAbi is null)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedSignature,
+				"Object constructors with this signature exceed the private register ABI.",
 				caller.DisplayName,
 				instruction.Offset);
 		}
@@ -1348,20 +1373,17 @@ internal sealed class M68kCodeGenerator
 		_assembler.EmitWord(0x2141); // MOVE.L D1,4(A0)
 		_assembler.EmitWord(0x0004);
 
-		EmitPushD0(); // Object retained as newobj result.
-		EmitPushD0(); // Object passed as constructor this.
-		var constructorAbi = GetInternalRegisterAbi(constructor);
-		if (constructorAbi is not null)
+		EmitMoveRegister(M68kRegister.D0, M68kRegister.A0);
+		for (var index = 1; index < constructorAbi.Count; index++)
 		{
-			EmitLoadInternalArguments(constructorAbi);
-			EmitDiscardStackArguments(constructorAbi.Count);
+			EmitLoadRegisterFromStack(
+				constructorAbi[index],
+				checked((constructorAbi.Count - 1 - index) * 4));
 		}
 		_assembler.EmitJsr(MethodLabel(constructor), external: false);
 		_loadedPlatformBase = null;
-		if (constructorAbi is null)
-		{
-			EmitDiscardStackArguments(1);
-		}
+		EmitDiscardStackArguments(constructor.Signature.ParameterTypes.Length);
+		EmitPushRegister(M68kRegister.A0);
 	}
 
 	private void EmitNewArray(CilMethod method, CilInstruction instruction)
@@ -1443,6 +1465,10 @@ internal sealed class M68kCodeGenerator
 			_assembler.EmitJsr(RuntimeCollectLabel, external: false);
 			_loadedPlatformBase = null;
 		}
+		else if (strategy == M68kGcSweepStrategy.TelemetryTriggered)
+		{
+			EmitTelemetryTriggeredCollection(method);
+		}
 
 		_assembler.EmitJsr(RuntimeAllocLabel, external: false);
 		_loadedPlatformBase = null;
@@ -1461,6 +1487,31 @@ internal sealed class M68kCodeGenerator
 
 		EmitDiscardStackArguments(1);
 		EmitRequireNonNull();
+	}
+
+	private void EmitTelemetryTriggeredCollection(CilMethod method)
+	{
+		var checkBlocks = UniqueLabel("gc_telemetry_check_blocks");
+		var collect = UniqueLabel("gc_telemetry_collect");
+		var done = UniqueLabel("gc_telemetry_done");
+		EmitLoadD0FromLabel(GcStaleBytesThresholdLabel);
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, checkBlocks);
+		EmitLoadD1FromLabel(GcStaleBytesLabel);
+		_assembler.EmitWord(0xB280); // CMP.L D0,D1
+		_assembler.EmitBranch(M68kCondition.CarryClear, collect);
+		_assembler.Mark(checkBlocks);
+		EmitLoadD0FromLabel(GcStaleBlocksThresholdLabel);
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, done);
+		EmitLoadD1FromLabel(GcStaleBlocksLabel);
+		_assembler.EmitWord(0xB280); // CMP.L D0,D1
+		_assembler.EmitBranch(M68kCondition.CarrySet, done);
+		_assembler.Mark(collect);
+		EmitMarkManagedRoots(method);
+		_assembler.EmitJsr(RuntimeCollectLabel, external: false);
+		_loadedPlatformBase = null;
+		_assembler.Mark(done);
 	}
 
 	private void EmitArrayAccess(CilMethod method, CilInstruction instruction)
@@ -1727,6 +1778,14 @@ internal sealed class M68kCodeGenerator
 		_assembler.EmitLong(0);
 		_assembler.Mark(GcAllocHeadLabel);
 		_assembler.EmitLong(0);
+		_assembler.Mark(GcStaleBytesLabel);
+		_assembler.EmitLong(0);
+		_assembler.Mark(GcStaleBlocksLabel);
+		_assembler.EmitLong(0);
+		_assembler.Mark(GcStaleBytesThresholdLabel);
+		_assembler.EmitLong(0);
+		_assembler.Mark(GcStaleBlocksThresholdLabel);
+		_assembler.EmitLong(0);
 	}
 
 	private string EmitEntryAdapter(CilMethod entry, bool usesManagedRuntime)
@@ -1779,6 +1838,7 @@ internal sealed class M68kCodeGenerator
 		EmitManagedPoolMark();
 		EmitManagedPoolCollect();
 		EmitManagedPoolCoalesce();
+		EmitManagedPoolTelemetryGetters();
 		EmitManagedPoolShutdown();
 	}
 
@@ -1815,6 +1875,16 @@ internal sealed class M68kCodeGenerator
 		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
 		EmitStoreD0ToA0Displacement(4, 12); // flags
 		EmitStoreD0ToLabel(GcAllocHeadLabel);
+		EmitStoreD0ToLabel(GcStaleBytesLabel);
+		EmitStoreD0ToLabel(GcStaleBlocksLabel);
+		_assembler.EmitWord(0x206F); // MOVEA.L 4(A7),A0 config
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x2028); // MOVE.L 16(A0),D0 stale bytes threshold
+		_assembler.EmitWord(0x0010);
+		EmitStoreD0ToLabel(GcStaleBytesThresholdLabel);
+		_assembler.EmitWord(0x2028); // MOVE.L 20(A0),D0 stale blocks threshold
+		_assembler.EmitWord(0x0014);
+		EmitStoreD0ToLabel(GcStaleBlocksThresholdLabel);
 		_assembler.EmitWord(0x7001); // MOVEQ #1,D0
 		_assembler.EmitBranch(M68kCondition.True, done);
 		_assembler.Mark(fail);
@@ -1870,11 +1940,13 @@ internal sealed class M68kCodeGenerator
 		_assembler.EmitWord(0x0008);
 		_assembler.Mark(zeroDone);
 		EmitManagedPoolLinkAllocatedBlock();
+		_assembler.EmitWord(0x2800); // MOVE.L D0,D4 actual total size
+		EmitManagedPoolRecordAllocation();
 		_assembler.EmitWord(0x2248); // MOVEA.L A0,A1
 		_assembler.EmitWord(0x43E9); // LEA 16(A1),A1 payload
 		_assembler.EmitWord(GcBlockHeaderSize);
 		_assembler.EmitWord(0x2409); // MOVE.L A1,D2 return payload
-		_assembler.EmitWord(0x2200); // MOVE.L D0,D1 total size
+		_assembler.EmitWord(0x2204); // MOVE.L D4,D1 total size
 		_assembler.EmitWord(0x0681); // ADDI.L #-header,D1 payload bytes
 		_assembler.EmitLong(unchecked((uint)-GcBlockHeaderSize));
 		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
@@ -1895,6 +1967,16 @@ internal sealed class M68kCodeGenerator
 		EmitPopRegister(M68kRegister.D3);
 		EmitPopRegister(M68kRegister.D2);
 		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitManagedPoolRecordAllocation()
+	{
+		EmitLoadD0FromLabel(GcStaleBytesLabel);
+		_assembler.EmitWord(0xD084); // ADD.L D4,D0
+		EmitStoreD0ToLabel(GcStaleBytesLabel);
+		EmitLoadD0FromLabel(GcStaleBlocksLabel);
+		_assembler.EmitWord(0x5280); // ADDQ.L #1,D0
+		EmitStoreD0ToLabel(GcStaleBlocksLabel);
 	}
 
 	private void EmitManagedPoolSplitFreeBlock()
@@ -2102,6 +2184,15 @@ internal sealed class M68kCodeGenerator
 
 	private void EmitManagedPoolCollect()
 	{
+		var traceRestart = UniqueLabel("gc_trace_restart");
+		var traceLoop = UniqueLabel("gc_trace_loop");
+		var traceNext = UniqueLabel("gc_trace_next");
+		var tracePassDone = UniqueLabel("gc_trace_pass_done");
+		var traceArray = UniqueLabel("gc_trace_array");
+		var traceFields = UniqueLabel("gc_trace_fields");
+		var traceFieldSkip = UniqueLabel("gc_trace_field_skip");
+		var traceArrayLoop = UniqueLabel("gc_trace_array_loop");
+		var traceScanned = UniqueLabel("gc_trace_scanned");
 		var loop = UniqueLabel("gc_sweep_loop");
 		var live = UniqueLabel("gc_sweep_live");
 		var next = UniqueLabel("gc_sweep_next");
@@ -2110,6 +2201,86 @@ internal sealed class M68kCodeGenerator
 		_assembler.Mark(RuntimeCollectLabel);
 		EmitPushRegister(M68kRegister.D2);
 		EmitPushRegister(M68kRegister.D3);
+		EmitPushRegister(M68kRegister.D4);
+		EmitPushRegister(M68kRegister.A2);
+		_assembler.Mark(traceRestart);
+		_assembler.EmitWord(0x7800); // MOVEQ #0,D4 pass scanned count
+		EmitLoadA0FromLabel(GcAllocHeadLabel);
+		_assembler.Mark(traceLoop);
+		_assembler.EmitWord(0x2208); // MOVE.L A0,D1
+		_assembler.EmitBranch(M68kCondition.Equal, tracePassDone);
+		_assembler.EmitWord(0x2428); // MOVE.L (A0),D2 next allocated
+		_assembler.EmitWord(0x0000);
+		_assembler.EmitWord(0x2028); // MOVE.L 12(A0),D0 flags
+		_assembler.EmitWord(0x000C);
+		_assembler.EmitWord(0x2600); // MOVE.L D0,D3
+		_assembler.EmitWord(0x0283); // ANDI.L #mark,D3
+		_assembler.EmitLong(GcMarkFlag);
+		_assembler.EmitBranch(M68kCondition.Equal, traceNext);
+		_assembler.EmitWord(0x2600); // MOVE.L D0,D3
+		_assembler.EmitWord(0x0283); // ANDI.L #scanned,D3
+		_assembler.EmitLong(GcScanFlag);
+		_assembler.EmitBranch(M68kCondition.NotEqual, traceNext);
+		_assembler.EmitWord(0x0080); // ORI.L #scanned,D0
+		_assembler.EmitLong(GcScanFlag);
+		EmitStoreD0ToA0Displacement(4, 12);
+		_assembler.EmitWord(0x7801); // MOVEQ #1,D4 another pass may be needed
+		_assembler.EmitWord(0x41E8); // LEA 16(A0),A0 payload
+		_assembler.EmitWord(GcBlockHeaderSize);
+		_assembler.EmitWord(0x2250); // MOVEA.L (A0),A1 descriptor
+		_assembler.EmitWord(0x2629); // MOVE.L (A1),D3 descriptor object size
+		_assembler.EmitWord(0x0000);
+		_assembler.EmitWord(0x4A83); // TST.L D3
+		_assembler.EmitBranch(M68kCondition.Equal, traceArray);
+		_assembler.EmitWord(0x2629); // MOVE.L 4(A1),D3 reference bitmap
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x45E8); // LEA 8(A0),A2 first object field
+		_assembler.EmitWord(0x0008);
+		_assembler.Mark(traceFields);
+		_assembler.EmitWord(0x4A83); // TST.L D3
+		_assembler.EmitBranch(M68kCondition.Equal, traceScanned);
+		_assembler.EmitWord(0x2003); // MOVE.L D3,D0
+		_assembler.EmitWord(0x0280); // ANDI.L #1,D0
+		_assembler.EmitLong(1);
+		_assembler.EmitBranch(M68kCondition.Equal, traceFieldSkip);
+		_assembler.EmitWord(0x202A); // MOVE.L (A2),D0 field reference
+		_assembler.EmitWord(0x0000);
+		EmitPushD0();
+		_assembler.EmitJsr(RuntimeMarkLabel, external: false);
+		_loadedPlatformBase = null;
+		EmitDiscardStackArguments(1);
+		_assembler.Mark(traceFieldSkip);
+		_assembler.EmitWord(0x588A); // ADDQ.L #4,A2
+		_assembler.EmitWord(0xE28B); // LSR.L #1,D3
+		_assembler.EmitBranch(M68kCondition.True, traceFields);
+		_assembler.Mark(traceArray);
+		_assembler.EmitWord(0x2629); // MOVE.L 4(A1),D3 reference-array flag
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x4A83); // TST.L D3
+		_assembler.EmitBranch(M68kCondition.Equal, traceScanned);
+		_assembler.EmitWord(0x2628); // MOVE.L 8(A0),D3 array length
+		_assembler.EmitWord(0x0008);
+		_assembler.EmitWord(0x45E8); // LEA 12(A0),A2 first array element
+		_assembler.EmitWord(0x000C);
+		_assembler.Mark(traceArrayLoop);
+		_assembler.EmitWord(0x4A83); // TST.L D3
+		_assembler.EmitBranch(M68kCondition.Equal, traceScanned);
+		_assembler.EmitWord(0x202A); // MOVE.L (A2),D0 element reference
+		_assembler.EmitWord(0x0000);
+		EmitPushD0();
+		_assembler.EmitJsr(RuntimeMarkLabel, external: false);
+		_loadedPlatformBase = null;
+		EmitDiscardStackArguments(1);
+		_assembler.EmitWord(0x588A); // ADDQ.L #4,A2
+		_assembler.EmitWord(0x5383); // SUBQ.L #1,D3
+		_assembler.EmitBranch(M68kCondition.True, traceArrayLoop);
+		_assembler.Mark(traceScanned);
+		_assembler.Mark(traceNext);
+		_assembler.EmitWord(0x2042); // MOVEA.L D2,A0 next allocated
+		_assembler.EmitBranch(M68kCondition.True, traceLoop);
+		_assembler.Mark(tracePassDone);
+		_assembler.EmitWord(0x4A84); // TST.L D4
+		_assembler.EmitBranch(M68kCondition.NotEqual, traceRestart);
 		EmitLoadA0FromLabel(GcAllocHeadLabel);
 		_assembler.Mark(loop);
 		_assembler.EmitWord(0x2208); // MOVE.L A0,D1
@@ -2127,13 +2298,18 @@ internal sealed class M68kCodeGenerator
 		_assembler.Mark(live);
 		_assembler.EmitWord(0x2028); // MOVE.L 12(A0),D0 flags
 		_assembler.EmitWord(0x000C);
-		_assembler.EmitWord(0x0280); // ANDI.L #~mark,D0
-		_assembler.EmitLong(~GcMarkFlag);
+		_assembler.EmitWord(0x0280); // ANDI.L #~(mark|scanned),D0
+		_assembler.EmitLong(~(GcMarkFlag | GcScanFlag));
 		EmitStoreD0ToA0Displacement(4, 12);
 		_assembler.Mark(next);
 		_assembler.EmitWord(0x2042); // MOVEA.L D2,A0 next allocated
 		_assembler.EmitBranch(M68kCondition.True, loop);
 		_assembler.Mark(done);
+		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		EmitStoreD0ToLabel(GcStaleBytesLabel);
+		EmitStoreD0ToLabel(GcStaleBlocksLabel);
+		EmitPopRegister(M68kRegister.A2);
+		EmitPopRegister(M68kRegister.D4);
 		EmitPopRegister(M68kRegister.D3);
 		EmitPopRegister(M68kRegister.D2);
 		_assembler.EmitJsr(RuntimeCoalesceLabel, external: false);
@@ -2203,6 +2379,18 @@ internal sealed class M68kCodeGenerator
 		EmitPopRegister(M68kRegister.D4);
 		EmitPopRegister(M68kRegister.D3);
 		EmitPopRegister(M68kRegister.D2);
+		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitManagedPoolTelemetryGetters()
+	{
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeGetStaleBytesLabel);
+		EmitLoadD0FromLabel(GcStaleBytesLabel);
+		_assembler.EmitWord(0x4E75); // RTS
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeGetStaleBlocksLabel);
+		EmitLoadD0FromLabel(GcStaleBlocksLabel);
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
@@ -2364,6 +2552,12 @@ internal sealed class M68kCodeGenerator
 	private void EmitLoadD0FromLabel(string label)
 	{
 		_assembler.EmitWord(0x2039); // MOVE.L abs.l,D0
+		_assembler.EmitAddress(label);
+	}
+
+	private void EmitLoadD1FromLabel(string label)
+	{
+		_assembler.EmitWord(0x2239); // MOVE.L abs.l,D1
 		_assembler.EmitAddress(label);
 	}
 
@@ -2935,16 +3129,23 @@ internal sealed class M68kCodeGenerator
 	private const string GcHeapEndLabel = "runtime:gc-heap-end";
 	private const string GcFreeHeadLabel = "runtime:gc-free-head";
 	private const string GcAllocHeadLabel = "runtime:gc-alloc-head";
+	private const string GcStaleBytesLabel = "runtime:gc-stale-bytes";
+	private const string GcStaleBlocksLabel = "runtime:gc-stale-blocks";
+	private const string GcStaleBytesThresholdLabel = "runtime:gc-stale-bytes-threshold";
+	private const string GcStaleBlocksThresholdLabel = "runtime:gc-stale-blocks-threshold";
 	private const string RuntimeInitLabel = "__c68k_gc_init";
 	private const string RuntimeAllocLabel = "__c68k_alloc";
 	private const string RuntimeDisposeLabel = "__c68k_dispose";
 	private const string RuntimeMarkLabel = "__c68k_gc_mark";
 	private const string RuntimeCollectLabel = "__c68k_gc_collect";
 	private const string RuntimeCoalesceLabel = "__c68k_gc_coalesce";
+	private const string RuntimeGetStaleBytesLabel = "__c68k_gc_get_stale_bytes";
+	private const string RuntimeGetStaleBlocksLabel = "__c68k_gc_get_stale_blocks";
 	private const string RuntimeShutdownLabel = "__c68k_gc_shutdown";
 	private const int GcBlockHeaderSize = 16;
 	private const int GcMinimumSplitSize = GcBlockHeaderSize + 4;
 	private const uint GcMarkFlag = 2;
+	private const uint GcScanFlag = 4;
 
 	private static string ArrayDescriptorLabel(CilType elementType) =>
 		$"array:{elementType.DisplayName}";

@@ -141,6 +141,12 @@ public static class M68kRuntimeImports
 	/// <summary>Runs an explicit managed collection cycle.</summary>
 	public const string GcCollect = "__c68k_gc_collect";
 
+	/// <summary>Returns the runtime's approximate stale-pressure byte count.</summary>
+	public const string GcGetStaleBytes = "__c68k_gc_get_stale_bytes";
+
+	/// <summary>Returns the runtime's approximate stale-pressure block count.</summary>
+	public const string GcGetStaleBlocks = "__c68k_gc_get_stale_blocks";
+
 	/// <summary>Shuts down a linked managed runtime after the managed entry point.</summary>
 	public const string GcShutdown = "__c68k_gc_shutdown";
 }
@@ -230,13 +236,13 @@ public sealed record M68kHeapOptions
 	public uint Size { get; init; }
 }
 
-/// <summary>Options for approximate stale-object telemetry in GC runtimes.</summary>
+/// <summary>Options for approximate stale-pressure telemetry in GC runtimes.</summary>
 public sealed record M68kGcTelemetryOptions
 {
-	/// <summary>Approximate stale bytes that should make allocation trigger GC.</summary>
+	/// <summary>Approximate stale-pressure bytes that should make allocation trigger GC.</summary>
 	public uint StaleBytesThreshold { get; init; }
 
-	/// <summary>Approximate stale block count that should make allocation trigger GC.</summary>
+	/// <summary>Approximate stale-pressure block count that should make allocation trigger GC.</summary>
 	public uint StaleBlocksThreshold { get; init; }
 
 	/// <summary>Runtime-defined telemetry sampling interval. Zero selects runtime default.</summary>

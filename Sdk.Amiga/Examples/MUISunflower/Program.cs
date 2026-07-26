@@ -23,12 +23,12 @@ public static class Program
 			Group.Child, button,
 			Tag.Done));
 
-		var window = Window.New(Guest.U32Array5(
+		var window = WindowObject.New(Guest.U32Array5(
 			Window.Title, title,
 			Window.RootObject, group,
 			Tag.Done));
 
-		return Application.New(Guest.U32Array13(
+		return ApplicationObject.New(Guest.U32Array13(
 			Application.Author, CString.FromLiteral("Copper68k"),
 			Application.Base, CString.FromLiteral("SUNFLOWER"),
 			Application.Description, CString.FromLiteral("Simple MUI window and button example."),

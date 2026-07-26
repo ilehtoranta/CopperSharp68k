@@ -87,8 +87,9 @@ and `CopperSharp.Sdk.Amiga` packages.
 
 - Signed and unsigned 32-bit integer arithmetic, comparisons, conversions,
   branches, calls, locals, and arguments.
-- Static and instance 32-bit fields, parameterless object construction,
-  UTF-16 string literals, and four-byte scalar/reference arrays.
+- Static and instance 32-bit fields, object construction with constructor
+  arguments that fit the private register ABI, UTF-16 string literals, and
+  one-, two-, and four-byte scalar arrays plus reference arrays.
 - Shared generic method bodies when every generic value uses the same
   four-byte scalar/reference representation.
 - MC68000-compatible software long multiply/divide, with MC68020/MC68040 long
@@ -106,12 +107,13 @@ automatically. `M68kMemoryManagement.ManagedPoolMarkSweepGc` emits a built-in
 non-compacting pool allocator with startup/shutdown, block splitting, and
 explicit dispose reuse over the range carried by `M68kHeapOptions`. Its
 explicit collection path marks compiler-known static and current-frame roots,
-traces object reference fields and reference-array elements, sweeps unmarked
-allocated blocks, and coalesces adjacent free blocks.
+iteratively traces object reference fields and reference-array elements from
+descriptor metadata, sweeps unmarked allocated blocks, and coalesces adjacent
+free blocks.
 `ExecPoolMarkSweepGc` remains a possible Amiga-backed alternative.
 `M68kGcSweepStrategy` selects whether collection is explicit only, retried on
 allocation failure, run before every allocation, or triggered from approximate
-stale-object telemetry. Compiler-emitted allocation-site collection marks the
+stale-pressure telemetry. Compiler-emitted allocation-site collection marks the
 current frame and typed managed-reference evaluation-stack slots before
 sweeping.
 `M68kGcTelemetryOptions` carries the

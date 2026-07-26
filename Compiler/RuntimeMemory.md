@@ -26,10 +26,10 @@ remain stable because Amiga APIs commonly work with raw pointers and handles.
 
 The managed pool backend owns its block metadata, free list, allocation list,
 and block splitting. Explicit dispose returns blocks to the free list. Explicit
-collection marks compiler-known roots, sweeps unmarked allocated blocks back to
-the free list, traces object reference fields and reference-array elements, and
-coalesces adjacent free physical blocks. It does not depend on Exec pool
-internals.
+collection marks compiler-known roots, iteratively scans marked blocks for
+object reference fields and reference-array elements until the graph is closed,
+sweeps unmarked allocated blocks back to the free list, and coalesces adjacent
+free physical blocks. It does not depend on Exec pool internals.
 
 ## Sweep Strategies
 
@@ -41,19 +41,22 @@ runs collection:
   retries allocation. This is the default for GC backends.
 - `EveryAllocation` runs root-aware collection before each allocation. It is
   useful for tests but is intentionally expensive.
-- `TelemetryTriggered` lets a background telemetry pass publish approximate
-  stale block and byte counts. Allocation triggers a normal stop-the-world
-  collection when those counters exceed `M68kGcTelemetryOptions` thresholds.
+- `TelemetryTriggered` lets the runtime publish approximate stale-pressure
+  block and byte counts. Allocation triggers a normal stop-the-world collection
+  when those counters exceed `M68kGcTelemetryOptions` thresholds.
 
 The option is valid only with `ManagedPoolMarkSweepGc` or `ExecPoolMarkSweepGc`.
 Telemetry does not free memory in the background; it only estimates whether a
-foreground collection is worth running.
+foreground collection is worth running. The built-in managed pool currently
+uses allocation pressure since the previous collection as this approximate
+signal and resets the counters after collection.
 
 The current built-in `ManagedPoolMarkSweepGc` runtime uses exact static and
 current-frame roots for explicit `M68kRuntime.Collect()` calls and compiler-
 emitted allocation-site collection. It also uses typed evaluation-stack maps so
 only stack slots known to hold managed references are marked. Object reference
-fields and reference-array elements are traced from descriptor metadata.
+fields and reference-array elements are traced from descriptor metadata without
+recursive native calls.
 
 ## Runtime Hooks
 
@@ -65,6 +68,8 @@ The compiler/runtime boundary uses these symbols:
 - `__c68k_gc_init(config)` initializes a linked managed runtime before `Main`
   and returns nonzero on success.
 - `__c68k_gc_collect()` runs an explicit collection cycle.
+- `__c68k_gc_get_stale_bytes()` returns approximate stale-pressure bytes.
+- `__c68k_gc_get_stale_blocks()` returns approximate stale-pressure blocks.
 - `__c68k_gc_shutdown()` shuts down a linked managed runtime after `Main`.
 
 `ManagedPoolMarkSweepGc` provides these symbols internally. `ExternalAllocator`

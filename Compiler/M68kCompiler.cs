@@ -24,6 +24,7 @@ public static class M68kCompiler
 			request.AssemblyPath,
 			request.ExternalCallResolvers);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
+		M68kStaticAnalyzer.Analyze(module, entry, request);
 		var generated = new M68kCodeGenerator(module, request).Generate(entry);
 
 		return request.OutputFormat switch

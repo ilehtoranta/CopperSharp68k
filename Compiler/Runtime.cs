@@ -32,4 +32,12 @@ public static class M68kRuntime
 	/// <summary>Runs an explicit collection cycle when a GC runtime is linked.</summary>
 	[M68kImport(M68kRuntimeImports.GcCollect)]
 	public static extern void Collect();
+
+	/// <summary>Returns the runtime's approximate stale-pressure byte count.</summary>
+	[M68kImport(M68kRuntimeImports.GcGetStaleBytes)]
+	public static extern uint GetGcStaleBytes();
+
+	/// <summary>Returns the runtime's approximate stale-pressure block count.</summary>
+	[M68kImport(M68kRuntimeImports.GcGetStaleBlocks)]
+	public static extern uint GetGcStaleBlocks();
 }

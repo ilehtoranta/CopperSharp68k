@@ -185,6 +185,31 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ConstructorArgumentsEntry()
+	{
+		var box = new ConstructedBox(12, 30);
+		return box.Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NullComparisonEntry()
+	{
+		ManagedBox? box = null;
+		var nullScore = box == null ? 20 : 0;
+		box = new ManagedBox();
+		return nullScore + (box != null ? 22 : 0);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ReferenceEqualityEntry()
+	{
+		var left = new ManagedBox();
+		var right = left;
+		var other = new ManagedBox();
+		return (left == right ? 21 : 0) + (left == other ? 0 : 21);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static ManagedBox IdentityBox(ManagedBox box) => box;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -233,6 +258,26 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int SignedByteArrayEntry()
+	{
+		var values = new sbyte[3];
+		values[0] = 12;
+		values[1] = -5;
+		values[2] = 35;
+		return values[0] + values[1] + values[2];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsignedShortArrayEntry()
+	{
+		var values = new ushort[3];
+		values[0] = 30;
+		values[1] = 65000;
+		values[2] = 12;
+		return values[0] - values[1] + values[2] + 65000;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int IndirectMemoryEntry()
 	{
 		var bytes = new byte[2];
@@ -258,6 +303,7 @@ public static class CompilerFixtures
 	private static int[]? _secondDisposableArray;
 	private static int[]? _keptArray;
 	private static ManagedNode? _keptNode;
+	private static ManagedChainNode? _keptChain;
 	private static ManagedBox?[]? _keptBoxes;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -324,6 +370,23 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PoolTelemetryCountersEntry()
+	{
+		_keptArray = new int[4];
+		_keptArray[0] = 1;
+		return M68kRuntime.GetGcStaleBlocks();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PoolTelemetryCountersResetAfterCollectEntry()
+	{
+		_keptArray = new int[4];
+		_keptArray[0] = 1;
+		M68kRuntime.Collect();
+		return M68kRuntime.GetGcStaleBlocks();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static void AllocateUnrootedArray()
 	{
 		var unrooted = new int[4];
@@ -351,6 +414,20 @@ public static class CompilerFixtures
 		var tail = new int[4];
 		tail[0] = 7;
 		return _keptBoxes[0]!.Value + tail[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PoolCollectTracesDeepObjectGraphEntry()
+	{
+		_keptChain = new ManagedChainNode { Value = 1 };
+		var second = new ManagedChainNode { Value = 2 };
+		var third = new ManagedChainNode { Value = 32 };
+		_keptChain.Next = second;
+		second.Next = third;
+		M68kRuntime.Collect();
+		var tail = new int[4];
+		tail[0] = 7;
+		return _keptChain.Next!.Next!.Value + _keptChain.Next.Value + _keptChain.Value + tail[0];
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -386,9 +463,26 @@ public static class CompilerFixtures
 		public int Add(int value) => Value + value;
 	}
 
+	public sealed class ConstructedBox
+	{
+		public int Value;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public ConstructedBox(int left, int right)
+		{
+			Value = left + right;
+		}
+	}
+
 	public sealed class ManagedNode
 	{
 		public ManagedBox? Child;
+	}
+
+	public sealed class ManagedChainNode
+	{
+		public ManagedChainNode? Next;
+		public int Value;
 	}
 }
 

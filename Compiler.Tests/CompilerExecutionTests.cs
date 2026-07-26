@@ -399,8 +399,22 @@ public sealed class CompilerExecutionTests
 				RuntimeProfile = M68kRuntimeProfile.Rom
 			}));
 
-		Assert.Equal(M68kDiagnosticIds.UnsupportedInstruction, exception.DiagnosticId);
+		Assert.Equal(M68kDiagnosticIds.StaticAnalysis, exception.DiagnosticId);
 		Assert.Contains("managed heap", exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void StaticAnalyzerRejectsRuntimeGcCallsWithoutManagedRuntime()
+	{
+		var exception = Assert.Throws<M68kCompilationException>(() =>
+			M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ExplicitCollectEntry"
+			}));
+
+		Assert.Equal(M68kDiagnosticIds.StaticAnalysis, exception.DiagnosticId);
+		Assert.Contains("runtime GC operation", exception.Message, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -620,6 +634,44 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(10u, Execute(bus, M68kCpuModel.M68040, HunkLoadAddress + result.EntryPoint));
 	}
 
+	[Fact]
+	public void CompilesObjectConstructionWithArguments()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ConstructorArgumentsEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_1000
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Theory]
+	[InlineData("NullComparisonEntry")]
+	[InlineData("ReferenceEqualityEntry")]
+	public void CompilesNullAndReferenceComparisons(string entry)
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_1000
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void PassesAndReturnsManagedReferencesThroughA0(
@@ -734,6 +786,32 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(287u, ExecuteHunkWithAllocator(result, model));
 	}
 
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CompilesSignedByteArraysWithSignedElementAccess(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = CompileWithAllocator(
+			target,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::SignedByteArrayEntry");
+
+		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CompilesUnsignedShortArraysWithUnsignedElementAccess(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = CompileWithAllocator(
+			target,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::UnsignedShortArrayEntry");
+
+		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
 	[Fact]
 	public void CompilesIndirectByteAndWordLoadStore()
 	{
@@ -801,6 +879,24 @@ public sealed class CompilerExecutionTests
 
 		Assert.Equal(42u, Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
 		Assert.NotEqual(0u, disposed);
+	}
+
+	[Fact]
+	public void StaticAnalyzerRejectsRuntimeDisposeWithoutDisposeRuntime()
+	{
+		var exception = Assert.Throws<M68kCompilationException>(() =>
+			M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ExplicitDisposeEntry",
+				Imports = new Dictionary<string, uint>
+				{
+					[M68kRuntimeImports.Allocate] = 0x0000_2800
+				}
+			}));
+
+		Assert.Equal(M68kDiagnosticIds.StaticAnalysis, exception.DiagnosticId);
+		Assert.Contains("runtime dispose operation", exception.Message, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -896,6 +992,65 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void ManagedPoolTelemetryTriggeredStrategyCollectsWhenThresholdIsReached()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PoolAllocationFailureCollectsRootsEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.TelemetryTriggered,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 120
+			},
+			GcTelemetry = new M68kGcTelemetryOptions
+			{
+				StaleBytesThreshold = 1
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ManagedPoolTelemetryCountersAreReadable()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PoolTelemetryCountersEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 120
+			}
+		});
+
+		Assert.Equal(1u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ManagedPoolTelemetryCountersResetAfterCollect()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PoolTelemetryCountersResetAfterCollectEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 120
+			}
+		});
+
+		Assert.Equal(0u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
 	public void ManagedPoolCollectTracesObjectReferenceFields()
 	{
 		var result = M68kCompiler.Compile(new M68kCompilationRequest
@@ -925,6 +1080,24 @@ public sealed class CompilerExecutionTests
 			{
 				StartAddress = 0x0000_4000,
 				Size = 104
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ManagedPoolCollectTracesDeepObjectGraph()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PoolCollectTracesDeepObjectGraphEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 144
 			}
 		});
 
