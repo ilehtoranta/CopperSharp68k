@@ -30,6 +30,13 @@ public static class CompilerFixtures
 	public static int ArithmeticEntry() => Arithmetic(9, 5);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DiscardCallResultEntry()
+	{
+		Arithmetic(9, 5);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int ManyAssignedLocalsEntry()
 	{
 		var a = 1;
@@ -127,6 +134,18 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallRegisterImport() => ImportedAdd(17, 25);
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int RegisterPromotedLoopCounterAcrossRegisterCall()
+	{
+		var sum = 0;
+		for (var value = 3; value >= 1; value--)
+		{
+			sum += ImportedAdd(value, 0);
+		}
+
+		return sum;
+	}
+
 	[M68kImport("fixture.registerAdd")]
 	[return: M68kRegister(M68kRegister.D2)]
 	public static extern int ImportedAdd(
@@ -176,10 +195,185 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallIntuitionNewObjectStackTags()
+	{
+		var title = CString.FromLiteral("Fixture Custom Object");
+		var classPtr = 0x0000_1111u;
+		var classId = 0x0000_2222u;
+		return global::Amiga.Intuition.NewObject(
+			classPtr,
+			classId,
+			global::Amiga.MUI.Window.Title, title,
+			global::Amiga.MUI.Tag.Done);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CallDosPrintfStackArguments()
+	{
+		global::Amiga.DOS.DOSLibraryBase = 0x0000_3C00;
+		var value = 10u;
+		return global::Amiga.DOS.Printf(CString.FromLiteral("value: %ld\n"), value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ReadDosLibraryBaseAfterSet()
+	{
+		global::Amiga.DOS.DOSLibraryBase = 0x0000_3C00;
+		return global::Amiga.DOS.DOSLibraryBase.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint SetDosLibraryBaseFromNullableValue()
+	{
+		APTR? library = APTR.FromPointer(0x0000_3C00);
+		global::Amiga.DOS.DOSLibraryBase = library.Value;
+		return global::Amiga.DOS.DOSLibraryBase.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ReadGraphicsLibraryBaseAfterSet()
+	{
+		global::Amiga.Graphics.GraphicsLibraryBase = 0x0000_3E00;
+		return global::Amiga.Graphics.GraphicsLibraryBase.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ReadIffParseLibraryBaseAfterSet()
+	{
+		global::Amiga.IffParse.IffParseLibraryBase = 0x0000_4000;
+		return global::Amiga.IffParse.IffParseLibraryBase.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ClearDosLibraryBaseWithNull()
+	{
+		global::Amiga.DOS.DOSLibraryBase = APTR.Null;
+		return global::Amiga.DOS.DOSLibraryBase.IsNull ? 42u : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NullableAptrNullEntry()
+	{
+		APTR? pointer = null;
+		return pointer.HasValue ? 0u : 42u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NullableAptrValueEntry()
+	{
+		APTR? pointer = APTR.FromPointer(0x0000_4400);
+		return pointer.HasValue ? pointer.Value.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint StrPtrValueEntry()
+	{
+		var pointer = global::Amiga.STRPTR.FromPointer(0x0000_4500);
+		return pointer.IsNotNull ? pointer.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ConstStrPtrValueEntry()
+	{
+		var pointer = global::Amiga.CONST_STRPTR.FromAddress(APTR.FromPointer(0x0000_4600));
+		return pointer.IsNotNull ? pointer.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ConstStrPtrFromStrPtrEntry()
+	{
+		global::Amiga.STRPTR mutable = global::Amiga.STRPTR.FromPointer(0x0000_4700);
+		global::Amiga.CONST_STRPTR constant = mutable;
+		return constant.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AmigaStartupArgsEntry(int argLength, global::Amiga.CONST_STRPTR argText)
+	{
+		return argLength + (int)argText.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PromotedAptrLocalAcrossExecCall()
+	{
+		var pointer = APTR.FromPointer(0x0000_4400);
+		var library = global::Amiga.Exec.OpenLibrary(0x0000_1800, 37);
+		return library.HasValue ? pointer.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PromotedAptrLocalAvoidsCachedPlatformBaseRegister()
+	{
+		var pointer = APTR.FromPointer(0x0000_4400);
+		var value = CachedPlatformBaseCall();
+		return value == 7 ? pointer.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern uint CachedPlatformBaseCall();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PromotedAptrLocalsCanUseA6()
+	{
+		var pointer0 = APTR.FromPointer(0x0000_0100);
+		var pointer1 = APTR.FromPointer(0x0000_0200);
+		var pointer2 = APTR.FromPointer(0x0000_0300);
+		var pointer3 = APTR.FromPointer(0x0000_0400);
+		var pointer4 = APTR.FromPointer(0x0000_0500);
+		return pointer0.Raw + pointer1.Raw + pointer2.Raw + pointer3.Raw + pointer4.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint A6PromotionBetweenExecCallsReloadsBase()
+	{
+		var first = global::Amiga.Exec.OpenLibrary(0x0000_1800, 37);
+		var pointer0 = APTR.FromPointer(0x0000_0100);
+		var pointer1 = APTR.FromPointer(0x0000_0200);
+		var pointer2 = APTR.FromPointer(0x0000_0300);
+		var pointer3 = APTR.FromPointer(0x0000_0400);
+		var pointer4 = APTR.FromPointer(0x0000_0500);
+		var raw = pointer0.Raw + pointer1.Raw + pointer2.Raw + pointer3.Raw + pointer4.Raw;
+		var second = global::Amiga.Exec.OpenLibrary(0x0000_1900, 37);
+		return first.HasValue && second.HasValue ? raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NullableUIntValueEntry()
+	{
+		uint? value = 37u;
+		return value.HasValue ? value.Value : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NullableIntNullEntry()
+	{
+		int? value = null;
+		return !value.HasValue && value.GetValueOrDefault() == 0 ? 42u : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NullableUIntDefaultEntry()
+	{
+		uint? missing = null;
+		uint? present = 13u;
+		return missing.GetValueOrDefault(29u) + present.GetValueOrDefault(100u);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallExecLibrary()
 	{
 		var first = ExecVectors.Add(10, 11);
 		var second = ExecVectors.Add(20, 21);
+		return first + second;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CallExecLibraryAfterMergedPaths()
+	{
+		var first = _counter == 0
+			? ExecVectors.Add(1, 2)
+			: ExecVectors.Add(3, 4);
+		var second = ExecVectors.Add(5, 6);
 		return first + second;
 	}
 
@@ -196,12 +390,44 @@ public static class CompilerFixtures
 	public static int CallInvalidLibraryLvo() => InvalidVectors.InvalidLvo();
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static uint CallSdkOpenLibrary() =>
-		global::Amiga.Exec.OpenLibrary(0x0000_1800, 37);
+	public static uint CallSdkOpenLibrary()
+	{
+		var library = global::Amiga.Exec.OpenLibrary(0x0000_1800, 37);
+		return library.HasValue ? library.Value.Raw : 0u;
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static uint CallSdkDosOpen() =>
-		global::Amiga.DOS.Open(0x0000_1900, 1005);
+	public static uint CallSdkDosOpen()
+	{
+		var file = global::Amiga.DOS.Open(0x0000_1900, 1005);
+		return file.HasValue ? file.Value.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint DecodeBptrAddress()
+	{
+		BPTR pointer = BPTR.FromRaw(0x0000_0042);
+		return pointer.Address.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long CallSdkDosSeek64()
+	{
+		BPTR file = BPTR.FromRaw(0x0000_0042);
+		return global::Amiga.DOS.Seek64(file, 0x1122_3344_5566_7788L, -1);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallSdkDosLockRecord64()
+	{
+		BPTR file = BPTR.FromRaw(0x0000_0042);
+		return (uint)global::Amiga.DOS.LockRecord64(
+			file,
+			0x1122_3344_5566_7788UL,
+			0x99AA_BBCC_DDEE_F001UL,
+			3,
+			4);
+	}
 
 	[AmigaLibrary("exec.library", AmigaLibraryBasePolicy.ExecBase)]
 	public static class ExecVectors
@@ -529,6 +755,10 @@ public static class CompilerFixtures
 		left + right;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ExportAddressEntry() =>
+		APTR.ToUInt32(APTR.ExportAddress("fixture.add"));
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static T SharedIdentity<T>(T value) => value;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -567,12 +797,33 @@ public static class CompilerFixtures
 		public ManagedChainNode? Next;
 		public int Value;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StoreInternalRegisterCallResult()
+	{
+		var value = InternalRegisterAdd(17, 25);
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int InternalRegisterAdd(int left, int right) => left + right;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MaterializedEqualityEntry() =>
+		MaterializedEquality(17, 17) + MaterializedEquality(17, 25);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int MaterializedEquality(int left, int right)
+	{
+		var equal = left == right;
+		return equal ? 20 : 1;
+	}
 }
 
 public static class StaticInitializationFixtures
 {
-	private static readonly uint File = global::Amiga.DOS.Open("s:startup-sequence", 1005);
+	private static readonly BPTR? File = global::Amiga.DOS.Open("s:startup-sequence", 1005);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static uint Entry() => File;
+	public static uint Entry() => File.HasValue ? File.Value.Raw : 0u;
 }

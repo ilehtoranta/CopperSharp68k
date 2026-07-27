@@ -13,6 +13,14 @@ public static class Keymap
 {
 	public const string Name = "keymap.library";
 
+	public static APTR KeymapLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"KeymapLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"KeymapLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	public static extern void SetKeyMapDefault(
 		[M68kRegister(M68kRegister.A0)] uint keyMap);

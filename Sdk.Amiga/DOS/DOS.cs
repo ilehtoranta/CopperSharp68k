@@ -13,43 +13,51 @@ public static class DOS
 {
 	public const string Name = "dos.library";
 
+	public static APTR DOSLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"DOSLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"DOSLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint Open(
+	public static extern BPTR? Open(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int accessMode);
 
 	[AmigaLvo(-36)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Close(
-		[M68kRegister(M68kRegister.D1)] uint file);
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-42)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Read(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
 	[AmigaLvo(-48)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Write(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
 	[AmigaLvo(-54)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint Input();
+	public static extern BPTR Input();
 
 	[AmigaLvo(-60)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint Output();
+	public static extern BPTR Output();
 
 	[AmigaLvo(-66)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Seek(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int position,
 		[M68kRegister(M68kRegister.D3)] int offset);
 
@@ -66,46 +74,46 @@ public static class DOS
 
 	[AmigaLvo(-84)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint Lock(
+	public static extern BPTR? Lock(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int type);
 
 	[AmigaLvo(-90)]
 	public static extern void UnLock(
-		[M68kRegister(M68kRegister.D1)] uint lock_);
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(-96)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint DupLock(
-		[M68kRegister(M68kRegister.D1)] uint lock_);
+	public static extern BPTR? DupLock(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(-102)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock);
 
 	[AmigaLvo(-108)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock);
 
 	[AmigaLvo(-114)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Info(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint parameterBlock);
 
 	[AmigaLvo(-120)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateDir(
+	public static extern BPTR? CreateDir(
 		[M68kRegister(M68kRegister.D1)] CString name);
 
 	[AmigaLvo(-126)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CurrentDir(
-		[M68kRegister(M68kRegister.D1)] uint lock_);
+	public static extern BPTR? CurrentDir(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(-132)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -116,7 +124,7 @@ public static class DOS
 	public static extern uint CreateProc(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int priority,
-		[M68kRegister(M68kRegister.D3)] uint segList,
+		[M68kRegister(M68kRegister.D3)] BPTR segList,
 		[M68kRegister(M68kRegister.D4)] int stackSize);
 
 	[AmigaLvo(-144)]
@@ -125,12 +133,12 @@ public static class DOS
 
 	[AmigaLvo(-150)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint LoadSeg(
+	public static extern BPTR? LoadSeg(
 		[M68kRegister(M68kRegister.D1)] CString name);
 
 	[AmigaLvo(-156)]
 	public static extern void UnLoadSeg(
-		[M68kRegister(M68kRegister.D1)] uint segList);
+		[M68kRegister(M68kRegister.D1)] BPTR segList);
 
 	[AmigaLvo(-174)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -161,25 +169,25 @@ public static class DOS
 	[AmigaLvo(-204)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int WaitForChar(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int timeout);
 
 	[AmigaLvo(-210)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint ParentDir(
-		[M68kRegister(M68kRegister.D1)] uint lock_);
+	public static extern BPTR? ParentDir(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(-216)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IsInteractive(
-		[M68kRegister(M68kRegister.D1)] uint file);
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-222)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Execute(
 		[M68kRegister(M68kRegister.D1)] CString command,
-		[M68kRegister(M68kRegister.D2)] uint input,
-		[M68kRegister(M68kRegister.D3)] uint output);
+		[M68kRegister(M68kRegister.D2)] BPTR input,
+		[M68kRegister(M68kRegister.D3)] BPTR output);
 
 	[AmigaLvo(-228)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -227,7 +235,7 @@ public static class DOS
 	[AmigaLvo(-270)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int LockRecord(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint offset,
 		[M68kRegister(M68kRegister.D3)] uint length,
 		[M68kRegister(M68kRegister.D4)] uint mode,
@@ -242,7 +250,7 @@ public static class DOS
 	[AmigaLvo(-282)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UnLockRecord(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint offset,
 		[M68kRegister(M68kRegister.D3)] uint length);
 
@@ -253,35 +261,35 @@ public static class DOS
 
 	[AmigaLvo(-294)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SelectInput(
-		[M68kRegister(M68kRegister.D1)] uint file);
+	public static extern BPTR SelectInput(
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-300)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SelectOutput(
-		[M68kRegister(M68kRegister.D1)] uint file);
+	public static extern BPTR SelectOutput(
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-306)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FGetC(
-		[M68kRegister(M68kRegister.D1)] uint file);
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-312)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FPutC(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int character);
 
 	[AmigaLvo(-318)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UnGetC(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int character);
 
 	[AmigaLvo(-324)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FRead(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint block,
 		[M68kRegister(M68kRegister.D3)] uint blockLength,
 		[M68kRegister(M68kRegister.D4)] uint number);
@@ -289,7 +297,7 @@ public static class DOS
 	[AmigaLvo(-330)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FWrite(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint block,
 		[M68kRegister(M68kRegister.D3)] uint blockLength,
 		[M68kRegister(M68kRegister.D4)] uint number);
@@ -297,61 +305,61 @@ public static class DOS
 	[AmigaLvo(-336)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint FGets(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] uint bufferLength);
 
 	[AmigaLvo(-342)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FPuts(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString text);
 
 	[AmigaLvo(-348)]
 	public static extern void VFWritef(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString format,
 		[M68kRegister(M68kRegister.D3)] uint argArray);
 
 	[AmigaLvo(-354)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int VFPrintf(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString format,
 		[M68kRegister(M68kRegister.D3)] uint argArray);
 
 	[AmigaLvo(-360)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Flush(
-		[M68kRegister(M68kRegister.D1)] uint file);
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-366)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetVBuf(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int type,
 		[M68kRegister(M68kRegister.D4)] int size);
 
 	[AmigaLvo(-372)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint DupLockFromFH(
-		[M68kRegister(M68kRegister.D1)] uint file);
+	public static extern BPTR? DupLockFromFH(
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-378)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint OpenFromLock(
-		[M68kRegister(M68kRegister.D1)] uint lock_);
+	public static extern BPTR? OpenFromLock(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(-384)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint ParentOfFH(
-		[M68kRegister(M68kRegister.D1)] uint file);
+	public static extern BPTR? ParentOfFH(
+		[M68kRegister(M68kRegister.D1)] BPTR file);
 
 	[AmigaLvo(-390)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock);
 
 	[AmigaLvo(-396)]
@@ -363,14 +371,14 @@ public static class DOS
 	[AmigaLvo(-402)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int NameFromLock(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
 	[AmigaLvo(-408)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int NameFromFH(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
@@ -386,19 +394,19 @@ public static class DOS
 	[AmigaLvo(-420)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SameLock(
-		[M68kRegister(M68kRegister.D1)] uint lock1,
-		[M68kRegister(M68kRegister.D2)] uint lock2);
+		[M68kRegister(M68kRegister.D1)] BPTR lock1,
+		[M68kRegister(M68kRegister.D2)] BPTR lock2);
 
 	[AmigaLvo(-426)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetMode(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int mode);
 
 	[AmigaLvo(-432)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExAll(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int size,
 		[M68kRegister(M68kRegister.D4)] int data,
@@ -408,7 +416,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ReadLink(
 		[M68kRegister(M68kRegister.D1)] uint port,
-		[M68kRegister(M68kRegister.D2)] uint lock_,
+		[M68kRegister(M68kRegister.D2)] BPTR lock_,
 		[M68kRegister(M68kRegister.D3)] CString path,
 		[M68kRegister(M68kRegister.D4)] uint buffer,
 		[M68kRegister(M68kRegister.D5)] uint size);
@@ -424,13 +432,13 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ChangeMode(
 		[M68kRegister(M68kRegister.D1)] int type,
-		[M68kRegister(M68kRegister.D2)] uint file,
+		[M68kRegister(M68kRegister.D2)] BPTR file,
 		[M68kRegister(M68kRegister.D3)] int newMode);
 
 	[AmigaLvo(-456)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetFileSize(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int position,
 		[M68kRegister(M68kRegister.D3)] int mode);
 
@@ -549,12 +557,12 @@ public static class DOS
 
 	[AmigaLvo(-594)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SetProgramDir(
-		[M68kRegister(M68kRegister.D1)] uint lock_);
+	public static extern BPTR? SetProgramDir(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(-600)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint GetProgramDir();
+	public static extern BPTR? GetProgramDir();
 
 	[AmigaLvo(-606)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -566,7 +574,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AssignLock(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint lock_);
+		[M68kRegister(M68kRegister.D2)] BPTR lock_);
 
 	[AmigaLvo(-618)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -584,13 +592,13 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AssignAdd(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint lock_);
+		[M68kRegister(M68kRegister.D2)] BPTR lock_);
 
 	[AmigaLvo(-636)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RemAssignList(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint lock_);
+		[M68kRegister(M68kRegister.D2)] BPTR lock_);
 
 	[AmigaLvo(-642)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -697,8 +705,8 @@ public static class DOS
 
 	[AmigaLvo(-756)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint InternalLoadSeg(
-		[M68kRegister(M68kRegister.D1)] uint file,
+	public static extern BPTR? InternalLoadSeg(
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint table,
 		[M68kRegister(M68kRegister.A0)] uint functionArray,
 		[M68kRegister(M68kRegister.A1)] uint stack);
@@ -706,12 +714,12 @@ public static class DOS
 	[AmigaLvo(-762)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int InternalUnLoadSeg(
-		[M68kRegister(M68kRegister.D1)] uint segList,
+		[M68kRegister(M68kRegister.D1)] BPTR segList,
 		[M68kRegister(M68kRegister.A0)] uint freeFunction);
 
 	[AmigaLvo(-768)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint NewLoadSeg(
+	public static extern BPTR? NewLoadSeg(
 		[M68kRegister(M68kRegister.D1)] CString file,
 		[M68kRegister(M68kRegister.D2)] uint tags);
 
@@ -719,20 +727,20 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AddSegment(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint segment,
+		[M68kRegister(M68kRegister.D2)] BPTR segment,
 		[M68kRegister(M68kRegister.D3)] int system);
 
 	[AmigaLvo(-780)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindSegment(
+	public static extern BPTR? FindSegment(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint segment,
+		[M68kRegister(M68kRegister.D2)] BPTR segment,
 		[M68kRegister(M68kRegister.D3)] int system);
 
 	[AmigaLvo(-786)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RemSegment(
-		[M68kRegister(M68kRegister.D1)] uint segment);
+		[M68kRegister(M68kRegister.D1)] BPTR segment);
 
 	[AmigaLvo(-792)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -878,6 +886,16 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString format,
 		[M68kRegister(M68kRegister.D2)] uint argArray);
 
+	[AmigaLvo(-954)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static int Printf(
+		[M68kRegister(M68kRegister.D1)] CString format,
+		[M68kRegister(M68kRegister.D2)]
+		[AmigaStackVarargs]
+		params uint[] arguments) =>
+		throw new System.NotSupportedException(
+			"DOS.Printf stack varargs are lowered by CopperSharp.");
+
 	[AmigaLvo(-966)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ParsePatternNoCase(
@@ -894,12 +912,12 @@ public static class DOS
 	[AmigaLvo(-984)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SameDevice(
-		[M68kRegister(M68kRegister.D1)] uint lock1,
-		[M68kRegister(M68kRegister.D2)] uint lock2);
+		[M68kRegister(M68kRegister.D1)] BPTR lock1,
+		[M68kRegister(M68kRegister.D2)] BPTR lock2);
 
 	[AmigaLvo(-990)]
 	public static extern void ExAllEnd(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int size,
 		[M68kRegister(M68kRegister.D4)] int data,
@@ -979,7 +997,7 @@ public static class DOS
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-768)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint NewLoadSegTagList(
+	public static extern BPTR? NewLoadSegTagList(
 		[M68kRegister(M68kRegister.D1)] CString file,
 		[M68kRegister(M68kRegister.D2)] uint tags);
 
@@ -992,34 +1010,34 @@ public static class DOS
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1008)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindSegmentTagList(
+	public static extern BPTR? FindSegmentTagList(
 		[M68kRegister(M68kRegister.A0)] uint tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1066)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern long Seek64(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] long position,
-		[M68kRegister(M68kRegister.D3)] int mode);
+		[M68kRegister(M68kRegister.D4)] int mode);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1072)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern long SetFileSize64(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] long position,
-		[M68kRegister(M68kRegister.D3)] int mode);
+		[M68kRegister(M68kRegister.D4)] int mode);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1078)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int LockRecord64(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] ulong offset,
-		[M68kRegister(M68kRegister.D3)] ulong length,
-		[M68kRegister(M68kRegister.D4)] uint mode,
-		[M68kRegister(M68kRegister.D5)] uint timeout);
+		[M68kRegister(M68kRegister.D4)] ulong length,
+		[M68kRegister(M68kRegister.D6)] uint mode,
+		[M68kRegister(M68kRegister.D7)] uint timeout);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1084)]
@@ -1032,9 +1050,9 @@ public static class DOS
 	[AmigaLvo(-1090)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UnLockRecord64(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] ulong offset,
-		[M68kRegister(M68kRegister.D3)] ulong length);
+		[M68kRegister(M68kRegister.D4)] ulong length);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1096)]
@@ -1047,7 +1065,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int NewReadLink(
 		[M68kRegister(M68kRegister.D1)] uint port,
-		[M68kRegister(M68kRegister.D2)] uint lock_,
+		[M68kRegister(M68kRegister.D2)] BPTR lock_,
 		[M68kRegister(M68kRegister.D3)] CString path,
 		[M68kRegister(M68kRegister.D4)] uint buffer,
 		[M68kRegister(M68kRegister.D5)] int bufferSize);
@@ -1065,7 +1083,7 @@ public static class DOS
 	[AmigaLvo(-1126)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetSegListAttr(
-		[M68kRegister(M68kRegister.D1)] uint segmentList,
+		[M68kRegister(M68kRegister.D1)] BPTR segmentList,
 		[M68kRegister(M68kRegister.D2)] int attribute,
 		[M68kRegister(M68kRegister.D3)] uint storage,
 		[M68kRegister(M68kRegister.D4)] int storageSize);
@@ -1106,7 +1124,7 @@ public static class DOS
 	[AmigaLvo(-1144)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine64(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
@@ -1114,7 +1132,7 @@ public static class DOS
 	[AmigaLvo(-1144)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine64TagList(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
@@ -1122,7 +1140,7 @@ public static class DOS
 	[AmigaLvo(-1150)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext64(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
@@ -1130,7 +1148,7 @@ public static class DOS
 	[AmigaLvo(-1150)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext64TagList(
-		[M68kRegister(M68kRegister.D1)] uint lock_,
+		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
@@ -1138,7 +1156,7 @@ public static class DOS
 	[AmigaLvo(-1156)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH64(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
@@ -1146,7 +1164,7 @@ public static class DOS
 	[AmigaLvo(-1156)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH64TagList(
-		[M68kRegister(M68kRegister.D1)] uint file,
+		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
@@ -1170,7 +1188,7 @@ public static class DOS
 	[AmigaLvo(-1180)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetSegListAttrTagList(
-		[M68kRegister(M68kRegister.D1)] uint segmentList,
+		[M68kRegister(M68kRegister.D1)] BPTR segmentList,
 		[M68kRegister(M68kRegister.D2)] int attribute,
 		[M68kRegister(M68kRegister.D3)] uint storage,
 		[M68kRegister(M68kRegister.D4)] int storageSize,

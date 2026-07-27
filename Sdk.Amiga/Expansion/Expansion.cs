@@ -13,6 +13,14 @@ public static class Expansion
 {
 	public const string Name = "expansion.library";
 
+	public static APTR ExpansionLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"ExpansionLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"ExpansionLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	public static void AddConfigDev(
 		[M68kRegister(M68kRegister.A0)] uint configDev)

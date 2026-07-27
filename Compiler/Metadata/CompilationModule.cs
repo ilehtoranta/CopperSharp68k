@@ -284,21 +284,68 @@ internal sealed class CompilationModule : IDisposable
 				"Platform call register count does not match its parameter count.",
 				displayName);
 		}
-		if (abi.ParameterRegisters.Contains(binding.BaseRegister) ||
-			(!signature.ReturnType.IsVoid && abi.ReturnRegister == binding.BaseRegister))
+		var parameterRegisters = new List<M68kRegister>();
+		for (var index = 0; index < abi.ParameterRegisters.Count; index++)
+		{
+			parameterRegisters.Add(abi.ParameterRegisters[index]);
+			if (Is64BitScalar(signature.ParameterTypes[index]))
+			{
+				parameterRegisters.Add(NextDataRegister(abi.ParameterRegisters[index], displayName));
+			}
+		}
+
+		if (parameterRegisters.Contains(binding.BaseRegister))
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedSignature,
-				$"{binding.BaseRegister} holds the platform call base and cannot be an argument or return register.",
+				$"{binding.BaseRegister} holds the platform call base and cannot be an argument register.",
 				displayName);
 		}
-		if (abi.ParameterRegisters.Count != abi.ParameterRegisters.Distinct().Count())
+		if (parameterRegisters.Count != parameterRegisters.Distinct().Count())
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidMetadata,
 				"Platform call parameter registers must be unique.",
 				displayName);
 		}
+
+		if (!signature.ReturnType.IsVoid)
+		{
+			if (abi.ReturnRegister == binding.BaseRegister)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"{binding.BaseRegister} holds the platform call base and cannot be the return register.",
+					displayName);
+			}
+			if (Is64BitScalar(signature.ReturnType))
+			{
+				var lowReturnRegister = NextDataRegister(abi.ReturnRegister, displayName);
+				if (lowReturnRegister == binding.BaseRegister)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedSignature,
+						$"{binding.BaseRegister} holds the platform call base and cannot be the return register.",
+						displayName);
+				}
+			}
+		}
+	}
+
+	private static bool Is64BitScalar(CilType type) =>
+		type.IsSupportedScalar && type.Size == 8;
+
+	private static M68kRegister NextDataRegister(M68kRegister register, string displayName)
+	{
+		if (register < M68kRegister.D0 || register >= M68kRegister.D7)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedSignature,
+				"64-bit register-pair values must start in D0-D6.",
+				displayName);
+		}
+
+		return register + 1;
 	}
 
 	private CilRegisterAbi? GetImportAbi(
@@ -490,6 +537,62 @@ internal sealed class CompilationModule : IDisposable
 		return result;
 	}
 
+	public bool IsSupportedNullableType(CilType type) =>
+		type.NullableElementType is { } element &&
+		(element.IsSupportedScalar && element.Size == 4 ||
+		 IsTransparentScalarType(element));
+
+	public bool IsSupportedStructType(CilType type)
+	{
+		if (IsFileInfoBlockType(type))
+		{
+			return true;
+		}
+		if (type.IsSupportedScalar ||
+			IsTransparentScalarType(type))
+		{
+			return false;
+		}
+
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			if (!TypeNameMatches(definition, type.DisplayName))
+			{
+				continue;
+			}
+
+			var fields = definition.GetFields()
+				.Select(GetField)
+				.Where(static field => !field.IsStatic)
+				.ToArray();
+			return fields.Length != 0;
+		}
+
+		return false;
+	}
+
+	public int GetStructSlotLongs(CilType type)
+	{
+		if (IsFileInfoBlockType(type))
+		{
+			return 66;
+		}
+
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			if (TypeNameMatches(definition, type.DisplayName))
+			{
+				return checked((GetTypeLayout(handle).Size - 8 + 3) / 4);
+			}
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.UnsupportedSignature,
+			$"Unsupported value type '{type.DisplayName}'.");
+	}
+
 	public bool IsTransparentScalarConstructor(CilMethod method) =>
 		method.Signature.Header.IsInstance &&
 		method.Name == ".ctor" &&
@@ -557,6 +660,18 @@ internal sealed class CompilationModule : IDisposable
 			fields[0].Type.IsSupportedScalar &&
 			fields[0].Type.Size == 4;
 	}
+
+	private bool TypeNameMatches(TypeDefinition definition, string displayName)
+	{
+		var typeName = GetTypeName(definition);
+		return typeName == displayName ||
+			typeName.EndsWith($".{displayName}", StringComparison.Ordinal) ||
+			typeName.EndsWith($"/{displayName}", StringComparison.Ordinal) ||
+			Reader.GetString(definition.Name) == displayName;
+	}
+
+	private static bool IsFileInfoBlockType(CilType type) =>
+		type.DisplayName.EndsWith("FileInfoBlock", StringComparison.Ordinal);
 
 	private static bool IsReflectionTransparentScalarField(Type type) =>
 		type == typeof(bool) ||
@@ -974,7 +1089,12 @@ internal sealed class CompilationModule : IDisposable
 			var convention = ResolveExternalCall(externalMethod);
 			if (convention is not null)
 			{
-				if (convention.ParameterRegisters is null)
+				var parameterRegisters = convention.ParameterRegisters;
+				if (parameterRegisters is null && signature.ParameterTypes.Length == 0)
+				{
+					parameterRegisters = Array.Empty<M68kRegister>();
+				}
+				if (parameterRegisters is null)
 				{
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.UnsupportedSignature,
@@ -982,7 +1102,7 @@ internal sealed class CompilationModule : IDisposable
 						displayName);
 				}
 				var abi = new CilRegisterAbi(
-					convention.ParameterRegisters,
+					parameterRegisters,
 					convention.ReturnRegister);
 				ValidateExternalCallAbi(signature, displayName, convention, abi);
 				return MethodReference.ForDefinition(new CilMethod(
@@ -997,6 +1117,17 @@ internal sealed class CompilationModule : IDisposable
 					null,
 					null,
 					new CilExternalCall(convention, abi)));
+			}
+		}
+
+		if (member.Parent.Kind == HandleKind.TypeSpecification)
+		{
+			var parentType = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)member.Parent)
+				.DecodeSignature(_signatureProvider, CilGenericContext.Empty);
+			if (TryResolveNullableIntrinsicReference(parentType, name, signature) is { } nullableIntrinsic)
+			{
+				return nullableIntrinsic;
 			}
 		}
 
@@ -1048,6 +1179,93 @@ internal sealed class CompilationModule : IDisposable
 			}
 		}
 
+		if (typeName is "Amiga.APTR" or "Amiga.BPTR" or "Amiga.STRPTR" or "Amiga.CONST_STRPTR")
+		{
+			if (name == "get_Null" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-null", signature);
+			}
+
+			if ((name is "FromPointer" or "FromRaw" or "op_Implicit") &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "uint")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-from-pointer", signature);
+			}
+
+			if (typeName == "Amiga.APTR" &&
+				name == "ExportAddress" &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "string")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-export-address", signature);
+			}
+
+			if ((name == "ToUInt32" || name == "op_Implicit") &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == typeName)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-to-uint32", signature);
+			}
+
+			if (name == "get_Raw" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-raw", signature);
+			}
+
+			if (name == "get_IsNull" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-is-null", signature);
+			}
+
+			if (name == "get_IsNotNull" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-is-not-null", signature);
+			}
+
+			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
+				(name == "get_Address" || name == "ToAddress") &&
+				signature.ParameterTypes.Length <= 1)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-to-uint32", signature);
+			}
+
+			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
+				name == "FromAddress" &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.APTR")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-from-pointer", signature);
+			}
+
+			if (typeName == "Amiga.CONST_STRPTR" &&
+				name == "op_Implicit" &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.STRPTR")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-from-pointer", signature);
+			}
+
+			if (typeName == "Amiga.BPTR" &&
+				(name == "get_Address" || name == "ToAddress") &&
+				signature.ParameterTypes.Length <= 1)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:bptr-address", signature);
+			}
+
+			if (typeName == "Amiga.BPTR" &&
+				name == "FromAddress" &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.APTR")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:bptr-from-address", signature);
+			}
+		}
+
 		if (typeName == "Amiga.BOOPSI" &&
 			name == "DoMethod" &&
 			signature.ParameterTypes.Length == 2 &&
@@ -1062,6 +1280,87 @@ internal sealed class CompilationModule : IDisposable
 			signature.ParameterTypes.Length is >= 2 and <= 8)
 		{
 			return MethodReference.ForIntrinsic("intrinsic:boopsi-do-method", signature);
+		}
+
+		if (TryGetAmigaLibraryBaseIntrinsic(typeName, name, signature) is { } amigaLibraryBase)
+		{
+			return MethodReference.ForIntrinsic(amigaLibraryBase, signature);
+		}
+
+		return null;
+	}
+
+	private MethodReference? TryResolveNullableIntrinsicReference(
+		CilType nullableType,
+		string name,
+		MethodSignature<CilType> signature)
+	{
+		if (!IsSupportedNullableType(nullableType) ||
+			nullableType.NullableElementType is not { } element)
+		{
+			return null;
+		}
+
+		if (name == ".ctor" &&
+			signature.ParameterTypes.Length == 1)
+		{
+			return MethodReference.ForIntrinsic(
+				$"intrinsic:nullable-ctor:{element.DisplayName}",
+				signature);
+		}
+
+		if (name == "get_HasValue" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return MethodReference.ForIntrinsic(
+				$"intrinsic:nullable-has-value:{element.DisplayName}",
+				signature);
+		}
+
+		if (name is "get_Value" or "GetValueOrDefault" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return MethodReference.ForIntrinsic(
+				$"intrinsic:nullable-get-value:{element.DisplayName}",
+				signature);
+		}
+
+		if (name == "GetValueOrDefault" &&
+			signature.ParameterTypes.Length == 1)
+		{
+			return MethodReference.ForIntrinsic(
+				$"intrinsic:nullable-get-value-or-default:{element.DisplayName}",
+				signature);
+		}
+
+		return null;
+	}
+
+	private static string? TryGetAmigaLibraryBaseIntrinsic(
+		string typeName,
+		string name,
+		MethodSignature<CilType> signature)
+	{
+		const string prefix = "Amiga.";
+		if (!typeName.StartsWith(prefix, StringComparison.Ordinal) ||
+			typeName == "Amiga.Exec")
+		{
+			return null;
+		}
+
+		var libraryTypeName = typeName[prefix.Length..];
+		var propertyName = $"{libraryTypeName}LibraryBase";
+		if (name == $"set_{propertyName}" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].DisplayName is "uint" or "Amiga.APTR")
+		{
+			return $"intrinsic:amiga-library-base-set:{libraryTypeName}";
+		}
+
+		if (name == $"get_{propertyName}" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return $"intrinsic:amiga-library-base-get:{libraryTypeName}";
 		}
 
 		return null;

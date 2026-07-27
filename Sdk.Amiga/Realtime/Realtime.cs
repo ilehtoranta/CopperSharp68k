@@ -13,6 +13,14 @@ public static class Realtime
 {
 	public const string Name = "realtime.library";
 
+	public static APTR RealtimeLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"RealtimeLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"RealtimeLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint LockRealTime(

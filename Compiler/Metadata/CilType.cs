@@ -30,7 +30,8 @@ internal sealed record CilType(
 	CilTypeKind Kind,
 	int Size,
 	string DisplayName,
-	CilType? ElementType = null)
+	CilType? ElementType = null,
+	ImmutableArray<CilType> GenericArguments = default)
 {
 	public bool IsVoid => Kind == CilTypeKind.Void;
 
@@ -50,6 +51,14 @@ internal sealed record CilType(
 			CilTypeKind.UnmanagedPointer or
 			CilTypeKind.GenericParameter ||
 		DisplayName == "Amiga.CString";
+
+	public bool IsNullable =>
+		Kind == CilTypeKind.ValueType &&
+		DisplayName.StartsWith("System.Nullable<", StringComparison.Ordinal) &&
+		GenericArguments.Length == 1;
+
+	public CilType? NullableElementType =>
+		IsNullable ? GenericArguments[0] : null;
 }
 
 internal readonly record struct CilGenericContext(
@@ -73,10 +82,17 @@ internal sealed class CilSignatureTypeProvider :
 		new(CilTypeKind.FunctionPointer, 4, "method*");
 
 	public CilType GetGenericInstantiation(CilType genericType, ImmutableArray<CilType> typeArguments) =>
-		new(
-			genericType.Kind,
-			genericType.Size,
-			$"{genericType.DisplayName}<{string.Join(",", typeArguments.Select(static item => item.DisplayName))}>");
+		genericType.DisplayName == "System.Nullable`1" && typeArguments.Length == 1
+			? new(
+				CilTypeKind.ValueType,
+				8,
+				$"System.Nullable<{typeArguments[0].DisplayName}>",
+				GenericArguments: typeArguments)
+			: new(
+				genericType.Kind,
+				genericType.Size,
+				$"{genericType.DisplayName}<{string.Join(",", typeArguments.Select(static item => item.DisplayName))}>",
+				GenericArguments: typeArguments);
 
 	public CilType GetGenericMethodParameter(CilGenericContext genericContext, int index) =>
 		index >= 0 && index < genericContext.MethodArguments.Length

@@ -13,6 +13,14 @@ public static class AmigaGuide
 {
 	public const string Name = "amigaguide.library";
 
+	public static APTR AmigaGuideLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"AmigaGuideLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"AmigaGuideLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-36)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int LockAmigaGuideBase(

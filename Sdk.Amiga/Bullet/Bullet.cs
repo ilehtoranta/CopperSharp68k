@@ -13,6 +13,14 @@ public static class Bullet
 {
 	public const string Name = "bullet.library";
 
+	public static APTR BulletLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"BulletLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"BulletLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint OpenEngine();

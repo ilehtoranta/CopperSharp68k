@@ -13,6 +13,14 @@ public static class Datatypes
 {
 	public const string Name = "datatypes.library";
 
+	public static APTR DatatypesLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"DatatypesLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"DatatypesLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-36)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint ObtainDataTypeA(

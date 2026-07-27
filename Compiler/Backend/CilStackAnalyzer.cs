@@ -12,6 +12,7 @@ namespace CopperSharp.Compiler.Backend;
 internal enum CilStackValueKind
 {
 	Int32,
+	Int64,
 	Reference,
 	ManagedPointer
 }
@@ -221,18 +222,54 @@ internal static class CilStackAnalyzer
 		CilInstruction instruction)
 	{
 		var op = instruction.OpCode;
+		if (op == OpCodes.Ldc_I8)
+		{
+			return 2;
+		}
+
 		if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
 		{
 			var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
-			var count = target.Signature.ParameterTypes.Length +
-				(target.Signature.Header.IsInstance && op != OpCodes.Newobj ? 1 : 0);
-			var pushes = op == OpCodes.Newobj || !target.Signature.ReturnType.IsVoid ? 1 : 0;
+			var count = ParameterSlotCount(target.Signature.ParameterTypes) +
+				(target.Signature.Header.IsInstance &&
+					(op != OpCodes.Newobj ||
+					 target.ImportName?.StartsWith("intrinsic:nullable-ctor:", StringComparison.Ordinal) == true)
+					? 1
+					: 0);
+			var pushes = op == OpCodes.Newobj
+				? 1
+				: SlotCount(target.Signature.ReturnType);
 			return pushes - count;
+		}
+
+		if (op == OpCodes.Initobj)
+		{
+			return -1;
+		}
+
+		if (TryGetArgumentIndex(instruction, out var argumentIndex))
+		{
+			return SlotCount(TypeForParameter(method, argumentIndex));
+		}
+
+		if (TryGetLoadLocalIndex(instruction, out var loadLocal))
+		{
+			return SlotCount(method.Locals[loadLocal]);
+		}
+
+		if (TryGetStoreLocalIndex(instruction, out var storeLocal))
+		{
+			return -SlotCount(method.Locals[storeLocal]);
+		}
+
+		if (op == OpCodes.Starg || op == OpCodes.Starg_S)
+		{
+			return -SlotCount(TypeForParameter(method, Convert.ToInt32(instruction.Operand)));
 		}
 
 		if (op == OpCodes.Ret)
 		{
-			return method.Signature.ReturnType.IsVoid ? 0 : -1;
+			return -SlotCount(method.Signature.ReturnType);
 		}
 
 		return op.StackBehaviourPop switch
@@ -504,6 +541,11 @@ internal static class CilStackAnalyzer
 			return Push(stack, CilStackValueKind.Int32);
 		}
 
+		if (op == OpCodes.Ldc_I8)
+		{
+			return Push(Push(stack, CilStackValueKind.Int64), CilStackValueKind.Int64);
+		}
+
 		if (op == OpCodes.Ldnull || op == OpCodes.Ldstr)
 		{
 			return Push(stack, CilStackValueKind.Reference);
@@ -511,12 +553,12 @@ internal static class CilStackAnalyzer
 
 		if (TryGetArgumentIndex(instruction, out var argumentIndex))
 		{
-			return Push(stack, StackKindForParameter(module, method, argumentIndex));
+			return PushValue(stack, StackKindForParameter(module, method, argumentIndex));
 		}
 
 		if (TryGetLoadLocalIndex(instruction, out var loadLocal))
 		{
-			return Push(stack, StackKindForType(method.Locals[loadLocal]));
+			return PushValue(stack, StackKindForType(method.Locals[loadLocal]));
 		}
 
 		if (TryGetLoadLocalAddressIndex(instruction, out var loadLocalAddress))
@@ -529,9 +571,23 @@ internal static class CilStackAnalyzer
 			return Push(stack, CilStackValueKind.ManagedPointer);
 		}
 
-		if (TryGetStoreLocalIndex(instruction, out _) || op == OpCodes.Starg || op == OpCodes.Starg_S)
+		if (TryGetStoreLocalIndex(instruction, out var storeLocal))
 		{
-			return Pop(method, instruction, stack, 1);
+			return Pop(method, instruction, stack, SlotCount(method.Locals[storeLocal]));
+		}
+
+		if (op == OpCodes.Starg || op == OpCodes.Starg_S)
+		{
+			var index = Convert.ToInt32(instruction.Operand);
+			if (method.Signature.Header.IsInstance)
+			{
+				if (index == 0)
+				{
+					return Pop(method, instruction, stack, 1);
+				}
+				index--;
+			}
+			return Pop(method, instruction, stack, SlotCount(method.Signature.ParameterTypes[index]));
 		}
 
 		if (op == OpCodes.Dup)
@@ -552,11 +608,21 @@ internal static class CilStackAnalyzer
 			op == OpCodes.Shr_Un || op == OpCodes.Ceq || op == OpCodes.Cgt ||
 			op == OpCodes.Cgt_Un || op == OpCodes.Clt || op == OpCodes.Clt_Un)
 		{
+			if (stack.TakeLast(Math.Min(4, stack.Length)).Contains(CilStackValueKind.Int64))
+			{
+				throw Unsupported(method, instruction, "64-bit arithmetic and comparisons");
+			}
+
 			return Push(Pop(method, instruction, stack, 2), CilStackValueKind.Int32);
 		}
 
 		if (op == OpCodes.Neg || op == OpCodes.Not)
 		{
+			if (stack.Length != 0 && stack[^1] == CilStackValueKind.Int64)
+			{
+				throw Unsupported(method, instruction, "64-bit arithmetic");
+			}
+
 			return Push(Pop(method, instruction, stack, 1), CilStackValueKind.Int32);
 		}
 
@@ -584,8 +650,12 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
 		{
 			var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
-			var count = target.Signature.ParameterTypes.Length +
-				(target.Signature.Header.IsInstance && op != OpCodes.Newobj ? 1 : 0);
+			var count = ParameterSlotCount(target.Signature.ParameterTypes) +
+				(target.Signature.Header.IsInstance &&
+					(op != OpCodes.Newobj ||
+					 target.ImportName?.StartsWith("intrinsic:nullable-ctor:", StringComparison.Ordinal) == true)
+					? 1
+					: 0);
 			var result = Pop(method, instruction, stack, count);
 			if (op == OpCodes.Newobj)
 			{
@@ -593,7 +663,12 @@ internal static class CilStackAnalyzer
 			}
 			return target.Signature.ReturnType.IsVoid
 				? result
-				: Push(result, StackKindForType(target.Signature.ReturnType));
+				: PushValue(result, StackKindForType(target.Signature.ReturnType));
+		}
+
+		if (op == OpCodes.Initobj)
+		{
+			return Pop(method, instruction, stack, 1);
 		}
 
 		if (op == OpCodes.Newarr)
@@ -639,7 +714,7 @@ internal static class CilStackAnalyzer
 			var field = module.ResolveFieldToken((int)instruction.Operand!, method, instruction.Offset);
 			if (op == OpCodes.Ldsfld)
 			{
-				return Push(stack, StackKindForType(field.Type));
+				return PushValue(stack, StackKindForType(field.Type));
 			}
 			if (op == OpCodes.Ldsflda)
 			{
@@ -651,7 +726,7 @@ internal static class CilStackAnalyzer
 			}
 			if (op == OpCodes.Ldfld)
 			{
-				return Push(Pop(method, instruction, stack, 1), StackKindForType(field.Type));
+				return PushValue(Pop(method, instruction, stack, 1), StackKindForType(field.Type));
 			}
 			if (op == OpCodes.Ldflda)
 			{
@@ -662,7 +737,7 @@ internal static class CilStackAnalyzer
 
 		if (op == OpCodes.Ret)
 		{
-			return method.Signature.ReturnType.IsVoid ? stack : Pop(method, instruction, stack, 1);
+			return Pop(method, instruction, stack, SlotCount(method.Signature.ReturnType));
 		}
 
 		if (IsConversion(op))
@@ -677,6 +752,13 @@ internal static class CilStackAnalyzer
 		ImmutableArray<CilStackValueKind> stack,
 		CilStackValueKind kind) =>
 		stack.Add(kind);
+
+	private static ImmutableArray<CilStackValueKind> PushValue(
+		ImmutableArray<CilStackValueKind> stack,
+		CilStackValueKind kind) =>
+		kind == CilStackValueKind.Int64
+			? stack.Add(CilStackValueKind.Int64).Add(CilStackValueKind.Int64)
+			: stack.Add(kind);
 
 	private static ImmutableArray<CilStackValueKind> Pop(
 		CilMethod method,
@@ -728,11 +810,44 @@ internal static class CilStackAnalyzer
 		return StackKindForType(method.Signature.ParameterTypes[index]);
 	}
 
+	private static CilType TypeForParameter(CilMethod method, int index)
+	{
+		if (method.Signature.Header.IsInstance)
+		{
+			if (index == 0)
+			{
+				return new CilType(
+					CilTypeKind.ManagedReference,
+					4,
+					method.DisplayName.Split("::", StringSplitOptions.None)[0]);
+			}
+
+			index--;
+		}
+
+		return method.Signature.ParameterTypes[index];
+	}
+
 	private static CilStackValueKind StackKindForType(CilType type) =>
-		type.Kind switch
+		type.Size == 8 && type.IsSupportedScalar
+			? CilStackValueKind.Int64
+			: type.Kind switch
 		{
 			CilTypeKind.ManagedReference => CilStackValueKind.Reference,
 			CilTypeKind.ManagedPointer => CilStackValueKind.ManagedPointer,
 			_ => CilStackValueKind.Int32
 		};
+
+	private static int SlotCount(CilType type) =>
+		type.IsVoid ? 0 : type.Size == 8 && type.IsSupportedScalar ? 2 : 1;
+
+	private static int ParameterSlotCount(ImmutableArray<CilType> parameterTypes)
+	{
+		var result = 0;
+		foreach (var parameter in parameterTypes)
+		{
+			result += SlotCount(parameter);
+		}
+		return result;
+	}
 }

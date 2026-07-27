@@ -13,6 +13,14 @@ public static class CyberGraphics
 {
 	public const string Name = "cybergraphics.library";
 
+	public static APTR CyberGraphicsLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"CyberGraphicsLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"CyberGraphicsLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-54)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IsCyberModeID(

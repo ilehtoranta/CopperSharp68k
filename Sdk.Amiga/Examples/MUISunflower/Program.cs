@@ -50,7 +50,7 @@ public static class Program
 		app.ConnectCloseRequest(window);
 		window.SetOpen(true);
 
-		var result = app.Run();
+        var result = app.Run();
 		app.Dispose();
 		return result;
 	}

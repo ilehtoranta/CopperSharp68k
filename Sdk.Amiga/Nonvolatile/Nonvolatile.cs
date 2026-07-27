@@ -13,6 +13,14 @@ public static class Nonvolatile
 {
 	public const string Name = "nonvolatile.library";
 
+	public static APTR NonvolatileLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"NonvolatileLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"NonvolatileLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint GetCopyNV(

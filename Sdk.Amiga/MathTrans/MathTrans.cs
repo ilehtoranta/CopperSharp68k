@@ -13,6 +13,14 @@ public static class MathTrans
 {
 	public const string Name = "mathtrans.library";
 
+	public static APTR MathTransLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"MathTransLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"MathTransLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint SPAtan([M68kRegister(M68kRegister.D0)] uint value);

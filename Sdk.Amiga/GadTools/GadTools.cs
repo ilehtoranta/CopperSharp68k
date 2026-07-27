@@ -13,6 +13,14 @@ public static class GadTools
 {
 	public const string Name = "gadtools.library";
 
+	public static APTR GadToolsLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"GadToolsLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"GadToolsLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint CreateGadgetA(

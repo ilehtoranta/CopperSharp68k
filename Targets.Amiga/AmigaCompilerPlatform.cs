@@ -94,6 +94,7 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 {
 	private static readonly string LibraryAttributeName = typeof(AmigaLibraryAttribute).FullName!;
 	private static readonly string LvoAttributeName = typeof(AmigaLvoAttribute).FullName!;
+	private static readonly string ImportAttributeName = typeof(M68kImportAttribute).FullName!;
 	private static readonly string RegisterAttributeName = typeof(M68kRegisterAttribute).FullName!;
 	private readonly AmigaCompilationOptions _options;
 
@@ -106,6 +107,12 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 		M68kExternalMethod method,
 		out M68kExternalCallConvention convention)
 	{
+		if (Find(method.MethodAttributes, ImportAttributeName) is not null)
+		{
+			convention = null!;
+			return false;
+		}
+
 		var methodLibrary = Find(method.MethodAttributes, LibraryAttributeName);
 		var typeLibrary = Find(method.DeclaringTypeAttributes, LibraryAttributeName);
 		var lvo = Find(method.MethodAttributes, LvoAttributeName);
@@ -163,11 +170,11 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 		{
 			AmigaLibraryBasePolicy.ExecBase => new M68kExternalCallConvention(
 				name,
-				M68kExternalBaseSource.CachedPointer,
+				M68kExternalBaseSource.WritableSlot,
 				M68kRegister.A6,
 				offset,
-				CacheRegister: M68kRegister.A5,
 				SourceAddress: 4,
+				SlotSymbol: "_ExecBase",
 				ParameterRegisters: parameterRegisters,
 				ReturnRegister: returnRegister),
 			AmigaLibraryBasePolicy.Manual => new M68kExternalCallConvention(

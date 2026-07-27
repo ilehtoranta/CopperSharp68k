@@ -13,6 +13,14 @@ public static class Locale
 {
 	public const string Name = "locale.library";
 
+	public static APTR LocaleLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"LocaleLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"LocaleLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-36)]
 	public static void CloseCatalog(
 		[M68kRegister(M68kRegister.A0)] uint catalog)

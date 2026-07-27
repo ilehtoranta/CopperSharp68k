@@ -13,6 +13,14 @@ public static class RexxSysLib
 {
 	public const string Name = "rexxsyslib.library";
 
+	public static APTR RexxSysLibLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"RexxSysLibLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"RexxSysLibLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-126)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint CreateArgstring(

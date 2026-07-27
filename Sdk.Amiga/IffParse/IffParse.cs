@@ -13,6 +13,14 @@ public static class IffParse
 {
 	public const string Name = "iffparse.library";
 
+	public static APTR IffParseLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"IffParseLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"IffParseLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AllocIFF()

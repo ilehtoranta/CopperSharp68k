@@ -13,6 +13,14 @@ public static class Utility
 {
 	public const string Name = "utility.library";
 
+	public static APTR UtilityLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"UtilityLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"UtilityLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint FindTagItem(

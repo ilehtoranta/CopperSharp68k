@@ -297,12 +297,12 @@ public static class Exec
 
 	[AmigaLvo(-408)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint OldOpenLibrary(
+	public static extern APTR? OldOpenLibrary(
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(-414)]
 	public static extern void CloseLibrary(
-		[M68kRegister(M68kRegister.A1)] uint library);
+		[M68kRegister(M68kRegister.A1)] APTR library);
 
 	[AmigaLvo(-420)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -400,7 +400,7 @@ public static class Exec
 
 	[AmigaLvo(-552)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint OpenLibrary(
+	public static extern APTR? OpenLibrary(
 		[M68kRegister(M68kRegister.A1)] CString name,
 		[M68kRegister(M68kRegister.D0)] uint minimumVersion);
 
@@ -652,7 +652,7 @@ public static class Exec
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-810)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint TaggedOpenLibrary(
+	public static extern APTR? TaggedOpenLibrary(
 		[M68kRegister(M68kRegister.D0)] int tag);
 
 	// MorphOS m68k ABI call.

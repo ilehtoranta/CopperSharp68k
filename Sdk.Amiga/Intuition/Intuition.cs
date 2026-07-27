@@ -13,6 +13,14 @@ public static class Intuition
 {
 	public const string Name = "intuition.library";
 
+	public static APTR IntuitionLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"IntuitionLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"IntuitionLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	public static extern void OpenIntuition();
 
@@ -588,6 +596,17 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.A1)] uint arg1,
 		[M68kRegister(M68kRegister.A2)] uint arg2);
+
+	[AmigaLvo(-636)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static uint NewObject(
+		[M68kRegister(M68kRegister.A0)] uint classPtr,
+		[M68kRegister(M68kRegister.A1)] uint classId,
+		[M68kRegister(M68kRegister.A2)]
+		[AmigaStackVarargs]
+		params uint[] tags) =>
+		throw new System.NotSupportedException(
+			"Intuition.NewObject stack varargs are lowered by CopperSharp.");
 
 	[AmigaLvo(-642)]
 	public static extern void DisposeObject(

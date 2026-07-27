@@ -13,6 +13,14 @@ public static class MUIMaster
 {
 	public const string Name = "muimaster.library";
 
+	public static APTR MUIMasterLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"MUIMasterLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"MUIMasterLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint MUI_NewObjectA(
@@ -90,7 +98,7 @@ public static class MUIMaster
 		[M68kRegister(M68kRegister.A1)] CString superName,
 		[M68kRegister(M68kRegister.A2)] uint superMcc,
 		[M68kRegister(M68kRegister.D0)] int dataSize,
-		[M68kRegister(M68kRegister.A3)] uint dispatcher);
+		[M68kRegister(M68kRegister.A3)] APTR dispatcher);
 
 	[AmigaLvo(-114)]
 	[return: M68kRegister(M68kRegister.D0)]

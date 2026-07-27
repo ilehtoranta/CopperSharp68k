@@ -13,6 +13,14 @@ public static class MathIeeeDoubTrans
 {
 	public const string Name = "mathieeedoubtrans.library";
 
+	public static APTR MathIeeeDoubTransLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"MathIeeeDoubTransLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"MathIeeeDoubTransLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern ulong IEEEDPAtan([M68kRegister(M68kRegister.D0)] ulong value);

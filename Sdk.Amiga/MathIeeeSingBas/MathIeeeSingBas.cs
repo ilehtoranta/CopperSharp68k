@@ -13,6 +13,14 @@ public static class MathIeeeSingBas
 {
 	public const string Name = "mathieeesingbas.library";
 
+	public static APTR MathIeeeSingBasLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"MathIeeeSingBasLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"MathIeeeSingBasLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IEEESPFix([M68kRegister(M68kRegister.D0)] uint value);

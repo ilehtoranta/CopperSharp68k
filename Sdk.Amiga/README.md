@@ -5,11 +5,24 @@ Amiga ABI declarations for code compiled by `CopperSharp.Targets.Amiga`.
 The initial reference surface includes:
 
 - `Amiga.Exec.OpenLibrary`, LVO -552: name in A1, minimum version in D0,
-  library base returned in D0.
+  library base returned in D0, or `null` when the library cannot be opened.
 - `Amiga.DOS.Open`, LVO -30: name in D1, access mode in D2, file handle
   returned in D0.
 
 Pointer arguments are represented as 32-bit guest addresses.
+
+`APTR` represents untyped byte-addressed Amiga pointers. `BPTR` represents DOS
+BCPL pointers: the raw value passed to DOS is the byte address shifted right by
+two, and `BPTR.Address` converts it back to an `APTR`. Use `APTR.Null`,
+`BPTR.Null`, `IsNull`, and `IsNotNull` for pointer-null semantics instead of
+raw numeric zero.
+
+Manual library wrappers expose a lowered `<Wrapper>LibraryBase` property, such
+as `DOS.DOSLibraryBase` or `Graphics.GraphicsLibraryBase`. Check the nullable
+`APTR?` returned by `Exec.OpenLibrary()` and assign its non-null `Value` before
+calling manual vectors. Clear or replace the base with `APTR.Null` during
+cleanup as needed. These properties map directly to the same writable base
+slots used by the generated LVO calls; they are not managed backing fields.
 
 Kickstart 3.1 library folders are present as ABI declaration stubs. Most
 libraries currently expose only their Amiga library name constant until their
@@ -18,6 +31,9 @@ LVO declarations are added.
 `Amiga.DOS` includes the non-variadic AmigaOS 3.x and MorphOS m68k ABI vector
 surface. C varargs convenience wrappers, such as `Printf()` and `SystemTags()`,
 are intentionally represented by their underlying vector/tag-list forms.
+DOS 64-bit file-position and record-lock calls use 68k register pairs: a
+`long`/`ulong` parameter annotated with `D2` occupies `D2/D3`, and a 64-bit
+return annotated with `D0` is returned in `D0/D1`.
 
 `Amiga.Intuition` follows the same convention. Variadic convenience wrappers,
 such as `NewObject()`, `SetAttrs()`, and `EasyRequest()`, are represented by
@@ -122,5 +138,6 @@ wrappers around raw MUI object pointers. They expose `Raw`, `DoMethod()`,
 `SetAttrs()`, `Dispose()`, and class-specific `New()` factories while keeping
 taglists and method messages as guest pointers.
 
-See `Examples/MUISunflower` for a minimal MUI object tree with an application,
-window, group, text object, and button.
+See `Examples/DOS` for a minimal manual `dos.library` open/print/cleanup
+program. See `Examples/MUISunflower` for a minimal MUI object tree with an
+application, window, group, text object, and button.

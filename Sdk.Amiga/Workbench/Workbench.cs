@@ -13,6 +13,14 @@ public static class Workbench
 {
 	public const string Name = "workbench.library";
 
+	public static APTR WorkbenchLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"WorkbenchLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"WorkbenchLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	public static void UpdateWorkbench(
 		[M68kRegister(M68kRegister.A0)] CString name,

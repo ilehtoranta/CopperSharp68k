@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\CopperSharp.Sdk.Amiga.csproj" />
+    <ProjectReference Include="..\Sdk.Amiga\Examples\MUITaskList\MUITaskList.csproj" />
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
     <ProjectReference Include="..\..\MedPlayer\Copper68k\Copper68k.csproj"
                       Condition="Exists('..\..\MedPlayer\Copper68k\Copper68k.csproj')" />

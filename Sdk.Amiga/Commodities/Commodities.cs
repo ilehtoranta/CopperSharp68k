@@ -13,6 +13,14 @@ public static class Commodities
 {
 	public const string Name = "commodities.library";
 
+	public static APTR CommoditiesLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"CommoditiesLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"CommoditiesLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint CreateCxObj(

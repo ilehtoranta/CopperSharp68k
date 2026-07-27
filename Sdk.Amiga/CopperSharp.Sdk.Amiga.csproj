@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1591</NoWarn>
     <PackageId>CopperSharp.Sdk.Amiga</PackageId>
@@ -13,8 +14,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Examples\**\*.cs" />
+    <Compile Include="Examples\DOS\Program.cs" />
     <Compile Include="Examples\MUISunflower\Program.cs" />
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
+    <None Include="Examples\DOS\DOS.csproj" />
+    <None Include="Examples\MUITaskList\MUITaskList.csproj" />
     <None Include="Examples\MUISunflower\MUISunflower.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>

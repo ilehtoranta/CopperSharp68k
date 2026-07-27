@@ -13,6 +13,14 @@ public static class Layers
 {
 	public const string Name = "layers.library";
 
+	public static APTR LayersLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"LayersLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"LayersLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	public static extern void InitLayers(
 		[M68kRegister(M68kRegister.A0)] uint arg0);

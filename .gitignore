@@ -528,3 +528,4 @@ benchmark-results
 .repowise-workspace.yaml
 *.s
 *.map
+.codex-temp

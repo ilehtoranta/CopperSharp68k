@@ -13,6 +13,14 @@ public static class Graphics
 {
 	public const string Name = "graphics.library";
 
+	public static APTR GraphicsLibraryBase
+	{
+		get => throw new System.NotSupportedException(
+			"GraphicsLibraryBase is lowered by CopperSharp.");
+		set => throw new System.NotSupportedException(
+			"GraphicsLibraryBase is lowered by CopperSharp.");
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int BltBitMap(

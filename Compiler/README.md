@@ -87,6 +87,11 @@ and `CopperSharp.Sdk.Amiga` packages.
 
 - Signed and unsigned 32-bit integer arithmetic, comparisons, conversions,
   branches, calls, locals, and arguments.
+- 64-bit integer constants, locals, returns, and register-pair import/platform
+  call parameters/results. 64-bit arithmetic and comparisons are still rejected.
+- `Nullable<T>` locals for 32-bit scalar values and transparent 32-bit structs,
+  including null initialization, construction, `HasValue`, `Value`, and
+  `GetValueOrDefault`.
 - Static and instance 32-bit fields, object construction with constructor
   arguments that fit the private register ABI, UTF-16 string literals, and
   one-, two-, and four-byte scalar arrays plus reference arrays.
@@ -97,8 +102,8 @@ and `CopperSharp.Sdk.Amiga` packages.
 - HUNK executable output with relocations and symbols, and 256/512 KiB
   Kickstart ROM output with reset vectors and checksum.
 
-This preview intentionally rejects floating point, 64-bit values, exceptions,
-boxing, delegates, reflection, P/Invoke, and unsupported CIL opcodes. Allocation
+This preview intentionally rejects floating point, general 64-bit arithmetic,
+exceptions, boxing, delegates, reflection, P/Invoke, and unsupported CIL opcodes. Allocation
 is supplied by the `__c68k_alloc` import. Optional explicit release can be
 supplied through `__c68k_dispose`, exposed through helpers such as
 `M68kRuntime.DisposeObject(ref value)` and

@@ -46,13 +46,13 @@ public static class BOOPSI
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint DoSuperMethodA(
 		[M68kRegister(M68kRegister.A0)] uint cl,
-		[M68kRegister(M68kRegister.A1)] uint obj,
-		[M68kRegister(M68kRegister.A2)] uint message);
+		[M68kRegister(M68kRegister.A2)] uint obj,
+		[M68kRegister(M68kRegister.A1)] uint message);
 
 	[M68kImport("amiga.boopsi.CoerceMethodA")]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint CoerceMethodA(
 		[M68kRegister(M68kRegister.A0)] uint cl,
-		[M68kRegister(M68kRegister.A1)] uint obj,
-		[M68kRegister(M68kRegister.A2)] uint message);
+		[M68kRegister(M68kRegister.A2)] uint obj,
+		[M68kRegister(M68kRegister.A1)] uint message);
 }
