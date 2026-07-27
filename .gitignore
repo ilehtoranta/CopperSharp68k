@@ -526,3 +526,5 @@ benchmark-results
 .repowise-workspace
 .mcp.json
 .repowise-workspace.yaml
+*.s
+*.map
