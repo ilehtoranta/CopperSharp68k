@@ -25,6 +25,7 @@ internal sealed class M68kCodeGenerator
 	private int _uniqueLabel;
 	private int _currentStackDepth;
 	private ImmutableArray<CilStackValueKind> _currentStackTypes = ImmutableArray<CilStackValueKind>.Empty;
+	private FrameLayout? _currentFrameLayout;
 	private GeneratedPlatformBase? _loadedPlatformBase;
 
 	private enum StackVarargsCallKind
@@ -35,7 +36,16 @@ internal sealed class M68kCodeGenerator
 
 	private readonly record struct StackVarargValue(
 		CilInstruction? Instruction,
-		bool IsCStringLiteral = false);
+		bool IsCStringLiteral = false,
+		bool IsTransparentScalarRawGetter = false);
+
+	private sealed record FrameLayout(
+		int FrameBytes,
+		short ClearStartOffset,
+		int ClearLongs,
+		ImmutableArray<short> LocalOffsets,
+		ImmutableArray<M68kRegister?> LocalRegisters,
+		ImmutableArray<short> ArgumentOffsets);
 
 	private bool UsesBuiltInManagedPool =>
 		_memoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc;
@@ -201,36 +211,27 @@ internal sealed class M68kCodeGenerator
 		_loadedPlatformBase = null;
 		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
 		var registerAbi = GetInternalRegisterAbi(method);
-		var argumentHomeCount = registerAbi?.Count ?? 0;
+		var branchTargets = GetBranchTargets(method.Instructions);
+		_currentFrameLayout = CreateFrameLayout(
+			method,
+			registerAbi,
+			branchTargets,
+			reachableStackStates.Keys.ToHashSet());
 		_assembler.AlignWord();
 		_assembler.Mark(MethodLabel(method));
 
-		var frameBytes = checked((method.Locals.Length + argumentHomeCount) * 4);
-		if (frameBytes > short.MaxValue)
-		{
-			throw new M68kCompilationException(
-				M68kDiagnosticIds.UnsupportedSignature,
-				"Local frame exceeds the LINK.W displacement range.",
-				method.DisplayName);
-		}
-
-		EmitAllocateFrame(frameBytes);
+		EmitAllocateFrame(_currentFrameLayout.FrameBytes);
 		if (registerAbi is not null)
 		{
 			for (var index = 0; index < registerAbi.Count; index++)
 			{
-				EmitStoreRegisterToFrame(registerAbi[index], ArgumentHomeOffset(index));
+				EmitStoreRegisterToFrame(registerAbi[index], ArgumentOffset(method, index));
 			}
 		}
-		if (method.InitializeLocals)
-		{
-			for (var index = 0; index < method.Locals.Length; index++)
-			{
-				EmitClearFrameSlot(LocalOffset(method, index));
-			}
-		}
+		EmitClearFrameRegion(
+			_currentFrameLayout.ClearStartOffset,
+			_currentFrameLayout.ClearLongs);
 
-		var branchTargets = GetBranchTargets(method.Instructions);
 		for (var instructionIndex = 0; instructionIndex < method.Instructions.Count; instructionIndex++)
 		{
 			var instruction = method.Instructions[instructionIndex];
@@ -246,6 +247,22 @@ internal sealed class M68kCodeGenerator
 				_loadedPlatformBase = null;
 			}
 			_assembler.Mark(IlLabel(method, instruction.Offset));
+			if (TryEmitBoopsiDoMethodFixedCall(
+				method,
+				method.Instructions,
+				instructionIndex,
+				branchTargets,
+				out var boopsiFixedConsumed))
+			{
+				for (var skipped = 1; skipped < boopsiFixedConsumed; skipped++)
+				{
+					_assembler.Mark(IlLabel(
+						method,
+						method.Instructions[instructionIndex + skipped].Offset));
+				}
+				instructionIndex += boopsiFixedConsumed - 1;
+				continue;
+			}
 			if (TryEmitStackVarargsCall(
 				method,
 				method.Instructions,
@@ -301,6 +318,395 @@ internal sealed class M68kCodeGenerator
 			}
 			EmitInstruction(method, instruction);
 		}
+	}
+
+	private FrameLayout CreateFrameLayout(
+		CilMethod method,
+		IReadOnlyList<M68kRegister>? registerAbi,
+		IReadOnlySet<int> branchTargets,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var argumentHomeCount = registerAbi?.Count ?? 0;
+		var localRegisters = SelectPromotedLocalRegisters(method, branchTargets, reachableOffsets);
+		var frameLocalCount = method.Locals.Length - localRegisters.Count(static item => item is not null);
+		var frameBytes = checked((frameLocalCount + argumentHomeCount) * 4);
+		if (frameBytes > short.MaxValue)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedSignature,
+				"Local frame exceeds the LINK.W displacement range.",
+				method.DisplayName);
+		}
+
+		var clearLocals = GetLocalsRequiringEntryClear(method, branchTargets, reachableOffsets);
+		var localOffsets = new short[method.Locals.Length];
+		var nextLocalSlot = argumentHomeCount;
+		for (var index = 0; index < method.Locals.Length; index++)
+		{
+			if (!clearLocals[index] || localRegisters[index] is not null)
+			{
+				continue;
+			}
+
+			localOffsets[index] = checked((short)(nextLocalSlot * 4));
+			nextLocalSlot++;
+		}
+
+		var clearLongs = nextLocalSlot - argumentHomeCount;
+		for (var index = 0; index < method.Locals.Length; index++)
+		{
+			if (clearLocals[index] || localRegisters[index] is not null)
+			{
+				continue;
+			}
+
+			localOffsets[index] = checked((short)(nextLocalSlot * 4));
+			nextLocalSlot++;
+		}
+
+		var argumentOffsets = new short[method.ParameterCount];
+		for (var index = 0; index < argumentOffsets.Length; index++)
+		{
+			argumentOffsets[index] = registerAbi is not null
+				? checked((short)(index * 4))
+				: checked((short)(frameBytes + 4 + ((method.ParameterCount - 1 - index) * 4)));
+		}
+
+		return new FrameLayout(
+			frameBytes,
+			checked((short)(argumentHomeCount * 4)),
+			clearLongs,
+			localOffsets.ToImmutableArray(),
+			localRegisters.ToImmutableArray(),
+			argumentOffsets.ToImmutableArray());
+	}
+
+	private M68kRegister?[] SelectPromotedLocalRegisters(
+		CilMethod method,
+		IReadOnlySet<int> branchTargets,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var result = new M68kRegister?[method.Locals.Length];
+		var nextRegister = 0;
+		var registers = new[]
+		{
+			M68kRegister.D2,
+			M68kRegister.D3,
+			M68kRegister.D4,
+			M68kRegister.D5,
+			M68kRegister.D6,
+			M68kRegister.D7
+		};
+
+		for (var index = 0; index < method.Locals.Length && nextRegister < registers.Length; index++)
+		{
+			if (CanPromoteLocal(method, index, branchTargets, reachableOffsets))
+			{
+				result[index] = registers[nextRegister++];
+			}
+		}
+
+		return result;
+	}
+
+	private bool CanPromoteLocal(
+		CilMethod method,
+		int localIndex,
+		IReadOnlySet<int> branchTargets,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var localType = method.Locals[localIndex];
+		if (localType.IsReference ||
+			!localType.IsSupportedScalar ||
+			localType.Size != 4)
+		{
+			return false;
+		}
+
+		var firstAccess = -1;
+		var lastAccess = -1;
+		for (var index = 0; index < method.Instructions.Count; index++)
+		{
+			var instruction = method.Instructions[index];
+			if (!reachableOffsets.Contains(instruction.Offset))
+			{
+				continue;
+			}
+
+			if (TryGetLoadLocalAddressIndex(instruction, out var addressLocal) &&
+				addressLocal == localIndex)
+			{
+				return false;
+			}
+
+			if ((TryGetLoadLocalIndex(instruction, out var loadedLocal) && loadedLocal == localIndex) ||
+				(TryGetStoreLocalIndex(instruction, out var storedLocal) && storedLocal == localIndex))
+			{
+				firstAccess = firstAccess < 0 ? index : firstAccess;
+				lastAccess = index;
+			}
+		}
+
+		if (firstAccess < 0 ||
+			!TryGetStoreLocalIndex(method.Instructions[firstAccess], out var firstStore) ||
+			firstStore != localIndex)
+		{
+			return false;
+		}
+
+		for (var index = firstAccess; index <= lastAccess; index++)
+		{
+			var instruction = method.Instructions[index];
+			if (!reachableOffsets.Contains(instruction.Offset))
+			{
+				continue;
+			}
+
+			if (branchTargets.Contains(instruction.Offset) ||
+				instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch ||
+				instruction.OpCode == OpCodes.Call ||
+				instruction.OpCode == OpCodes.Callvirt ||
+				instruction.OpCode == OpCodes.Newobj ||
+				instruction.OpCode == OpCodes.Newarr ||
+				InstructionMayClobberPromotedLocalRegister(instruction.OpCode))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool InstructionMayClobberPromotedLocalRegister(OpCode op) =>
+		op == OpCodes.Mul ||
+		op == OpCodes.Div ||
+		op == OpCodes.Div_Un ||
+		op == OpCodes.Rem ||
+		op == OpCodes.Rem_Un ||
+		op == OpCodes.Shl ||
+		op == OpCodes.Shr ||
+		op == OpCodes.Shr_Un ||
+		op == OpCodes.Switch;
+
+	private bool[] GetLocalsRequiringEntryClear(
+		CilMethod method,
+		IReadOnlySet<int> branchTargets,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var result = new bool[method.Locals.Length];
+		if (!method.InitializeLocals)
+		{
+			return result;
+		}
+
+		Array.Fill(result, true);
+		for (var localIndex = 0; localIndex < method.Locals.Length; localIndex++)
+		{
+			result[localIndex] = LocalRequiresEntryClear(
+				method,
+				localIndex,
+				branchTargets,
+				reachableOffsets);
+		}
+
+		return result;
+	}
+
+	private bool LocalRequiresEntryClear(
+		CilMethod method,
+		int localIndex,
+		IReadOnlySet<int> branchTargets,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var ambiguousBeforeFirstAccess = false;
+		for (var instructionIndex = 0; instructionIndex < method.Instructions.Count; instructionIndex++)
+		{
+			var instruction = method.Instructions[instructionIndex];
+			if (!reachableOffsets.Contains(instruction.Offset))
+			{
+				continue;
+			}
+
+			if (branchTargets.Contains(instruction.Offset) ||
+				instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch)
+			{
+				ambiguousBeforeFirstAccess = true;
+			}
+
+			if (method.Locals[localIndex].IsReference &&
+				instruction.OpCode is { } op &&
+				(op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj || op == OpCodes.Newarr))
+			{
+				ambiguousBeforeFirstAccess = true;
+			}
+
+			if (TryGetStoreLocalIndex(instruction, out var storedLocal) &&
+				storedLocal == localIndex)
+			{
+				return ambiguousBeforeFirstAccess;
+			}
+
+			if (TryGetLoadLocalIndex(instruction, out var loadedLocal) &&
+				loadedLocal == localIndex)
+			{
+				return true;
+			}
+
+			if (TryGetLoadLocalAddressIndex(instruction, out var addressLocal) &&
+				addressLocal == localIndex)
+			{
+				return ambiguousBeforeFirstAccess ||
+					!IsTransparentLocalConstructorInitialization(
+						method,
+						localIndex,
+						instructionIndex,
+						branchTargets,
+						reachableOffsets);
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsTransparentLocalConstructorInitialization(
+		CilMethod method,
+		int localIndex,
+		int addressInstructionIndex,
+		IReadOnlySet<int> branchTargets,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		if (!_module.IsTransparentScalarType(method.Locals[localIndex]))
+		{
+			return false;
+		}
+
+		for (var index = addressInstructionIndex + 1; index < method.Instructions.Count; index++)
+		{
+			var instruction = method.Instructions[index];
+			if (!reachableOffsets.Contains(instruction.Offset))
+			{
+				continue;
+			}
+
+			if (branchTargets.Contains(instruction.Offset) ||
+				instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch)
+			{
+				return false;
+			}
+
+			if ((TryGetLoadLocalIndex(instruction, out var loadedLocal) && loadedLocal == localIndex) ||
+				(TryGetStoreLocalIndex(instruction, out var storedLocal) && storedLocal == localIndex) ||
+				(TryGetLoadLocalAddressIndex(instruction, out var addressLocal) && addressLocal == localIndex))
+			{
+				return false;
+			}
+
+			if (instruction.OpCode != OpCodes.Call && instruction.OpCode != OpCodes.Callvirt)
+			{
+				continue;
+			}
+
+			var target = _module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			if (target.Definition is { } definition &&
+				_module.IsTransparentScalarConstructor(definition))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryEmitBoopsiDoMethodFixedCall(
+		CilMethod caller,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		IReadOnlySet<int> branchTargets,
+		out int consumed)
+	{
+		consumed = 0;
+		var values = new List<StackVarargValue>();
+		var index = startIndex;
+		while (index < instructions.Count)
+		{
+			var instruction = instructions[index];
+			if (index != startIndex && branchTargets.Contains(instruction.Offset))
+			{
+				return false;
+			}
+
+			if (instruction.OpCode == OpCodes.Call || instruction.OpCode == OpCodes.Callvirt)
+			{
+				break;
+			}
+
+			if (!TryGetStackVarargValueExpression(
+				caller,
+				instructions,
+				index,
+				out var value,
+				out var valueConsumed))
+			{
+				return false;
+			}
+
+			if (HasBranchTarget(
+				branchTargets,
+				instructions,
+				startIndex,
+				index + 1,
+				index + valueConsumed - 1))
+			{
+				return false;
+			}
+
+			values.Add(value);
+			index += valueConsumed;
+		}
+
+		if (index >= instructions.Count ||
+			values.Count < 2 ||
+			branchTargets.Contains(instructions[index].Offset))
+		{
+			return false;
+		}
+
+		var target = _module.ResolveMethodToken(
+			(int)instructions[index].Operand!,
+			caller,
+			instructions[index].Offset);
+		if (target.ImportName != "intrinsic:boopsi-do-method" ||
+			target.ParameterCount != values.Count)
+		{
+			return false;
+		}
+
+		EmitBoopsiDoMethodFixedSimple(caller, values);
+		_loadedPlatformBase = null;
+		consumed = index - startIndex + 1;
+		return true;
+	}
+
+	private void EmitBoopsiDoMethodFixedSimple(
+		CilMethod caller,
+		IReadOnlyList<StackVarargValue> values)
+	{
+		EmitStackVarargValue(caller, values[0], _currentStackDepth);
+		EmitPopRegister(M68kRegister.A0);
+		var valueStackDepth = _currentStackDepth;
+		for (var index = values.Count - 1; index >= 1; index--)
+		{
+			EmitStackVarargValue(caller, values[index], valueStackDepth);
+			valueStackDepth++;
+		}
+
+		_assembler.EmitWord(0x224F); // MOVEA.L A7,A1
+		_assembler.EmitJsr("amiga.boopsi.DoMethodA", external: true);
+		EmitDiscardStackArguments(values.Count - 1);
+		EmitPushD0();
 	}
 
 	private bool TryEmitStackVarargsCall(
@@ -438,6 +844,25 @@ internal sealed class M68kCodeGenerator
 			return false;
 		}
 
+		if (valueIndex + 1 < instructions.Count &&
+			(instructions[valueIndex + 1].OpCode == OpCodes.Call ||
+			 instructions[valueIndex + 1].OpCode == OpCodes.Callvirt) &&
+			IsTransparentScalarRawGetterBaseInstruction(instructions[valueIndex]))
+		{
+			var getter = _module.ResolveMethodToken(
+				(int)instructions[valueIndex + 1].Operand!,
+				caller,
+				instructions[valueIndex + 1].Offset);
+			if (IsTransparentScalarRawGetter(getter))
+			{
+				value = new StackVarargValue(
+					instructions[valueIndex],
+					IsTransparentScalarRawGetter: true);
+				consumed = 2;
+				return true;
+			}
+		}
+
 		if (instructions[valueIndex].OpCode == OpCodes.Ldstr &&
 			valueIndex + 2 < instructions.Count &&
 			instructions[valueIndex + 1].OpCode is { } fromLiteralOp &&
@@ -498,6 +923,22 @@ internal sealed class M68kCodeGenerator
 		target.Signature.ParameterTypes.Length == 1 &&
 		(target.Definition?.Name is "op_Implicit" or "ToUInt32") &&
 		_module.IsTransparentScalarType(target.Signature.ParameterTypes[0]);
+
+	private static bool IsTransparentScalarRawGetterBaseInstruction(CilInstruction instruction) =>
+		TryGetArgumentIndex(instruction, out _) ||
+		TryGetLoadArgumentAddressIndex(instruction, out _) ||
+		TryGetLoadLocalAddressIndex(instruction, out _);
+
+	private bool IsTransparentScalarRawGetter(MethodReference target) =>
+		target.Definition is { } definition &&
+		definition.Signature.Header.IsInstance &&
+		definition.Name == "get_Raw" &&
+		definition.Signature.ParameterTypes.Length == 0 &&
+		definition.Signature.ReturnType.DisplayName == "uint" &&
+		_module.IsTransparentScalarType(new CilType(
+			CilTypeKind.ValueType,
+			4,
+			definition.DisplayName.Split("::", StringSplitOptions.None)[0]));
 
 	private static bool TryGetMuiStackVarargsKind(
 		MethodReference target,
@@ -611,6 +1052,12 @@ internal sealed class M68kCodeGenerator
 			return;
 		}
 
+		if (value.IsTransparentScalarRawGetter)
+		{
+			EmitTransparentScalarRawGetterValue(caller, instruction, stackDepth);
+			return;
+		}
+
 		if (TryGetConstant(instruction, out var constant))
 		{
 			EmitPushConstant(constant);
@@ -634,6 +1081,12 @@ internal sealed class M68kCodeGenerator
 		if (TryGetLoadLocalIndex(instruction, out var localIndex))
 		{
 			ValidateLocal(caller, instruction, localIndex);
+			if (LocalRegister(localIndex) is { } register)
+			{
+				EmitPushRegister(register);
+				return;
+			}
+
 			EmitPushFrameSlot(FrameDisplacement(
 				LocalOffset(caller, localIndex),
 				stackDepth));
@@ -643,6 +1096,56 @@ internal sealed class M68kCodeGenerator
 		throw new M68kCompilationException(
 			M68kDiagnosticIds.UnsupportedInstruction,
 			$"Opcode '{instruction.OpCode.Name}' is not supported in stack varargs.",
+			caller.DisplayName,
+			instruction.Offset);
+	}
+
+	private void EmitTransparentScalarRawGetterValue(
+		CilMethod caller,
+		CilInstruction instruction,
+		int stackDepth)
+	{
+		if (TryGetLoadLocalAddressIndex(instruction, out var localIndex))
+		{
+			ValidateLocal(caller, instruction, localIndex);
+			EmitPushFrameSlot(FrameDisplacement(
+				LocalOffset(caller, localIndex),
+				stackDepth));
+			return;
+		}
+
+		if (TryGetLoadArgumentAddressIndex(instruction, out var argumentIndex))
+		{
+			ValidateArgument(caller, instruction, argumentIndex);
+			EmitPushFrameSlot(FrameDisplacement(
+				ArgumentOffset(caller, argumentIndex),
+				stackDepth));
+			return;
+		}
+
+		if (TryGetArgumentIndex(instruction, out argumentIndex))
+		{
+			ValidateArgument(caller, instruction, argumentIndex);
+			if (caller.Signature.Header.IsInstance && argumentIndex == 0)
+			{
+				EmitLoadRegisterFromStack(
+					M68kRegister.A0,
+					FrameDisplacement(
+						ArgumentOffset(caller, argumentIndex),
+						stackDepth));
+				_assembler.EmitWord(0x2F10); // MOVE.L (A0),-(A7)
+				return;
+			}
+
+			EmitPushFrameSlot(FrameDisplacement(
+				ArgumentOffset(caller, argumentIndex),
+				stackDepth));
+			return;
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.UnsupportedInstruction,
+			$"Opcode '{instruction.OpCode.Name}' is not supported for transparent scalar getters.",
 			caller.DisplayName,
 			instruction.Offset);
 	}
@@ -794,7 +1297,6 @@ internal sealed class M68kCodeGenerator
 		var op = instruction.OpCode;
 		if (op == OpCodes.Nop)
 		{
-			_assembler.EmitWord(0x4E71);
 			return;
 		}
 
@@ -812,6 +1314,11 @@ internal sealed class M68kCodeGenerator
 
 		if (op == OpCodes.Ldstr)
 		{
+			if (IsNextCStringFromLiteralCall(method, instruction))
+			{
+				return;
+			}
+
 			var token = (int)instruction.Operand!;
 			_stringLiterals.TryAdd(token, _module.GetUserString(token));
 			_assembler.EmitWord(0x2F3C); // MOVE.L #string,-(A7)
@@ -830,6 +1337,12 @@ internal sealed class M68kCodeGenerator
 		if (TryGetLoadLocalIndex(instruction, out var loadLocal))
 		{
 			ValidateLocal(method, instruction, loadLocal);
+			if (LocalRegister(loadLocal) is { } register)
+			{
+				EmitPushRegister(register);
+				return;
+			}
+
 			EmitPushFrameSlot(FrameDisplacement(
 				LocalOffset(method, loadLocal),
 				_currentStackDepth));
@@ -863,6 +1376,12 @@ internal sealed class M68kCodeGenerator
 		if (TryGetStoreLocalIndex(instruction, out var storeLocal))
 		{
 			ValidateLocal(method, instruction, storeLocal);
+			if (LocalRegister(storeLocal) is { } register)
+			{
+				EmitPopRegister(register);
+				return;
+			}
+
 			EmitPopFrameSlot(FrameDisplacement(
 				LocalOffset(method, storeLocal),
 				_currentStackDepth - 1));
@@ -1394,9 +1913,33 @@ internal sealed class M68kCodeGenerator
 		}
 
 		_cStringLiterals.TryAdd(token, _module.GetUserString(token));
-		EmitDiscardStackArguments(1);
 		_assembler.EmitWord(0x2F3C); // MOVE.L #cstring,-(A7)
 		_assembler.EmitAddress(CStringLabel(token));
+	}
+
+	private bool IsNextCStringFromLiteralCall(CilMethod caller, CilInstruction instruction)
+	{
+		for (var index = 0; index + 1 < caller.Instructions.Count; index++)
+		{
+			if (caller.Instructions[index].Offset != instruction.Offset)
+			{
+				continue;
+			}
+
+			var next = caller.Instructions[index + 1];
+			if (next.OpCode != OpCodes.Call && next.OpCode != OpCodes.Callvirt)
+			{
+				return false;
+			}
+
+			var target = _module.ResolveMethodToken(
+				(int)next.Operand!,
+				caller,
+				next.Offset);
+			return target.ImportName == "intrinsic:cstring-from-literal";
+		}
+
+		return false;
 	}
 
 	private void EmitBoopsiDoMethod(int parameterCount)
@@ -1672,9 +2215,7 @@ internal sealed class M68kCodeGenerator
 
 	private void EmitFrameTeardown(CilMethod method)
 	{
-		var frameBytes = checked(
-			(method.Locals.Length + (GetInternalRegisterAbi(method)?.Count ?? 0)) * 4);
-		EmitReleaseFrame(frameBytes);
+		EmitReleaseFrame(CurrentFrameLayout.FrameBytes);
 	}
 
 	private void EmitLoadRegisterFromStack(M68kRegister register, int offset)
@@ -3309,6 +3850,12 @@ internal sealed class M68kCodeGenerator
 
 	private void EmitPushConstant(int value)
 	{
+		if (value == 0)
+		{
+			_assembler.EmitWord(0x42A7); // CLR.L -(A7)
+			return;
+		}
+
 		if (value is >= sbyte.MinValue and <= sbyte.MaxValue)
 		{
 			_assembler.EmitWord((ushort)(0x7000 | (byte)value)); // MOVEQ #value,D0
@@ -3342,6 +3889,31 @@ internal sealed class M68kCodeGenerator
 	{
 		_assembler.EmitWord(0x42AF); // CLR.L d16(A7)
 		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitClearFrameRegion(short startDisplacement, int longs)
+	{
+		if (longs == 0)
+		{
+			return;
+		}
+
+		if (longs <= 3)
+		{
+			for (var index = 0; index < longs; index++)
+			{
+				EmitClearFrameSlot(checked((short)(startDisplacement + (index * 4))));
+			}
+			return;
+		}
+
+		var loop = UniqueLabel("frame_clear");
+		_assembler.EmitWord(0x41EF); // LEA d16(A7),A0
+		_assembler.EmitWord(unchecked((ushort)startDisplacement));
+		EmitImmediateToRegister(M68kRegister.D0, longs - 1);
+		_assembler.Mark(loop);
+		_assembler.EmitWord(0x4298); // CLR.L (A0)+
+		_assembler.EmitDbra(0, loop);
 	}
 
 	private void EmitAllocateFrame(int bytes)
@@ -3391,16 +3963,27 @@ internal sealed class M68kCodeGenerator
 	private void EmitDiscardStackArguments(int count)
 	{
 		var bytes = checked(count * 4);
-		while (bytes >= 8)
+		if (bytes == 0)
 		{
-			_assembler.EmitWord(0x508F); // ADDQ.L #8,A7 (encoded quick zero)
-			bytes -= 8;
+			return;
 		}
 
-		if (bytes == 4)
+		if (bytes <= 8)
 		{
-			_assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+			var encodedCount = bytes == 8 ? 0 : bytes;
+			_assembler.EmitWord((ushort)(0x508F | (encodedCount << 9))); // ADDQ.L #bytes,A7
+			return;
 		}
+
+		if (bytes <= short.MaxValue)
+		{
+			_assembler.EmitWord(0xDEFC); // ADDA.W #bytes,A7
+			_assembler.EmitWord((ushort)bytes);
+			return;
+		}
+
+		_assembler.EmitWord(0xDFFC); // ADDA.L #bytes,A7
+		_assembler.EmitLong((uint)bytes);
 	}
 
 	private static bool TryGetConstant(CilInstruction instruction, out int value)
@@ -3604,13 +4187,36 @@ internal sealed class M68kCodeGenerator
 		}
 	}
 
-	private static short LocalOffset(CilMethod method, int index) =>
-		checked((short)(4 * ((GetInternalRegisterAbi(method)?.Count ?? 0) + index)));
+	private FrameLayout CurrentFrameLayout =>
+		_currentFrameLayout ?? throw new InvalidOperationException("No active frame layout.");
 
-	private static short ArgumentHomeOffset(int index) =>
-		checked((short)(4 * index));
+	private M68kRegister? LocalRegister(int index) =>
+		(uint)index < (uint)CurrentFrameLayout.LocalRegisters.Length
+			? CurrentFrameLayout.LocalRegisters[index]
+			: null;
 
-	private static short ArgumentOffset(CilMethod method, int index)
+	private short LocalOffset(CilMethod method, int index)
+	{
+		if ((uint)index >= (uint)method.Locals.Length)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Local index {index} is outside the local signature.",
+				method.DisplayName);
+		}
+
+		if (CurrentFrameLayout.LocalRegisters[index] is not null)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Promoted local index {index} has no frame slot.",
+				method.DisplayName);
+		}
+
+		return CurrentFrameLayout.LocalOffsets[index];
+	}
+
+	private short ArgumentOffset(CilMethod method, int index)
 	{
 		if ((uint)index >= (uint)method.ParameterCount)
 		{
@@ -3620,11 +4226,7 @@ internal sealed class M68kCodeGenerator
 				method.DisplayName);
 		}
 
-		var frameBytes = checked(
-			(method.Locals.Length + (GetInternalRegisterAbi(method)?.Count ?? 0)) * 4);
-		return GetInternalRegisterAbi(method) is not null
-			? ArgumentHomeOffset(index)
-			: checked((short)(frameBytes + 4 + ((method.ParameterCount - 1 - index) * 4)));
+		return CurrentFrameLayout.ArgumentOffsets[index];
 	}
 
 	private static short FrameDisplacement(short frameOffset, int stackDepth) =>

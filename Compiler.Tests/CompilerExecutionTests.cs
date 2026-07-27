@@ -69,6 +69,49 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(24u, ExecuteHunk(result, model));
 	}
 
+	[Fact]
+	public void AssignedLocalsDoNotEmitEntryClears()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ManyAssignedLocalsEntry");
+
+		Assert.DoesNotContain("\tclr.l\t", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t(a7)+,d2", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\td2,-(a7)", result.Text, StringComparison.Ordinal);
+		Assert.Equal(36u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void AmbiguousFirstAccessLocalsUseGroupedEntryClear()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::BranchAssignedLocalsEntry");
+
+		Assert.Contains("\tlea\t", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tdbra\t", result.Text, StringComparison.Ordinal);
+		Assert.Equal(10u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ZeroConstantPushUsesPredecrementClear()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DefaultEntry");
+
+		Assert.Contains("\tclr.l\t-(a7)", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmoveq\t#0,d0\r\n\tmove.l\td0,-(a7)",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Equal(106u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void ResolvesAbsoluteImports(
@@ -152,6 +195,28 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
 	}
 
+	[Fact]
+	public void FixedBoopsiDoMethodEmitsDirectMessageStack()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallBoopsiDoMethod",
+			OutputFormat = M68kOutputFormat.Assembly,
+			Imports = new Dictionary<string, uint>
+			{
+				["amiga.boopsi.DoMethodA"] = 0x0000_2600
+			}
+		});
+
+		Assert.Contains("\tmovea.l\ta7,a1", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tadda.w\t#12,a7", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmove.l\t(a7)+,d3\r\n\tmove.l\t(a7)+,d2\r\n\tmove.l\t(a7)+,d1\r\n\tmove.l\t(a7)+,d0",
+			result.Text,
+			StringComparison.Ordinal);
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void LowersBoopsiDoMethodParamsToDoMethodA(
@@ -185,6 +250,27 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(43u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void LargeStackArgumentDiscardUsesSingleAdda()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallBoopsiDoMethodStackVarargs",
+			OutputFormat = M68kOutputFormat.Assembly,
+			Imports = new Dictionary<string, uint>
+			{
+				["amiga.boopsi.DoMethodA"] = 0x0000_2600
+			}
+		});
+
+		Assert.Contains("\tadda.w\t#28,a7", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\taddq.l\t#8,a7\r\n\taddq.l\t#8,a7\r\n\taddq.l\t#8,a7\r\n\taddq.l\t#4,a7",
+			result.Text,
+			StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -259,6 +345,7 @@ public sealed class CompilerExecutionTests
 			AssemblyPath = sdkAssembly,
 			EntryPoint = "MUISunflower.Program::Main",
 			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Assembly,
 			Imports = new Dictionary<string, uint>
 			{
 				["amiga.boopsi.DoMethodA"] = 0x0000_2600
@@ -272,6 +359,9 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.NotEmpty(result.Code);
+		Assert.DoesNotMatch(
+			@"\tclr\.l\t\d+\(a7\)",
+			result.Text);
 	}
 
 	[Theory]

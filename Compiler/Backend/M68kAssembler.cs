@@ -276,6 +276,13 @@ internal sealed class M68kAssembler
 		var opcode = (ushort)((_bytes[offset] << 8) | _bytes[offset + 1]);
 		if (branches.TryGetValue(offset, out var branch))
 		{
+			if ((opcode & 0xFFF8) == 0x51C8)
+			{
+				instruction = $"dbra\td{opcode & 0x0007},{AssemblySymbol(branch.Target)}";
+				length = 4;
+				return true;
+			}
+
 			var condition = (M68kCondition)((opcode >> 8) & 0x0F);
 			instruction = condition == M68kCondition.True
 				? $"bra.w\t{AssemblySymbol(branch.Target)}"
@@ -338,8 +345,12 @@ internal sealed class M68kAssembler
 			0x48C0 => "ext.l\td0",
 			0x4A80 => "tst.l\td0",
 			0x4A81 => "tst.l\td1",
+			0x42A7 => "clr.l\t-(a7)",
 			0x2F00 => "move.l\td0,-(a7)",
 			0x2F08 => "move.l\ta0,-(a7)",
+			0x2F10 => "move.l\t(a0),-(a7)",
+			0x204F => "movea.l\ta7,a0",
+			0x224F => "movea.l\ta7,a1",
 			0x2A78 => "movea.l\t$0004.w,a5",
 			0x2C4D => "movea.l\ta5,a6",
 			_ when (opcode & 0xFFF8) == 0x2F00 =>
@@ -367,6 +378,20 @@ internal sealed class M68kAssembler
 			return true;
 		}
 
+		if ((opcode & 0xF1FF) == 0xD0FC && TryReadWord(offset + 2, out var addWord))
+		{
+			instruction = $"adda.w\t#{addWord},a{(opcode >> 9) & 7}";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xF1FF) == 0xD1FC && TryReadLong(offset + 2, out var addLong))
+		{
+			instruction = $"adda.l\t#{addLong},a{(opcode >> 9) & 7}";
+			length = 6;
+			return true;
+		}
+
 		if (opcode == 0x4FEF && TryReadWord(offset + 2, out var leaDisplacement))
 		{
 			instruction = $"lea\t{unchecked((short)leaDisplacement)}(a7),a7";
@@ -382,6 +407,8 @@ internal sealed class M68kAssembler
 				0x42AF => $"clr.l\t{unchecked((short)displacement)}(a7)",
 				0x2F5F => $"move.l\t(a7)+,{unchecked((short)displacement)}(a7)",
 				0x2F2F => $"move.l\t{unchecked((short)displacement)}(a7),-(a7)",
+				_ when (opcode & 0xF1FF) == 0x206F =>
+					$"movea.l\t{unchecked((short)displacement)}(a7),a{(opcode >> 9) & 7}",
 				_ => string.Empty
 			};
 			if (instruction.Length != 0)

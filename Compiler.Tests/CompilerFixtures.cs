@@ -30,6 +30,46 @@ public static class CompilerFixtures
 	public static int ArithmeticEntry() => Arithmetic(9, 5);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ManyAssignedLocalsEntry()
+	{
+		var a = 1;
+		var b = 2;
+		var c = 3;
+		var d = 4;
+		var e = 5;
+		var f = 6;
+		var g = 7;
+		var h = 8;
+		return a + b + c + d + e + f + g + h;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BranchAssignedLocalsEntry()
+	{
+		var condition = 0;
+		int a;
+		int b;
+		int c;
+		int d;
+		if (condition == 0)
+		{
+			a = 1;
+			b = 2;
+			c = 3;
+			d = 4;
+		}
+		else
+		{
+			a = 5;
+			b = 6;
+			c = 7;
+			d = 8;
+		}
+
+		return a + b + c + d;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int LoopAndBranch(int count)
 	{
 		var sum = 0;
