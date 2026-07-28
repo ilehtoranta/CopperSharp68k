@@ -11,32 +11,88 @@ namespace MUITaskList;
 
 public static class Program
 {
-	private const uint MEMF_PUBLIC = 0x0000_0001u;
 	private const uint MEMF_CLEAR = 0x0001_0000u;
-	private const uint RefreshMethod = 0xFEC8_0001u;
 
+	private static Hook _displayHook;
 	private static uint _entryWorkbench;
 	private static uint _entryInput;
 	private static uint _entryIdle;
-	private static uint _refreshCount;
 
-	[M68kEntryPoint]
-	public static unsafe uint Main()
+	private struct CustomClassHeader
 	{
-		var displayHook = Exec.AllocMem(Hook.Size, MEMF_PUBLIC | MEMF_CLEAR);
-		if (displayHook == 0)
+		public uint Class;
+
+		public static ref CustomClassHeader FromAddress(APTR address) =>
+			throw new System.NotSupportedException(
+				"CustomClassHeader.FromAddress is lowered by CopperSharp.");
+	}
+
+	private struct TaskListEntry
+	{
+		public const uint Size = 12;
+
+		public CString Name;
+		public CString State;
+		public CString Priority;
+
+		public static ref TaskListEntry FromAddress(APTR address) =>
+			throw new System.NotSupportedException(
+				"TaskListEntry.FromAddress is lowered by CopperSharp.");
+	}
+
+	private struct ListDisplayColumns
+	{
+		public CString Task;
+		public CString State;
+		public CString Priority;
+
+		public static ref ListDisplayColumns FromAddress(APTR address) =>
+			throw new System.NotSupportedException(
+				"ListDisplayColumns.FromAddress is lowered by CopperSharp.");
+	}
+
+	public static class TaskListApplication
+	{
+		public struct Data
 		{
-			return 20;
+			public const int SizeInBytes = 8;
+
+			public uint RefreshCount;
+			public uint List;
+
+			public static ref Data FromAddress(APTR address) =>
+				throw new System.NotSupportedException(
+					"TaskListApplication.Data.FromAddress is lowered by CopperSharp.");
 		}
 
-		WriteHook(displayHook, APTR.ExportAddress("muitasklist.list.display"));
+		public static class Method
+		{
+			public const uint Refresh = 0xFEC8_0001u;
+		}
+
+		public struct RefreshMessage
+		{
+			public uint MethodID;
+			public uint List;
+
+			public static ref RefreshMessage Cast(ref BOOPSI.Message message) =>
+				throw new System.NotSupportedException(
+					"TaskListApplication.RefreshMessage.Cast is lowered by CopperSharp.");
+		}
+	}
+
+	[M68kEntryPoint]
+	public static uint Main()
+	{
+		WriteHook(ref _displayHook, APTR.ExportAddress("muitasklist.list.display"));
+		var displayHook = Hook.AddressOf(ref _displayHook);
 		_entryWorkbench = AllocTaskEntry("Workbench", "Ready", "0");
 		_entryInput = AllocTaskEntry("input.device", "Waiting", "20");
 		_entryIdle = AllocTaskEntry("Idle", "Sleeping", "-128");
 
 		if (_entryWorkbench == 0 || _entryInput == 0 || _entryIdle == 0)
 		{
-			FreeTaskEntries(displayHook);
+			FreeTaskEntries();
 			return 20;
 		}
 
@@ -44,11 +100,11 @@ public static class Program
 			0,
 			CString.FromLiteral(Application.Name),
 			0,
-			0,
+			TaskListApplication.Data.SizeInBytes,
 			APTR.ExportAddress("muitasklist.app.dispatcher"));
 		if (appClass == 0)
 		{
-			FreeTaskEntries(displayHook);
+			FreeTaskEntries();
 			return 20;
 		}
 
@@ -106,7 +162,8 @@ public static class Program
 		var appVersion = Application.Version;
 		var appVersionValue = CString.FromLiteral("$VER: MUITaskList 1.0");
 		var appWindow = Application.Window;
-		var appClassPtr = ReadLong(appClass, 0);
+		ref var appClassHeader = ref CustomClassHeader.FromAddress(APTR.FromPointer(appClass));
+		var appClassPtr = appClassHeader.Class;
 		var app = Intuition.NewObject(
 			appClassPtr,
 			0,
@@ -120,7 +177,7 @@ public static class Program
 		if (app == 0)
 		{
 			MUIMaster.MUI_DeleteCustomClass(appClass);
-			FreeTaskEntries(displayHook);
+			FreeTaskEntries();
 			return 20;
 		}
 
@@ -142,14 +199,14 @@ public static class Program
 			(uint)Value.EveryTime,
 			app,
 			2,
-			RefreshMethod,
+			TaskListApplication.Method.Refresh,
 			list);
 
 		BOOPSI.DoMethod(window, Method.Set, Window.Open, 1);
 		var result = BOOPSI.DoMethod(app, Application.Method.Run);
 		MUIMaster.MUI_DisposeObject(app);
 		MUIMaster.MUI_DeleteCustomClass(appClass);
-		FreeTaskEntries(displayHook);
+		FreeTaskEntries();
 		return result;
 	}
 
@@ -166,40 +223,45 @@ public static class Program
 			Application.Method.ReturnID,
 			0xffff_ffffu);
 
-	[M68kExport("muitasklist.app.dispatcher")]
-	[return: M68kRegister(M68kRegister.D0)]
-	public static unsafe uint AppDispatcher(
-		[M68kRegister(M68kRegister.A0)] uint cl,
-		[M68kRegister(M68kRegister.A2)] uint obj,
-		[M68kRegister(M68kRegister.A1)] uint message)
+	[BOOPSI.Dispatcher("muitasklist.app.dispatcher")]
+	public static uint AppDispatcher(APTR cl, APTR obj, ref BOOPSI.Message message)
 	{
-		if (ReadLong(message, 0) == RefreshMethod)
+		var messageAddress = BOOPSI.Message.AddressOf(ref message);
+		if (message.MethodID == TaskListApplication.Method.Refresh)
 		{
-			PopulateList(ReadLong(message, 4));
-			return ++_refreshCount;
+			var dataAddress = BOOPSI.InstanceData(cl, obj);
+			ref var data = ref TaskListApplication.Data.FromAddress(dataAddress);
+			ref var refresh = ref TaskListApplication.RefreshMessage.Cast(ref message);
+			data.List = refresh.List;
+			PopulateList(data.List);
+			return ++data.RefreshCount;
 		}
 
-		return Native.DoSuperMethodA(cl, obj, message);
+		return Native.DoSuperMethodA(cl, obj, messageAddress);
 	}
 
-	[M68kExport("muitasklist.list.display")]
-	[return: M68kRegister(M68kRegister.D0)]
-	public static unsafe uint ListDisplay(
-		[M68kRegister(M68kRegister.A1)] uint entry,
-		[M68kRegister(M68kRegister.A2)] uint columns)
+	[List.DisplayCallback("muitasklist.list.display")]
+	public static uint ListDisplay(uint entry, APTR columns)
 	{
-		if (entry == 0)
+		var row = new TaskListDisplayRow(entry);
+		ref var output = ref ListDisplayColumns.FromAddress(columns);
+		WriteTaskRow(ref output, row);
+		return 0;
+	}
+
+	private static void WriteTaskRow(ref ListDisplayColumns output, TaskListDisplayRow row)
+	{
+		if (row.IsTitle)
 		{
-			WriteLong(columns, 0, CString.FromLiteral("Task"));
-			WriteLong(columns, 4, CString.FromLiteral("State"));
-			WriteLong(columns, 8, CString.FromLiteral("Pri"));
-			return 0;
+			output.Task = CString.FromLiteral("Task");
+			output.State = CString.FromLiteral("State");
+			output.Priority = CString.FromLiteral("Pri");
+			return;
 		}
 
-		WriteLong(columns, 0, ReadLong(entry, 0));
-		WriteLong(columns, 4, ReadLong(entry, 4));
-		WriteLong(columns, 8, ReadLong(entry, 8));
-		return 0;
+		output.Task = row.Name;
+		output.State = row.State;
+		output.Priority = row.Priority;
 	}
 
 	private static void PopulateList(uint list)
@@ -212,55 +274,64 @@ public static class Program
 
 	private static uint AllocTaskEntry(CString name, CString state, CString priority)
 	{
-		var entry = Exec.AllocMem(12, MEMF_PUBLIC | MEMF_CLEAR);
-		if (entry == 0)
+		var address = APTR.FromPointer(Exec.AllocMem(TaskListEntry.Size, MEMF_CLEAR));
+		if (address.IsNull)
 		{
 			return 0;
 		}
 
-		WriteLong(entry, 0, name);
-		WriteLong(entry, 4, state);
-		WriteLong(entry, 8, priority);
-		return entry;
+		ref var entry = ref TaskListEntry.FromAddress(address);
+		entry.Name = name;
+		entry.State = state;
+		entry.Priority = priority;
+		return address.Raw;
 	}
 
-	private static void FreeTaskEntries(uint displayHook)
+	private static void FreeTaskEntries()
 	{
 		if (_entryWorkbench != 0)
 		{
-			Exec.FreeMem(_entryWorkbench, 12);
+			Exec.FreeMem(_entryWorkbench, TaskListEntry.Size);
 			_entryWorkbench = 0;
 		}
 		if (_entryInput != 0)
 		{
-			Exec.FreeMem(_entryInput, 12);
+			Exec.FreeMem(_entryInput, TaskListEntry.Size);
 			_entryInput = 0;
 		}
 		if (_entryIdle != 0)
 		{
-			Exec.FreeMem(_entryIdle, 12);
+			Exec.FreeMem(_entryIdle, TaskListEntry.Size);
 			_entryIdle = 0;
 		}
-		if (displayHook != 0)
-		{
-			Exec.FreeMem(displayHook, Hook.Size);
-		}
 	}
 
-	private static void WriteHook(uint hook, APTR entry)
+	private static void WriteHook(ref Hook hook, APTR entry)
 	{
-		WriteLong(hook, 0, 0);
-		WriteLong(hook, 4, 0);
-		WriteLong(hook, 8, entry);
-		WriteLong(hook, 12, 0);
-		WriteLong(hook, 16, 0);
+		hook.MinNode.Successor = APTR.Null;
+		hook.MinNode.Predecessor = APTR.Null;
+		hook.Entry = entry;
+		hook.SubEntry = APTR.Null;
+		hook.Data = APTR.Null;
 	}
 
-	private static unsafe uint ReadLong(uint address, int offset) =>
-		*(uint*)(address + (uint)offset);
+	private readonly struct TaskListDisplayRow
+	{
+		private readonly uint _entry;
 
-	private static unsafe void WriteLong(uint address, int offset, uint value) =>
-		*(uint*)(address + (uint)offset) = value;
+		public TaskListDisplayRow(uint entry)
+		{
+			_entry = entry;
+		}
+
+		public bool IsTitle => _entry == 0;
+
+		public CString Name => TaskListEntry.FromAddress(APTR.FromPointer(_entry)).Name;
+
+		public CString State => TaskListEntry.FromAddress(APTR.FromPointer(_entry)).State;
+
+		public CString Priority => TaskListEntry.FromAddress(APTR.FromPointer(_entry)).Priority;
+	}
 
 	private static class Native
 	{
@@ -271,4 +342,5 @@ public static class Program
 			[M68kRegister(M68kRegister.A2)] uint obj,
 			[M68kRegister(M68kRegister.A1)] uint message);
 	}
+
 }

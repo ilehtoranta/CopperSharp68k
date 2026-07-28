@@ -10,104 +10,12 @@ namespace DOSExample;
 
 public static class Program
 {
-	private const int RETURN_OK = 0;
-	private const int RETURN_FAIL = 20;
-	private const int SHARED_LOCK = -2;
-	private const int ERROR_NO_MORE_ENTRIES = 232;
-
-	private const int FIB_FILE_NAME = 8;
-	private const int FIB_DIR_ENTRY_TYPE = 4;
-	private const int FIB_SIZE = 124;
-	private const int FIB_DATE_DAYS = 132;
-	private const int FIB_DATE_MINUTE = 136;
-	private const int FIB_DATE_TICK = 140;
-
-	[M68kEntryPoint]
-	public static unsafe int Main(int argLength, CONST_STRPTR argText)
+	private struct FileInfoBlockStackStorage
 	{
-		var dosBase = Exec.OpenLibrary(CString.FromLiteral("dos.library"), 34);
-		if (!dosBase.HasValue)
-		{
-			return RETURN_FAIL;
-		}
+		public static APTR AddressOf(ref FileInfoBlockStackStorage storage) =>
+			throw new System.NotSupportedException(
+				"FileInfoBlockStackStorage.AddressOf is lowered by CopperSharp.");
 
-		DOS.DOSLibraryBase = dosBase.Value;
-
-		FileInfoBlock fib = default;
-		var fibAddress = AlignLong((uint)(nuint)(&fib));
-		var path = argLength > 0 && argText.IsNotNull
-			? CString.FromPointer(argText.Raw)
-			: CString.FromLiteral("");
-
-		var result = ListDirectory(path, fibAddress);
-
-		DOS.DOSLibraryBase = APTR.Null;
-		Exec.CloseLibrary(dosBase.Value);
-		return result;
-	}
-
-	private static int ListDirectory(CString path, uint fib)
-	{
-		var lock_ = DOS.Lock(path, SHARED_LOCK);
-		if (!lock_.HasValue)
-		{
-			var error = DOS.IoErr();
-			DOS.Printf(CString.FromLiteral("Cannot lock path, IoErr %ld\n"), (uint)error);
-			return RETURN_FAIL;
-		}
-
-		var result = RETURN_OK;
-		if (DOS.Examine(lock_.Value, fib) == 0)
-		{
-			var error = DOS.IoErr();
-			DOS.Printf(CString.FromLiteral("Examine failed, IoErr %ld\n"), (uint)error);
-			result = RETURN_FAIL;
-		}
-		else if (ReadLong(fib, FIB_DIR_ENTRY_TYPE) < 0)
-		{
-			PrintEntry(fib);
-		}
-		else
-		{
-			while (DOS.ExNext(lock_.Value, fib) != 0)
-			{
-				PrintEntry(fib);
-			}
-
-			var error = DOS.IoErr();
-			if (error != ERROR_NO_MORE_ENTRIES)
-			{
-				DOS.Printf(CString.FromLiteral("ExNext failed, IoErr %ld\n"), (uint)error);
-				result = RETURN_FAIL;
-			}
-		}
-
-		DOS.UnLock(lock_.Value);
-		return result;
-	}
-
-	private static void PrintEntry(uint fib)
-	{
-		var name = CString.FromPointer(fib + FIB_FILE_NAME);
-		var size = ReadLong(fib, FIB_SIZE);
-		var days = ReadLong(fib, FIB_DATE_DAYS);
-		var minute = ReadLong(fib, FIB_DATE_MINUTE);
-		var tick = ReadLong(fib, FIB_DATE_TICK);
-		DOS.Printf(CString.FromLiteral("%-30s "), CString.ToUInt32(name));
-		DOS.Printf(CString.FromLiteral("%10ld  "), (uint)size);
-		DOS.Printf(CString.FromLiteral("%ld/"), (uint)days);
-		DOS.Printf(CString.FromLiteral("%ld/"), (uint)minute);
-		DOS.Printf(CString.FromLiteral("%ld\n"), (uint)tick);
-	}
-
-	private static unsafe int ReadLong(uint address, int offset) =>
-		*(int*)(address + (uint)offset);
-
-	private static uint AlignLong(uint address) =>
-		(address + 3u) & 0xFFFF_FFFCu;
-
-	private struct FileInfoBlock
-	{
 		public uint Long000;
 		public uint Long001;
 		public uint Long002;
@@ -175,4 +83,87 @@ public static class Program
 		public uint Long064;
 		public uint Long065;
 	}
+
+	[M68kEntryPoint]
+	public static int Main(int argLength, CONST_STRPTR argText)
+	{
+		var dosBase = Exec.OpenLibrary(CString.FromLiteral("dos.library"), 33);
+		if (dosBase != null)
+		{
+			DOS.DOSLibraryBase = dosBase.Value;
+
+			var fibStorage = new FileInfoBlockStackStorage();
+			var fibAddress = AlignLong(APTR.ToUInt32(FileInfoBlockStackStorage.AddressOf(ref fibStorage)));
+			var path = argLength > 0
+				? CString.FromPointer(argText.Raw)
+				: CString.FromLiteral("");
+
+			var result = ListDirectory(path, fibAddress);
+
+			Exec.CloseLibrary(DOS.DOSLibraryBase);
+			DOS.DOSLibraryBase = APTR.Null;
+			return result;
+		}
+
+		return DOS.RETURN_FAIL;
+	}
+
+	private static int ListDirectory(CString path, uint fib)
+	{
+		var lock_ = DOS.Lock(path, DOS.SHARED_LOCK);
+		if (!lock_.HasValue)
+		{
+			var error = DOS.IoErr();
+			DOS.Printf(CString.FromLiteral("Cannot lock path, IoErr %ld\n"), (uint)error);
+			return DOS.RETURN_FAIL;
+		}
+
+		var result = DOS.RETURN_OK;
+		if (DOS.Examine(lock_.Value, fib) == 0)
+		{
+			var error = DOS.IoErr();
+			DOS.Printf(CString.FromLiteral("Examine failed, IoErr %ld\n"), (uint)error);
+			result = DOS.RETURN_FAIL;
+		}
+		else if ((int)APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DirEntryTypeOffset) < 0)
+		{
+			PrintEntry(fib);
+		}
+		else
+		{
+			while (DOS.ExNext(lock_.Value, fib) != 0)
+			{
+				PrintEntry(fib);
+			}
+
+			var error = DOS.IoErr();
+			if (error != DOS.ERROR_NO_MORE_ENTRIES)
+			{
+				DOS.Printf(CString.FromLiteral("ExNext failed, IoErr %ld\n"), (uint)error);
+				result = DOS.RETURN_FAIL;
+			}
+		}
+
+		DOS.UnLock(lock_.Value);
+		return result;
+	}
+
+	private static void PrintEntry(uint fib)
+	{
+		var name = FileInfoBlock.FileName(fib);
+		var size = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.SizeOffset);
+		var days = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateDaysOffset);
+		var minute = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateMinuteOffset);
+		var tick = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateTickOffset);
+		DOS.Printf(
+			CString.FromLiteral("%-30s %10ld  %ld/%ld/%ld\n"),
+			name,
+			size,
+			days,
+			minute,
+			tick);
+	}
+
+	private static uint AlignLong(uint address) =>
+		(address + 3u) & 0xFFFF_FFFCu;
 }

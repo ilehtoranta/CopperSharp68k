@@ -8,9 +8,10 @@ SDK's manual DOS base slot, and lists a directory using Kickstart 1.3 style
 `Lock()`, `Examine()`, and `ExNext()` calls.
 
 If an argument is supplied, it is used as the path. With no argument, the
-example locks the current directory. The `FileInfoBlock` backing storage is
-stack allocated with longword-alignment slack because Amiga only guarantees
-word-aligned stack addresses.
+example locks the current directory. The SDK `FileInfoBlock` is used for typed
+field reads. The stack backing uses `FileInfoBlockStackStorage`, which adds
+longword-alignment slack because Amiga only guarantees word-aligned stack
+addresses.
 
 Build the managed example assembly:
 
