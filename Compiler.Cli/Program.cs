@@ -23,6 +23,7 @@ static int Run(string[] args)
 		var entry = GetRequired(args, "--entry");
 		var cpu = ParseCpu(GetOptional(args, "--cpu") ?? "68000");
 		var clrPolicy = ParseClrPolicy(GetOptional(args, "--clr") ?? "auto");
+		var exceptionMode = ParseExceptionMode(GetOptional(args, "--exceptions") ?? "full");
 		var format = ParseFormat(GetOptional(args, "--format") ?? "hunk");
 		var romSize = ParseInt(GetOptional(args, "--rom-size") ?? "524288");
 		var romBase = ParseUInt(GetOptional(args, "--rom-base") ?? "0");
@@ -35,6 +36,7 @@ static int Run(string[] args)
 			EntryPoint = entry,
 			Cpu = cpu,
 			ClrPolicy = clrPolicy,
+			ExceptionMode = exceptionMode,
 			OutputFormat = format,
 			Imports = imports,
 			Rom = new KickstartRomOutputOptions
@@ -114,6 +116,14 @@ static M68kClrPolicy ParseClrPolicy(string value) =>
 		_ => throw new ArgumentException($"Unknown CLR policy '{value}'.")
 	};
 
+static M68kExceptionMode ParseExceptionMode(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"full" or "safe" => M68kExceptionMode.Full,
+		"yolo" or "fatal" => M68kExceptionMode.Yolo,
+		_ => throw new ArgumentException($"Unknown exception mode '{value}'.")
+	};
+
 static M68kOutputFormat ParseFormat(string value) =>
 	value.ToLowerInvariant() switch
 	{
@@ -166,7 +176,8 @@ static void PrintUsage()
 	Console.WriteLine(
 		"""
 		copper68kc <assembly.dll> --entry Namespace.Type::Method --output <file>
-		  [--cpu 68000|68020|68040] [--clr auto|never|always] [--format hunk|rom|asm]
+		  [--cpu 68000|68020|68040] [--clr auto|never|always]
+		  [--exceptions full|yolo] [--format hunk|rom|asm]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]
 		""");

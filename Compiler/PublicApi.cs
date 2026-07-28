@@ -63,6 +63,16 @@ public enum M68kGcSweepStrategy
 	TelemetryTriggered
 }
 
+/// <summary>Managed exception behavior selected for generated code.</summary>
+public enum M68kExceptionMode
+{
+	/// <summary>Use the table-driven managed exception runtime.</summary>
+	Full,
+
+	/// <summary>Preserve the legacy non-returning fault behavior.</summary>
+	Yolo
+}
+
 /// <summary>Physical 68k register used by an imported or exported ABI.</summary>
 public enum M68kRegister
 {
@@ -89,6 +99,16 @@ public enum M68kExternalBaseSource
 	CachedPointer,
 	WritableSlot,
 	Immediate
+}
+
+/// <summary>How an external call reports a managed failure.</summary>
+public enum M68kExternalExceptionPolicy
+{
+	/// <summary>The call has no compiler-visible exception status.</summary>
+	None,
+
+	/// <summary>A nonzero value in the configured status register raises.</summary>
+	NonZeroStatus
 }
 
 /// <summary>A decoded metadata attribute supplied to an optional platform resolver.</summary>
@@ -119,7 +139,9 @@ public sealed record M68kExternalCallConvention(
 	uint InitialValue = 0,
 	string? SlotSymbol = null,
 	IReadOnlyList<M68kRegister>? ParameterRegisters = null,
-	M68kRegister ReturnRegister = M68kRegister.D0);
+	M68kRegister ReturnRegister = M68kRegister.D0,
+	M68kExternalExceptionPolicy ExceptionPolicy = M68kExternalExceptionPolicy.None,
+	M68kRegister? ExceptionStatusRegister = null);
 
 /// <summary>Optional target-platform metadata and call-convention resolver.</summary>
 public interface IM68kExternalCallResolver
@@ -140,6 +162,12 @@ public static class M68kRuntimeImports
 
 	/// <summary>Non-returning handler used for null, bounds, and runtime failures.</summary>
 	public const string Fail = "__c68k_fail";
+
+	/// <summary>
+	/// Optional last-chance exception hook. A0 contains the exception object and
+	/// D0 contains the compiler runtime reason code. Returning executes ILLEGAL.
+	/// </summary>
+	public const string UnhandledException = "__c68k_unhandled_exception";
 
 	/// <summary>
 	/// Explicitly releases a managed allocation slot. The address of a four-byte
@@ -205,6 +233,48 @@ public sealed class M68kRegisterAttribute : Attribute
 	}
 
 	public M68kRegister Register { get; }
+}
+
+/// <summary>
+/// Marks a value type used solely as caller-provided storage for an external
+/// routine that initializes the pointed-to buffer before it is read.
+///
+/// Locals of this type are intentionally not initialized by generated code.
+/// Do not use this attribute for ordinary managed values or structures whose
+/// default state is observable.
+/// </summary>
+[AttributeUsage(AttributeTargets.Struct, AllowMultiple = false)]
+public sealed class M68kUninitializedStorageAttribute : Attribute
+{
+}
+
+/// <summary>Marks a pointer parameter whose complete caller-owned buffer is populated on success.</summary>
+[AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false)]
+public sealed class M68kWritesEntireBufferAttribute : Attribute
+{
+}
+
+/// <summary>Marks a pointer parameter that receives output bytes or elements.</summary>
+[AttributeUsage(AttributeTargets.Parameter, AllowMultiple = false)]
+public sealed class M68kWritesBufferAttribute : Attribute
+{
+}
+
+/// <summary>Requests the specified alignment for the address of a stack local.</summary>
+[AttributeUsage(AttributeTargets.Struct, AllowMultiple = false)]
+public sealed class M68kStackAlignmentAttribute : Attribute
+{
+	public M68kStackAlignmentAttribute(int alignment)
+	{
+		if (alignment < 2 || (alignment & (alignment - 1)) != 0)
+		{
+			throw new ArgumentOutOfRangeException(nameof(alignment));
+		}
+
+		Alignment = alignment;
+	}
+
+	public int Alignment { get; }
 }
 
 /// <summary>Options for an Amiga loadable HUNK executable.</summary>
@@ -285,6 +355,12 @@ public sealed record M68kCompilationRequest
 
 	public M68kRuntimeProfile RuntimeProfile { get; init; } =
 		M68kRuntimeProfile.Freestanding;
+
+	/// <summary>
+	/// Selects managed exception behavior. Full mode is the default; YOLO is an
+	/// explicit compatibility mode for images that retain fatal runtime faults.
+	/// </summary>
+	public M68kExceptionMode ExceptionMode { get; init; } = M68kExceptionMode.Full;
 
 	/// <summary>
 	/// Managed heap policy. When omitted, ROM profile uses no managed heap and

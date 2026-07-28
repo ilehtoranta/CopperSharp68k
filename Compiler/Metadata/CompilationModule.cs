@@ -3,6 +3,7 @@
 - SPDX-License-Identifier: MIT
  */
 
+using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -16,6 +17,8 @@ internal sealed class CompilationModule : IDisposable
 {
 	private const string BoopsiDispatcherAttributeName = "Amiga.BOOPSI+DispatcherAttribute";
 	private const string MuiListDisplayCallbackAttributeName = "Amiga.MUI.List+DisplayCallbackAttribute";
+	private const string UninitializedStorageAttributeName = "CopperSharp.Compiler.M68kUninitializedStorageAttribute";
+	private const string StackAlignmentAttributeName = "CopperSharp.Compiler.M68kStackAlignmentAttribute";
 
 	private readonly FileStream _stream;
 	private readonly PEReader _peReader;
@@ -252,6 +255,7 @@ internal sealed class CompilationModule : IDisposable
 		MethodBodyBlock? body = null;
 		ImmutableArray<CilType> locals = ImmutableArray<CilType>.Empty;
 		IReadOnlyList<CilInstruction> instructions = Array.Empty<CilInstruction>();
+		IReadOnlyList<CilExceptionRegion> exceptionRegions = Array.Empty<CilExceptionRegion>();
 
 		if (importName is null && externalCall is null)
 		{
@@ -272,6 +276,7 @@ internal sealed class CompilationModule : IDisposable
 			}
 
 			instructions = CilInstructionDecoder.Decode(body.GetILBytes(), displayName);
+			exceptionRegions = DecodeExceptionRegions(body, instructions, displayName);
 		}
 
 		var method = new CilMethod(
@@ -282,12 +287,69 @@ internal sealed class CompilationModule : IDisposable
 			signature,
 			locals,
 			instructions,
+			exceptionRegions,
 			body?.LocalVariablesInitialized ?? false,
 			importName,
 			importAbi,
 			externalCall);
 		_methodCache.Add(handle, method);
 		return method;
+	}
+
+	private IReadOnlyList<CilExceptionRegion> DecodeExceptionRegions(
+		MethodBodyBlock body,
+		IReadOnlyList<CilInstruction> instructions,
+		string methodName)
+	{
+		if (body!.ExceptionRegions.Length == 0)
+		{
+			return Array.Empty<CilExceptionRegion>();
+		}
+
+		var ilSize = body.GetILBytes()!.Length;
+		var instructionOffsets = instructions
+			.Select(instruction => instruction.Offset)
+			.ToHashSet();
+		instructionOffsets.Add(ilSize);
+		var result = new List<CilExceptionRegion>(body.ExceptionRegions.Length);
+		foreach (var region in body.ExceptionRegions)
+		{
+			if (region.Kind is ExceptionRegionKind.Filter or ExceptionRegionKind.Fault)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedInstruction,
+					$"Exception region kind '{region.Kind}' is not supported; only catch and finally are available.",
+					methodName,
+					region.TryOffset);
+			}
+
+			var tryEnd = checked(region.TryOffset + region.TryLength);
+			var handlerEnd = checked(region.HandlerOffset + region.HandlerLength);
+			if (region.TryOffset < 0 || region.TryLength <= 0 || tryEnd > ilSize ||
+				region.HandlerOffset < 0 || region.HandlerLength <= 0 || handlerEnd > ilSize ||
+				!instructionOffsets.Contains(region.TryOffset) ||
+				!instructionOffsets.Contains(tryEnd) ||
+				!instructionOffsets.Contains(region.HandlerOffset) ||
+				!instructionOffsets.Contains(handlerEnd))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"Exception region boundaries must align with CIL instruction boundaries.",
+					methodName,
+					region.TryOffset);
+			}
+
+			result.Add(new CilExceptionRegion(
+				region.Kind,
+				region.TryOffset,
+				region.TryLength,
+				region.HandlerOffset,
+				region.HandlerLength,
+				region.CatchType,
+				region.FilterOffset));
+		}
+
+		return result;
 	}
 
 	private CilExternalCall GetExternalCall(
@@ -315,6 +377,21 @@ internal sealed class CompilationModule : IDisposable
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidMetadata,
 				"Platform base and cache registers must be distinct.",
+				displayName);
+		}
+		if (binding.ExceptionPolicy == M68kExternalExceptionPolicy.NonZeroStatus &&
+			binding.ExceptionStatusRegister is null)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"A nonzero-status external call must specify an exception status register.",
+				displayName);
+		}
+		if (binding.ExceptionStatusRegister > M68kRegister.D7)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"External exception status must use a data register.",
 				displayName);
 		}
 
@@ -517,6 +594,44 @@ internal sealed class CompilationModule : IDisposable
 				caller.DisplayName,
 				ilOffset)
 		};
+	}
+
+	public ImmutableArray<uint> ReadUInt32FieldRva(
+		int token,
+		int count,
+		CilMethod caller,
+		int ilOffset)
+	{
+		var handle = MetadataTokens.EntityHandle(token);
+		if (handle.Kind != HandleKind.FieldDefinition || count < 0)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Token 0x{token:X8} is not a valid initialized-data field.",
+				caller.DisplayName,
+				ilOffset);
+		}
+
+		var definition = Reader.GetFieldDefinition((FieldDefinitionHandle)handle);
+		var rva = definition.GetRelativeVirtualAddress();
+		var byteCount = checked(count * sizeof(uint));
+		var section = _peReader.GetSectionData(rva);
+		if (rva == 0 || section.Length < byteCount)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"Initialized-data field is missing or shorter than the target array.",
+				caller.DisplayName,
+				ilOffset);
+		}
+
+		var bytes = section.GetContent(0, byteCount);
+		var result = ImmutableArray.CreateBuilder<uint>(count);
+		for (var offset = 0; offset < byteCount; offset += sizeof(uint))
+		{
+			result.Add(BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(offset, sizeof(uint))));
+		}
+		return result.MoveToImmutable();
 	}
 
 	public CilTypeLayout GetTypeLayout(TypeDefinitionHandle handle)
@@ -945,6 +1060,78 @@ internal sealed class CompilationModule : IDisposable
 		};
 	}
 
+	public bool IsUninitializedStorageType(CilType type)
+	{
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			if (!TypeNameMatches(definition, type.DisplayName))
+			{
+				continue;
+			}
+
+			return HasAttribute(definition.GetCustomAttributes(), UninitializedStorageAttributeName);
+		}
+
+		return HasReflectionAttribute(type.DisplayName, UninitializedStorageAttributeName);
+	}
+
+	public bool RequiresLongAlignedStackAddress(CilType type)
+	{
+		if (!IsUninitializedStorageType(type))
+		{
+			return false;
+		}
+
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			if (!TypeNameMatches(definition, type.DisplayName))
+			{
+				continue;
+			}
+
+			foreach (var attributeHandle in definition.GetCustomAttributes())
+			{
+				if (!string.Equals(GetAttributeTypeName(attributeHandle), StackAlignmentAttributeName, StringComparison.Ordinal))
+				{
+					continue;
+				}
+
+				var value = Reader.GetCustomAttribute(attributeHandle)
+					.DecodeValue(new AttributeTypeProvider(Reader));
+				return value.FixedArguments.Length == 1 &&
+					value.FixedArguments[0].Value is int alignment &&
+					alignment >= 4;
+			}
+		}
+
+		return HasReflectionAttribute(type.DisplayName, StackAlignmentAttributeName);
+	}
+
+	private bool HasReflectionAttribute(string displayName, string attributeName)
+	{
+		foreach (var path in Directory.EnumerateFiles(_assemblyDirectory, "*.dll"))
+		{
+			try
+			{
+				var type = Assembly.LoadFrom(path).GetType(displayName, throwOnError: false);
+				if (type is null)
+				{
+					continue;
+				}
+
+				return type.CustomAttributes.Any(attribute =>
+					string.Equals(attribute.AttributeType.FullName, attributeName, StringComparison.Ordinal));
+			}
+			catch (BadImageFormatException)
+			{
+			}
+		}
+
+		return false;
+	}
+
 	public MethodReference ResolveMethodToken(int token, CilMethod caller, int ilOffset)
 	{
 		EntityHandle handle;
@@ -1316,7 +1503,33 @@ internal sealed class CompilationModule : IDisposable
 				name,
 				signature,
 				!signature.Header.IsInstance);
+			var importName = TryGetExternalImportName(externalMethod.MethodAttributes);
 			var convention = ResolveExternalCall(externalMethod);
+			if (importName is not null)
+			{
+				if (convention is not null)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.InvalidMetadata,
+						"A referenced method cannot be both [M68kImport] and a platform call.",
+						displayName);
+				}
+
+				return MethodReference.ForDefinition(new CilMethod(
+					default,
+					default,
+					displayName,
+					name,
+					signature,
+					ImmutableArray<CilType>.Empty,
+					Array.Empty<CilInstruction>(),
+					Array.Empty<CilExceptionRegion>(),
+					false,
+					importName,
+					GetExternalImportAbi(externalMethod, signature, displayName),
+					null));
+			}
+
 			if (convention is not null)
 			{
 				var parameterRegisters = convention.ParameterRegisters;
@@ -1343,6 +1556,7 @@ internal sealed class CompilationModule : IDisposable
 					signature,
 					ImmutableArray<CilType>.Empty,
 					Array.Empty<CilInstruction>(),
+					Array.Empty<CilExceptionRegion>(),
 					false,
 					null,
 					null,
@@ -1389,10 +1603,18 @@ internal sealed class CompilationModule : IDisposable
 			return MethodReference.ForIntrinsic("intrinsic:address-to-ref", signature);
 		}
 
-		if (typeName == "System.Object" && name == ".ctor" &&
+		if ((typeName == "System.Object" || typeName == "System.Exception") &&
+			name == ".ctor" &&
 			signature.ParameterTypes.Length == 0)
 		{
 			return MethodReference.ForIntrinsic("intrinsic:object-ctor", signature);
+		}
+
+		if (typeName == "System.Runtime.CompilerServices.RuntimeHelpers" &&
+			name == "InitializeArray" &&
+			signature.ParameterTypes.Length == 2)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:initialize-array", signature);
 		}
 
 		if (typeName == "System.String" && name == "get_Length" &&
@@ -1613,6 +1835,85 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		return null;
+	}
+
+	private static string? TryGetExternalImportName(
+		IReadOnlyList<M68kMetadataAttribute> attributes)
+	{
+		var attribute = attributes.FirstOrDefault(static attribute =>
+			string.Equals(
+				attribute.TypeName,
+				typeof(M68kImportAttribute).FullName,
+				StringComparison.Ordinal));
+		if (attribute is null)
+		{
+			return null;
+		}
+
+		if (attribute.FixedArguments.Count != 1 ||
+			attribute.FixedArguments[0] is not string name ||
+			string.IsNullOrWhiteSpace(name))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"[M68kImport] must contain one non-empty symbol name.");
+		}
+
+		return name;
+	}
+
+	private CilRegisterAbi? GetExternalImportAbi(
+		M68kExternalMethod method,
+		MethodSignature<CilType> signature,
+		string displayName)
+	{
+		if (!method.IsStatic)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedSignature,
+				"Imported methods must be static.",
+				displayName);
+		}
+
+		var parameterRegisters = new M68kRegister[signature.ParameterTypes.Length];
+		var hasRegister = new bool[parameterRegisters.Length];
+		M68kRegister? returnRegister = TryGetRegister(method.ReturnAttributes);
+		var hasAnyRegister = returnRegister is not null;
+		if (method.ParameterAttributes.Count != parameterRegisters.Length)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"Imported method metadata parameter count does not match its signature.",
+				displayName);
+		}
+
+		for (var index = 0; index < parameterRegisters.Length; index++)
+		{
+			var register = TryGetRegister(method.ParameterAttributes[index]);
+			if (register is null)
+			{
+				continue;
+			}
+
+			hasAnyRegister = true;
+			parameterRegisters[index] = register.Value;
+			hasRegister[index] = true;
+		}
+
+		if (!hasAnyRegister)
+		{
+			return null;
+		}
+
+		if (hasRegister.Any(static present => !present))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedSignature,
+				"Every register-ABI import parameter must carry [M68kRegister].",
+				displayName);
+		}
+
+		return new CilRegisterAbi(parameterRegisters, returnRegister ?? M68kRegister.D0);
 	}
 
 	private MethodReference? TryResolveNullableIntrinsicReference(
@@ -1983,6 +2284,34 @@ internal sealed class CompilationModule : IDisposable
 		return null;
 	}
 
+	private static M68kRegister? TryGetRegister(
+		IReadOnlyList<M68kMetadataAttribute> attributes)
+	{
+		foreach (var attribute in attributes)
+		{
+			if (!string.Equals(
+				attribute.TypeName,
+				typeof(M68kRegisterAttribute).FullName,
+				StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			if (attribute.FixedArguments.Count != 1 ||
+			attribute.FixedArguments[0] is not int register ||
+				!Enum.IsDefined(typeof(M68kRegister), register))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"[M68kRegister] contains an invalid register value.");
+			}
+
+			return (M68kRegister)register;
+		}
+
+		return null;
+	}
+
 	private string GetAttributeTypeName(CustomAttributeHandle handle)
 	{
 		var attribute = Reader.GetCustomAttribute(handle);
@@ -2019,6 +2348,21 @@ internal sealed class CompilationModule : IDisposable
 
 		return name;
 	}
+
+	internal string GetTypeDisplayName(EntityHandle handle) =>
+		handle.Kind switch
+		{
+			HandleKind.TypeDefinition =>
+				GetTypeName(Reader.GetTypeDefinition((TypeDefinitionHandle)handle)),
+			HandleKind.TypeReference =>
+				GetTypeName(Reader.GetTypeReference((TypeReferenceHandle)handle)),
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Metadata handle '{handle.Kind}' is not a named type.")
+		};
+
+	internal EntityHandle GetBaseType(TypeDefinitionHandle handle) =>
+		Reader.GetTypeDefinition(handle).BaseType;
 
 	private string QualifiedName(StringHandle namespaceHandle, StringHandle nameHandle)
 	{
@@ -2105,6 +2449,7 @@ internal sealed record CilMethod(
 	MethodSignature<CilType> Signature,
 	ImmutableArray<CilType> Locals,
 	IReadOnlyList<CilInstruction> Instructions,
+	IReadOnlyList<CilExceptionRegion> ExceptionRegions,
 	bool InitializeLocals,
 	string? ImportName,
 	CilRegisterAbi? ImportAbi,
@@ -2114,6 +2459,24 @@ internal sealed record CilMethod(
 
 	public int ParameterCount =>
 		Signature.ParameterTypes.Length + (Signature.Header.IsInstance ? 1 : 0);
+}
+
+internal sealed record CilExceptionRegion(
+	ExceptionRegionKind Kind,
+	int TryOffset,
+	int TryLength,
+	int HandlerOffset,
+	int HandlerLength,
+	EntityHandle CatchType,
+	int FilterOffset)
+{
+	public int TryEnd => checked(TryOffset + TryLength);
+
+	public int HandlerEnd => checked(HandlerOffset + HandlerLength);
+
+	public bool IsCatch => Kind == ExceptionRegionKind.Catch;
+
+	public bool IsFinally => Kind == ExceptionRegionKind.Finally;
 }
 
 internal sealed record CilField(

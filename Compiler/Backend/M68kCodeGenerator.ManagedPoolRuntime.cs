@@ -44,16 +44,34 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitLong(0);
 		_assembler.Mark(GcStaleBlocksThresholdLabel);
 		_assembler.EmitLong(0);
+		_assembler.Mark(GcStaticRootsLabel);
+		var staticRoots = _staticFields.Values
+			.Where(static field => field.IsStatic && field.Type.IsReference)
+			.OrderBy(static field =>
+				System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(field.Handle))
+			.ToArray();
+		_assembler.EmitLong((uint)staticRoots.Length);
+		foreach (var field in staticRoots)
+		{
+			_assembler.EmitAddress(StaticFieldLabel(field.Handle));
+		}
 	}
 
 	private string EmitEntryAdapter(
 		CilMethod entry,
 		bool usesManagedRuntime,
-		bool usesAmigaStartupArguments)
+		bool usesAmigaStartupArguments,
+		bool usesExceptionRuntime)
 	{
 		const string label = "entry:managed";
 		_assembler.AlignWord();
 		_assembler.Mark(label);
+		var isolatesRuntimeFrames = usesManagedRuntime || usesExceptionRuntime;
+		if (isolatesRuntimeFrames)
+		{
+			EmitPushRegister(M68kRegister.A5);
+			EmitImmediateToRegister(M68kRegister.A5, 0);
+		}
 		if (usesManagedRuntime && usesAmigaStartupArguments)
 		{
 			EmitPushD0();
@@ -81,6 +99,16 @@ internal sealed partial class M68kCodeGenerator
 			_loadedPlatformBase = null;
 			EmitPopRegister(M68kRegister.A0);
 			EmitPopD0();
+			EmitPopRegister(M68kRegister.A5);
+			_assembler.EmitWord(0x4E75); // RTS
+			return label;
+		}
+
+		if (usesExceptionRuntime)
+		{
+			_assembler.EmitBsr(MethodLabel(entry));
+			_loadedPlatformBase = null;
+			EmitPopRegister(M68kRegister.A5);
 			_assembler.EmitWord(0x4E75); // RTS
 			return label;
 		}
@@ -111,6 +139,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitManagedPoolAlloc();
 		EmitManagedPoolDispose();
 		EmitManagedPoolMark();
+		EmitManagedPoolMarkRuntimeRoots();
 		EmitManagedPoolCollect();
 		EmitManagedPoolCoalesce();
 		EmitManagedPoolTelemetryGetters();
@@ -698,6 +727,74 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
+	private void EmitManagedPoolMarkRuntimeRoots()
+	{
+		var frameLoop = UniqueLabel("gc_roots_frame_loop");
+		var staticStart = UniqueLabel("gc_roots_static_start");
+		var rootLoop = UniqueLabel("gc_roots_root_loop");
+		var nextFrame = UniqueLabel("gc_roots_next_frame");
+		var staticLoop = UniqueLabel("gc_roots_static_loop");
+		var done = UniqueLabel("gc_roots_done");
+
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeMarkRootsLabel);
+		EmitPushRegisters(stackalloc[]
+		{
+			M68kRegister.D2,
+			M68kRegister.D3,
+			M68kRegister.A2,
+			M68kRegister.A3
+		});
+		EmitMoveRegister(M68kRegister.A5, M68kRegister.A3);
+		_assembler.Mark(frameLoop);
+		EmitMoveRegister(M68kRegister.A3, M68kRegister.D0);
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, staticStart);
+		_assembler.EmitWord(0x246B); // MOVEA.L 4(A3),A2 descriptor
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x241A); // MOVE.L (A2)+,D2 root count
+		_assembler.Mark(rootLoop);
+		_assembler.EmitWord(0x4A82); // TST.L D2
+		_assembler.EmitBranch(M68kCondition.Equal, nextFrame);
+		_assembler.EmitWord(0x261A); // MOVE.L (A2)+,D3 root offset
+		_assembler.EmitWord(0x206B); // MOVEA.L 8(A3),A0 frame base
+		_assembler.EmitWord(0x0008);
+		_assembler.EmitWord(0xD1C3); // ADDA.L D3,A0
+		_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		EmitPushD0();
+		_assembler.EmitBsr(RuntimeMarkLabel);
+		EmitDiscardStackArguments(1);
+		_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+		_assembler.EmitBranch(M68kCondition.True, rootLoop);
+		_assembler.Mark(nextFrame);
+		_assembler.EmitWord(0x2653); // MOVEA.L (A3),A3 previous frame
+		_assembler.EmitBranch(M68kCondition.True, frameLoop);
+
+		_assembler.Mark(staticStart);
+		_assembler.EmitWord(0x247C); // MOVEA.L #static-roots,A2
+		_assembler.EmitAddress(GcStaticRootsLabel);
+		_assembler.EmitWord(0x241A); // MOVE.L (A2)+,D2 root count
+		_assembler.Mark(staticLoop);
+		_assembler.EmitWord(0x4A82); // TST.L D2
+		_assembler.EmitBranch(M68kCondition.Equal, done);
+		_assembler.EmitWord(0x205A); // MOVEA.L (A2)+,A0 slot
+		_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		EmitPushD0();
+		_assembler.EmitBsr(RuntimeMarkLabel);
+		EmitDiscardStackArguments(1);
+		_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+		_assembler.EmitBranch(M68kCondition.True, staticLoop);
+		_assembler.Mark(done);
+		EmitPopRegisters(stackalloc[]
+		{
+			M68kRegister.D2,
+			M68kRegister.D3,
+			M68kRegister.A2,
+			M68kRegister.A3
+		});
+		_assembler.EmitWord(0x4E75); // RTS
+	}
+
 	private const string GcConfigLabel = "runtime:gc-config";
 	private const string GcHeapStartLabel = "runtime:gc-heap-start";
 	private const string GcHeapEndLabel = "runtime:gc-heap-end";
@@ -707,10 +804,12 @@ internal sealed partial class M68kCodeGenerator
 	private const string GcStaleBlocksLabel = "runtime:gc-stale-blocks";
 	private const string GcStaleBytesThresholdLabel = "runtime:gc-stale-bytes-threshold";
 	private const string GcStaleBlocksThresholdLabel = "runtime:gc-stale-blocks-threshold";
+	private const string GcStaticRootsLabel = "runtime:gc-static-roots";
 	private const string RuntimeInitLabel = "__c68k_gc_init";
 	private const string RuntimeAllocLabel = "__c68k_alloc";
 	private const string RuntimeDisposeLabel = "__c68k_dispose";
 	private const string RuntimeMarkLabel = "__c68k_gc_mark";
+	private const string RuntimeMarkRootsLabel = "__c68k_gc_mark_roots";
 	private const string RuntimeCollectLabel = "__c68k_gc_collect";
 	private const string RuntimeCoalesceLabel = "__c68k_gc_coalesce";
 	private const string RuntimeGetStaleBytesLabel = "__c68k_gc_get_stale_bytes";

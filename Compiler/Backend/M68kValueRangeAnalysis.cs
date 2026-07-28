@@ -186,7 +186,7 @@ internal sealed class M68kValueRangeAnalysis
 		ApplyStackDelta(input, output, effects);
 
 		var opcode = instruction.Opcode;
-		if ((opcode & 0xFF00) == 0x7000)
+		if ((opcode & 0xF100) == 0x7000)
 		{
 			var register = (opcode >> 9) & 7;
 			output.Data[register] = M68kValueRange.Exact(

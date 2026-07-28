@@ -21,15 +21,20 @@ internal sealed partial class M68kCodeGenerator
 		ImmutableArray<short> ArgumentOffsets,
 		ImmutableArray<M68kRegister?> ArgumentRegisters,
 		short VarargsScratchOffset,
-		int VarargsScratchBytes);
+		int VarargsScratchBytes,
+		bool HasRuntimeFrame,
+		ImmutableArray<short> GcScratchOffsets);
 
 
 	private FrameLayout CreateFrameLayout(
 		CilMethod method,
 		IReadOnlyList<M68kRegister>? registerAbi,
 		IReadOnlySet<int> branchTargets,
-		IReadOnlySet<int> reachableOffsets)
+		IReadOnlySet<int> reachableOffsets,
+		IReadOnlyDictionary<int, ImmutableArray<CilStackValueKind>> reachableStackStates)
 	{
+		var hasRuntimeFrame = RequiresRuntimeFrame(method);
+		var runtimeFrameLongs = hasRuntimeFrame ? RuntimeFrameHeaderLongs : 0;
 		var argumentHomeCount = registerAbi?.Count ?? 0;
 		var argumentRegisters = SelectPromotedArgumentRegisters(
 			method,
@@ -43,6 +48,10 @@ internal sealed partial class M68kCodeGenerator
 		var localRegisters = SelectPromotedLocalRegisters(method, branchTargets, reachableOffsets);
 		var varargsScratchBytes = CalculateVarargsScratchBytes(method, branchTargets, reachableOffsets);
 		var varargsScratchLongs = checked(varargsScratchBytes / 4);
+		var gcScratchLongs = hasRuntimeFrame && M68kCompiler.IsManagedRuntime(_request)
+			? reachableStackStates.Values.Max(static stack =>
+				stack.Count(static kind => kind == CilStackValueKind.Reference))
+			: 0;
 		var frameLocalLongs = 0;
 		for (var index = 0; index < method.Locals.Length; index++)
 		{
@@ -51,7 +60,9 @@ internal sealed partial class M68kCodeGenerator
 				frameLocalLongs += LocalSlotLongs(method.Locals[index]);
 			}
 		}
-		var frameBytes = checked(((frameLocalLongs + argumentHomeCount) * 4) + varargsScratchBytes);
+		var frameBytes = checked(
+			((runtimeFrameLongs + frameLocalLongs + argumentHomeCount + gcScratchLongs) * 4) +
+			varargsScratchBytes);
 		if (frameBytes > short.MaxValue)
 		{
 			throw new M68kCompilationException(
@@ -62,7 +73,14 @@ internal sealed partial class M68kCodeGenerator
 
 		var clearLocals = GetLocalsRequiringEntryClear(method, branchTargets, reachableOffsets);
 		var localOffsets = new short[method.Locals.Length];
-		var nextLocalSlot = argumentHomeCount + varargsScratchLongs;
+		var gcScratchOffsets = new short[gcScratchLongs];
+		var gcScratchStartSlot = runtimeFrameLongs + argumentHomeCount + varargsScratchLongs;
+		for (var index = 0; index < gcScratchOffsets.Length; index++)
+		{
+			gcScratchOffsets[index] = checked((short)((gcScratchStartSlot + index) * 4));
+		}
+
+		var nextLocalSlot = gcScratchStartSlot + gcScratchLongs;
 		for (var index = 0; index < method.Locals.Length; index++)
 		{
 			if (!clearLocals[index] || localRegisters[index] is not null)
@@ -74,7 +92,7 @@ internal sealed partial class M68kCodeGenerator
 			nextLocalSlot += LocalSlotLongs(method.Locals[index]);
 		}
 
-		var clearLongs = nextLocalSlot - argumentHomeCount - varargsScratchLongs;
+		var clearLongs = nextLocalSlot - gcScratchStartSlot;
 		for (var index = 0; index < method.Locals.Length; index++)
 		{
 			if (clearLocals[index] || localRegisters[index] is not null)
@@ -87,7 +105,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var argumentOffsets = new short[method.ParameterCount];
-		var nextArgumentHomeSlot = 0;
+		var nextArgumentHomeSlot = runtimeFrameLongs;
 		for (var index = 0; index < argumentOffsets.Length; index++)
 		{
 			argumentOffsets[index] = registerAbi is not null && argumentRegisters[index] is null
@@ -97,20 +115,23 @@ internal sealed partial class M68kCodeGenerator
 
 		return new FrameLayout(
 			frameBytes,
-			checked((short)((argumentHomeCount + varargsScratchLongs) * 4)),
+			checked((short)(gcScratchStartSlot * 4)),
 			clearLongs,
 			localOffsets.ToImmutableArray(),
 			localRegisters.ToImmutableArray(),
 			argumentOffsets.ToImmutableArray(),
 			argumentRegisters.ToImmutableArray(),
-			checked((short)(argumentHomeCount * 4)),
-			varargsScratchBytes);
+			checked((short)((runtimeFrameLongs + argumentHomeCount) * 4)),
+			varargsScratchBytes,
+			hasRuntimeFrame,
+			gcScratchOffsets.ToImmutableArray());
 	}
 
 
 	private bool TryEmitCompactArgumentHomeFrame(IReadOnlyList<M68kRegister>? registerAbi)
 	{
 		if (registerAbi is null ||
+			CurrentFrameLayout.HasRuntimeFrame ||
 			CurrentFrameLayout.ClearLongs != 0 ||
 			CurrentFrameLayout.VarargsScratchBytes != 0)
 		{
@@ -149,7 +170,7 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlySet<int> reachableOffsets)
 	{
 		var result = new M68kRegister?[method.ParameterCount];
-		if (registerAbi is null)
+		if (registerAbi is null || RequiresRuntimeFrame(method))
 		{
 			return result;
 		}
@@ -299,6 +320,11 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlySet<int> reachableOffsets)
 	{
 		var result = new M68kRegister?[method.Locals.Length];
+		if (RequiresRuntimeFrame(method))
+		{
+			return result;
+		}
+
 		var dataRegisters = new[]
 		{
 			M68kRegister.D7,
@@ -369,6 +395,10 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlySet<int> reachableOffsets)
 	{
 		var result = new HashSet<M68kRegister>();
+		if (_hasExceptionFrames)
+		{
+			result.Add(M68kRegister.A5);
+		}
 
 		for (var index = 0; index < method.Instructions.Count; index++)
 		{
@@ -787,6 +817,11 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlySet<int> branchTargets,
 		IReadOnlySet<int> reachableOffsets)
 	{
+		if (_module.IsUninitializedStorageType(method.Locals[localIndex]))
+		{
+			return false;
+		}
+
 		var ambiguousBeforeFirstAccess = false;
 		for (var instructionIndex = 0; instructionIndex < method.Instructions.Count; instructionIndex++)
 		{
@@ -973,7 +1008,7 @@ internal sealed partial class M68kCodeGenerator
 		_currentFrameLayout ?? throw new InvalidOperationException("No active frame layout.");
 
 	private int LocalSlotLongs(CilType type) =>
-		SlotLongs(type);
+		checked(SlotLongs(type) + (_module.RequiresLongAlignedStackAddress(type) ? 1 : 0));
 
 	private M68kRegister? LocalRegister(int index) =>
 		(uint)index < (uint)CurrentFrameLayout.LocalRegisters.Length
@@ -1019,8 +1054,15 @@ internal sealed partial class M68kCodeGenerator
 		return CurrentFrameLayout.ArgumentOffsets[index];
 	}
 
-	private static short FrameDisplacement(short frameOffset, int stackDepth) =>
-		checked((short)(frameOffset + (stackDepth * 4)));
+	private short FrameDisplacement(short frameOffset, int stackDepth)
+	{
+		var byteDepth = stackDepth <= _currentStackTypes.Length
+			? CilStackValueLayout.ByteDepth(_currentStackTypes, stackDepth)
+			: checked(
+				CilStackValueLayout.ByteDepth(_currentStackTypes, _currentStackTypes.Length) +
+				((stackDepth - _currentStackTypes.Length) * 4));
+		return checked((short)(frameOffset + byteDepth));
+	}
 
 }
 

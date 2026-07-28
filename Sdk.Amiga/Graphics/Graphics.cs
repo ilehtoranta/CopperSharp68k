@@ -444,7 +444,7 @@ public static class Graphics
 	[AmigaLvo(-474)]
 	public static extern void AskFont(
 		[M68kRegister(M68kRegister.A1)] uint arg0,
-		[M68kRegister(M68kRegister.A0)] uint arg1);
+		[M68kRegister(M68kRegister.A0), M68kWritesEntireBuffer] uint arg1);
 
 	[AmigaLvo(-480)]
 	public static extern void AddFont(
@@ -693,7 +693,7 @@ public static class Graphics
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint GetDisplayInfoData(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint arg1,
 		[M68kRegister(M68kRegister.D0)] uint arg2,
 		[M68kRegister(M68kRegister.D1)] uint arg3,
 		[M68kRegister(M68kRegister.D2)] uint arg4);
@@ -701,7 +701,7 @@ public static class Graphics
 	[AmigaLvo(-762)]
 	public static extern void FontExtent(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A1), M68kWritesEntireBuffer] uint arg1);
 
 	[AmigaLvo(-768)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -710,7 +710,7 @@ public static class Graphics
 		[M68kRegister(M68kRegister.D0)] uint arg1,
 		[M68kRegister(M68kRegister.D1)] uint arg2,
 		[M68kRegister(M68kRegister.D2)] uint arg3,
-		[M68kRegister(M68kRegister.A2)] uint arg4,
+		[M68kRegister(M68kRegister.A2), M68kWritesBuffer] uint arg4,
 		[M68kRegister(M68kRegister.A1)] uint arg5);
 
 	[AmigaLvo(-774)]
@@ -731,7 +731,7 @@ public static class Graphics
 		[M68kRegister(M68kRegister.D1)] uint arg2,
 		[M68kRegister(M68kRegister.D2)] uint arg3,
 		[M68kRegister(M68kRegister.D3)] uint arg4,
-		[M68kRegister(M68kRegister.A2)] uint arg5,
+		[M68kRegister(M68kRegister.A2), M68kWritesBuffer] uint arg5,
 		[M68kRegister(M68kRegister.A1)] uint arg6);
 
 	[AmigaLvo(-786)]
@@ -986,7 +986,7 @@ public static class Graphics
 	[AmigaLvo(-1044)]
 	public static extern void GetRPAttrsA(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint arg1);
 
 	[AmigaLvo(-1050)]
 	[return: M68kRegister(M68kRegister.D0)]

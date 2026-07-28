@@ -11,6 +11,9 @@ namespace CopperSharp.Compiler.Backend;
 
 internal enum CilStackValueKind
 {
+	BooleanByte,
+	UnsignedByte,
+	SignedByte,
 	Int32,
 	Int64,
 	Reference,
@@ -40,6 +43,10 @@ internal static class CilStackAnalyzer
 		var depths = new Dictionary<int, int>();
 		var work = new Queue<(int Offset, int Depth)>();
 		work.Enqueue((method.Instructions[0].Offset, 0));
+		foreach (var region in method.ExceptionRegions)
+		{
+			work.Enqueue((region.HandlerOffset, region.IsCatch ? 1 : 0));
+		}
 
 		while (work.Count != 0)
 		{
@@ -68,7 +75,9 @@ internal static class CilStackAnalyzer
 			}
 
 			depths.Add(offset, depth);
-			var nextDepth = checked(depth + GetStackDelta(method, module, instruction));
+			var nextDepth = instruction.OpCode == OpCodes.Leave || instruction.OpCode == OpCodes.Leave_S
+				? 0
+				: checked(depth + GetStackDelta(method, module, instruction));
 			if (nextDepth < 0)
 			{
 				throw new M68kCompilationException(
@@ -76,6 +85,13 @@ internal static class CilStackAnalyzer
 					"Instruction pops more values than are present.",
 					method.DisplayName,
 					instruction.Offset);
+			}
+
+			if (instruction.OpCode == OpCodes.Throw ||
+				instruction.OpCode == OpCodes.Rethrow ||
+				instruction.OpCode == OpCodes.Endfinally)
+			{
+				continue;
 			}
 
 			if (instruction.OpCode == OpCodes.Ret)
@@ -143,6 +159,14 @@ internal static class CilStackAnalyzer
 		var states = new Dictionary<int, ImmutableArray<CilStackValueKind>>();
 		var work = new Queue<(int Offset, ImmutableArray<CilStackValueKind> Stack)>();
 		work.Enqueue((method.Instructions[0].Offset, ImmutableArray<CilStackValueKind>.Empty));
+		foreach (var region in method.ExceptionRegions)
+		{
+			work.Enqueue((
+				region.HandlerOffset,
+				region.IsCatch
+					? ImmutableArray.Create(CilStackValueKind.Reference)
+					: ImmutableArray<CilStackValueKind>.Empty));
+		}
 
 		while (work.Count != 0)
 		{
@@ -153,7 +177,7 @@ internal static class CilStackAnalyzer
 				{
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.InvalidEvaluationStack,
-						"Control-flow merge has incompatible evaluation-stack types.",
+						$"Control-flow merge has incompatible evaluation-stack types: prior [{string.Join(",", priorStack)}], incoming [{string.Join(",", stack)}].",
 						method.DisplayName,
 						offset);
 				}
@@ -172,6 +196,13 @@ internal static class CilStackAnalyzer
 
 			states.Add(offset, stack);
 			var nextStack = ApplyStackEffect(method, module, instruction, stack);
+			if (instruction.OpCode == OpCodes.Throw ||
+				instruction.OpCode == OpCodes.Rethrow ||
+				instruction.OpCode == OpCodes.Endfinally)
+			{
+				continue;
+			}
+
 			if (instruction.OpCode == OpCodes.Ret)
 			{
 				if (nextStack.Length != 0)
@@ -270,6 +301,16 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Ret)
 		{
 			return -SlotCount(method.Signature.ReturnType);
+		}
+
+		if (op == OpCodes.Throw)
+		{
+			return -1;
+		}
+
+		if (op == OpCodes.Rethrow || op == OpCodes.Endfinally)
+		{
+			return 0;
 		}
 
 		return op.StackBehaviourPop switch
@@ -552,6 +593,11 @@ internal static class CilStackAnalyzer
 			return Push(stack, CilStackValueKind.Reference);
 		}
 
+		if (op == OpCodes.Ldtoken)
+		{
+			return Push(stack, CilStackValueKind.Int32);
+		}
+
 		if (TryGetArgumentIndex(instruction, out var argumentIndex))
 		{
 			return PushValue(stack, StackKindForParameter(module, method, argumentIndex));
@@ -602,12 +648,26 @@ internal static class CilStackAnalyzer
 			return Pop(method, instruction, stack, 1);
 		}
 
+		if (op == OpCodes.Ceq || op == OpCodes.Cgt || op == OpCodes.Cgt_Un ||
+			op == OpCodes.Clt || op == OpCodes.Clt_Un)
+		{
+			if (stack.TakeLast(Math.Min(4, stack.Length)).Contains(CilStackValueKind.Int64))
+			{
+				throw Unsupported(method, instruction, "64-bit comparisons");
+			}
+
+			// Comparison results are observable managed booleans. Keep their
+			// evaluation-stack representation 32-bit so merges with integer
+			// constants remain ABI-compatible; compact nullable predicates use
+			// BooleanByte independently until a consumer widens them.
+			return Push(Pop(method, instruction, stack, 2), CilStackValueKind.Int32);
+		}
+
 		if (op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.And ||
 			op == OpCodes.Or || op == OpCodes.Xor || op == OpCodes.Mul ||
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
 			op == OpCodes.Rem_Un || op == OpCodes.Shl || op == OpCodes.Shr ||
-			op == OpCodes.Shr_Un || op == OpCodes.Ceq || op == OpCodes.Cgt ||
-			op == OpCodes.Cgt_Un || op == OpCodes.Clt || op == OpCodes.Clt_Un)
+			op == OpCodes.Shr_Un)
 		{
 			if (stack.TakeLast(Math.Min(4, stack.Length)).Contains(CilStackValueKind.Int64))
 			{
@@ -635,7 +695,25 @@ internal static class CilStackAnalyzer
 
 		if (IsUnconditionalBranch(op))
 		{
-			return stack;
+			return op == OpCodes.Leave || op == OpCodes.Leave_S
+				? ImmutableArray<CilStackValueKind>.Empty
+				: stack;
+		}
+
+		if (op == OpCodes.Throw)
+		{
+			var result = Pop(method, instruction, stack, 1);
+			if (stack.Length == 0 || stack[^1] != CilStackValueKind.Reference)
+			{
+				throw Unsupported(method, instruction, "throw requires an exception reference");
+			}
+
+			return result;
+		}
+
+		if (op == OpCodes.Rethrow || op == OpCodes.Endfinally)
+		{
+			return ImmutableArray<CilStackValueKind>.Empty;
 		}
 
 		if (IsRelationalBranch(op))
@@ -689,6 +767,10 @@ internal static class CilStackAnalyzer
 				? CilStackValueKind.ManagedPointer
 				: op == OpCodes.Ldelem_Ref
 					? CilStackValueKind.Reference
+					: op == OpCodes.Ldelem_I1
+						? CilStackValueKind.SignedByte
+						: op == OpCodes.Ldelem_U1
+							? CilStackValueKind.UnsignedByte
 					: CilStackValueKind.Int32);
 		}
 
@@ -700,7 +782,13 @@ internal static class CilStackAnalyzer
 		if (IsIndirectLoad(op))
 		{
 			return Push(Pop(method, instruction, stack, 1),
-				op == OpCodes.Ldind_Ref ? CilStackValueKind.Reference : CilStackValueKind.Int32);
+				op == OpCodes.Ldind_Ref
+					? CilStackValueKind.Reference
+					: op == OpCodes.Ldind_I1
+						? CilStackValueKind.SignedByte
+						: op == OpCodes.Ldind_U1
+							? CilStackValueKind.UnsignedByte
+							: CilStackValueKind.Int32);
 		}
 
 		if (IsIndirectStore(op))
@@ -832,6 +920,12 @@ internal static class CilStackAnalyzer
 	private static CilStackValueKind StackKindForType(CilType type) =>
 		type.Size == 8 && type.IsSupportedScalar
 			? CilStackValueKind.Int64
+			: type.Size == 1 && type.Kind == CilTypeKind.Boolean
+				? CilStackValueKind.BooleanByte
+			: type.Size == 1 && type.Kind == CilTypeKind.SignedInteger
+				? CilStackValueKind.SignedByte
+			: type.Size == 1 && type.Kind == CilTypeKind.UnsignedInteger
+				? CilStackValueKind.UnsignedByte
 			: type.Kind switch
 		{
 			CilTypeKind.ManagedReference => CilStackValueKind.Reference,
@@ -851,4 +945,36 @@ internal static class CilStackAnalyzer
 		}
 		return result;
 	}
+}
+
+internal static class CilStackValueLayout
+{
+	internal static bool IsByte(CilStackValueKind kind) =>
+		kind is CilStackValueKind.BooleanByte or
+			CilStackValueKind.UnsignedByte or
+			CilStackValueKind.SignedByte;
+
+	internal static int SlotBytes(CilStackValueKind kind) =>
+		IsByte(kind) ? 2 : 4;
+
+	internal static int ByteDepth(
+		IReadOnlyList<CilStackValueKind> stack,
+		int entryCount)
+	{
+		if ((uint)entryCount > (uint)stack.Count)
+		{
+			throw new ArgumentOutOfRangeException(nameof(entryCount));
+		}
+
+		var bytes = 0;
+		for (var index = 0; index < entryCount; index++)
+		{
+			bytes += SlotBytes(stack[index]);
+		}
+
+		return bytes;
+	}
+
+	internal static bool IsSignedByte(CilStackValueKind kind) =>
+		kind == CilStackValueKind.SignedByte;
 }

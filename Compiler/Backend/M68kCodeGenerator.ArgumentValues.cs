@@ -44,6 +44,25 @@ internal sealed partial class M68kCodeGenerator
 			return false;
 		}
 
+		if (instructions[valueIndex].OpCode == OpCodes.Call)
+		{
+			var callTarget = _module.ResolveMethodToken(
+				(int)instructions[valueIndex].Operand!,
+				caller,
+				instructions[valueIndex].Offset);
+			if (callTarget.Definition is { } definition &&
+				TryGetConstantReturnValue(definition, out var constant))
+			{
+				value = new ArgumentValue(new CilInstruction(
+					instructions[valueIndex].Offset,
+					OpCodes.Ldc_I4,
+					constant,
+					instructions[valueIndex].NextOffset));
+				consumed = 1;
+				return true;
+			}
+		}
+
 		if (TryGetBooleanToUInt32Expression(
 			instructions,
 			valueIndex,
@@ -199,6 +218,32 @@ internal sealed partial class M68kCodeGenerator
 			return true;
 		}
 
+		if (valueIndex + 2 < instructions.Count &&
+			IsArgumentValueInstruction(instructions[valueIndex]) &&
+			instructions[valueIndex + 1].OpCode == OpCodes.Call &&
+			instructions[valueIndex + 2].OpCode == OpCodes.Call)
+		{
+			var addressOf = _module.ResolveMethodToken(
+				(int)instructions[valueIndex + 1].Operand!,
+				caller,
+				instructions[valueIndex + 1].Offset);
+			var conversion = _module.ResolveMethodToken(
+				(int)instructions[valueIndex + 2].Operand!,
+				caller,
+				instructions[valueIndex + 2].Offset);
+			if (addressOf.ImportName is
+					"intrinsic:hook-address-of" or
+					"intrinsic:boopsi-message-address-of" or
+					"intrinsic:address-of-ref" &&
+				(conversion.ImportName == "intrinsic:aptr-to-uint32" ||
+				 IsTransparentScalarToUInt32Conversion(conversion)))
+			{
+				value = new ArgumentValue(instructions[valueIndex]);
+				consumed = 3;
+				return true;
+			}
+		}
+
 		if (op != OpCodes.Call && op != OpCodes.Callvirt)
 		{
 			return true;
@@ -208,7 +253,12 @@ internal sealed partial class M68kCodeGenerator
 			(int)instructions[valueIndex + 1].Operand!,
 			caller,
 			instructions[valueIndex + 1].Offset);
-		if (target.ImportName is "intrinsic:cstring-from-pointer" or "intrinsic:cstring-to-uint32" ||
+		if (target.ImportName is
+				"intrinsic:cstring-from-pointer" or
+				"intrinsic:cstring-to-uint32" or
+				"intrinsic:hook-address-of" or
+				"intrinsic:boopsi-message-address-of" or
+				"intrinsic:address-of-ref" ||
 			IsTransparentScalarToUInt32Conversion(target) ||
 			IsUInt32ToTransparentScalarConversion(target) ||
 			IsInt32ToTransparentScalarConversion(target) ||
@@ -218,6 +268,20 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return true;
+	}
+
+	private static bool TryGetConstantReturnValue(CilMethod method, out int value)
+	{
+		value = 0;
+		if (method.Signature.Header.IsInstance ||
+			method.Signature.ParameterTypes.Length != 0 ||
+			method.Instructions.Count != 2 ||
+			method.Instructions[1].OpCode != OpCodes.Ret)
+		{
+			return false;
+		}
+
+		return TryGetConstant(method.Instructions[0], out value);
 	}
 
 	private static bool TryGetBooleanToUInt32Expression(

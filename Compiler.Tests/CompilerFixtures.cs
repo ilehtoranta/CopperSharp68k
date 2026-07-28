@@ -6,6 +6,10 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class CompilerFixtures
 {
+	private sealed class FixtureException : Exception
+	{
+	}
+
 	private static int _counter;
 
 	[M68kEntryPoint]
@@ -28,6 +32,293 @@ public static class CompilerFixtures
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int ArithmeticEntry() => Arithmetic(9, 5);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int TryCatchEntry()
+	{
+		try
+		{
+			throw null!;
+		}
+		catch
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int TypedCatchEntry()
+	{
+		try
+		{
+			throw null!;
+		}
+		catch (InvalidOperationException)
+		{
+			return 1;
+		}
+		catch (Exception)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CustomExceptionCatchEntry()
+	{
+		try
+		{
+			throw new FixtureException();
+		}
+		catch (FixtureException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DivideByZeroCatchEntry()
+	{
+		try
+		{
+			return 84 / _counter;
+		}
+		catch (DivideByZeroException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NullDereferenceCatchEntry()
+	{
+		ManagedBox? box = null;
+		try
+		{
+			return box!.Value;
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BoundsCatchEntry()
+	{
+		try
+		{
+			var values = new int[1];
+			return values[2];
+		}
+		catch (IndexOutOfRangeException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int OutOfMemoryCatchEntry()
+	{
+		try
+		{
+			_ = new int[1024];
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int FinallyEntry()
+	{
+		var value = 0;
+		try
+		{
+			value = 1;
+		}
+		finally
+		{
+			value += 2;
+		}
+
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CrossMethodCatchEntry()
+	{
+		try
+		{
+			ThrowNull();
+			return 1;
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ThrowNull()
+	{
+		throw null!;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnhandledExceptionEntry()
+	{
+		throw null!;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NestedCatchEntry()
+	{
+		try
+		{
+			try
+			{
+				throw null!;
+			}
+			catch (InvalidOperationException)
+			{
+				return 1;
+			}
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int RethrowEntry()
+	{
+		try
+		{
+			try
+			{
+				throw null!;
+			}
+			catch
+			{
+				throw;
+			}
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ExceptionalFinallyEntry()
+	{
+		var value = 0;
+		try
+		{
+			try
+			{
+				throw null!;
+			}
+			finally
+			{
+				value = 7;
+			}
+		}
+		catch (NullReferenceException)
+		{
+			return value + 35;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int A5ImportInsideCatchEntry()
+	{
+		var value = 0;
+		try
+		{
+			value = ImportedA5Value(41);
+			throw null!;
+		}
+		catch (NullReferenceException)
+		{
+			return value + 1;
+		}
+	}
+
+	[M68kImport("fixture.a5Value")]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern int ImportedA5Value(
+		[M68kRegister(M68kRegister.A5)] int value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ManagedA5ImportEntry() => ImportedA5Value(42);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int A5ImportThroughFramelessEntry()
+	{
+		var value = 0;
+		try
+		{
+			value = FramelessA5Import();
+			throw null!;
+		}
+		catch (NullReferenceException)
+		{
+			return value + 1;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int FramelessA5Import() => ImportedA5Value(41);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int A5PromotionThroughFramelessEntry()
+	{
+		var value = 0u;
+		try
+		{
+			value = FramelessPromotedAptr();
+			throw null!;
+		}
+		catch (NullReferenceException)
+		{
+			return value == 0x0000_4400u ? 42 : 1;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint FramelessPromotedAptr()
+	{
+		var pointer = APTR.FromPointer(0x0000_4400);
+		return pointer.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ExternalFailureCatchEntry()
+	{
+		try
+		{
+			ExternalFailure();
+			return 1;
+		}
+		catch (Exception)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern int ExternalFailure();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ExternalSuccessEntry() => ExternalSuccess();
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern int ExternalSuccess();
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int DiscardCallResultEntry()
@@ -658,6 +949,24 @@ public static class CompilerFixtures
 		var reclaimed = new int[12];
 		reclaimed[11] = 35;
 		return _keptArray[0] + reclaimed[11];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PoolCollectTracesCallerFrameEntry()
+	{
+		var kept = new int[4];
+		kept[0] = 7;
+		AllocateUnrootedArray();
+		CollectFromCallee();
+		var reused = new int[4];
+		reused[0] = 35;
+		return kept[0] + reused[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void CollectFromCallee()
+	{
+		M68kRuntime.Collect();
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

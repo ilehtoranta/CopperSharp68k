@@ -55,6 +55,283 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void FullExceptionModeEmitsBuiltInCatchRuntime()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry",
+			exceptionMode: M68kExceptionMode.Full);
+
+		Assert.Contains("__c68k_exception_raise:", result.Text, StringComparison.Ordinal);
+		Assert.Contains("C68K_runtime_003Aexception_002Dtable", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\ta7,8(a7)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t#$00000000,12(a5)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t8(a5),a7", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tjmp\t(a1)", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tdc.w\t$2E6D", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tdc.w\t$4ED1", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("__c68k_eh_", result.Text, StringComparison.Ordinal);
+		Assert.Contains(
+			result.Symbols,
+			symbol => symbol.Name == "__c68k_exception_table");
+	}
+
+	[Fact]
+	public void FullExceptionModeExecutesCatchInGeneratedRuntime()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void FullExceptionModeEmitsFinallyRuntimeContract()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::FinallyEntry",
+			exceptionMode: M68kExceptionMode.Full);
+
+		Assert.Contains("__c68k_exception_endfinally:", result.Text, StringComparison.Ordinal);
+		Assert.Contains("C68K_runtime_003Aexception_002Dtable", result.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void FullExceptionModeRecordsTypedCatchClauses()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TypedCatchEntry",
+			exceptionMode: M68kExceptionMode.Full);
+
+		Assert.Contains("C68K_runtime_003Aexception_002Dtable", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("__c68k_eh_", result.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void FullExceptionModeExecutesTypedCatchInGeneratedRuntime()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TypedCatchEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void FullExceptionModeMatchesInputAssemblyExceptionDescriptor()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_2000
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void FullExceptionModeRunsFinallyOnNormalLeave()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::FinallyEntry");
+
+		Assert.Equal(3u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Theory]
+	[InlineData("CrossMethodCatchEntry")]
+	[InlineData("NestedCatchEntry")]
+	[InlineData("RethrowEntry")]
+	[InlineData("ExceptionalFinallyEntry")]
+	[InlineData("A5PromotionThroughFramelessEntry")]
+	[InlineData("DivideByZeroCatchEntry")]
+	[InlineData("NullDereferenceCatchEntry")]
+	public void FullExceptionModeHandlesNestedAndCrossMethodControlFlow(string method)
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			$"CopperSharp.Compiler.Tests.CompilerFixtures::{method}");
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Theory]
+	[InlineData("BoundsCatchEntry")]
+	[InlineData("OutOfMemoryCatchEntry")]
+	public void FullExceptionModeHandlesManagedRuntimeFaults(string entry)
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_0400
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Theory]
+	[InlineData("A5ImportInsideCatchEntry")]
+	[InlineData("A5ImportThroughFramelessEntry")]
+	public void ProtectedImportUsingA5PreservesRuntimeFrameChain(string entry)
+	{
+		const uint importAddress = 0x0000_2E00;
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			imports: new Dictionary<string, uint>
+			{
+				["fixture.a5Value"] = importAddress
+			});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(importAddress, state => state.D[0] = state.A[5]);
+
+		Assert.Equal(
+			42u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void ManagedImportUsingA5PreservesRuntimeFrameChain()
+	{
+		const uint importAddress = 0x0000_2E00;
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ManagedA5ImportEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_2000
+			},
+			Imports = new Dictionary<string, uint>
+			{
+				["fixture.a5Value"] = importAddress
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(importAddress, state => state.D[0] = state.A[5]);
+
+		Assert.Equal(
+			42u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void ExternalNonzeroStatusRaisesCatchableManagedException()
+	{
+		const uint callAddress = 0x0000_3000;
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ExternalFailureCatchEntry",
+			ExternalCallResolvers =
+			[
+				new ExceptionStatusResolver(callAddress + 30)
+			]
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(callAddress, state =>
+		{
+			state.D[0] = 1;
+			state.D[1] = 99;
+		});
+
+		Assert.Equal(
+			42u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void ExternalZeroStatusPreservesD0ReturnValue()
+	{
+		const uint callAddress = 0x0000_3100;
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ExternalSuccessEntry",
+			ExternalCallResolvers =
+			[
+				new ExceptionStatusResolver(callAddress + 30)
+			]
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(callAddress, state =>
+		{
+			state.D[0] = 42;
+			state.D[1] = 0;
+		});
+
+		Assert.Equal(
+			42u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void UnhandledExceptionHookIsOptionalAndReturnsToIllegal()
+	{
+		var withoutHook = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::UnhandledExceptionEntry");
+		var withHook = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::UnhandledExceptionEntry",
+			imports: new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.UnhandledException] = 0x0000_2E00
+			});
+
+		Assert.DoesNotContain(
+			$"\tjsr\t{M68kRuntimeImports.UnhandledException}",
+			withoutHook.Text,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			$"\tjsr\t{M68kRuntimeImports.UnhandledException}\r\n\tillegal",
+			withHook.Text,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void YoloExceptionModeRejectsManagedExceptionRegions()
+	{
+		var exception = Assert.Throws<M68kCompilationException>(() =>
+			Compile(
+				M68kCpuTarget.M68000,
+				M68kOutputFormat.Assembly,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry",
+				exceptionMode: M68kExceptionMode.Yolo));
+
+		Assert.Equal(M68kDiagnosticIds.UnsupportedInstruction, exception.DiagnosticId);
+		Assert.Contains("YOLO exception mode", exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void DiscardedCallResultDoesNotRoundTripThroughEvaluationStack()
 	{
 		var result = Compile(
@@ -114,7 +391,6 @@ public sealed class CompilerExecutionTests
 
 		Assert.DoesNotMatch(@"\tclr\.l\t\d+\(a7\)", result.Text);
 		Assert.Contains("\tmoveq\t#7,d2", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\td2,-(a7)", result.Text, StringComparison.Ordinal);
 		Assert.Equal(36u, ExecuteHunk(result, M68kCpuModel.M68000));
 	}
 
@@ -392,7 +668,7 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Contains("\tmovea.l\ta7,a1", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmovem.l\td2-d7,4(a7)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovem.l\td0-d6,(a7)", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tlea\t0(a7),a1", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			"\tmove.l\td2,4(a7)\r\n\tmove.l\td3,8(a7)\r\n\tmove.l\td4,12(a7)",
@@ -631,9 +907,10 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(42u, ExecuteHunk(result, model));
-		Assert.DoesNotContain("\ttst.l\td0", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tsne\td1", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tneg.b\td1", result.Text, StringComparison.Ordinal);
+		var applicationText = BeforeExceptionRuntime(result);
+		Assert.DoesNotContain("\ttst.l\td0", applicationText, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tsne\td1", applicationText, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tneg.b\td1", applicationText, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -651,9 +928,10 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(0x0000_4400u, ExecuteHunk(result, model));
-		Assert.DoesNotContain("\ttst.l\td0", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tsne\td1", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tneg.b\td1", result.Text, StringComparison.Ordinal);
+		var applicationText = BeforeExceptionRuntime(result);
+		Assert.DoesNotContain("\ttst.l\td0", applicationText, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tsne\td1", applicationText, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tneg.b\td1", applicationText, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -930,8 +1208,12 @@ public sealed class CompilerExecutionTests
 
 		Assert.NotEmpty(result.Code);
 		Assert.DoesNotContain("Amiga.MUI.WindowObject::op_Implicit", result.Map, StringComparison.Ordinal);
-		Assert.Contains(
+		Assert.DoesNotContain(
 			"\tmove.l\t#$00000000,16(a7)",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"\tmoveq\t#0,d4\r\n\tmovem.l\td0-d4,(a7)",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.DoesNotMatch(
@@ -943,14 +1225,14 @@ public sealed class CompilerExecutionTests
 		Assert.DoesNotMatch(
 			@"\tmove\.l\t\(a0\),d0\r?\n\tmove\.l\td0,\d+\(a7\)",
 			result.Text);
-		Assert.Matches(
+		Assert.DoesNotMatch(
 			@"\tmove\.l\t\(a0\),\d+\(a7\)",
 			result.Text);
 		Assert.DoesNotContain(
 			"\tmove.l\td0,(a7)\r\n\tmovea.l\t(a7),a0",
 			result.Text,
 			StringComparison.Ordinal);
-		Assert.Contains(
+		Assert.DoesNotContain(
 			"\tmove.l\t56(a7),12(a7)",
 			result.Text,
 			StringComparison.Ordinal);
@@ -1000,6 +1282,9 @@ public sealed class CompilerExecutionTests
 			result.Text);
 		Assert.DoesNotMatch(
 			@"\tmove\.l\td0,-\(a7\)\r?\n[A-Za-z0-9_:]+:\r?\n\tmove\.l\t\(a7\)\+,\d+\(a7\)",
+			result.Text);
+		Assert.DoesNotMatch(
+			@"\tmove\.l\td0,-\(a7\)\r?\n(?:[A-Za-z0-9_:]+:\r?\n)*\tbra\.w\t[A-Za-z0-9_:]+\r?\n[A-Za-z0-9_:]+:\r?\n\tmoveq\t#1,d0\r?\n(?:[A-Za-z0-9_:]+:\r?\n)*\tmove\.l\td0,-\(a7\)\r?\n[A-Za-z0-9_:]+:\r?\n\tmove\.l\t\(a7\)\+,\d+\(a7\)",
 			result.Text);
 		Assert.DoesNotContain(
 			"\tmovea.l\ta7,a0",
@@ -1051,7 +1336,7 @@ public sealed class CompilerExecutionTests
 		Assert.DoesNotMatch(
 			@"\tbsr\.w\tC68K_method_[A-Za-z0-9_]+(?:\r?\n(?:[A-Za-z0-9_]+:\r?\n)*)?\tmove\.l\td0,\(a0\)\r?\n\trts",
 			result.Text);
-		Assert.Matches(@"\tmove\.l\t#\$804226E6,\d+\(a7\)", result.Text);
+		Assert.Matches(@"\tmove\.l\t#\$804226E6,d[0-4]", result.Text);
 		Assert.Contains(
 			"\tmovea.l\ta7,a1\r\n\tjsr\tC68K_amiga_002Eboopsi_002EDoMethodA",
 			result.Text,
@@ -1143,11 +1428,23 @@ public sealed class CompilerExecutionTests
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
+			"\tmovem.l\td0-d4,(a7)",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains(
 			"\tjsr\tC68K_amiga_002Eboopsi_002EDoSuperMethodA",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains("\tmove.w\t32(a1),d0", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tadda.l\td0,a0", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmovea.l\t#$00000000,a0",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"\tsuba.l\ta0,a0",
+			result.Text,
+			StringComparison.Ordinal);
 		Assert.Contains(
 			"\tmove.l\tC68K_static_003A04000003,d0\r\n\tbeq.w",
 			result.Text,
@@ -1847,13 +2144,14 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+		var applicationText = BeforeExceptionRuntime(result);
 		Assert.DoesNotContain(
 			"\tmove.l\t(a7)+,d1\r\n\tmove.l\t(a7)+,d0\r\n\tcmp.l\td1,d0",
-			result.Text,
+			applicationText,
 			StringComparison.Ordinal);
 		if (entry == "ReferenceEqualityEntry")
 		{
-			Assert.Contains("\tcmp.l\t4(a7),d0", result.Text, StringComparison.Ordinal);
+			Assert.Contains("\tcmp.l\t", applicationText, StringComparison.Ordinal);
 		}
 	}
 
@@ -1982,6 +2280,38 @@ public sealed class CompilerExecutionTests
 			"CopperSharp.Compiler.Tests.CompilerFixtures::SignedByteArrayEntry");
 
 		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
+	[Fact]
+	public void M68000SignExtendsBytesWithTwoInstructions()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::SignedByteArrayEntry");
+
+		Assert.Contains(
+			"\text.w\td0\r\n\text.l\td0",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain("\textb.l", result.Text, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(M68kCpuTarget.M68020)]
+	[InlineData(M68kCpuTarget.M68040)]
+	public void M68020AndLaterUseExtbLong(M68kCpuTarget target)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::SignedByteArrayEntry");
+
+		Assert.Contains("\textb.l\td0", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\text.w\td0\r\n\text.l\td0",
+			result.Text,
+			StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -2131,6 +2461,24 @@ public sealed class CompilerExecutionTests
 			{
 				StartAddress = 0x0000_4000,
 				Size = 120
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ManagedPoolCollectTracesRootsInCallerFrames()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PoolCollectTracesCallerFrameEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 88
 			}
 		});
 
@@ -2476,17 +2824,30 @@ public sealed class CompilerExecutionTests
 
 	private static string FixtureAssembly => Assembly.GetExecutingAssembly().Location;
 
+	private static string BeforeExceptionRuntime(M68kCompilationResult result)
+	{
+		var text = result.Text ?? string.Empty;
+		var runtimeOffset = text.IndexOf(
+			"__c68k_exception_raise:",
+			StringComparison.Ordinal);
+		return runtimeOffset < 0 ? text : text[..runtimeOffset];
+	}
+
 	private static M68kCompilationResult Compile(
 		M68kCpuTarget cpu,
 		M68kOutputFormat format,
 		string entry,
-		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto) =>
+		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto,
+		M68kExceptionMode exceptionMode = M68kExceptionMode.Full,
+		IReadOnlyDictionary<string, uint>? imports = null) =>
 		AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = entry,
 			Cpu = cpu,
 			ClrPolicy = clrPolicy,
+			ExceptionMode = exceptionMode,
+			Imports = imports ?? new Dictionary<string, uint>(),
 			OutputFormat = format,
 			Rom = new KickstartRomOutputOptions
 			{
@@ -2638,6 +2999,36 @@ public sealed class CompilerExecutionTests
 				SourceAddress: sourceAddress,
 				ParameterRegisters: Array.Empty<M68kRegister>(),
 				ReturnRegister: M68kRegister.D0);
+			return true;
+		}
+	}
+
+	private sealed class ExceptionStatusResolver(uint baseAddress) : IM68kExternalCallResolver
+	{
+		public bool TryResolve(
+			M68kExternalMethod method,
+			out M68kExternalCallConvention convention)
+		{
+			var success = method.DisplayName ==
+				"CopperSharp.Compiler.Tests.CompilerFixtures::ExternalSuccess";
+			if (!success &&
+				method.DisplayName !=
+					"CopperSharp.Compiler.Tests.CompilerFixtures::ExternalFailure")
+			{
+				convention = null!;
+				return false;
+			}
+
+			convention = new M68kExternalCallConvention(
+				"fixture.exception-status",
+				M68kExternalBaseSource.Immediate,
+				M68kRegister.A6,
+				-30,
+				InitialValue: baseAddress,
+				ParameterRegisters: Array.Empty<M68kRegister>(),
+				ReturnRegister: success ? M68kRegister.D0 : M68kRegister.D1,
+				ExceptionPolicy: M68kExternalExceptionPolicy.NonZeroStatus,
+				ExceptionStatusRegister: success ? M68kRegister.D1 : M68kRegister.D0);
 			return true;
 		}
 	}

@@ -21,6 +21,7 @@ internal readonly record struct M68kEmittedInstruction(
 	ushort Opcode,
 	ushort ExtensionWord,
 	uint ExtensionLong,
+	bool IsDecoded,
 	M68kInstructionKind Kind,
 	int? TargetOffset,
 	bool ExternalTarget);
@@ -58,7 +59,8 @@ internal readonly record struct M68kInstructionEffects(
 	M68kMemorySet ReadsMemory,
 	M68kMemorySet WritesMemory,
 	int? StackDelta,
-	bool IsBarrier);
+	bool IsBarrier,
+	bool CanRemoveWhenOutputsDead);
 
 internal readonly record struct M68kInstructionDataflowFacts(
 	M68kInstructionEffects Effects,
@@ -295,6 +297,11 @@ internal sealed class M68kInstructionDataflow
 
 	private static M68kInstructionEffects Classify(M68kEmittedInstruction instruction)
 	{
+		if (!instruction.IsDecoded)
+		{
+			return BarrierEffects;
+		}
+
 		if (instruction.Kind == M68kInstructionKind.Call)
 		{
 			return new M68kInstructionEffects(
@@ -307,7 +314,8 @@ internal sealed class M68kInstructionDataflow
 				M68kMemorySet.All,
 				M68kMemorySet.All,
 				0,
-				true);
+				true,
+				false);
 		}
 
 		if (instruction.Kind == M68kInstructionKind.ConditionalBranch)
@@ -322,6 +330,7 @@ internal sealed class M68kInstructionDataflow
 				M68kMemorySet.None,
 				M68kMemorySet.None,
 				null,
+				false,
 				false);
 		}
 
@@ -343,22 +352,24 @@ internal sealed class M68kInstructionDataflow
 				M68kMemorySet.None,
 				M68kMemorySet.None,
 				null,
+				false,
 				false);
 		}
 
 		if (instruction.Kind == M68kInstructionKind.Return)
 		{
 			return new M68kInstructionEffects(
+				0x00FF, // D0-D1 return values and preserved D2-D7
 				0,
-				0,
-				0x0080,
+				0x00FD, // A0 reference return, preserved A2-A6, and A7
 				0x0080,
 				M68kConditionCodeSet.None,
 				M68kConditionCodeSet.None,
 				M68kMemorySet.Stack,
 				M68kMemorySet.None,
 				4,
-				true);
+				true,
+				false);
 		}
 
 		var builder = new EffectBuilder();
@@ -376,6 +387,20 @@ internal sealed class M68kInstructionDataflow
 		M68kMemorySet.None,
 		M68kMemorySet.None,
 		0,
+		false,
+		false);
+
+	private static readonly M68kInstructionEffects BarrierEffects = new(
+		AllRegisters,
+		AllRegisters,
+		AllRegisters,
+		0x007F,
+		M68kConditionCodeSet.All,
+		M68kConditionCodeSet.All,
+		M68kMemorySet.All,
+		M68kMemorySet.All,
+		null,
+		true,
 		false);
 
 	private static M68kConditionCodeSet ConditionCodes(int condition) => condition switch
@@ -522,13 +547,15 @@ internal sealed class M68kInstructionDataflow
 		private M68kMemorySet _writesMemory;
 		private int? _stackDelta = 0;
 		private bool _barrier;
+		private bool _canRemoveWhenOutputsDead;
 
 		internal void ClassifyNormal(ushort opcode, ushort extensionWord)
 		{
-			if ((opcode & 0xFF00) == 0x7000)
+			if ((opcode & 0xF100) == 0x7000)
 			{
 				DefineData((opcode >> 9) & 7);
 				WriteMoveConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -551,6 +578,7 @@ internal sealed class M68kInstructionDataflow
 						_stackDelta = null;
 					}
 				}
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -570,12 +598,14 @@ internal sealed class M68kInstructionDataflow
 			if ((opcode & 0xF000) == 0x2000)
 			{
 				ClassifyMove(opcode);
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
 			if ((opcode & 0xF000) == 0x3000)
 			{
 				ClassifyMove(opcode);
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -583,6 +613,7 @@ internal sealed class M68kInstructionDataflow
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.Read);
 				WriteArithmeticConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -590,6 +621,7 @@ internal sealed class M68kInstructionDataflow
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				WriteArithmeticConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -599,42 +631,52 @@ internal sealed class M68kInstructionDataflow
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				WriteArithmeticConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
-			if ((opcode & 0xFFC0) is 0x4880 or 0x48C0)
+			if ((opcode & 0xFFC0) is 0x4880 or 0x48C0 or 0x49C0)
 			{
+				UseData(opcode & 7);
 				DefineData(opcode & 7);
 				WriteArithmeticConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
-			if ((opcode & 0xF1FF) == 0xD1C0 || (opcode & 0xF1FF) == 0x91C0)
+			if ((opcode & 0xF1FF) is 0xD1C0 or 0x91C0 ||
+				(opcode & 0xF1F8) == 0x91C8)
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.Read);
 				UseAddress((opcode >> 9) & 7);
 				DefineAddress((opcode >> 9) & 7);
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
 			if ((opcode & 0xF000) == 0x5000)
 			{
 				ClassifyQuickOrSet(opcode);
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
 			var logicalImmediate = opcode & 0x0F00;
-			if (logicalImmediate is 0x0000 or 0x0200 or 0x0A00)
+			if ((opcode & 0xF000) == 0 &&
+				logicalImmediate is 0x0000 or 0x0200 or 0x0A00)
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				WriteMoveConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
-			if ((opcode & 0x0F00) is 0x0400 or 0x0600)
+			if ((opcode & 0xF000) == 0 &&
+				(opcode & 0x0F00) is 0x0400 or 0x0600)
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				WriteArithmeticConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -642,18 +684,25 @@ internal sealed class M68kInstructionDataflow
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.Read);
 				WriteArithmeticConditions();
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
 			if ((opcode & 0xF000) is 0x8000 or 0x9000 or 0xB000 or 0xC000 or 0xD000)
 			{
 				ClassifyArithmetic(opcode);
+				var operation = opcode & 0xF000;
+				var operationMode = (opcode >> 6) & 7;
+				_canRemoveWhenOutputsDead =
+					operation is 0x9000 or 0xB000 or 0xD000 ||
+					operationMode is not 3 and not 7;
 				return;
 			}
 
 			if ((opcode & 0xF000) == 0xE000)
 			{
 				ClassifyShift(opcode);
+				_canRemoveWhenOutputsDead = true;
 				return;
 			}
 
@@ -679,7 +728,8 @@ internal sealed class M68kInstructionDataflow
 			_readsMemory,
 			_writesMemory,
 			_stackDelta,
-			_barrier);
+			_barrier,
+			_canRemoveWhenOutputsDead);
 
 		private void ClassifyMove(ushort opcode)
 		{
@@ -698,6 +748,10 @@ internal sealed class M68kInstructionDataflow
 
 			if (destinationMode == 0)
 			{
+				if ((opcode & 0xF000) != 0x2000)
+				{
+					UseData(destination);
+				}
 				DefineData(destination);
 			}
 			else
@@ -766,6 +820,10 @@ internal sealed class M68kInstructionDataflow
 			if ((opcode & 0xF0C0) == 0x50C0)
 			{
 				_readsConditions = ConditionCodes((opcode >> 8) & 0x0F);
+				if (((opcode >> 3) & 7) == 0)
+				{
+					UseData(opcode & 7);
+				}
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.Write);
 				return;
 			}

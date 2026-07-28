@@ -142,6 +142,7 @@ internal sealed partial class M68kCodeGenerator
 		var stackBytesToRelease = EmitBoopsiDoMethodFixedSimple(
 			caller,
 			values,
+			callInstructionIndex: callIndex,
 			pushResult: !returnsDirectly);
 		if (returnsDirectly)
 		{
@@ -231,6 +232,7 @@ internal sealed partial class M68kCodeGenerator
 	private int EmitBoopsiDoMethodFixedSimple(
 		CilMethod caller,
 		IReadOnlyList<ArgumentValue> values,
+		int callInstructionIndex,
 		bool pushResult)
 	{
 		var stackBytesToRelease = checked((values.Count - 1) * 4);
@@ -239,7 +241,9 @@ internal sealed partial class M68kCodeGenerator
 			values,
 			startIndex: 1,
 			stackDepth: _currentStackDepth,
+			callInstructionIndex: callInstructionIndex,
 			temporaryRegister: M68kRegister.D0,
+			reservedRegisters: null,
 			out var scratchDisplacement))
 		{
 			EmitArgumentValueToRegister(caller, values[0], _currentStackDepth, M68kRegister.A0);
@@ -304,6 +308,7 @@ internal sealed partial class M68kCodeGenerator
 			var stackBytesToRelease = EmitBoopsiDoMethodVarargsArray(
 				caller,
 				values,
+				callInstructionIndex: index,
 				pushResult: !returnsDirectly);
 			if (returnsDirectly)
 			{
@@ -382,6 +387,7 @@ internal sealed partial class M68kCodeGenerator
 			fixedValues,
 			fixedValuesAlreadyOnStack,
 			values,
+			callInstructionIndex: index,
 			pushResult: !amigaReturnsDirectly &&
 				!amigaDiscardsResult &&
 				!amigaStoresResult &&
@@ -509,6 +515,7 @@ internal sealed partial class M68kCodeGenerator
 			[fixedArgument],
 			fixedValuesAlreadyOnStack: false,
 			values,
+			callInstructionIndex: callIndex,
 			pushResult: false);
 		EmitReleaseStackBytes(stackBytesToRelease);
 		EmitStoreD0ToDestination(caller, destination, _currentStackDepth);
@@ -636,6 +643,36 @@ internal sealed partial class M68kCodeGenerator
 		values = new ArgumentValue[tagCount];
 		var index = startIndex + 2;
 		var expectedIndex = 0;
+		if (index + 2 < instructions.Count &&
+			instructions[index].OpCode == OpCodes.Dup &&
+			instructions[index + 1].OpCode == OpCodes.Ldtoken &&
+			instructions[index + 2].OpCode == OpCodes.Call &&
+			!HasBranchTarget(branchTargets, instructions, startIndex, index, index + 2))
+		{
+			var initializer = _module.ResolveMethodToken(
+				(int)instructions[index + 2].Operand!,
+				caller,
+				instructions[index + 2].Offset);
+			if (initializer.ImportName == "intrinsic:initialize-array" &&
+				instructions[index + 1].Operand is int fieldToken)
+			{
+				var constants = _module.ReadUInt32FieldRva(
+					fieldToken,
+					tagCount,
+					caller,
+					instructions[index + 1].Offset);
+				for (var valueIndex = 0; valueIndex < constants.Length; valueIndex++)
+				{
+					values[valueIndex] = new ArgumentValue(new CilInstruction(
+						instructions[index + 1].Offset,
+						OpCodes.Ldc_I4,
+						unchecked((int)constants[valueIndex]),
+						instructions[index + 1].NextOffset));
+				}
+				index += 3;
+			}
+		}
+
 		while (index < instructions.Count &&
 			instructions[index].OpCode == OpCodes.Dup)
 		{
@@ -826,6 +863,7 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlyList<ArgumentValue> fixedValues,
 		bool fixedValuesAlreadyOnStack,
 		IReadOnlyList<ArgumentValue> values,
+		int callInstructionIndex,
 		bool pushResult)
 	{
 		if (fixedValuesAlreadyOnStack)
@@ -859,7 +897,12 @@ internal sealed partial class M68kCodeGenerator
 			values,
 			startIndex: 0,
 			stackDepth: valueStackDepth,
+			callInstructionIndex: callInstructionIndex,
 			temporaryRegister: SelectVarargsTemporaryDataRegister(info, externalCall),
+			reservedRegisters: info.FixedRegisters
+				.Append(info.VarargsRegister)
+				.Append(externalCall.Convention.BaseRegister)
+				.ToHashSet(),
 			out var scratchDisplacement))
 		{
 			EmitLoadVarargsScratchPointer(info, scratchDisplacement);
@@ -954,6 +997,7 @@ internal sealed partial class M68kCodeGenerator
 	private int EmitBoopsiDoMethodVarargsArray(
 		CilMethod caller,
 		IReadOnlyList<ArgumentValue> values,
+		int callInstructionIndex,
 		bool pushResult)
 	{
 		EmitPopRegister(M68kRegister.A0);
@@ -964,7 +1008,9 @@ internal sealed partial class M68kCodeGenerator
 			values,
 			startIndex: 0,
 			stackDepth: valueStackDepth,
+			callInstructionIndex: callInstructionIndex,
 			temporaryRegister: M68kRegister.D0,
+			reservedRegisters: null,
 			out var scratchDisplacement))
 		{
 			EmitLoadFrameAddress(M68kRegister.A1, scratchDisplacement);
@@ -996,7 +1042,9 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlyList<ArgumentValue> values,
 		int startIndex,
 		int stackDepth,
+		int callInstructionIndex,
 		M68kRegister temporaryRegister,
+		IReadOnlySet<M68kRegister>? reservedRegisters,
 		out short scratchDisplacement)
 	{
 		var bytes = checked((values.Count - startIndex) * 4);
@@ -1009,6 +1057,18 @@ internal sealed partial class M68kCodeGenerator
 		scratchDisplacement = FrameDisplacement(
 			CurrentFrameLayout.VarargsScratchOffset,
 			stackDepth);
+		if (TryEmitArgumentValuesToContiguousDataRegisters(
+			caller,
+			values,
+			startIndex,
+			stackDepth,
+			callInstructionIndex,
+			reservedRegisters,
+			scratchDisplacement))
+		{
+			return true;
+		}
+
 		for (var index = startIndex; index < values.Count;)
 		{
 			var destination = checked((short)(scratchDisplacement + ((index - startIndex) * 4)));
@@ -1038,6 +1098,216 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return true;
+	}
+
+	private bool TryEmitArgumentValuesToContiguousDataRegisters(
+		CilMethod caller,
+		IReadOnlyList<ArgumentValue> values,
+		int startIndex,
+		int stackDepth,
+		int callInstructionIndex,
+		IReadOnlySet<M68kRegister>? reservedRegisters,
+		short scratchDisplacement)
+	{
+		var count = values.Count - startIndex;
+		if (count < 4 || count > 8 ||
+			values.Skip(startIndex).Any(value => !CanMaterializeVarargsRegisterValue(value)))
+		{
+			return false;
+		}
+
+		var sourceLastUses = new Dictionary<M68kRegister, int>();
+		for (var index = startIndex; index < values.Count; index++)
+		{
+			if (TryGetArgumentValueSourceRegister(caller, values[index], out var sourceRegister))
+			{
+				sourceLastUses[sourceRegister] = index;
+			}
+		}
+
+		for (var first = (int)M68kRegister.D0;
+			first + count <= (int)M68kRegister.D7 + 1;
+			first++)
+		{
+			var registers = Enumerable.Range(first, count)
+				.Select(static value => (M68kRegister)value)
+				.ToArray();
+			if ((reservedRegisters is not null && registers.Any(reservedRegisters.Contains)) ||
+				!registers.All(register => IsAvailableVarargsStagingRegister(
+					caller,
+					register,
+					sourceLastUses.Keys,
+					callInstructionIndex)) ||
+				!IsSafeVarargsRegisterMoveOrder(registers, sourceLastUses, startIndex))
+			{
+				continue;
+			}
+
+			for (var index = startIndex; index < values.Count; index++)
+			{
+				EmitArgumentValueToRegister(
+					caller,
+					values[index],
+					stackDepth,
+					registers[index - startIndex]);
+			}
+
+			EmitStoreRegistersToFrame(registers, scratchDisplacement);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool IsAvailableVarargsStagingRegister(
+		CilMethod caller,
+		M68kRegister register,
+		IEnumerable<M68kRegister> sourceRegisters,
+		int callInstructionIndex)
+	{
+		if (register is M68kRegister.D0 or M68kRegister.D1)
+		{
+			return true;
+		}
+
+		if (sourceRegisters.Contains(register))
+		{
+			return !IsPromotedRegisterLiveAfterCall(caller, register, callInstructionIndex);
+		}
+
+		var registerIsMapped = CurrentFrameLayout.ArgumentRegisters.Contains(register) ||
+			CurrentFrameLayout.LocalRegisters.Contains(register);
+		return !registerIsMapped ||
+			!IsPromotedRegisterLiveAfterCall(caller, register, callInstructionIndex);
+	}
+
+	private bool IsPromotedRegisterLiveAfterCall(
+		CilMethod caller,
+		M68kRegister register,
+		int callInstructionIndex)
+	{
+		for (var index = 0; index < CurrentFrameLayout.ArgumentRegisters.Length; index++)
+		{
+			if (CurrentFrameLayout.ArgumentRegisters[index] == register &&
+				IsArgumentValueLoadedAfter(caller, callInstructionIndex, index))
+			{
+				return true;
+			}
+		}
+
+		for (var index = 0; index < CurrentFrameLayout.LocalRegisters.Length; index++)
+		{
+			if (CurrentFrameLayout.LocalRegisters[index] == register &&
+				IsLocalValueLoadedAfter(caller, callInstructionIndex, index))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsArgumentValueLoadedAfter(
+		CilMethod caller,
+		int callInstructionIndex,
+		int argumentIndex)
+	{
+		var controlFlowSeen = false;
+		for (var index = callInstructionIndex + 1; index < caller.Instructions.Count; index++)
+		{
+			var instruction = caller.Instructions[index];
+			if (instruction.OpCode.FlowControl is
+				FlowControl.Branch or FlowControl.Cond_Branch)
+			{
+				controlFlowSeen = true;
+				continue;
+			}
+
+			if ((instruction.OpCode == OpCodes.Starg ||
+				instruction.OpCode == OpCodes.Starg_S) &&
+				Convert.ToInt32(instruction.Operand) == argumentIndex)
+			{
+				return controlFlowSeen;
+			}
+
+			if ((TryGetArgumentIndex(instruction, out var loadedIndex) &&
+				loadedIndex == argumentIndex) ||
+				(TryGetLoadArgumentAddressIndex(instruction, out loadedIndex) &&
+				loadedIndex == argumentIndex))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsLocalValueLoadedAfter(
+		CilMethod caller,
+		int callInstructionIndex,
+		int localIndex)
+	{
+		var controlFlowSeen = false;
+		for (var index = callInstructionIndex + 1; index < caller.Instructions.Count; index++)
+		{
+			var instruction = caller.Instructions[index];
+			if (instruction.OpCode.FlowControl is
+				FlowControl.Branch or FlowControl.Cond_Branch)
+			{
+				controlFlowSeen = true;
+				continue;
+			}
+
+			if (TryGetStoreLocalIndex(instruction, out var storedIndex) &&
+				storedIndex == localIndex)
+			{
+				return controlFlowSeen;
+			}
+
+			if ((TryGetLoadLocalIndex(instruction, out var loadedIndex) &&
+				loadedIndex == localIndex) ||
+				(TryGetLoadLocalAddressIndex(instruction, out loadedIndex) &&
+				loadedIndex == localIndex))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsSafeVarargsRegisterMoveOrder(
+		IReadOnlyList<M68kRegister> registers,
+		IReadOnlyDictionary<M68kRegister, int> sourceLastUses,
+		int startIndex)
+	{
+		for (var index = 0; index < registers.Count; index++)
+		{
+			if (sourceLastUses.TryGetValue(registers[index], out var lastUse) &&
+				lastUse > startIndex + index)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool CanMaterializeVarargsRegisterValue(ArgumentValue value)
+	{
+		if (value.Instruction is not { } instruction ||
+			value.IsCStringLiteral ||
+			value.IsExportAddressLiteral ||
+			TryGetConstant(instruction, out _) ||
+			(instruction.OpCode == OpCodes.Ldnull ||
+				instruction.OpCode == OpCodes.Ldsfld ||
+				instruction.OpCode == OpCodes.Ldsflda))
+		{
+			return true;
+		}
+
+		return TryGetArgumentIndex(instruction, out _) ||
+			TryGetLoadLocalIndex(instruction, out _);
 	}
 
 	private void EmitArgumentValuesToStack(

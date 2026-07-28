@@ -389,7 +389,7 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.D0)] uint arg1,
 		[M68kRegister(M68kRegister.D1)] uint arg2,
-		[M68kRegister(M68kRegister.A1)] uint arg3);
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint arg3);
 
 	[AmigaLvo(-432)]
 	public static extern void RefreshGList(
@@ -445,7 +445,7 @@ public static class Intuition
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int QueryOverscan(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
+		[M68kRegister(M68kRegister.A1), M68kWritesEntireBuffer] uint arg1,
 		[M68kRegister(M68kRegister.D0)] int arg2);
 
 	[AmigaLvo(-480)]

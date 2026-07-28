@@ -36,7 +36,7 @@ public static class LowLevel
 
 	[AmigaLvo(-54)]
 	public static extern void QueryKeys(
-		[M68kRegister(M68kRegister.A0)] uint queryArray,
+		[M68kRegister(M68kRegister.A0), M68kWritesBuffer] uint queryArray,
 		[M68kRegister(M68kRegister.D1)] uint arraySize);
 
 	[AmigaLvo(-60)]

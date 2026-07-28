@@ -127,7 +127,7 @@ public static class GadTools
 		[M68kRegister(M68kRegister.A0)] uint gadget,
 		[M68kRegister(M68kRegister.A1)] uint window,
 		[M68kRegister(M68kRegister.A2)] uint requester,
-		[M68kRegister(M68kRegister.A3)] uint tags);
+		[M68kRegister(M68kRegister.A3), M68kWritesBuffer] uint tags);
 
 	public static uint CreateGadget(uint kind, uint previous, uint newGadget, uint tags) =>
 		CreateGadgetA(kind, previous, newGadget, tags);

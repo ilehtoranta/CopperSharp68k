@@ -141,14 +141,15 @@ internal sealed class M68kAssembler
 
 		for (var offset = 0; offset < _bytes.Count;)
 		{
-			if (!TryRenderInstruction(
+			var decoded = TryRenderInstruction(
 				offset,
 				displayLabels,
 				addresses,
 				branches,
 				pcRelative,
 				out _,
-				out var length))
+				out var length);
+			if (!decoded)
 			{
 				length = 2;
 			}
@@ -211,6 +212,7 @@ internal sealed class M68kAssembler
 				opcode,
 				extensionWord,
 				extensionLong,
+				decoded,
 				kind,
 				targetOffset,
 				externalTarget));
@@ -495,10 +497,10 @@ internal sealed class M68kAssembler
 
 		if (addresses.TryGetValue(offset + 2, out var addressOperand))
 		{
-			if (opcode == 0x2F7C &&
+			if ((opcode & 0xF1FF) == 0x217C &&
 				TryReadWord(offset + 6, out var immediateAddressDisplacement))
 			{
-				instruction = $"move.l\t#{AssemblySymbol(DisplayLabel(addressOperand.Target, displayLabels))},{unchecked((short)immediateAddressDisplacement)}(a7)";
+				instruction = $"move.l\t#{AssemblySymbol(DisplayLabel(addressOperand.Target, displayLabels))},{unchecked((short)immediateAddressDisplacement)}(a{(opcode >> 9) & 7})";
 				length = 8;
 				return true;
 			}
@@ -523,6 +525,8 @@ internal sealed class M68kAssembler
 					$"move.l\t#{targetSymbol},d{(opcode >> 9) & 7}",
 				_ when (opcode & 0xF1FF) == 0x207C =>
 					$"movea.l\t#{targetSymbol},a{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1FF) == 0xB0BC =>
+					$"cmp.l\t#{targetSymbol},d{(opcode >> 9) & 7}",
 				_ => string.Empty
 			};
 			if (instruction.Length != 0)
@@ -530,6 +534,16 @@ internal sealed class M68kAssembler
 				length = 6;
 				return true;
 			}
+		}
+
+		if ((opcode & 0xF1FF) == 0x217C &&
+			TryReadLong(offset + 2, out var frameLongImmediate) &&
+			TryReadWord(offset + 6, out var frameLongImmediateDisplacement))
+		{
+			instruction =
+				$"move.l\t#${frameLongImmediate:X8},{unchecked((short)frameLongImmediateDisplacement)}(a{(opcode >> 9) & 7})";
+			length = 8;
+			return true;
 		}
 
 		if (opcode == 0x2038 &&
@@ -668,8 +682,14 @@ internal sealed class M68kAssembler
 			0x588F => "addq.l\t#4,a7",
 			0x5381 => "subq.l\t#1,d1",
 			0x4680 => "not.l\td0",
-			0x4880 => "ext.w\td0",
-			0x48C0 => "ext.l\td0",
+			_ when (opcode & 0xFFF8) == 0x4880 =>
+				$"ext.w\td{opcode & 7}",
+			_ when (opcode & 0xFFF8) == 0x48C0 =>
+				$"ext.l\td{opcode & 7}",
+			_ when (opcode & 0xFFF8) == 0x49C0 =>
+				$"extb.l\td{opcode & 7}",
+			_ when (opcode & 0xFFF8) == 0x4280 =>
+				$"clr.l\td{opcode & 7}",
 			0x4A80 => "tst.l\td0",
 			0x4A81 => "tst.l\td1",
 			0x42A7 => "clr.l\t-(a7)",
@@ -690,10 +710,14 @@ internal sealed class M68kAssembler
 			0x2C4C => "movea.l\ta4,a6",
 			0x2A78 => "movea.l\t$0004.w,a5",
 			0x2C4D => "movea.l\ta5,a6",
+			_ when (opcode & 0xFFF8) == 0x4ED0 =>
+				$"jmp\t(a{opcode & 7})",
 			_ when (opcode & 0xFF00) == 0x7000 =>
 				$"moveq\t#{unchecked((sbyte)(opcode & 0xFF))},d{(opcode >> 9) & 7}",
 			_ when (opcode & 0xF1C0) == 0xD1C0 =>
 				$"adda.l\td{opcode & 7},a{(opcode >> 9) & 7}",
+			_ when (opcode & 0xF1F8) == 0x91C8 =>
+				$"suba.l\ta{opcode & 7},a{(opcode >> 9) & 7}",
 			_ when (opcode & 0xF1F8) == 0xD080 =>
 				$"add.l\td{opcode & 7},d{(opcode >> 9) & 7}",
 			_ when (opcode & 0xF1F8) == 0xD040 =>
@@ -724,6 +748,8 @@ internal sealed class M68kAssembler
 				$"movea.l\td{opcode & 7},a{(opcode >> 9) & 7}",
 			_ when (opcode & 0xF1F8) == 0x2048 =>
 				$"movea.l\ta{opcode & 7},a{(opcode >> 9) & 7}",
+			_ when (opcode & 0xF1F8) == 0x20C0 =>
+				$"move.l\td{opcode & 7},(a{(opcode >> 9) & 7})+",
 			_ when (opcode & 0xFFF8) == 0x2F00 =>
 				$"move.l\td{opcode & 7},-(a7)",
 			_ when (opcode & 0xFFF8) == 0x2F08 =>
@@ -746,10 +772,10 @@ internal sealed class M68kAssembler
 				$"addq.l\t#{QuickCount(opcode)},d{opcode & 7}",
 			_ when (opcode & 0xF1F8) == 0x5180 =>
 				$"subq.l\t#{QuickCount(opcode)},d{opcode & 7}",
-			_ when (opcode & 0xF1FF) == 0x508F =>
-				$"addq.l\t#{QuickCount(opcode)},a7",
-			_ when (opcode & 0xF1FF) == 0x518F =>
-				$"subq.l\t#{QuickCount(opcode)},a7",
+			_ when (opcode & 0xF1F8) == 0x5088 =>
+				$"addq.l\t#{QuickCount(opcode)},a{opcode & 7}",
+			_ when (opcode & 0xF1F8) == 0x5188 =>
+				$"subq.l\t#{QuickCount(opcode)},a{opcode & 7}",
 			_ => string.Empty
 		};
 		if (instruction.Length != 0)
@@ -787,9 +813,11 @@ internal sealed class M68kAssembler
 			return true;
 		}
 
-		if (opcode == 0x4FEF && TryReadWord(offset + 2, out var leaDisplacement))
+		if ((opcode & 0xF1F8) == 0x41E8 &&
+			((opcode >> 9) & 7) == (opcode & 7) &&
+			TryReadWord(offset + 2, out var leaDisplacement))
 		{
-			instruction = $"lea\t{unchecked((short)leaDisplacement)}(a7),a7";
+			instruction = $"lea\t{unchecked((short)leaDisplacement)}(a{opcode & 7}),a{(opcode >> 9) & 7}";
 			length = 4;
 			return true;
 		}
@@ -908,12 +936,20 @@ internal sealed class M68kAssembler
 				0x486F => $"pea\t{unchecked((short)displacement)}(a7)",
 				0x2F5F => $"move.l\t(a7)+,{unchecked((short)displacement)}(a7)",
 				0x2F2F => $"move.l\t{unchecked((short)displacement)}(a7),-(a7)",
+				_ when (opcode & 0xF1F8) == 0x2148 =>
+					$"move.l\ta{opcode & 7},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})",
+				_ when (opcode & 0xF1C0) == 0x2140 =>
+					$"move.l\td{opcode & 7},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})",
 				_ when (opcode & 0xF1FF) == 0x41EF =>
 					$"lea\t{unchecked((short)displacement)}(a7),a{(opcode >> 9) & 7}",
 				_ when (opcode & 0xF1FF) == 0x202F =>
 					$"move.l\t{unchecked((short)displacement)}(a7),d{(opcode >> 9) & 7}",
 				_ when (opcode & 0xF1FF) == 0xB0AF =>
 					$"cmp.l\t{unchecked((short)displacement)}(a7),d{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1F8) == 0x2028 =>
+					$"move.l\t{unchecked((short)displacement)}(a{opcode & 7}),d{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1F8) == 0x2068 =>
+					$"movea.l\t{unchecked((short)displacement)}(a{opcode & 7}),a{(opcode >> 9) & 7}",
 				_ when (opcode & 0xF1FF) == 0x206F =>
 					$"movea.l\t{unchecked((short)displacement)}(a7),a{(opcode >> 9) & 7}",
 				_ when (opcode & 0xFFF8) == 0x2F40 =>

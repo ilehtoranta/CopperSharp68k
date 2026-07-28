@@ -124,7 +124,7 @@ public static class AmigaGuide
 	public static int GetAmigaGuideAttr(
 		[M68kRegister(M68kRegister.D0)] uint tag,
 		[M68kRegister(M68kRegister.A0)] uint handle,
-		[M68kRegister(M68kRegister.A1)] uint storage)
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint storage)
 	{
 		return 0;
 	}

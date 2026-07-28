@@ -99,19 +99,19 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock);
 
 	[AmigaLvo(-108)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock);
 
 	[AmigaLvo(-114)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Info(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint parameterBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint parameterBlock);
 
 	[AmigaLvo(-120)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -368,7 +368,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock);
 
 	[AmigaLvo(-396)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -1133,7 +1133,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine64(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call alias.
@@ -1141,7 +1141,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine64TagList(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call.
@@ -1149,7 +1149,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext64(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call alias.
@@ -1157,7 +1157,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext64TagList(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call.
@@ -1165,7 +1165,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH64(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call alias.
@@ -1173,7 +1173,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH64TagList(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint fileInfoBlock,
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call.

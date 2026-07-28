@@ -611,7 +611,7 @@ public static class Exec
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewGetTaskAttrsA(
 		[M68kRegister(M68kRegister.A0)] uint task,
-		[M68kRegister(M68kRegister.A1)] uint data,
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint data,
 		[M68kRegister(M68kRegister.D0)] uint dataSize,
 		[M68kRegister(M68kRegister.D1)] uint type,
 		[M68kRegister(M68kRegister.A2)] uint tags);

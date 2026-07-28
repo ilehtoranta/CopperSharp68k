@@ -29,7 +29,7 @@ public static class Diskfont
 	[AmigaLvo(-36)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AvailFonts(
-		[M68kRegister(M68kRegister.A0)] uint buffer,
+		[M68kRegister(M68kRegister.A0), M68kWritesBuffer] uint buffer,
 		[M68kRegister(M68kRegister.D0)] int bufferBytes,
 		[M68kRegister(M68kRegister.D1)] int flags);
 

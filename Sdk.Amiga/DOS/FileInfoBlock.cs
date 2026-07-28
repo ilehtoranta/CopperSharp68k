@@ -5,10 +5,13 @@
 
 namespace Amiga;
 
+using CopperSharp.Compiler;
+
+[M68kStackAlignment(4)]
+[M68kUninitializedStorage]
 public unsafe struct FileInfoBlock
 {
 	public const int SizeInBytes = 260;
-	public const int AlignedStackStorageLongs = 66;
 	public const int FileNameOffset = 8;
 	public const int CommentOffset = 144;
 	public const int DirEntryTypeOffset = 4;
@@ -16,6 +19,10 @@ public unsafe struct FileInfoBlock
 	public const int DateDaysOffset = 132;
 	public const int DateMinuteOffset = 136;
 	public const int DateTickOffset = 140;
+
+	public static APTR AddressOf(ref FileInfoBlock fileInfoBlock) =>
+		throw new System.NotSupportedException(
+			"FileInfoBlock.AddressOf is lowered by CopperSharp.");
 
 	public static CString FileName(uint fileInfoBlock) =>
 		CString.FromPointer(fileInfoBlock + FileNameOffset);

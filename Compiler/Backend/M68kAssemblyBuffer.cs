@@ -35,6 +35,12 @@ internal sealed class M68kAssemblyBuffer
 	{
 		var end = checked(offset + count);
 		Bytes.RemoveRange(offset, count);
+		Branches.RemoveAll(branch =>
+			branch.OpcodeOffset >= offset && branch.OpcodeOffset < end);
+		Addresses.RemoveAll(address =>
+			address.Offset >= offset && address.Offset < end);
+		PcRelative.RemoveAll(fixup =>
+			fixup.DisplacementOffset >= offset && fixup.DisplacementOffset < end);
 
 		foreach (var label in Labels.Keys.ToArray())
 		{

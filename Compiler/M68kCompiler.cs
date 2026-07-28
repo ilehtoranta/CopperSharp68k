@@ -190,6 +190,14 @@ public static class M68kCompiler
 				4));
 		}
 
+		if (linked.Labels.TryGetValue("runtime:exception-table", out var exceptionTableOffset))
+		{
+			result.Add(new M68kSymbol(
+				"__c68k_exception_table",
+				checked(origin + (uint)exceptionTableOffset),
+				0));
+		}
+
 		return result
 			.OrderBy(symbol => symbol.Address)
 			.ThenBy(symbol => symbol.Name, StringComparer.Ordinal)

@@ -28,11 +28,103 @@ internal static class M68kStaticAnalyzer
 				continue;
 			}
 
+			if (request.ExceptionMode == M68kExceptionMode.Yolo &&
+				method.ExceptionRegions.Count != 0)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedInstruction,
+					"YOLO exception mode does not compile methods containing managed exception regions; select Full mode.",
+					method.DisplayName);
+			}
+			ValidateExceptionRegions(module, method);
+
 			foreach (var instruction in method.Instructions)
 			{
 				AnalyzeInstruction(module, method, instruction, request, memoryManagement, pending);
 			}
 		}
+	}
+
+	private static void ValidateExceptionRegions(CompilationModule module, CilMethod method)
+	{
+		for (var leftIndex = 0; leftIndex < method.ExceptionRegions.Count; leftIndex++)
+		{
+			var left = method.ExceptionRegions[leftIndex];
+			if (left.IsCatch && !left.CatchType.IsNil)
+			{
+				_ = module.GetTypeDisplayName(left.CatchType);
+			}
+
+			for (var rightIndex = leftIndex + 1;
+				rightIndex < method.ExceptionRegions.Count;
+				rightIndex++)
+			{
+				var right = method.ExceptionRegions[rightIndex];
+				if (PartiallyOverlaps(
+					left.TryOffset,
+					left.TryEnd,
+					right.TryOffset,
+					right.TryEnd) ||
+					PartiallyOverlaps(
+						left.HandlerOffset,
+						left.HandlerEnd,
+						right.HandlerOffset,
+						right.HandlerEnd))
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.InvalidMetadata,
+						"Exception regions must be disjoint or properly nested.",
+						method.DisplayName,
+						Math.Min(left.TryOffset, right.TryOffset));
+				}
+			}
+		}
+
+		foreach (var instruction in method.Instructions)
+		{
+			if (instruction.OpCode == OpCodes.Rethrow &&
+				!method.ExceptionRegions.Any(region =>
+					region.IsCatch &&
+					region.HandlerOffset <= instruction.Offset &&
+					instruction.Offset < region.HandlerEnd))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"Rethrow is only valid inside a catch handler.",
+					method.DisplayName,
+					instruction.Offset);
+			}
+
+			if (instruction.OpCode == OpCodes.Endfinally &&
+				!method.ExceptionRegions.Any(region =>
+					region.IsFinally &&
+					region.HandlerOffset <= instruction.Offset &&
+					instruction.Offset < region.HandlerEnd))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"Endfinally is only valid inside a finally handler.",
+					method.DisplayName,
+					instruction.Offset);
+			}
+		}
+	}
+
+	private static bool PartiallyOverlaps(
+		int leftStart,
+		int leftEnd,
+		int rightStart,
+		int rightEnd)
+	{
+		var overlaps = leftStart < rightEnd && rightStart < leftEnd;
+		if (!overlaps)
+		{
+			return false;
+		}
+
+		var leftContainsRight = leftStart <= rightStart && rightEnd <= leftEnd;
+		var rightContainsLeft = rightStart <= leftStart && leftEnd <= rightEnd;
+		return !leftContainsRight && !rightContainsLeft;
 	}
 
 	private static void AnalyzeInstruction(
