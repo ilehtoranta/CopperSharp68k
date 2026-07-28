@@ -604,7 +604,7 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A1)] uint classId,
 		[M68kRegister(M68kRegister.A2)]
 		[AmigaStackVarargs]
-		params uint[] tags) =>
+		params AmigaVarArg[] tags) =>
 		throw new System.NotSupportedException(
 			"Intuition.NewObject stack varargs are lowered by CopperSharp.");
 

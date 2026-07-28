@@ -32,11 +32,11 @@ public static class Program
 
 		var app = new ApplicationObject(MUIMaster.MUI_NewObject(
 			Application.Name,
-			Application.Author, CString.FromLiteral("CopperSharp68k"),
-			Application.Base, CString.FromLiteral("SUNFLOWER"),
-			Application.Description, CString.FromLiteral("Simple MUI window and button example."),
+			Application.Author, "CopperSharp68k",
+			Application.Base, "SUNFLOWER",
+			Application.Description, "Simple MUI window and button example.",
 			Application.Title, title,
-			Application.Version, CString.FromLiteral("$VER: MUISunflower 1.0"),
+			Application.Version, "$VER: MUISunflower 1.0",
 			Application.Window, window,
 			Tag.Done));
 

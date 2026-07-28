@@ -197,7 +197,7 @@ public static class MUIMaster
 		[M68kRegister(M68kRegister.A0)] CString className,
 		[M68kRegister(M68kRegister.A1)]
 		[AmigaStackVarargs]
-		params uint[] tags) =>
+		params AmigaVarArg[] tags) =>
 		throw new System.NotSupportedException(
 			"MUI_NewObject stack varargs are lowered by CopperSharp.");
 
@@ -210,7 +210,7 @@ public static class MUIMaster
 		[M68kRegister(M68kRegister.D0)] int type,
 		[M68kRegister(M68kRegister.A0)]
 		[AmigaStackVarargs]
-		params uint[] parameters) =>
+		params AmigaVarArg[] parameters) =>
 		throw new System.NotSupportedException(
 			"MUI_MakeObject stack varargs are lowered by CopperSharp.");
 

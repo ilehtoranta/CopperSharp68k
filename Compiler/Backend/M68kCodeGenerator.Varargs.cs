@@ -692,8 +692,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 
 			var conversionIndex = index + 2 + valueConsumed;
-			if (valueConsumed == 1 &&
-				conversionIndex < instructions.Count &&
+			if (conversionIndex < instructions.Count &&
 				(instructions[conversionIndex].OpCode == OpCodes.Call ||
 				 instructions[conversionIndex].OpCode == OpCodes.Callvirt))
 			{

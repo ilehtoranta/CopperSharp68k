@@ -26,8 +26,29 @@ public readonly struct AmigaVarArg
 	public static implicit operator AmigaVarArg(BPTR value) =>
 		new(value.Raw);
 
+	public static implicit operator AmigaVarArg(STRPTR value) =>
+		new(value.Raw);
+
+	public static implicit operator AmigaVarArg(CONST_STRPTR value) =>
+		new(value.Raw);
+
 	public static implicit operator AmigaVarArg(CString value) =>
 		new(CString.ToUInt32(value));
+
+	public static implicit operator AmigaVarArg(IFFHandle value) =>
+		new(value.Raw);
+
+	public static implicit operator AmigaVarArg(MUI.MUIObject value) =>
+		new(value.Raw);
+
+	public static implicit operator AmigaVarArg(MUI.ApplicationObject value) =>
+		new(value.Raw);
+
+	public static implicit operator AmigaVarArg(MUI.WindowObject value) =>
+		new(value.Raw);
+
+	public static implicit operator AmigaVarArg(MUI.CustomClass value) =>
+		new(value.Raw);
 
 	public static implicit operator AmigaVarArg(string value) =>
 		new(CString.ToUInt32(CString.FromLiteral(value)));

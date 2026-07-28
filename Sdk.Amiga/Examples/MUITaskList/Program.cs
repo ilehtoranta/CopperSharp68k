@@ -109,7 +109,7 @@ public static class Program
 
 		var list = MUIMaster.MUI_NewObject(
 			List.Name,
-			List.Format, CString.FromLiteral("BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20"),
+			List.Format, "BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20",
 			List.Title, One(),
 			List.DisplayHook, Hook.AddressOf(ref _displayHook),
 			Tag.Done);
@@ -119,8 +119,8 @@ public static class Program
 			Listview.List, list,
 			Tag.Done);
 
-		var refreshButton = MUIMaster.MUI_MakeObject(MakeObject.Button, CString.FromLiteral("Refresh"));
-		var closeButton = MUIMaster.MUI_MakeObject(MakeObject.Button, CString.FromLiteral("Close"));
+		var refreshButton = MUIMaster.MUI_MakeObject(MakeObject.Button, "Refresh");
+		var closeButton = MUIMaster.MUI_MakeObject(MakeObject.Button, "Close");
 
 		var group = MUIMaster.MUI_NewObject(
 			Group.Name,
@@ -131,7 +131,7 @@ public static class Program
 
 		var window = MUIMaster.MUI_NewObject(
 			Window.Name,
-			Window.Title, CString.FromLiteral("MUI Task List"),
+			Window.Title, "MUI Task List",
 			Window.RootObject, group,
 			Tag.Done);
 
@@ -139,11 +139,11 @@ public static class Program
 		var app = Intuition.NewObject(
 			appClassHeader.Class,
 			0,
-			Application.Author, CString.FromLiteral("CopperSharp68k"),
-			Application.Base, CString.FromLiteral("CSHPTASKLIST"),
-			Application.Description, CString.FromLiteral("MUI subclass and hook example."),
-			Application.Title, CString.FromLiteral("MUI Task List"),
-			Application.Version, CString.FromLiteral("$VER: MUITaskList 1.0"),
+			Application.Author, "CopperSharp68k",
+			Application.Base, "CSHPTASKLIST",
+			Application.Description, "MUI subclass and hook example.",
+			Application.Title, "MUI Task List",
+			Application.Version, "$VER: MUITaskList 1.0",
 			Application.Window, window,
 			Tag.Done);
 		if (app == 0)

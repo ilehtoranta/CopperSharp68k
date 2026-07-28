@@ -1796,7 +1796,8 @@ internal sealed class CompilationModule : IDisposable
 				return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-literal", signature);
 			}
 
-			if (signature.ParameterTypes[0].Size == 4)
+			if (signature.ParameterTypes[0].Size == 4 ||
+				signature.ParameterTypes[0].Kind == CilTypeKind.ValueType)
 			{
 				return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-value", signature);
 			}

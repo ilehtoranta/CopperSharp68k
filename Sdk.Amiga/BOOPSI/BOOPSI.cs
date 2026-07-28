@@ -45,7 +45,7 @@ public static partial class BOOPSI
 
 	public static uint DoMethod(
 		uint obj,
-		[AmigaStackVarargs] params uint[] message) =>
+		[AmigaStackVarargs] params AmigaVarArg[] message) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
 	[M68kImport("amiga.boopsi.DoMethodA")]
