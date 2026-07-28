@@ -1655,7 +1655,12 @@ internal sealed class CompilationModule : IDisposable
 			return MethodReference.ForIntrinsic("intrinsic:file-info-block-file-name", signature);
 		}
 
-		if (typeName is "Amiga.APTR" or "Amiga.BPTR" or "Amiga.STRPTR" or "Amiga.CONST_STRPTR")
+		if (typeName is
+			"Amiga.APTR" or
+			"Amiga.BPTR" or
+			"Amiga.STRPTR" or
+			"Amiga.CONST_STRPTR" or
+			"Amiga.IFFHandle")
 		{
 			if (name == "get_Null" &&
 				signature.ParameterTypes.Length == 0)
@@ -1759,6 +1764,21 @@ internal sealed class CompilationModule : IDisposable
 				signature.ParameterTypes[0].DisplayName == "Amiga.APTR")
 			{
 				return MethodReference.ForIntrinsic("intrinsic:bptr-from-address", signature);
+			}
+
+			if (typeName == "Amiga.IFFHandle" &&
+				name == "get_Stream" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:iff-handle-stream", signature);
+			}
+
+			if (typeName == "Amiga.IFFHandle" &&
+				name == "SetStream" &&
+				signature.ParameterTypes.Length == 1 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.BPTR")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:iff-handle-set-stream", signature);
 			}
 		}
 

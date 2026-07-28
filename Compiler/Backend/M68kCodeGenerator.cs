@@ -4812,6 +4812,27 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName == "intrinsic:iff-handle-stream")
+			{
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0x2050); // MOVEA.L (A0),A0
+				_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+				if (pushResult)
+				{
+					EmitPushD0();
+				}
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:iff-handle-set-stream")
+			{
+				EmitPopD0();
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0x2050); // MOVEA.L (A0),A0
+				_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
+				return;
+			}
+
 			if (target.ImportName == "intrinsic:aptr-raw")
 			{
 				EmitPopRegister(M68kRegister.A0);

@@ -37,6 +37,86 @@ internal sealed class M68kAssembler
 	private List<AddressFixup> _addresses => _buffer.Addresses;
 	private List<PcRelativeFixup> _pcRelative => _buffer.PcRelative;
 
+	private static readonly OpcodeRenderRule[] SimpleInstructionRules =
+	[
+		new(0xFFFF, 0x4E71, static _ => "nop"),
+		new(0xFFFF, 0x4E75, static _ => "rts"),
+		new(0xFFFF, 0x4AFC, static _ => "illegal"),
+		new(0xFFFF, 0x508F, static _ => "addq.l\t#8,a7"),
+		new(0xFFFF, 0x588F, static _ => "addq.l\t#4,a7"),
+		new(0xFFFF, 0x5381, static _ => "subq.l\t#1,d1"),
+		new(0xFFFF, 0x4680, static _ => "not.l\td0"),
+		new(0xFFFF, 0x4A80, static _ => "tst.l\td0"),
+		new(0xFFFF, 0x4A81, static _ => "tst.l\td1"),
+		new(0xFFF8, 0x4A00, static opcode => "tst.b\td" + (opcode & 7)),
+		new(0xFFF8, 0x4A80, static opcode => "tst.l\td" + (opcode & 7)),
+		new(0xFFFF, 0x42A7, static _ => "clr.l\t-(a7)"),
+		new(0xFFFF, 0x4297, static _ => "clr.l\t(a7)"),
+		new(0xFFF8, 0x4880, static opcode => "ext.w\td" + (opcode & 7)),
+		new(0xFFF8, 0x48C0, static opcode => "ext.l\td" + (opcode & 7)),
+		new(0xFFF8, 0x49C0, static opcode => "extb.l\td" + (opcode & 7)),
+		new(0xFFF8, 0x4280, static opcode => "clr.l\td" + (opcode & 7)),
+		new(0xFFF8, 0x4850, static opcode => "pea\t(a" + (opcode & 7) + ")"),
+		new(0xFFF8, 0x4ED0, static opcode => "jmp\t(a" + (opcode & 7) + ")"),
+		new(0xF100, 0x7000, static opcode =>
+			"moveq\t#" + unchecked((sbyte)(opcode & 0xFF)) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF1C0, 0xD1C0, static opcode =>
+			"adda.l\td" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0x91C8, static opcode =>
+			"suba.l\ta" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xD080, static opcode =>
+			"add.l\td" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xD040, static opcode =>
+			"add.w\td" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xB080, static opcode =>
+			"cmp.l\td" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xB090, static opcode =>
+			"cmp.l\t(a" + (opcode & 7) + "),d" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xB088, static opcode =>
+			"cmp.l\ta" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF0F8, 0x50C0, static opcode =>
+			SetConditionMnemonic((M68kCondition)((opcode >> 8) & 0x0F)) + "\td" + (opcode & 7)),
+		new(0xFFF8, 0x4298, static opcode => "clr.l\t(a" + (opcode & 7) + ")+"),
+		new(0xFFF8, 0x4400, static opcode => "neg.b\td" + (opcode & 7)),
+		new(0xFFF8, 0x4480, static opcode => "neg.l\td" + (opcode & 7)),
+		new(0xF1FF, 0x5097, static opcode => "addq.l\t#" + QuickCount(opcode) + ",(a7)"),
+		new(0xF1FF, 0x5197, static opcode => "subq.l\t#" + QuickCount(opcode) + ",(a7)"),
+		new(0xF1F8, 0x5080, static opcode => "addq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
+		new(0xF1F8, 0x5180, static opcode => "subq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
+		new(0xF1F8, 0x5088, static opcode => "addq.l\t#" + QuickCount(opcode) + ",a" + (opcode & 7)),
+		new(0xF1F8, 0x5188, static opcode => "subq.l\t#" + QuickCount(opcode) + ",a" + (opcode & 7))
+	];
+
+	private static readonly ImmediateRenderRule[] ImmediateInstructionRules =
+	[
+		new(0xFFF8, 0x0280, 4, static (opcode, value) =>
+			"andi.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0240, 2, static (opcode, value) =>
+			"andi.w\t#$" + value.ToString("X4") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0200, 2, static (opcode, value) =>
+			"andi.b\t#$" + (value & 0xFF).ToString("X2") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0080, 4, static (opcode, value) =>
+			"ori.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0040, 2, static (opcode, value) =>
+			"ori.w\t#$" + value.ToString("X4") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0A80, 4, static (opcode, value) =>
+			"eori.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0A40, 2, static (opcode, value) =>
+			"eori.w\t#$" + value.ToString("X4") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0680, 4, static (opcode, value) =>
+			"addi.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0640, 2, static (opcode, value) =>
+			"addi.w\t#$" + value.ToString("X4") + ",d" + (opcode & 7)),
+		new(0xF1FF, 0xD0FC, 2, static (opcode, value) =>
+			"adda.w\t#" + value + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1FF, 0xD1FC, 4, static (opcode, value) =>
+			"adda.l\t#" + value + ",a" + ((opcode >> 9) & 7)),
+		new(0xFFF8, 0x0C80, 4, static (opcode, value) =>
+			"cmpi.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
+		new(0xFFF8, 0x0C40, 2, static (opcode, value) =>
+			"cmpi.w\t#" + unchecked((short)(ushort)value) + ",d" + (opcode & 7))
+	];
+
 	public int Offset => _bytes.Count;
 
 	public IReadOnlyCollection<string> ExternalTargets =>
@@ -408,598 +488,698 @@ internal sealed class M68kAssembler
 		out string instruction,
 		out int length)
 	{
+		if (offset + 1 >= _bytes.Count)
+		{
+			instruction = string.Empty;
+			length = 2;
+			return false;
+		}
+
+		var context = new InstructionRenderContext(
+			offset,
+			(ushort)((_bytes[offset] << 8) | _bytes[offset + 1]),
+			displayLabels,
+			addresses,
+			branches,
+			pcRelative);
+		if (TryRenderControlFlow(context, out var rendered) ||
+			TryRenderFixupOperand(context, out rendered) ||
+			TryRenderMove(context, out rendered) ||
+			TryRenderMovem(context, out rendered) ||
+			TryRenderSimpleInstruction(context.Opcode, out rendered) ||
+			TryRenderImmediateInstruction(context.Offset, context.Opcode, out rendered) ||
+			TryRenderStackAdjustment(context, out rendered) ||
+			TryRenderLea(context, out rendered) ||
+			TryRenderDisplacementInstruction(context.Offset, context.Opcode, out rendered) ||
+			TryRenderGeneratedArithmetic(context, out rendered))
+		{
+			instruction = rendered.Text;
+			length = rendered.Length;
+			return true;
+		}
+
 		instruction = string.Empty;
 		length = 2;
-		if (offset + 1 >= _bytes.Count)
+		return false;
+	}
+
+	private static bool TryRenderControlFlow(
+		in InstructionRenderContext context,
+		out RenderedInstruction instruction)
+	{
+		if (context.Branches.TryGetValue(context.Offset, out var branch))
+		{
+			var target = AssemblySymbol(DisplayLabel(branch.Target, context.DisplayLabels));
+			if ((context.Opcode & 0xFFF8) == 0x51C8)
+			{
+				instruction = new($"dbra\td{context.Opcode & 7},{target}", 4);
+				return true;
+			}
+
+			if (context.Opcode == 0x6100)
+			{
+				instruction = new($"bsr.w\t{target}", 4);
+				return true;
+			}
+
+			var condition = (M68kCondition)((context.Opcode >> 8) & 0x0F);
+			instruction = new(condition == M68kCondition.True
+				? $"bra.w\t{target}"
+				: $"{ConditionMnemonic(condition)}.w\t{target}", 4);
+			return true;
+		}
+
+		if (context.Opcode == 0x4EB9 && context.Addresses.TryGetValue(context.Offset + 2, out var call))
+		{
+			instruction = new($"jsr\t{AssemblySymbol(DisplayLabel(call.Target, context.DisplayLabels))}", 6);
+			return true;
+		}
+
+		if (context.Opcode == 0x4EF9 && context.Addresses.TryGetValue(context.Offset + 2, out var jump))
+		{
+			instruction = new($"jmp\t{AssemblySymbol(DisplayLabel(jump.Target, context.DisplayLabels))}", 6);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderFixupOperand(
+		in InstructionRenderContext context,
+		out RenderedInstruction instruction)
+	{
+		var opcode = context.Opcode;
+		var offset = context.Offset;
+		var labels = context.DisplayLabels;
+		if ((opcode & 0xF1FF) == 0x207A &&
+			context.PcRelative.TryGetValue(offset + 2, out var pcRelativeOperand))
+		{
+			instruction = new(
+				$"movea.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
+			return true;
+		}
+
+		if (opcode == 0x23EF && TryReadWord(offset + 2, out var frameSourceDisplacement) &&
+			context.Addresses.TryGetValue(offset + 4, out var frameToAddress))
+		{
+			instruction = new($"move.l\t{unchecked((short)frameSourceDisplacement)}(a7),{Symbol(frameToAddress)}", 8);
+			return true;
+		}
+		if (opcode == 0x23F8 && TryReadWord(offset + 2, out var absoluteWordSource) &&
+			context.Addresses.TryGetValue(offset + 4, out var wordMemoryToAddress))
+		{
+			instruction = new($"move.l\t${absoluteWordSource:X4}.w,{Symbol(wordMemoryToAddress)}", 8);
+			return true;
+		}
+		if (opcode == 0x23F9 && TryReadLong(offset + 2, out var absoluteLongSource) &&
+			context.Addresses.TryGetValue(offset + 6, out var longMemoryToAddress))
+		{
+			instruction = new($"move.l\t${absoluteLongSource:X8},{Symbol(longMemoryToAddress)}", 10);
+			return true;
+		}
+		if (opcode == 0x23FC && TryReadLong(offset + 2, out var absoluteLongImmediate) &&
+			context.Addresses.TryGetValue(offset + 6, out var immediateToLongMemory))
+		{
+			instruction = new($"move.l\t#${absoluteLongImmediate:X8},{Symbol(immediateToLongMemory)}", 10);
+			return true;
+		}
+
+		if (context.Addresses.TryGetValue(offset + 2, out var addressOperand))
+		{
+			if ((opcode & 0xF1FF) == 0x217C && TryReadWord(offset + 6, out var displacement))
+			{
+				instruction = new($"move.l\t#{Symbol(addressOperand)},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})", 8);
+				return true;
+			}
+
+			var target = Symbol(addressOperand);
+			var text = opcode switch
+			{
+				0x2EBC => $"move.l\t#{target},(a7)",
+				0x2F3C => $"move.l\t#{target},-(a7)",
+				0x2F39 => $"move.l\t{target},-(a7)",
+				0x23DF => $"move.l\t(a7)+,{target}",
+				0x42B9 => $"clr.l\t{target}",
+				0x4879 => $"pea\t{target}",
+				0x2C79 => $"movea.l\t{target},a6",
+				_ when (opcode & 0xF1FF) == 0x2039 => $"move.l\t{target},d{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1FF) == 0x2079 => $"movea.l\t{target},a{(opcode >> 9) & 7}",
+				_ when (opcode & 0xFFF8) == 0x23C0 => $"move.l\td{opcode & 7},{target}",
+				_ when (opcode & 0xFFF8) == 0x23C8 => $"move.l\ta{opcode & 7},{target}",
+				_ when (opcode & 0xF1FF) == 0x203C => $"move.l\t#{target},d{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1FF) == 0x207C => $"movea.l\t#{target},a{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1FF) == 0xB0BC => $"cmp.l\t#{target},d{(opcode >> 9) & 7}",
+				_ => null
+			};
+			if (text is not null)
+			{
+				instruction = new(text, 6);
+				return true;
+			}
+		}
+
+		if ((opcode & 0xF1FF) == 0x217C && TryReadLong(offset + 2, out var immediate) &&
+			TryReadWord(offset + 6, out var immediateDisplacement))
+		{
+			instruction = new($"move.l\t#${immediate:X8},{unchecked((short)immediateDisplacement)}(a{(opcode >> 9) & 7})", 8);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+
+		string Symbol(AddressFixup fixup) =>
+			AssemblySymbol(DisplayLabel(fixup.Target, labels));
+	}
+
+	private bool TryRenderMove(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		if (TryRenderMove(context.Offset, context.Opcode, out var text, out var length))
+		{
+			instruction = new(text, length);
+			return true;
+		}
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderMovem(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		if (context.Opcode == 0x48E7 && TryReadWord(context.Offset + 2, out var saveMask))
+		{
+			instruction = new($"movem.l\t{MovemRegisterList(saveMask, predecrement: true)},-(a7)", 4);
+			return true;
+		}
+		if (context.Opcode == 0x4CDF && TryReadWord(context.Offset + 2, out var restoreMask))
+		{
+			instruction = new($"movem.l\t(a7)+,{MovemRegisterList(restoreMask, predecrement: false)}", 4);
+			return true;
+		}
+		if (context.Opcode == 0x48EF && TryReadWord(context.Offset + 2, out var storeMask) &&
+			TryReadWord(context.Offset + 4, out var displacement))
+		{
+			instruction = new($"movem.l\t{MovemRegisterList(storeMask, predecrement: false)},{unchecked((short)displacement)}(a7)", 6);
+			return true;
+		}
+		if (context.Opcode == 0x48D7 && TryReadWord(context.Offset + 2, out var indirectStoreMask))
+		{
+			instruction = new($"movem.l\t{MovemRegisterList(indirectStoreMask, predecrement: false)},(a7)", 4);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private static bool TryRenderSimpleInstruction(ushort opcode, out RenderedInstruction instruction)
+	{
+		string text;
+		if (TryRenderSimpleInstruction(opcode, out text))
+		{
+			instruction = new(text, 2);
+			return true;
+		}
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderImmediateInstruction(int offset, ushort opcode, out RenderedInstruction instruction)
+	{
+		if (TryRenderImmediateInstruction(offset, opcode, out var text, out var length))
+		{
+			instruction = new(text, length);
+			return true;
+		}
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderStackAdjustment(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		if ((context.Opcode & 0xF1FF) == 0x50AF &&
+			TryReadWord(context.Offset + 2, out var addDisplacement))
+		{
+			instruction = new($"addq.l\t#{QuickCount(context.Opcode)},{unchecked((short)addDisplacement)}(a7)", 4);
+			return true;
+		}
+		if ((context.Opcode & 0xF1FF) == 0x51AF &&
+			TryReadWord(context.Offset + 2, out var subDisplacement))
+		{
+			instruction = new($"subq.l\t#{QuickCount(context.Opcode)},{unchecked((short)subDisplacement)}(a7)", 4);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderLea(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		if ((context.Opcode & 0xF1F8) == 0x41E8 &&
+			((context.Opcode >> 9) & 7) == (context.Opcode & 7) &&
+			TryReadWord(context.Offset + 2, out var displacement))
+		{
+			instruction = new($"lea\t{unchecked((short)displacement)}(a{context.Opcode & 7}),a{(context.Opcode >> 9) & 7}", 4);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderDisplacementInstruction(int offset, ushort opcode, out RenderedInstruction instruction)
+	{
+		if (TryRenderDisplacementInstruction(offset, opcode, out var text, out var length))
+		{
+			instruction = new(text, length);
+			return true;
+		}
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderGeneratedArithmetic(
+		in InstructionRenderContext context,
+		out RenderedInstruction instruction)
+	{
+		var opcode = context.Opcode;
+		if ((opcode & 0xF1F8) is 0x9080 or 0x8080 or 0xC080)
+		{
+			var mnemonic = (opcode & 0xF1F8) switch
+			{
+				0x9080 => "sub.l",
+				0x8080 => "or.l",
+				_ => "and.l"
+			};
+			instruction = new($"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
+			return true;
+		}
+		if ((opcode & 0xF1F8) == 0xB180)
+		{
+			instruction = new($"eor.l\td{(opcode >> 9) & 7},d{opcode & 7}", 2);
+			return true;
+		}
+
+		if (TryRenderBitOperation(context, out instruction) ||
+			TryRenderShift(context, out instruction) ||
+			TryRenderLongMultiplyOrDivide(context, out instruction))
+		{
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderBitOperation(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		var opcode = context.Opcode;
+		var immediateOperation = opcode & 0xFFF8;
+		if ((immediateOperation is 0x0800 or 0x0840 or 0x0880 or 0x08C0) &&
+			TryReadWord(context.Offset + 2, out var bit))
+		{
+			instruction = new($"{BitMnemonic((ushort)immediateOperation)}\t#{bit},d{opcode & 7}", 4);
+			return true;
+		}
+
+		var registerOperation = opcode & 0xF1F8;
+		if (registerOperation is 0x0100 or 0x0140 or 0x0180 or 0x01C0)
+		{
+			instruction = new($"{BitMnemonic((ushort)registerOperation)}\td{(opcode >> 9) & 7},d{opcode & 7}", 2);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private static bool TryRenderShift(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		var masked = context.Opcode & 0xF1F8;
+		var mnemonic = masked switch
+		{
+			0xE080 => "asr.l",
+			0xE088 => "lsr.l",
+			0xE188 => "lsl.l",
+			_ => null
+		};
+		if (mnemonic is not null)
+		{
+			instruction = new($"{mnemonic}\t#{QuickCount(context.Opcode)},d{context.Opcode & 7}", 2);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private bool TryRenderLongMultiplyOrDivide(in InstructionRenderContext context, out RenderedInstruction instruction)
+	{
+		if (context.Opcode == 0x4C01 && TryReadWord(context.Offset + 2, out var multiplyExtension) &&
+			multiplyExtension == 0x0800)
+		{
+			instruction = new("muls.l\td1,d0", 4);
+			return true;
+		}
+		if (context.Opcode == 0x4C41 && TryReadWord(context.Offset + 2, out var divideExtension) &&
+			(divideExtension & 0xF7FF) == 0x0002)
+		{
+			instruction = new((divideExtension & 0x0800) != 0
+				? "divs.l\td1,d2:d0"
+				: "divu.l\td1,d2:d0", 4);
+			return true;
+		}
+
+		instruction = default;
+		return false;
+	}
+
+	private static string BitMnemonic(ushort operation) => operation switch
+	{
+		0x0800 or 0x0100 => "btst",
+		0x0840 or 0x0140 => "bchg",
+		0x0880 or 0x0180 => "bclr",
+		0x08C0 or 0x01C0 => "bset",
+		_ => throw new ArgumentOutOfRangeException(nameof(operation))
+	};
+
+	private static bool TryRenderSimpleInstruction(
+		ushort opcode,
+		out string instruction)
+	{
+		foreach (var rule in SimpleInstructionRules)
+		{
+			if ((opcode & rule.Mask) == rule.Value)
+			{
+				instruction = rule.Render(opcode);
+				return true;
+			}
+		}
+
+		instruction = string.Empty;
+		return false;
+	}
+
+	private bool TryRenderImmediateInstruction(
+		int offset,
+		ushort opcode,
+		out string instruction,
+		out int length)
+	{
+		foreach (var rule in ImmediateInstructionRules)
+		{
+			if ((opcode & rule.Mask) != rule.Value)
+			{
+				continue;
+			}
+
+			uint value;
+			if (rule.ImmediateBytes == 2)
+			{
+				if (!TryReadWord(offset + 2, out var word))
+				{
+					break;
+				}
+				value = word;
+			}
+			else if (!TryReadLong(offset + 2, out value))
+			{
+				break;
+			}
+
+			instruction = rule.Render(opcode, value);
+			length = 2 + rule.ImmediateBytes;
+			return true;
+		}
+
+		instruction = string.Empty;
+		length = 2;
+		return false;
+	}
+
+	private bool TryRenderDisplacementInstruction(
+		int offset,
+		ushort opcode,
+		out string instruction,
+		out int length)
+	{
+		instruction = string.Empty;
+		length = 2;
+		if (!TryReadWord(offset + 2, out var displacement))
 		{
 			return false;
 		}
 
-		var opcode = (ushort)((_bytes[offset] << 8) | _bytes[offset + 1]);
-		if (branches.TryGetValue(offset, out var branch))
-		{
-			if ((opcode & 0xFFF8) == 0x51C8)
-			{
-				instruction = $"dbra\td{opcode & 0x0007},{AssemblySymbol(DisplayLabel(branch.Target, displayLabels))}";
-				length = 4;
-				return true;
-			}
-
-			if (opcode == 0x6100)
-			{
-				instruction = $"bsr.w\t{AssemblySymbol(DisplayLabel(branch.Target, displayLabels))}";
-				length = 4;
-				return true;
-			}
-
-			var condition = (M68kCondition)((opcode >> 8) & 0x0F);
-			instruction = condition == M68kCondition.True
-				? $"bra.w\t{AssemblySymbol(DisplayLabel(branch.Target, displayLabels))}"
-				: $"{ConditionMnemonic(condition)}.w\t{AssemblySymbol(DisplayLabel(branch.Target, displayLabels))}";
-			length = 4;
-			return true;
-		}
-
-		if (opcode == 0x4EB9 && addresses.TryGetValue(offset + 2, out var call))
-		{
-			instruction = $"jsr\t{AssemblySymbol(DisplayLabel(call.Target, displayLabels))}";
-			length = 6;
-			return true;
-		}
-
-		if (opcode == 0x4EF9 && addresses.TryGetValue(offset + 2, out var jump))
-		{
-			instruction = $"jmp\t{AssemblySymbol(DisplayLabel(jump.Target, displayLabels))}";
-			length = 6;
-			return true;
-		}
-
-		if ((opcode & 0xF1FF) == 0x207A &&
-			pcRelative.TryGetValue(offset + 2, out var pcRelativeOperand))
-		{
-			instruction = $"movea.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, displayLabels))}(pc),a{(opcode >> 9) & 7}";
-			length = 4;
-			return true;
-		}
-
-		if (opcode == 0x23EF &&
-			TryReadWord(offset + 2, out var frameSourceDisplacement) &&
-			addresses.TryGetValue(offset + 4, out var frameToAddressOperand))
-		{
-			instruction = $"move.l\t{unchecked((short)frameSourceDisplacement)}(a7),{AssemblySymbol(DisplayLabel(frameToAddressOperand.Target, displayLabels))}";
-			length = 8;
-			return true;
-		}
-		if (opcode == 0x23F8 &&
-			TryReadWord(offset + 2, out var absoluteWordSource) &&
-			addresses.TryGetValue(offset + 4, out var wordMemoryToAddressOperand))
-		{
-			instruction = $"move.l\t${absoluteWordSource:X4}.w,{AssemblySymbol(DisplayLabel(wordMemoryToAddressOperand.Target, displayLabels))}";
-			length = 8;
-			return true;
-		}
-		if (opcode == 0x23F9 &&
-			TryReadLong(offset + 2, out var absoluteLongSource) &&
-			addresses.TryGetValue(offset + 6, out var longMemoryToAddressOperand))
-		{
-			instruction = $"move.l\t${absoluteLongSource:X8},{AssemblySymbol(DisplayLabel(longMemoryToAddressOperand.Target, displayLabels))}";
-			length = 10;
-			return true;
-		}
-		if (opcode == 0x23FC &&
-			TryReadLong(offset + 2, out var absoluteLongImmediate) &&
-			addresses.TryGetValue(offset + 6, out var immediateToLongMemoryOperand))
-		{
-			instruction = $"move.l\t#${absoluteLongImmediate:X8},{AssemblySymbol(DisplayLabel(immediateToLongMemoryOperand.Target, displayLabels))}";
-			length = 10;
-			return true;
-		}
-
-		if (addresses.TryGetValue(offset + 2, out var addressOperand))
-		{
-			if ((opcode & 0xF1FF) == 0x217C &&
-				TryReadWord(offset + 6, out var immediateAddressDisplacement))
-			{
-				instruction = $"move.l\t#{AssemblySymbol(DisplayLabel(addressOperand.Target, displayLabels))},{unchecked((short)immediateAddressDisplacement)}(a{(opcode >> 9) & 7})";
-				length = 8;
-				return true;
-			}
-
-			var targetSymbol = AssemblySymbol(DisplayLabel(addressOperand.Target, displayLabels));
-			instruction = opcode switch
-			{
-				0x2EBC => $"move.l\t#{targetSymbol},(a7)",
-				0x2F3C => $"move.l\t#{targetSymbol},-(a7)",
-				0x2F39 => $"move.l\t{targetSymbol},-(a7)",
-				0x23DF => $"move.l\t(a7)+,{targetSymbol}",
-				0x42B9 => $"clr.l\t{targetSymbol}",
-				0x4879 => $"pea\t{targetSymbol}",
-				0x2C79 => $"movea.l\t{targetSymbol},a6",
-				_ when (opcode & 0xF1FF) == 0x2039 =>
-					$"move.l\t{targetSymbol},d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xFFF8) == 0x23C0 =>
-					$"move.l\td{opcode & 7},{targetSymbol}",
-				_ when (opcode & 0xFFF8) == 0x23C8 =>
-					$"move.l\ta{opcode & 7},{targetSymbol}",
-				_ when (opcode & 0xF1FF) == 0x203C =>
-					$"move.l\t#{targetSymbol},d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0x207C =>
-					$"movea.l\t#{targetSymbol},a{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0xB0BC =>
-					$"cmp.l\t#{targetSymbol},d{(opcode >> 9) & 7}",
-				_ => string.Empty
-			};
-			if (instruction.Length != 0)
-			{
-				length = 6;
-				return true;
-			}
-		}
-
-		if ((opcode & 0xF1FF) == 0x217C &&
-			TryReadLong(offset + 2, out var frameLongImmediate) &&
-			TryReadWord(offset + 6, out var frameLongImmediateDisplacement))
-		{
-			instruction =
-				$"move.l\t#${frameLongImmediate:X8},{unchecked((short)frameLongImmediateDisplacement)}(a{(opcode >> 9) & 7})";
-			length = 8;
-			return true;
-		}
-
-		if (opcode == 0x2038 &&
-			TryReadWord(offset + 2, out var d0AbsoluteWord))
-		{
-			instruction = $"move.l\t${d0AbsoluteWord:X4}.w,d0";
-			length = 4;
-			return true;
-		}
-
-		if ((opcode & 0xF1F8) == 0x3028 &&
-			TryReadWord(offset + 2, out var wordSourceDisplacement))
-		{
-			instruction =
-				$"move.w\t{unchecked((short)wordSourceDisplacement)}(a{opcode & 7}),d{(opcode >> 9) & 7}";
-			length = 4;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0280 &&
-			TryReadLong(offset + 2, out var andImmediate))
-		{
-			instruction = $"andi.l\t#$" + andImmediate.ToString("X8") + $",d{opcode & 7}";
-			length = 6;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0240 &&
-			TryReadWord(offset + 2, out var andWordImmediate))
-		{
-			instruction = $"andi.w\t#$" + andWordImmediate.ToString("X4") + $",d{opcode & 7}";
-			length = 4;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0080 &&
-			TryReadLong(offset + 2, out var orImmediate))
-		{
-			instruction = $"ori.l\t#$" + orImmediate.ToString("X8") + $",d{opcode & 7}";
-			length = 6;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0040 &&
-			TryReadWord(offset + 2, out var orWordImmediate))
-		{
-			instruction = $"ori.w\t#$" + orWordImmediate.ToString("X4") + $",d{opcode & 7}";
-			length = 4;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0A80 &&
-			TryReadLong(offset + 2, out var xorImmediate))
-		{
-			instruction = $"eori.l\t#$" + xorImmediate.ToString("X8") + $",d{opcode & 7}";
-			length = 6;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0A40 &&
-			TryReadWord(offset + 2, out var xorWordImmediate))
-		{
-			instruction = $"eori.w\t#$" + xorWordImmediate.ToString("X4") + $",d{opcode & 7}";
-			length = 4;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0680 &&
-			TryReadLong(offset + 2, out var addLongImmediate))
-		{
-			instruction = $"addi.l\t#$" + addLongImmediate.ToString("X8") + $",d{opcode & 7}";
-			length = 6;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0640 &&
-			TryReadWord(offset + 2, out var addWordImmediate))
-		{
-			instruction = $"addi.w\t#$" + addWordImmediate.ToString("X4") + $",d{opcode & 7}";
-			length = 4;
-			return true;
-		}
-
-		if ((opcode & 0xFFF8) == 0x0200 &&
-			TryReadWord(offset + 2, out var andByteImmediate))
-		{
-			instruction = $"andi.b\t#$" + (andByteImmediate & 0xFF).ToString("X2") + $",d{opcode & 7}";
-			length = 4;
-			return true;
-		}
-
-		if (opcode == 0x48E7 &&
-			TryReadWord(offset + 2, out var saveMask))
-		{
-			instruction = $"movem.l\t{MovemRegisterList(saveMask, predecrement: true)},-(a7)";
-			length = 4;
-			return true;
-		}
-
-		if (opcode == 0x4CDF &&
-			TryReadWord(offset + 2, out var restoreMask))
-		{
-			instruction = $"movem.l\t(a7)+,{MovemRegisterList(restoreMask, predecrement: false)}";
-			length = 4;
-			return true;
-		}
-
-		if (opcode == 0x48EF &&
-			TryReadWord(offset + 2, out var storeMask) &&
-			TryReadWord(offset + 4, out var movemDisplacement))
-		{
-			instruction =
-				$"movem.l\t{MovemRegisterList(storeMask, predecrement: false)},{unchecked((short)movemDisplacement)}(a7)";
-			length = 6;
-			return true;
-		}
-
-		if (opcode == 0x48D7 &&
-			TryReadWord(offset + 2, out var indirectStoreMask))
-		{
-			instruction = $"movem.l\t{MovemRegisterList(indirectStoreMask, predecrement: false)},(a7)";
-			length = 4;
-			return true;
-		}
-
+		var value = unchecked((short)displacement);
 		instruction = opcode switch
 		{
-			0x4E71 => "nop",
-			0x4E75 => "rts",
-			0x4AFC => "illegal",
-			0x2017 => "move.l\t(a7),d0",
-			0x201F => "move.l\t(a7)+,d0",
-			0x221F => "move.l\t(a7)+,d1",
-			0x241F => "move.l\t(a7)+,d2",
-			0x508F => "addq.l\t#8,a7",
-			0x588F => "addq.l\t#4,a7",
-			0x5381 => "subq.l\t#1,d1",
-			0x4680 => "not.l\td0",
-			_ when (opcode & 0xFFF8) == 0x4880 =>
-				$"ext.w\td{opcode & 7}",
-			_ when (opcode & 0xFFF8) == 0x48C0 =>
-				$"ext.l\td{opcode & 7}",
-			_ when (opcode & 0xFFF8) == 0x49C0 =>
-				$"extb.l\td{opcode & 7}",
-			_ when (opcode & 0xFFF8) == 0x4280 =>
-				$"clr.l\td{opcode & 7}",
-			0x4A80 => "tst.l\td0",
-			0x4A81 => "tst.l\td1",
-			0x42A7 => "clr.l\t-(a7)",
-			0x2F00 => "move.l\td0,-(a7)",
-			0x2F08 => "move.l\ta0,-(a7)",
-			_ when (opcode & 0xFFF8) == 0x4850 =>
-				$"pea\t(a{opcode & 7})",
-			0x2F10 => "move.l\t(a0),-(a7)",
-			0x2F17 => "move.l\t(a7),-(a7)",
-			0x2E97 => "move.l\t(a7),(a7)",
-			0x2E9F => "move.l\t(a7)+,(a7)",
-			0x4297 => "clr.l\t(a7)",
-			0x4857 => "pea\t(a7)",
-			0x2080 => "move.l\td0,(a0)",
-			0x204F => "movea.l\ta7,a0",
-			0x224F => "movea.l\ta7,a1",
-			0x2878 => "movea.l\t$0004.w,a4",
-			0x2C4C => "movea.l\ta4,a6",
-			0x2A78 => "movea.l\t$0004.w,a5",
-			0x2C4D => "movea.l\ta5,a6",
-			_ when (opcode & 0xFFF8) == 0x4ED0 =>
-				$"jmp\t(a{opcode & 7})",
-			_ when (opcode & 0xFF00) == 0x7000 =>
-				$"moveq\t#{unchecked((sbyte)(opcode & 0xFF))},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1C0) == 0xD1C0 =>
-				$"adda.l\td{opcode & 7},a{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0x91C8 =>
-				$"suba.l\ta{opcode & 7},a{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0xD080 =>
-				$"add.l\td{opcode & 7},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0xD040 =>
-				$"add.w\td{opcode & 7},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF0F8) == 0x50C0 =>
-				$"{SetConditionMnemonic((M68kCondition)((opcode >> 8) & 0x0F))}\td{opcode & 7}",
-			_ when (opcode & 0xFFF8) == 0x4298 =>
-				$"clr.l\t(a{opcode & 7})+",
-			_ when (opcode & 0xF1F8) == 0x2010 =>
-				$"move.l\t(a{opcode & 7}),d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0x2050 =>
-				$"movea.l\t(a{opcode & 7}),a{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0x2000 =>
-				$"move.l\td{opcode & 7},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0xB080 =>
-				$"cmp.l\td{opcode & 7},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0xB090 =>
-				$"cmp.l\t(a{opcode & 7}),d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xFFF8) == 0x4400 =>
-				$"neg.b\td{opcode & 7}",
-			_ when (opcode & 0xFFF8) == 0x4480 =>
-				$"neg.l\td{opcode & 7}",
-			_ when (opcode & 0xF1F8) == 0x2008 =>
-				$"move.l\ta{opcode & 7},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0xB088 =>
-				$"cmp.l\ta{opcode & 7},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0x2040 =>
-				$"movea.l\td{opcode & 7},a{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0x2048 =>
-				$"movea.l\ta{opcode & 7},a{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1F8) == 0x20C0 =>
-				$"move.l\td{opcode & 7},(a{(opcode >> 9) & 7})+",
-			_ when (opcode & 0xFFF8) == 0x2F00 =>
-				$"move.l\td{opcode & 7},-(a7)",
-			_ when (opcode & 0xFFF8) == 0x2F08 =>
-				$"move.l\ta{opcode & 7},-(a7)",
-			_ when (opcode & 0xFFF8) == 0x2E80 =>
-				$"move.l\td{opcode & 7},(a7)",
-			_ when (opcode & 0xFFF8) == 0x2E88 =>
-				$"move.l\ta{opcode & 7},(a7)",
-			_ when (opcode & 0xF1FF) == 0x201F =>
-				$"move.l\t(a7)+,d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1FF) == 0x205F =>
-				$"movea.l\t(a7)+,a{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF100) == 0x7000 =>
-				$"moveq\t#{unchecked((sbyte)opcode)},d{(opcode >> 9) & 7}",
-			_ when (opcode & 0xF1FF) == 0x5097 =>
-				$"addq.l\t#{QuickCount(opcode)},(a7)",
-			_ when (opcode & 0xF1FF) == 0x5197 =>
-				$"subq.l\t#{QuickCount(opcode)},(a7)",
-			_ when (opcode & 0xF1F8) == 0x5080 =>
-				$"addq.l\t#{QuickCount(opcode)},d{opcode & 7}",
-			_ when (opcode & 0xF1F8) == 0x5180 =>
-				$"subq.l\t#{QuickCount(opcode)},d{opcode & 7}",
-			_ when (opcode & 0xF1F8) == 0x5088 =>
-				$"addq.l\t#{QuickCount(opcode)},a{opcode & 7}",
-			_ when (opcode & 0xF1F8) == 0x5188 =>
-				$"subq.l\t#{QuickCount(opcode)},a{opcode & 7}",
+			0x4EAE => $"jsr\t{value}(a6)",
+			_ when (opcode & 0xFFF8) == 0x4EA8 => $"jsr\t{value}(a{opcode & 7})",
+			_ when (opcode & 0xFFF8) == 0x4EE8 => $"jmp\t{value}(a{opcode & 7})",
+			0x42AF => $"clr.l\t{value}(a7)",
+			0x486F => $"pea\t{value}(a7)",
+			_ when (opcode & 0xF1FF) == 0x41EF =>
+				$"lea\t{value}(a7),a{(opcode >> 9) & 7}",
+			_ when (opcode & 0xF1FF) == 0xB0AF =>
+				$"cmp.l\t{value}(a7),d{(opcode >> 9) & 7}",
 			_ => string.Empty
 		};
-		if (instruction.Length != 0)
+		if (instruction.Length == 0)
 		{
-			return true;
+			return false;
 		}
 
-		if ((opcode & 0xF1FF) == 0x50AF &&
-			TryReadWord(offset + 2, out var addQuickDisplacement))
+		length = 4;
+		return true;
+	}
+
+	private bool TryRenderMove(
+		int offset,
+		ushort opcode,
+		out string instruction,
+		out int length)
+	{
+		if (!TryDecodeMove(offset, opcode, out var decoded))
 		{
-			instruction = $"addq.l\t#{QuickCount(opcode)},{unchecked((short)addQuickDisplacement)}(a7)";
-			length = 4;
-			return true;
+			instruction = string.Empty;
+			length = 2;
+			return false;
 		}
 
-		if ((opcode & 0xF1FF) == 0x51AF &&
-			TryReadWord(offset + 2, out var subQuickDisplacement))
+		instruction = decoded.Mnemonic + "\t" +
+			decoded.Source.Text + "," + decoded.Destination.Text;
+		length = decoded.Length;
+		return true;
+	}
+
+	private bool TryDecodeMove(
+		int offset,
+		ushort opcode,
+		out DecodedMove instruction)
+	{
+		instruction = default;
+		var sizeCode = (opcode >> 12) & 0xF;
+		if (sizeCode is not (1 or 2 or 3))
 		{
-			instruction = $"subq.l\t#{QuickCount(opcode)},{unchecked((short)subQuickDisplacement)}(a7)";
-			length = 4;
-			return true;
+			return false;
 		}
 
-		if ((opcode & 0xF1FF) == 0xD0FC && TryReadWord(offset + 2, out var addWord))
+		var sizeBytes = sizeCode == 1 ? 1 : sizeCode == 2 ? 4 : 2;
+		var sourceMode = (opcode >> 3) & 7;
+		var sourceRegister = opcode & 7;
+		var destinationMode = (opcode >> 6) & 7;
+		var destinationRegister = (opcode >> 9) & 7;
+		var movea = destinationMode == 1;
+		if (movea && sizeBytes == 1)
 		{
-			instruction = $"adda.w\t#{addWord},a{(opcode >> 9) & 7}";
-			length = 4;
-			return true;
+			return false;
 		}
 
-		if ((opcode & 0xF1FF) == 0xD1FC && TryReadLong(offset + 2, out var addLong))
+		if (!TryDecodeEffectiveAddress(
+			offset + 2,
+			sourceMode,
+			sourceRegister,
+			sizeBytes,
+			out var source))
 		{
-			instruction = $"adda.l\t#{addLong},a{(opcode >> 9) & 7}";
-			length = 6;
-			return true;
+			return false;
 		}
 
-		if ((opcode & 0xF1F8) == 0x41E8 &&
-			((opcode >> 9) & 7) == (opcode & 7) &&
-			TryReadWord(offset + 2, out var leaDisplacement))
+		if (!movea && (destinationMode == 1 ||
+			(destinationMode == 7 && destinationRegister == 4)))
 		{
-			instruction = $"lea\t{unchecked((short)leaDisplacement)}(a{opcode & 7}),a{(opcode >> 9) & 7}";
-			length = 4;
-			return true;
+			return false;
 		}
-		if (opcode == 0x2F6F &&
-			TryReadWord(offset + 2, out var sourceDisplacement) &&
-			TryReadWord(offset + 4, out var destinationDisplacement))
+
+		if (!TryDecodeEffectiveAddress(
+			offset + 2 + source.ExtensionBytes,
+			destinationMode,
+			destinationRegister,
+			sizeBytes,
+			out var destination))
 		{
-			if (sourceDisplacement == 0 && destinationDisplacement == 0)
-			{
-				instruction = "move.l\t(a7),(a7)";
-				length = 6;
+			return false;
+		}
+
+		var mnemonic = movea
+			? "movea." + (sizeBytes == 2 ? "w" : "l")
+			: "move." + (sizeBytes == 1 ? "b" : sizeBytes == 2 ? "w" : "l");
+		instruction = new DecodedMove(
+			mnemonic,
+			source,
+			destination,
+			2 + source.ExtensionBytes + destination.ExtensionBytes);
+		return true;
+	}
+
+	private bool TryDecodeEffectiveAddress(
+		int offset,
+		int mode,
+		int register,
+		int sizeBytes,
+		out M68kOperand operand)
+	{
+		operand = default;
+		switch (mode)
+		{
+			case 0:
+				operand = new M68kOperand(
+					M68kOperandKind.DataRegister,
+					"d" + register,
+					0);
 				return true;
-			}
-
-			instruction = $"move.l\t{unchecked((short)sourceDisplacement)}(a7),{unchecked((short)destinationDisplacement)}(a7)";
-			length = 6;
-			return true;
-		}
-		if (opcode == 0x2F57 &&
-			TryReadWord(offset + 2, out destinationDisplacement))
-		{
-			if (destinationDisplacement == 0)
-			{
-				instruction = "move.l\t(a7),(a7)";
-				length = 4;
+			case 1:
+				operand = new M68kOperand(
+					M68kOperandKind.AddressRegister,
+					"a" + register,
+					0);
 				return true;
-			}
-
-			instruction = $"move.l\t(a7),{unchecked((short)destinationDisplacement)}(a7)";
-			length = 4;
-			return true;
-		}
-		if (opcode == 0x2EAF &&
-			TryReadWord(offset + 2, out sourceDisplacement))
-		{
-			if (sourceDisplacement == 0)
-			{
-				instruction = "move.l\t(a7),(a7)";
-				length = 4;
+			case 2:
+				operand = new M68kOperand(
+					M68kOperandKind.Memory,
+					"(a" + register + ")",
+					0);
 				return true;
-			}
-
-			instruction = $"move.l\t{unchecked((short)sourceDisplacement)}(a7),(a7)";
-			length = 4;
-			return true;
-		}
-		if ((opcode & 0xFFF8) == 0x2F50 &&
-			TryReadWord(offset + 2, out destinationDisplacement))
-		{
-			if (destinationDisplacement == 0)
-			{
-				instruction = $"move.l\t(a{opcode & 7}),(a7)";
-				length = 4;
+			case 3:
+				operand = new M68kOperand(
+					M68kOperandKind.Memory,
+					"(a" + register + ")+",
+					0);
 				return true;
-			}
-
-			instruction = $"move.l\t(a{opcode & 7}),{unchecked((short)destinationDisplacement)}(a7)";
-			length = 4;
-			return true;
-		}
-		if (opcode == 0x2EBC &&
-			TryReadLong(offset + 2, out var indirectImmediate))
-		{
-			instruction = $"move.l\t#${indirectImmediate:X8},(a7)";
-			length = 6;
-			return true;
-		}
-		if (opcode == 0x2F7C &&
-			TryReadLong(offset + 2, out var frameImmediate) &&
-			TryReadWord(offset + 6, out var frameImmediateDisplacement))
-		{
-			instruction = $"move.l\t#${frameImmediate:X8},{unchecked((short)frameImmediateDisplacement)}(a7)";
-			length = 8;
-			return true;
-		}
-		if (TryReadWord(offset + 2, out var displacement))
-		{
-			if (displacement == 0)
-			{
-				instruction = opcode switch
+			case 4:
+				operand = new M68kOperand(
+					M68kOperandKind.Memory,
+					"-(a" + register + ")",
+					0);
+				return true;
+			case 5:
+				if (!TryReadWord(offset, out var displacement))
 				{
-					_ when (opcode & 0xF1F8) == 0x2028 =>
-						$"move.l\t(a{opcode & 7}),d{(opcode >> 9) & 7}",
-					_ when (opcode & 0xF1F8) == 0x2068 =>
-						$"movea.l\t(a{opcode & 7}),a{(opcode >> 9) & 7}",
-					_ when (opcode & 0xF1F8) == 0x41E8 =>
-						$"movea.l\ta{opcode & 7},a{(opcode >> 9) & 7}",
-					_ when (opcode & 0xF1FF) == 0x202F =>
-						$"move.l\t(a7),d{(opcode >> 9) & 7}",
-					_ when (opcode & 0xF1FF) == 0x206F =>
-						$"movea.l\t(a7),a{(opcode >> 9) & 7}",
-					_ when (opcode & 0xF1FF) == 0x41EF =>
-						$"movea.l\ta7,a{(opcode >> 9) & 7}",
-					_ when (opcode & 0xFFF8) == 0x2F40 =>
-						$"move.l\td{opcode & 7},(a7)",
-					_ when (opcode & 0xFFF8) == 0x2F48 =>
-						$"move.l\ta{opcode & 7},(a7)",
-					0x42AF => "clr.l\t(a7)",
-					0x486F => "pea\t(a7)",
-					_ => string.Empty
-				};
-				if (instruction.Length != 0)
-				{
-					length = 4;
-					return true;
+					return false;
 				}
-			}
-
-			instruction = opcode switch
-			{
-				0x2C78 => $"movea.l\t${displacement:X4}.w,a6",
-				0x4EAE => $"jsr\t{unchecked((short)displacement)}(a6)",
-				_ when (opcode & 0xFFF8) == 0x4EA8 => $"jsr\t{unchecked((short)displacement)}(a{opcode & 7})",
-				_ when (opcode & 0xFFF8) == 0x4EE8 => $"jmp\t{unchecked((short)displacement)}(a{opcode & 7})",
-				0x42AF => $"clr.l\t{unchecked((short)displacement)}(a7)",
-				0x486F => $"pea\t{unchecked((short)displacement)}(a7)",
-				0x2F5F => $"move.l\t(a7)+,{unchecked((short)displacement)}(a7)",
-				0x2F2F => $"move.l\t{unchecked((short)displacement)}(a7),-(a7)",
-				_ when (opcode & 0xF1F8) == 0x2148 =>
-					$"move.l\ta{opcode & 7},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})",
-				_ when (opcode & 0xF1C0) == 0x2140 =>
-					$"move.l\td{opcode & 7},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})",
-				_ when (opcode & 0xF1FF) == 0x41EF =>
-					$"lea\t{unchecked((short)displacement)}(a7),a{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0x202F =>
-					$"move.l\t{unchecked((short)displacement)}(a7),d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0xB0AF =>
-					$"cmp.l\t{unchecked((short)displacement)}(a7),d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1F8) == 0x2028 =>
-					$"move.l\t{unchecked((short)displacement)}(a{opcode & 7}),d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1F8) == 0x2068 =>
-					$"movea.l\t{unchecked((short)displacement)}(a{opcode & 7}),a{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0x206F =>
-					$"movea.l\t{unchecked((short)displacement)}(a7),a{(opcode >> 9) & 7}",
-				_ when (opcode & 0xFFF8) == 0x2F40 =>
-					$"move.l\td{opcode & 7},{unchecked((short)displacement)}(a7)",
-				_ when (opcode & 0xFFF8) == 0x2F48 =>
-					$"move.l\ta{opcode & 7},{unchecked((short)displacement)}(a7)",
-				_ => string.Empty
-			};
-			if (instruction.Length != 0)
-			{
-				length = 4;
+				operand = new M68kOperand(
+					M68kOperandKind.Memory,
+					FormatDisplacement(unchecked((short)displacement), "(a" + register + ")"),
+					2);
 				return true;
-			}
-		}
-		if (opcode == 0x2F3C && TryReadLong(offset + 2, out var immediate))
-		{
-			instruction = $"move.l\t#${immediate:X8},-(a7)";
-			length = 6;
-			return true;
-		}
-		if ((opcode & 0xF1FF) == 0x203C &&
-			TryReadLong(offset + 2, out immediate))
-		{
-			instruction = $"move.l\t#${immediate:X8},d{(opcode >> 9) & 7}";
-			length = 6;
-			return true;
-		}
-		if ((opcode & 0xF1FF) == 0x207C &&
-			TryReadLong(offset + 2, out immediate))
-		{
-			instruction = $"movea.l\t#${immediate:X8},a{(opcode >> 9) & 7}";
-			length = 6;
-			return true;
-		}
-		if ((opcode & 0xFFF8) == 0x0C80 && TryReadLong(offset + 2, out immediate))
-		{
-			instruction = $"cmpi.l\t#${immediate:X8},d{opcode & 7}";
-			length = 6;
-			return true;
-		}
-		if ((opcode & 0xFFF8) == 0x0C40 &&
-			TryReadWord(offset + 2, out var wordImmediate))
-		{
-			instruction = $"cmpi.w\t#{unchecked((short)wordImmediate)},d{opcode & 7}";
-			length = 4;
-			return true;
+			case 6:
+				if (!TryReadWord(offset, out var indexExtension))
+				{
+					return false;
+				}
+				operand = new M68kOperand(
+					M68kOperandKind.Memory,
+					FormatDisplacement(
+						unchecked((sbyte)indexExtension),
+						"(a" + register + "," +
+						((indexExtension & 0x8000) != 0 ? "a" : "d") +
+						((indexExtension >> 12) & 7) + "." +
+						((indexExtension & 0x0800) != 0 ? "l" : "w") + ")"),
+					2);
+				return true;
+			case 7:
+				switch (register)
+				{
+					case 0:
+						if (!TryReadWord(offset, out var absoluteWord))
+						{
+							return false;
+						}
+						operand = new M68kOperand(
+							M68kOperandKind.Memory,
+							"$" + absoluteWord.ToString("X4") + ".w",
+							2);
+						return true;
+					case 1:
+						if (!TryReadLong(offset, out var absoluteLong))
+						{
+							return false;
+						}
+						operand = new M68kOperand(
+							M68kOperandKind.Memory,
+							"$" + absoluteLong.ToString("X8"),
+							4);
+						return true;
+					case 2:
+						if (!TryReadWord(offset, out var pcDisplacement))
+						{
+							return false;
+						}
+						operand = new M68kOperand(
+							M68kOperandKind.Memory,
+							FormatDisplacement(unchecked((short)pcDisplacement), "(pc)"),
+							2);
+						return true;
+					case 3:
+						if (!TryReadWord(offset, out var pcIndexExtension))
+						{
+							return false;
+						}
+						operand = new M68kOperand(
+							M68kOperandKind.Memory,
+							FormatDisplacement(
+								unchecked((sbyte)pcIndexExtension),
+								"(pc," +
+								((pcIndexExtension & 0x8000) != 0 ? "a" : "d") +
+								((pcIndexExtension >> 12) & 7) + "." +
+								((pcIndexExtension & 0x0800) != 0 ? "l" : "w") + ")"),
+							2);
+						return true;
+					case 4:
+						if (sizeBytes == 4)
+						{
+							if (!TryReadLong(offset, out var immediateLong))
+							{
+								return false;
+							}
+							operand = new M68kOperand(
+								M68kOperandKind.Immediate,
+								"#$" + immediateLong.ToString("X8"),
+								4);
+							return true;
+						}
+
+						if (!TryReadWord(offset, out var immediateWord))
+						{
+							return false;
+						}
+						operand = new M68kOperand(
+							M68kOperandKind.Immediate,
+							"#$" + (sizeBytes == 1
+								? (immediateWord & 0xFF).ToString("X2")
+								: immediateWord.ToString("X4")),
+							2);
+						return true;
+				}
+				break;
 		}
 
 		return false;
 	}
+
+	private static string FormatDisplacement(int displacement, string suffix) =>
+		displacement == 0 ? suffix : displacement + suffix;
 
 	private bool TryReadWord(int offset, out ushort value)
 	{
@@ -1199,6 +1379,45 @@ internal sealed class M68kAssembler
 		}
 	}
 
+	private enum M68kOperandKind : byte
+	{
+		DataRegister,
+		AddressRegister,
+		Memory,
+		Immediate
+	}
+
+	private readonly record struct M68kOperand(
+		M68kOperandKind Kind,
+		string Text,
+		int ExtensionBytes);
+
+	private readonly record struct DecodedMove(
+		string Mnemonic,
+		M68kOperand Source,
+		M68kOperand Destination,
+		int Length);
+
+	private readonly record struct InstructionRenderContext(
+		int Offset,
+		ushort Opcode,
+		IReadOnlyDictionary<string, string> DisplayLabels,
+		IReadOnlyDictionary<int, AddressFixup> Addresses,
+		IReadOnlyDictionary<int, BranchFixup> Branches,
+		IReadOnlyDictionary<int, PcRelativeFixup> PcRelative);
+
+	private readonly record struct RenderedInstruction(string Text, int Length);
+
+	private readonly record struct OpcodeRenderRule(
+		ushort Mask,
+		ushort Value,
+		Func<ushort, string> Render);
+
+	private readonly record struct ImmediateRenderRule(
+		ushort Mask,
+		ushort Value,
+		int ImmediateBytes,
+		Func<ushort, uint, string> Render);
 }
 
 internal sealed record LinkedCode(

@@ -686,7 +686,7 @@ internal sealed partial class M68kCodeGenerator
 		if (TryGetLoadLocalAddressIndex(instruction, out var localAddressIndex))
 		{
 			ValidateLocal(caller, instruction, localAddressIndex);
-			EmitLoadFrameAddress(
+			EmitFrameAddressValueToRegister(
 				register,
 				FrameDisplacement(
 					LocalOffset(caller, localAddressIndex),
@@ -697,7 +697,7 @@ internal sealed partial class M68kCodeGenerator
 		if (TryGetLoadArgumentAddressIndex(instruction, out var argumentAddressIndex))
 		{
 			ValidateArgument(caller, instruction, argumentAddressIndex);
-			EmitLoadFrameAddress(
+			EmitFrameAddressValueToRegister(
 				register,
 				FrameDisplacement(
 					ArgumentOffset(caller, argumentAddressIndex),
@@ -710,6 +710,18 @@ internal sealed partial class M68kCodeGenerator
 			$"Opcode '{instruction.OpCode.Name}' is not supported as a register argument value.",
 			caller.DisplayName,
 			instruction.Offset);
+	}
+
+	private void EmitFrameAddressValueToRegister(M68kRegister register, short displacement)
+	{
+		if (register >= M68kRegister.A0)
+		{
+			EmitLoadFrameAddress(register, displacement);
+			return;
+		}
+
+		EmitLoadFrameAddress(M68kRegister.A0, displacement);
+		EmitMoveRegisterToRegister(M68kRegister.A0, register);
 	}
 
 	private bool TryEmitArgumentValueToFrame(

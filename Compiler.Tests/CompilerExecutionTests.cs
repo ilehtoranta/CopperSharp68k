@@ -370,7 +370,8 @@ public sealed class CompilerExecutionTests
 
 		Assert.Equal(21u, ExecuteHunk(result, M68kCpuModel.M68000));
 		Assert.Contains("\tcmp.l\t4(a7),d0", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\t(a7)+,d7", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\t(a7)+,d7", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmoveq\t#1,d7", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			"\tmove.l\t(a7)+,d1\r\n\tmove.l\t(a7)+,d0\r\n\tcmp.l\td1,d0",
 			result.Text,
@@ -1392,6 +1393,39 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void CompilesIffInspectSampleWithTypedExceptionsAndCleanup()
+	{
+		var iffInspectAssembly = typeof(IFFInspect.Program).Assembly.Location;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = iffInspectAssembly,
+			EntryPoint = "IFFInspect.Program::Main",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Assembly,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0001_0000,
+				Size = 0x0000_8000
+			}
+		}, new AmigaCompilationOptions
+		{
+			LibraryBases = new Dictionary<string, uint>
+			{
+				["exec.library"] = 0x0000_0400
+			}
+		});
+
+		Assert.NotEmpty(result.Code);
+		Assert.Contains("IFFInspect.Program::Main", result.Map, StringComparison.Ordinal);
+		Assert.Contains("IFFInspect.Program::Inspect", result.Map, StringComparison.Ordinal);
+		Assert.Contains("__c68k_exception_raise:", result.Text, StringComparison.Ordinal);
+		Assert.Contains("__c68k_exception_unwind_frame:", result.Text, StringComparison.Ordinal);
+		Assert.Contains("__c68k_gc_mark_roots:", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("__c68k_eh_", result.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void CompilesMuiTaskListSampleWithSubclassAndHooks()
 	{
 		var taskListAssembly = typeof(MUITaskList.Program).Assembly.Location;
@@ -2351,9 +2385,9 @@ public sealed class CompilerExecutionTests
 				[M68kRuntimeImports.Allocate] = 0x0000_2800
 			}
 		});
-		Assert.Contains("dc.w\t$1140", result.Text, StringComparison.Ordinal);
-		Assert.Contains("dc.w\t$3140", result.Text, StringComparison.Ordinal);
-		Assert.Contains("dc.w\t$1028", result.Text, StringComparison.Ordinal);
+		Assert.Contains("move.b\td0,12(a0)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("move.w\td0,12(a0)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("move.b\t12(a0),d0", result.Text, StringComparison.Ordinal);
 		Assert.Contains("move.w\t12(a0),d0", result.Text, StringComparison.Ordinal);
 	}
 

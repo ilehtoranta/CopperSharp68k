@@ -24,6 +24,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var dataflow = M68kInstructionDataflow.Analyze(_assembler);
 			changed =
 				TryFoldTailReturn() ||
+				TryLayoutColdTerminalBranch() ||
 				TryRemoveBranchToNextLabel() ||
 				TryPromoteBranchStackSpillToD0() ||
 				TryReplaceZeroAddressMove() ||
@@ -31,6 +32,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveRedundantTest() ||
 				TryRemoveDeadTest(dataflow) ||
 				TryRemoveDeadInstruction(dataflow) ||
+				TryFoldAddressToDataRegisterMove(dataflow) ||
+				TryForwardMoveQuickThroughDataMove(dataflow) ||
+				TryForwardMemoryLoadThroughStackToAddressRegister() ||
 				TryNarrowAddition(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryCanonicalizeAddressAdjustments() ||
@@ -45,6 +49,353 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 		while (changed);
 	}
+
+	private bool TryLayoutColdTerminalBranch()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var conditionalIndex = 0; conditionalIndex < instructions.Count; conditionalIndex++)
+		{
+			var conditional = instructions[conditionalIndex];
+			if (conditional.Kind != M68kInstructionKind.ConditionalBranch ||
+				conditional.Length != 4 ||
+				!TryGetBranch(conditional.Offset, out var conditionalBranch) ||
+				!_buffer.Labels.TryGetValue(conditionalBranch.Target, out var failureOffset))
+			{
+				continue;
+			}
+
+			var successIndex = conditionalIndex + 1;
+			var unconditionalIndex = successIndex;
+			while (unconditionalIndex < instructions.Count &&
+				instructions[unconditionalIndex].Offset < failureOffset)
+			{
+				if (!IsInternalBlockInstruction(
+					instructions[unconditionalIndex],
+					instructions[successIndex].Offset,
+					failureOffset))
+				{
+					break;
+				}
+
+				unconditionalIndex++;
+			}
+
+			if (unconditionalIndex >= instructions.Count ||
+				instructions[unconditionalIndex].Offset != failureOffset - 4)
+			{
+				continue;
+			}
+
+			var unconditional = instructions[unconditionalIndex];
+			if (unconditional.Kind != M68kInstructionKind.UnconditionalBranch ||
+				unconditional.Length != 4 ||
+				!TryGetBranch(unconditional.Offset, out var unconditionalBranch) ||
+				!_buffer.Labels.TryGetValue(unconditionalBranch.Target, out var tailOffset) ||
+				unconditional.Offset + unconditional.Length != failureOffset ||
+				!TryGetTerminalBlockEnd(tailOffset, failureOffset, instructions, out var tailEnd))
+			{
+				continue;
+			}
+
+			var originalEndOffset = _buffer.Bytes.Count;
+			var tailLength = tailEnd - tailOffset;
+			var failureLength = tailOffset - failureOffset;
+			var tail = _buffer.Bytes.GetRange(tailOffset, tailLength);
+			var failure = _buffer.Bytes.GetRange(failureOffset, failureLength);
+			var suffix = _buffer.Bytes.GetRange(tailEnd, originalEndOffset - tailEnd);
+			var newFailureOffset = unconditional.Offset + tailLength;
+			var newSuffixOffset = newFailureOffset + failureLength + tailLength;
+
+			_buffer.Bytes.RemoveRange(unconditional.Offset, _buffer.Bytes.Count - unconditional.Offset);
+			_buffer.Bytes.AddRange(tail);
+			_buffer.Bytes.AddRange(failure);
+			_buffer.Bytes.AddRange(tail);
+			_buffer.Bytes.AddRange(suffix);
+
+			foreach (var label in _buffer.Labels.Keys.ToArray())
+			{
+				var offset = _buffer.Labels[label];
+				if (offset == failureOffset)
+				{
+					_buffer.Labels[label] = newFailureOffset;
+				}
+				else if (offset == unconditional.Offset)
+				{
+					_buffer.Labels[label] = unconditional.Offset;
+				}
+				else if (offset == tailOffset)
+				{
+					_buffer.Labels[label] = unconditional.Offset;
+				}
+				else if (offset > failureOffset && offset < tailOffset)
+				{
+					_buffer.Labels[label] = newFailureOffset + offset - failureOffset;
+				}
+				else if (offset > tailOffset && offset < tailEnd)
+				{
+					_buffer.Labels[label] = unconditional.Offset + offset - tailOffset;
+				}
+				else if (offset == originalEndOffset)
+				{
+					_buffer.Labels[label] = newSuffixOffset + (offset - tailEnd);
+				}
+				else if (offset >= tailEnd)
+				{
+					_buffer.Labels[label] = newSuffixOffset + (offset - tailEnd);
+				}
+			}
+
+			_buffer.Branches.RemoveAll(branch => branch.OpcodeOffset == unconditional.Offset);
+			for (var index = 0; index < _buffer.Branches.Count; index++)
+			{
+				var branch = _buffer.Branches[index];
+				if (branch.OpcodeOffset >= tailEnd)
+				{
+					_buffer.Branches[index] = branch with
+					{
+						OpcodeOffset = newSuffixOffset + branch.OpcodeOffset - tailEnd
+					};
+				}
+			}
+
+			for (var index = 0; index < _buffer.Addresses.Count; index++)
+			{
+				var address = _buffer.Addresses[index];
+				if (address.Offset >= tailEnd)
+				{
+					_buffer.Addresses[index] = address with
+					{
+						Offset = newSuffixOffset + address.Offset - tailEnd
+					};
+				}
+			}
+
+			for (var index = 0; index < _buffer.PcRelative.Count; index++)
+			{
+				var reference = _buffer.PcRelative[index];
+				if (reference.DisplacementOffset >= tailEnd)
+				{
+					_buffer.PcRelative[index] = reference with
+					{
+						DisplacementOffset = newSuffixOffset + reference.DisplacementOffset - tailEnd
+					};
+				}
+			}
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool IsInternalBlockInstruction(
+		M68kEmittedInstruction instruction,
+		int blockStart,
+		int blockEnd)
+	{
+		if (instruction.Kind is M68kInstructionKind.Normal or M68kInstructionKind.Call)
+		{
+			return true;
+		}
+
+		return instruction.TargetOffset is { } targetOffset &&
+			targetOffset >= blockStart &&
+			targetOffset < blockEnd;
+	}
+
+	private bool TryGetTerminalBlockEnd(
+		int tailOffset,
+		int failureOffset,
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		out int tailEnd)
+	{
+		tailEnd = 0;
+		var candidateTailEnd = _buffer.Labels
+			.Where(item =>
+				item.Value > tailOffset &&
+				item.Key.EndsWith(":end", StringComparison.Ordinal))
+			.Select(static item => item.Value)
+			.DefaultIfEmpty(_buffer.Labels.Values
+				.Where(offset => offset > tailOffset)
+				.DefaultIfEmpty(_buffer.Bytes.Count)
+				.Min())
+			.Min();
+		if (candidateTailEnd <= tailOffset ||
+			candidateTailEnd - 2 < tailOffset ||
+			_buffer.ReadWord(candidateTailEnd - 2) != 0x4E75 ||
+			_buffer.HasLabelAt(tailOffset) == false ||
+			_buffer.HasLabelAt(failureOffset) == false ||
+			_buffer.Branches.Any(branch =>
+				branch.OpcodeOffset >= failureOffset &&
+				branch.OpcodeOffset < candidateTailEnd) ||
+			_buffer.Addresses.Any(address =>
+				address.Offset >= failureOffset && address.Offset < candidateTailEnd) ||
+			_buffer.PcRelative.Any(reference =>
+				reference.DisplacementOffset >= failureOffset &&
+				reference.DisplacementOffset < candidateTailEnd))
+		{
+			return false;
+		}
+
+		var tailInstructions = instructions
+			.Where(instruction => instruction.Offset >= tailOffset && instruction.Offset < candidateTailEnd)
+			.ToArray();
+		if (tailInstructions.Length == 0 ||
+			 tailInstructions[^1].Kind != M68kInstructionKind.Return ||
+			!tailInstructions.All(instruction =>
+				instruction.Kind is M68kInstructionKind.Normal or M68kInstructionKind.Return))
+		{
+			return false;
+		}
+
+		tailEnd = candidateTailEnd;
+		return true;
+	}
+
+	private bool TryGetBranch(int offset, out BranchFixup branch)
+	{
+		branch = default;
+		for (var index = 0; index < _buffer.Branches.Count; index++)
+		{
+			if (_buffer.Branches[index].OpcodeOffset == offset)
+			{
+				branch = _buffer.Branches[index];
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryFoldAddressToDataRegisterMove(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var moveAddress = instructions[index];
+			var moveData = instructions[index + 1];
+			if ((moveAddress.Opcode & 0xF1F8) != 0x2040 ||
+				moveAddress.Length != 2 ||
+				(moveData.Opcode & 0xF1F8) != 0x2008 ||
+				moveData.Length != 2 ||
+				IsReferencedLabelAt(moveAddress.Offset) ||
+				IsReferencedLabelAt(moveData.Offset))
+			{
+				continue;
+			}
+
+			var sourceDataRegister = moveAddress.Opcode & 7;
+			var addressRegister = (moveAddress.Opcode >> 9) & 7;
+			var destinationDataRegister = (moveData.Opcode >> 9) & 7;
+			if (addressRegister == 7 ||
+				(moveData.Opcode & 7) != addressRegister ||
+				!dataflow.TryGetFacts(moveData.Offset, out var facts) ||
+				(facts.LiveAddressAfter & (1 << addressRegister)) != 0)
+			{
+				continue;
+			}
+
+			MoveLabelsToOffset(
+				moveAddress.Offset + moveAddress.Length,
+				moveData.Offset + moveData.Length,
+				moveAddress.Offset);
+			_buffer.WriteWord(
+				moveAddress.Offset,
+				(ushort)(0x2000 | (destinationDataRegister << 9) | sourceDataRegister));
+			_buffer.RemoveBytes(moveData.Offset, moveData.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardMoveQuickThroughDataMove(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var moveQuick = instructions[index];
+			var moveData = instructions[index + 1];
+			if ((moveQuick.Opcode & 0xF100) != 0x7000 ||
+				moveQuick.Length != 2 ||
+				(moveData.Opcode & 0xF1F8) != 0x2000 ||
+				moveData.Length != 2 ||
+				IsReferencedLabelAt(moveQuick.Offset) ||
+				IsReferencedLabelAt(moveData.Offset))
+			{
+				continue;
+			}
+
+			var sourceRegister = moveQuick.Opcode >> 9 & 7;
+			var destinationRegister = moveData.Opcode >> 9 & 7;
+			if ((moveData.Opcode & 7) != sourceRegister ||
+				sourceRegister != destinationRegister &&
+				(!dataflow.TryGetFacts(moveData.Offset, out var facts) ||
+				 (facts.LiveDataAfter & (1 << sourceRegister)) != 0))
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(
+				moveQuick.Offset,
+				(ushort)(0x7000 | (destinationRegister << 9) | (moveQuick.Opcode & 0x00FF)));
+			_buffer.RemoveBytes(moveData.Offset, moveData.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardMemoryLoadThroughStackToAddressRegister()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 4 < instructions.Count; index++)
+		{
+			var load = instructions[index];
+			var push = instructions[index + 1];
+			var middle = instructions[index + 2];
+			var pop = instructions[index + 3];
+			var call = instructions[index + 4];
+			if ((load.Opcode & 0xF1FF) != 0x2039 ||
+				load.Length != 6 ||
+				push.Length != 2 ||
+				(middle.Opcode & 0xF1FF) != 0x207A ||
+				middle.Length != 4 ||
+				!IsStackAddressLoad(pop) ||
+				!_buffer.Addresses.Any(address => address.Offset == load.Offset + 2) ||
+				!_buffer.PcRelative.Any(reference => reference.DisplacementOffset == middle.Offset + 2) ||
+				call.Kind != M68kInstructionKind.Call ||
+				IsReferencedLabelAt(push.Offset) ||
+				IsReferencedLabelAt(middle.Offset) ||
+				IsReferencedLabelAt(pop.Offset) ||
+				(push.Opcode & 0xFFF8) != 0x2F00)
+			{
+				continue;
+			}
+
+			var dataRegister = (load.Opcode >> 9) & 7;
+			var pushedDataRegister = push.Opcode & 7;
+			var addressRegister = (pop.Opcode >> 9) & 7;
+			if (dataRegister != pushedDataRegister)
+			{
+				continue;
+			}
+
+			MoveLabelsToOffset(push.Offset, pop.Offset + pop.Length, load.Offset);
+			_buffer.WriteWord(
+				load.Offset,
+				(ushort)(0x2079 | (addressRegister << 9)));
+			_buffer.RemoveBytes(push.Offset, pop.Offset + pop.Length - push.Offset);
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool IsStackAddressLoad(M68kEmittedInstruction instruction) =>
+		(instruction.Opcode & 0xF1FF) == 0x2057 && instruction.Length == 2 ||
+		(instruction.Opcode & 0xF1FF) == 0x206F &&
+			instruction.Length == 4 &&
+			instruction.ExtensionWord == 0;
 
 	private bool TryRemoveRedundantRegisterSpill()
 	{
