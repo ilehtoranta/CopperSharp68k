@@ -8,8 +8,20 @@ using CopperSharp.Sdk.Amiga;
 
 namespace Amiga;
 
-public static class BOOPSI
+public static partial class BOOPSI
 {
+	[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+	public sealed class DispatcherAttribute : Attribute
+	{
+		public DispatcherAttribute(string? name = null) => Name = name;
+
+		public string? Name { get; }
+	}
+
+	public static APTR InstanceData(APTR cl, APTR obj) =>
+		throw new System.NotSupportedException(
+			"BOOPSI.InstanceData is lowered by CopperSharp.");
+
 	public static uint DoMethod(uint obj, uint methodId) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 

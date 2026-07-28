@@ -31,7 +31,8 @@ internal sealed partial class M68kCodeGenerator
 	private enum InlineCandidateKind
 	{
 		SimpleWrapperConstructor,
-		IdentityReturn
+		IdentityReturn,
+		MaskedAddReturn
 	}
 
 	private readonly record struct InlineCandidate(
@@ -48,6 +49,13 @@ internal sealed partial class M68kCodeGenerator
 
 	private bool UsesBuiltInManagedPool =>
 		_memoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc;
+
+	private bool UseClr => _request.ClrPolicy switch
+	{
+		M68kClrPolicy.Always => true,
+		M68kClrPolicy.Never => false,
+		_ => _request.Cpu is M68kCpuTarget.M68020 or M68kCpuTarget.M68040
+	};
 
 	public M68kCodeGenerator(CompilationModule module, M68kCompilationRequest request)
 	{
@@ -79,6 +87,7 @@ internal sealed partial class M68kCodeGenerator
 			EmitExportAdapter(export, initializesPlatformBase);
 		}
 		EmitManagedPoolRuntime();
+		_assembler.OptimizeForM68000();
 		EmitData();
 
 		return new GeneratedProgram(
@@ -553,6 +562,22 @@ internal sealed partial class M68kCodeGenerator
 				instructionIndex += valueReturnConsumed - 1;
 				continue;
 			}
+			if (TryEmitDirectMaskedAddReturn(
+				method,
+				method.Instructions,
+				instructionIndex,
+				branchTargets,
+				out var maskedAddReturnConsumed))
+			{
+				for (var skipped = 1; skipped < maskedAddReturnConsumed; skipped++)
+				{
+					_assembler.Mark(IlLabel(
+						method,
+						method.Instructions[instructionIndex + skipped].Offset));
+				}
+				instructionIndex += maskedAddReturnConsumed - 1;
+				continue;
+			}
 			if (TryEmitNullableHasValueComparisonStoreBranch(
 				method,
 				method.Instructions,
@@ -933,6 +958,12 @@ internal sealed partial class M68kCodeGenerator
 
 	private bool TryEmitBranchLoadValue(CilMethod method, CilInstruction instruction)
 	{
+		if (instruction.OpCode == OpCodes.Ldsfld)
+		{
+			EmitLoadStaticFieldToRegister(method, instruction, M68kRegister.D0);
+			return true;
+		}
+
 		if (TryGetArgumentIndex(instruction, out var argumentIndex))
 		{
 			ValidateArgument(method, instruction, argumentIndex);
@@ -1721,6 +1752,18 @@ internal sealed partial class M68kCodeGenerator
 			return true;
 		}
 
+		if (registerAbi is [M68kRegister.D0] &&
+			IsAlignLongReturnBody(target))
+		{
+			candidate = new InlineCandidate(
+				InlineCandidateKind.MaskedAddReturn,
+				InlineBytes: 8,
+				CallBytes: 4,
+				InlineCycles: 20,
+				CallCycles: 34);
+			return true;
+		}
+
 		candidate = default;
 		return false;
 	}
@@ -1728,6 +1771,30 @@ internal sealed partial class M68kCodeGenerator
 	private static bool ShouldInline(InlineCandidate candidate) =>
 		candidate.Kind == InlineCandidateKind.IdentityReturn ||
 		candidate.SavedBytes > 0 || candidate.SavedCycles >= 16;
+
+	private bool IsAlignLongReturnBody(CilMethod method)
+	{
+		if (!TryGetArgumentValueExpression(
+				method,
+				method.Instructions,
+				0,
+				out var value,
+				out var valueConsumed) ||
+			value.Instruction is null ||
+			valueConsumed + 4 >= method.Instructions.Count ||
+			!TryGetConstant(method.Instructions[valueConsumed], out var addend) ||
+			addend != 3 ||
+			method.Instructions[valueConsumed + 1].OpCode != OpCodes.Add ||
+			!TryGetConstant(method.Instructions[valueConsumed + 2], out var mask) ||
+			mask != -4 ||
+			method.Instructions[valueConsumed + 3].OpCode != OpCodes.And ||
+			method.Instructions[valueConsumed + 4].OpCode != OpCodes.Ret)
+		{
+			return false;
+		}
+
+		return true;
+	}
 
 	private void EmitInlineCandidate(InlineCandidate candidate)
 	{
@@ -1737,6 +1804,10 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
 				return;
 			case InlineCandidateKind.IdentityReturn:
+				return;
+			case InlineCandidateKind.MaskedAddReturn:
+				_assembler.EmitWord(0x5680); // ADDQ.L #3,D0
+				EmitAndImmediateToDataRegister(M68kRegister.D0, -4);
 				return;
 			default:
 				throw new InvalidOperationException($"Unsupported inline candidate '{candidate.Kind}'.");
@@ -2211,15 +2282,42 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var instruction = instructions[startIndex];
+		if (startIndex + 3 < instructions.Count &&
+			(instructions[startIndex + 2].OpCode == OpCodes.Call ||
+			 instructions[startIndex + 2].OpCode == OpCodes.Callvirt) &&
+			!branchTargets.Contains(instructions[startIndex + 2].Offset) &&
+			!branchTargets.Contains(instructions[startIndex + 3].Offset) &&
+			TryGetStoreDestination(instructions[startIndex + 3], out var destination))
+		{
+			var wrapper = _module.ResolveMethodToken(
+				(int)instructions[startIndex + 2].Operand!,
+				caller,
+				instructions[startIndex + 2].Offset);
+			if (wrapper.ImportName == "intrinsic:cstring-from-pointer" &&
+				TryEmitArgumentValueToDestination(
+					caller,
+					new ArgumentValue(instruction, IsTransparentScalarRawGetter: true),
+					_currentStackDepth,
+					destination))
+			{
+				consumed = 4;
+				return true;
+			}
+		}
+
 		if (TryGetLoadLocalAddressIndex(instruction, out var localIndex))
 		{
 			ValidateLocal(caller, instruction, localIndex);
-			if (LocalRegister(localIndex) is not { } localRegister)
+			if (LocalRegister(localIndex) is { } localRegister)
 			{
-				return false;
+				EmitPushRegister(localRegister);
+				consumed = 2;
+				return true;
 			}
 
-			EmitPushRegister(localRegister);
+			EmitPushFrameSlot(FrameDisplacement(
+				LocalOffset(caller, localIndex),
+				_currentStackDepth));
 			consumed = 2;
 			return true;
 		}
@@ -2227,12 +2325,16 @@ internal sealed partial class M68kCodeGenerator
 		if (TryGetLoadArgumentAddressIndex(instruction, out var argumentIndex))
 		{
 			ValidateArgument(caller, instruction, argumentIndex);
-			if (ArgumentRegister(argumentIndex) is not { } argumentRegister)
+			if (ArgumentRegister(argumentIndex) is { } argumentRegister)
 			{
-				return false;
+				EmitPushRegister(argumentRegister);
+				consumed = 2;
+				return true;
 			}
 
-			EmitPushRegister(argumentRegister);
+			EmitPushFrameSlot(FrameDisplacement(
+				ArgumentOffset(caller, argumentIndex),
+				_currentStackDepth));
 			consumed = 2;
 			return true;
 		}
@@ -2453,6 +2555,64 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x4E75); // RTS
 		consumed = valueInstructionCount + 1;
 		return true;
+	}
+
+	private bool TryEmitDirectMaskedAddReturn(
+		CilMethod caller,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		IReadOnlySet<int> branchTargets,
+		out int consumed)
+	{
+		consumed = 0;
+		if (startIndex != 0 ||
+			instructions.Count != 6 ||
+			!TryGetArgumentValueExpression(
+				caller,
+				instructions,
+				startIndex,
+				out var value,
+				out var valueConsumed) ||
+			value.Instruction is null ||
+			!TryGetConstant(instructions[valueConsumed], out var addend) ||
+			instructions[valueConsumed + 1].OpCode != OpCodes.Add ||
+			!TryGetConstant(instructions[valueConsumed + 2], out var mask) ||
+			instructions[valueConsumed + 3].OpCode != OpCodes.And ||
+			instructions[valueConsumed + 4].OpCode != OpCodes.Ret ||
+			caller.Signature.ReturnType.IsVoid ||
+			Is64BitScalar(caller.Signature.ReturnType))
+		{
+			return false;
+		}
+
+		for (var index = 1; index < instructions.Count; index++)
+		{
+			if (branchTargets.Contains(instructions[index].Offset))
+			{
+				return false;
+			}
+		}
+
+		if (addend is < 1 or > 8)
+		{
+			return false;
+		}
+
+		EmitArgumentValueToRegister(caller, value, _currentStackDepth, M68kRegister.D0);
+		_assembler.EmitWord((ushort)(0x5080 | (addend << 9)));
+		EmitAndImmediateToDataRegister(M68kRegister.D0, mask);
+		EmitFrameTeardown(caller);
+		_assembler.EmitWord(0x4E75); // RTS
+		consumed = instructions.Count;
+		return true;
+	}
+
+	private void EmitAndImmediateToDataRegister(M68kRegister register, int mask)
+	{
+		var dataRegister = (int)register;
+		var unsignedMask = unchecked((uint)mask);
+		_assembler.EmitWord((ushort)(0x0280 | dataRegister)); // ANDI.L
+		_assembler.EmitLong(unsignedMask);
 	}
 
 	private static bool TryGetStoreDestination(
@@ -2782,13 +2942,15 @@ internal sealed partial class M68kCodeGenerator
 			!branchTargets.Contains(instructions[popIndex].Offset);
 	}
 
-	private bool IsUInt32NewArray(CilMethod caller, CilInstruction instruction)
+	private bool IsStackVarargsNewArray(CilMethod caller, CilInstruction instruction)
 	{
 		var elementType = _module.ResolveTypeToken(
 			(int)instruction.Operand!,
 			caller,
 			instruction.Offset);
-		return elementType.DisplayName == "uint";
+		return elementType.DisplayName == "uint" ||
+			elementType.DisplayName == "Amiga.AmigaVarArg" ||
+			_module.IsTransparentScalarType(elementType);
 	}
 
 	private static bool HasBranchTarget(
@@ -3636,7 +3798,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitArgumentValueToRegister(caller, left, _currentStackDepth, M68kRegister.D0);
-		if (!TryEmitCompareValueWithD0(caller, right, _currentStackDepth))
+		if (!TryEmitCompareValueWithD0(
+			caller,
+			right,
+			_currentStackDepth,
+			ArgumentValueSetsFlags(caller, left)))
 		{
 			EmitArgumentValueToRegister(caller, right, _currentStackDepth, M68kRegister.D1);
 			_assembler.EmitWord(0xB081); // CMP.L D1,D0
@@ -3679,7 +3845,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitArgumentValueToRegister(caller, left, _currentStackDepth, M68kRegister.D0);
-		if (!TryEmitCompareValueWithD0(caller, right, _currentStackDepth))
+		if (!TryEmitCompareValueWithD0(
+			caller,
+			right,
+			_currentStackDepth,
+			ArgumentValueSetsFlags(caller, left)))
 		{
 			EmitArgumentValueToRegister(caller, right, _currentStackDepth, M68kRegister.D1);
 			_assembler.EmitWord(0xB081); // CMP.L D1,D0
@@ -3767,7 +3937,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitArgumentValueToRegister(caller, left, _currentStackDepth, M68kRegister.D0);
-		if (!TryEmitCompareValueWithD0(caller, right, _currentStackDepth))
+		if (!TryEmitCompareValueWithD0(
+			caller,
+			right,
+			_currentStackDepth,
+			ArgumentValueSetsFlags(caller, left)))
 		{
 			EmitArgumentValueToRegister(caller, right, _currentStackDepth, M68kRegister.D1);
 			_assembler.EmitWord(0xB081); // CMP.L D1,D0
@@ -3817,7 +3991,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitArgumentValueToRegister(caller, left, _currentStackDepth, M68kRegister.D0);
-		if (!TryEmitCompareValueWithD0(caller, right, _currentStackDepth))
+		if (!TryEmitCompareValueWithD0(
+			caller,
+			right,
+			_currentStackDepth,
+			ArgumentValueSetsFlags(caller, left)))
 		{
 			EmitArgumentValueToRegister(caller, right, _currentStackDepth, M68kRegister.D1);
 			_assembler.EmitWord(0xB081); // CMP.L D1,D0
@@ -3895,7 +4073,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitArgumentValueToRegister(caller, left, _currentStackDepth, M68kRegister.D0);
-		if (!TryEmitCompareValueWithD0(caller, right, _currentStackDepth))
+		if (!TryEmitCompareValueWithD0(
+			caller,
+			right,
+			_currentStackDepth,
+			ArgumentValueSetsFlags(caller, left)))
 		{
 			EmitArgumentValueToRegister(caller, right, _currentStackDepth, M68kRegister.D1);
 			_assembler.EmitWord(0xB081); // CMP.L D1,D0
@@ -4139,10 +4321,40 @@ internal sealed partial class M68kCodeGenerator
 				stackDepth));
 	}
 
+	private bool ArgumentValueSetsFlags(CilMethod caller, ArgumentValue value)
+	{
+		if (value.Instruction is not { } instruction)
+		{
+			return true;
+		}
+
+		if (TryGetConstant(instruction, out _) ||
+			instruction.OpCode == OpCodes.Ldnull ||
+			instruction.OpCode == OpCodes.Ldsfld)
+		{
+			return true;
+		}
+
+		if (TryGetArgumentIndex(instruction, out var argumentIndex))
+		{
+			ValidateArgument(caller, instruction, argumentIndex);
+			return ArgumentRegister(argumentIndex) is not M68kRegister.D0;
+		}
+
+		if (TryGetLoadLocalIndex(instruction, out var localIndex))
+		{
+			ValidateLocal(caller, instruction, localIndex);
+			return LocalRegister(localIndex) is not M68kRegister.D0;
+		}
+
+		return false;
+	}
+
 	private bool TryEmitCompareValueWithD0(
 		CilMethod caller,
 		ArgumentValue value,
-		int stackDepth)
+		int stackDepth,
+		bool leftSetsFlags)
 	{
 		if (value.Instruction is not { } instruction)
 		{
@@ -4152,6 +4364,11 @@ internal sealed partial class M68kCodeGenerator
 
 		if (TryGetConstant(instruction, out var constant))
 		{
+			if (leftSetsFlags && constant == 0)
+			{
+				return true;
+			}
+
 			EmitCompareImmediateWithD0(constant);
 			return true;
 		}
@@ -4296,6 +4513,17 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName == "intrinsic:file-info-block-file-name")
+			{
+				EmitPopD0();
+				_assembler.EmitWord(0x5080); // ADDQ.L #8,D0
+				if (pushResult)
+				{
+					EmitPushD0();
+				}
+				return;
+			}
+
 			if (target.ImportName == "intrinsic:aptr-null")
 			{
 				if (pushResult)
@@ -4311,7 +4539,33 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
-			if (target.ImportName is "intrinsic:aptr-from-pointer" or "intrinsic:aptr-to-uint32")
+			if (target.ImportName == "intrinsic:boopsi-instance-data")
+			{
+				EmitBoopsiInstanceData(pushResult);
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:aptr-read-uint32")
+			{
+				EmitAptrReadUInt32(pushResult);
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:aptr-write-uint32")
+			{
+				EmitAptrWriteUInt32();
+				return;
+			}
+
+			if (target.ImportName is
+				"intrinsic:aptr-from-pointer" or
+				"intrinsic:aptr-to-uint32" or
+				"intrinsic:amiga-vararg-from-value" or
+				"intrinsic:address-of-ref" or
+				"intrinsic:address-to-ref" or
+				"intrinsic:ref-cast" or
+				"intrinsic:hook-address-of" or
+				"intrinsic:boopsi-message-address-of")
 			{
 				return;
 			}
@@ -4662,6 +4916,41 @@ internal sealed partial class M68kCodeGenerator
 
 		_assembler.EmitWord(0x2F3C); // MOVE.L #export,-(A7)
 		_assembler.EmitAddress(ExportLabel(exportName));
+	}
+
+	private void EmitAptrReadUInt32(bool pushResult)
+	{
+		EmitPopD0(); // byte offset
+		EmitPopRegister(M68kRegister.A0); // guest address
+		_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		if (pushResult)
+		{
+			EmitPushD0();
+		}
+	}
+
+	private void EmitBoopsiInstanceData(bool pushResult)
+	{
+		EmitPopRegister(M68kRegister.A0); // object
+		EmitPopRegister(M68kRegister.A1); // class
+		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		_assembler.EmitWord(0x3029); // MOVE.W cl_InstOffset(A1),D0
+		_assembler.EmitWord(0x0020);
+		_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		if (pushResult)
+		{
+			EmitPushRegister(M68kRegister.A0);
+		}
+	}
+
+	private void EmitAptrWriteUInt32()
+	{
+		EmitPopD0(); // value
+		EmitPopRegister(M68kRegister.D1); // byte offset
+		EmitPopRegister(M68kRegister.A0); // guest address
+		_assembler.EmitWord(0xD1C0); // ADDA.L D1,A0
+		_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
 	}
 
 	private bool IsNextExportAddressCall(CilMethod caller, CilInstruction instruction)
@@ -5202,12 +5491,6 @@ internal sealed partial class M68kCodeGenerator
 		var addressRegister = (int)register - (int)M68kRegister.A0;
 		if (displacement == 0)
 		{
-			if (register == M68kRegister.A0)
-			{
-				_assembler.EmitWord(0x41D7); // LEA (A7),A0
-				return;
-			}
-
 			_assembler.EmitWord((ushort)(0x204F | (addressRegister << 9))); // MOVEA.L A7,An
 			return;
 		}
@@ -5396,6 +5679,11 @@ internal sealed partial class M68kCodeGenerator
 
 	private IReadOnlyList<M68kRegister>? GetInternalRegisterAbi(CilMethod method)
 	{
+		if (!method.Signature.Header.IsInstance && HasAmigaStartupArguments(method))
+		{
+			return [M68kRegister.D0, M68kRegister.A0];
+		}
+
 		var registers = new List<M68kRegister>(method.ParameterCount);
 		var nextData = 0;
 		var nextAddress = 0;
@@ -5593,8 +5881,12 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitInitObj(CilMethod caller, CilInstruction instruction)
 	{
 		var type = _module.ResolveTypeToken((int)instruction.Operand!, caller, instruction.Offset);
-		if ((!type.IsNullable || !_module.IsSupportedNullableType(type)) &&
-			!_module.IsSupportedStructType(type))
+		var valueType = type.Kind == CilTypeKind.ManagedReference
+			? type.ElementType ?? new CilType(CilTypeKind.ValueType, 0, type.DisplayName)
+			: type;
+		if (valueType is null ||
+			(!valueType.IsNullable || !_module.IsSupportedNullableType(valueType)) &&
+			!_module.IsSupportedStructType(valueType))
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
@@ -5604,32 +5896,28 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitPopRegister(M68kRegister.A0);
-		if (_module.IsSupportedStructType(type))
+		if (!UseClr)
 		{
-			for (var offset = 0; offset < checked(SlotLongs(type) * 4); offset += 4)
+			EmitImmediateToRegister(M68kRegister.D0, 0);
+		}
+
+		if (_module.IsSupportedStructType(valueType))
+		{
+			for (var offset = 0; offset < checked(SlotLongs(valueType) * 4); offset += 4)
 			{
-				if (offset == 0)
-				{
-					_assembler.EmitWord(0x4290); // CLR.L (A0)
-				}
-				else
-				{
-					_assembler.EmitWord(0x42A8); // CLR.L d16(A0)
-					_assembler.EmitWord((ushort)offset);
-				}
+				EmitClearAddressLong(offset);
 			}
 			return;
 		}
 
-		if (IsCompactNullableType(type))
+		if (IsCompactNullableType(valueType))
 		{
-			_assembler.EmitWord(0x4290); // CLR.L (A0)
+			EmitClearAddressLong(0);
 			return;
 		}
 
-		_assembler.EmitWord(0x4290); // CLR.L (A0)
-		_assembler.EmitWord(0x42A8); // CLR.L 4(A0)
-		_assembler.EmitWord(0x0004);
+		EmitClearAddressLong(0);
+		EmitClearAddressLong(4);
 	}
 
 	private void EmitNullableConstructor(MethodReference target)
@@ -5998,9 +6286,7 @@ internal sealed partial class M68kCodeGenerator
 			throw FieldMismatch(method, instruction, field);
 		}
 
-		var layout = _module.GetTypeLayout(field.DeclaringType);
-		_usedTypeLayouts.Add(layout.Handle);
-		var displacement = checked((short)layout.FieldOffsets[field.Handle]);
+		var displacement = FieldDisplacement(field);
 		if (op == OpCodes.Ldfld)
 		{
 			EmitPopD0();
@@ -6051,9 +6337,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.EmitWord(0x2008); // MOVE.L A0,D0
 			EmitRequireNonNull();
-			var layout = _module.GetTypeLayout(field.DeclaringType);
-			_usedTypeLayouts.Add(layout.Handle);
-			var displacement = checked((short)layout.FieldOffsets[field.Handle]);
+			var displacement = FieldDisplacement(field);
 			_assembler.EmitWord(0x2028); // MOVE.L d16(A0),D0
 			_assembler.EmitWord((ushort)displacement);
 		}
@@ -6068,6 +6352,18 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitPushD0();
+	}
+
+	private short FieldDisplacement(CilField field)
+	{
+		if (field.ExternalOffset is { } externalOffset)
+		{
+			return checked((short)externalOffset);
+		}
+
+		var layout = _module.GetTypeLayout(field.DeclaringType);
+		_usedTypeLayouts.Add(layout.Handle);
+		return checked((short)layout.FieldOffsets[field.Handle]);
 	}
 
 	private void EmitRequireNonNull()
@@ -6094,7 +6390,11 @@ internal sealed partial class M68kCodeGenerator
 			System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.Handle)))
 		{
 			_assembler.Mark(StaticFieldLabel(field.Handle));
-			_assembler.EmitLong(0);
+			var longs = SlotLongs(field.Type);
+			for (var index = 0; index < longs; index++)
+			{
+				_assembler.EmitLong(0);
+			}
 		}
 
 		foreach (var handle in _usedTypeLayouts.OrderBy(handle =>
@@ -6266,7 +6566,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var addressRegister = (int)register - (int)M68kRegister.A0;
-		_assembler.EmitWord((ushort)(0x2F08 | addressRegister));
+		_assembler.EmitWord((ushort)(0x4850 | addressRegister)); // PEA (An)
 	}
 
 	private void EmitPushRegisters(ReadOnlySpan<M68kRegister> registers)
@@ -6499,7 +6799,15 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitClearLabel(string label)
 	{
-		_assembler.EmitWord(0x42B9); // CLR.L abs.l
+		if (UseClr)
+		{
+			_assembler.EmitWord(0x42B9); // CLR.L abs.l
+			_assembler.EmitAddress(label);
+			return;
+		}
+
+		_assembler.EmitWord(0x23FC); // MOVE.L #0,abs.l
+		_assembler.EmitLong(0);
 		_assembler.EmitAddress(label);
 	}
 
@@ -6758,7 +7066,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitPushConstant(int value)
 	{
-		if (value == 0)
+		if (value == 0 && UseClr)
 		{
 			_assembler.EmitWord(0x42A7); // CLR.L -(A7)
 			return;
@@ -6863,6 +7171,12 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitClearFrameSlot(short displacement)
 	{
+		if (!UseClr)
+		{
+			EmitImmediateToFrame(0, displacement);
+			return;
+		}
+
 		if (displacement == 0)
 		{
 			_assembler.EmitWord(0x4297); // CLR.L (A7)
@@ -6892,10 +7206,39 @@ internal sealed partial class M68kCodeGenerator
 		var loop = UniqueLabel("frame_clear");
 		_assembler.EmitWord(0x41EF); // LEA d16(A7),A0
 		_assembler.EmitWord(unchecked((ushort)startDisplacement));
+		if (!UseClr)
+		{
+			EmitImmediateToRegister(M68kRegister.D1, 0);
+		}
 		EmitImmediateToRegister(M68kRegister.D0, longs - 1);
 		_assembler.Mark(loop);
-		_assembler.EmitWord(0x4298); // CLR.L (A0)+
+		if (UseClr)
+		{
+			_assembler.EmitWord(0x4298); // CLR.L (A0)+
+		}
+		else
+		{
+			_assembler.EmitWord(0x20C1); // MOVE.L D1,(A0)+
+		}
 		_assembler.EmitDbra(0, loop);
+	}
+
+	private void EmitClearAddressLong(int displacement)
+	{
+		if (UseClr)
+		{
+			if (displacement == 0)
+			{
+				_assembler.EmitWord(0x4290); // CLR.L (A0)
+				return;
+			}
+
+			_assembler.EmitWord(0x42A8); // CLR.L d16(A0)
+			_assembler.EmitWord(unchecked((ushort)displacement));
+			return;
+		}
+
+		EmitStoreD0ToA0Displacement(4, checked((short)displacement));
 	}
 
 	private void EmitAllocateFrame(int bytes)

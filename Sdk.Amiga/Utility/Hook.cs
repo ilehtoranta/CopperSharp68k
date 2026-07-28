@@ -5,20 +5,28 @@
 
 namespace Amiga;
 
-public static class Hook
+public struct Hook
 {
-	public const uint Size = 20;
+	public const uint Size = MinNode.Size + 12;
 
-	public static unsafe void Initialize(APTR hook, APTR entry, APTR subEntry, APTR data)
+	public MinNode MinNode;
+	public APTR Entry;
+	public APTR SubEntry;
+	public APTR Data;
+
+	public void Initialize(APTR entry) =>
+		Initialize(entry, APTR.Null, APTR.Null);
+
+	public void Initialize(APTR entry, APTR subEntry, APTR data)
 	{
-		var words = (uint*)APTR.ToUInt32(hook);
-		words[0] = 0;
-		words[1] = 0;
-		words[2] = APTR.ToUInt32(entry);
-		words[3] = APTR.ToUInt32(subEntry);
-		words[4] = APTR.ToUInt32(data);
+		MinNode.Successor = APTR.Null;
+		MinNode.Predecessor = APTR.Null;
+		Entry = entry;
+		SubEntry = subEntry;
+		Data = data;
 	}
 
-	public static void Initialize(APTR hook, APTR entry) =>
-		Initialize(hook, entry, APTR.Null, APTR.Null);
+	public static APTR AddressOf(ref Hook hook) =>
+		throw new System.NotSupportedException(
+			"Hook.AddressOf is lowered by CopperSharp.");
 }

@@ -1493,6 +1493,14 @@ public static class Levelmeter
 
 public static class List
 {
+	[global::System.AttributeUsage(global::System.AttributeTargets.Method, AllowMultiple = false)]
+	public sealed class DisplayCallbackAttribute : global::System.Attribute
+	{
+		public DisplayCallbackAttribute(string? name = null) => Name = name;
+
+		public string? Name { get; }
+	}
+
 	public static uint Do(uint obj, uint message) =>
 		global::Amiga.BOOPSI.DoMethodA(obj, message);
 

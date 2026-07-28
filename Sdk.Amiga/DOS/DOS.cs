@@ -13,6 +13,14 @@ public static class DOS
 {
 	public const string Name = "dos.library";
 
+	// Return codes and errors from <dos/dos.h>.
+	public const int RETURN_OK = 0;
+	public const int RETURN_WARN = 5;
+	public const int RETURN_ERROR = 10;
+	public const int RETURN_FAIL = 20;
+	public const int ERROR_NO_MORE_ENTRIES = 232;
+	public const int SHARED_LOCK = -2;
+
 	public static APTR DOSLibraryBase
 	{
 		get => throw new System.NotSupportedException(
@@ -892,7 +900,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString format,
 		[M68kRegister(M68kRegister.D2)]
 		[AmigaStackVarargs]
-		params uint[] arguments) =>
+		params AmigaVarArg[] arguments) =>
 		throw new System.NotSupportedException(
 			"DOS.Printf stack varargs are lowered by CopperSharp.");
 

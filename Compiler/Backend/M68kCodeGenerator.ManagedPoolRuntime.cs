@@ -72,7 +72,6 @@ internal sealed partial class M68kCodeGenerator
 			{
 				EmitPopRegister(M68kRegister.A0);
 				EmitPopD0();
-				EmitMoveRegister(M68kRegister.A0, M68kRegister.D1);
 			}
 			_assembler.EmitBsr(MethodLabel(entry));
 			_loadedPlatformBase = null;
@@ -86,10 +85,6 @@ internal sealed partial class M68kCodeGenerator
 			return label;
 		}
 
-		if (usesAmigaStartupArguments)
-		{
-			EmitMoveRegister(M68kRegister.A0, M68kRegister.D1);
-		}
 		return label;
 	}
 

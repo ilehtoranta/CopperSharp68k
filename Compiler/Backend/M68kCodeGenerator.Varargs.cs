@@ -628,7 +628,7 @@ internal sealed partial class M68kCodeGenerator
 			tagCount < 0 ||
 			startIndex + 2 >= instructions.Count ||
 			instructions[startIndex + 1].OpCode != OpCodes.Newarr ||
-			!IsUInt32NewArray(caller, instructions[startIndex + 1]))
+			!IsStackVarargsNewArray(caller, instructions[startIndex + 1]))
 		{
 			return false;
 		}
@@ -649,9 +649,25 @@ internal sealed partial class M68kCodeGenerator
 					instructions,
 					index + 2,
 					out var value,
-					out var valueConsumed))
+				out var valueConsumed))
 			{
 				return false;
+			}
+
+			var conversionIndex = index + 2 + valueConsumed;
+			if (valueConsumed == 1 &&
+				conversionIndex < instructions.Count &&
+				(instructions[conversionIndex].OpCode == OpCodes.Call ||
+				 instructions[conversionIndex].OpCode == OpCodes.Callvirt))
+			{
+				var conversion = _module.ResolveMethodToken(
+					(int)instructions[conversionIndex].Operand!,
+					caller,
+					instructions[conversionIndex].Offset);
+				if (conversion.ImportName == "intrinsic:amiga-vararg-from-value")
+				{
+					valueConsumed++;
+				}
 			}
 
 			var storeIndex = index + 2 + valueConsumed;
@@ -661,7 +677,8 @@ internal sealed partial class M68kCodeGenerator
 			if (storeIndex >= instructions.Count ||
 				HasBranchTarget(branchTargets, instructions, startIndex, index + 3, storeIndex) ||
 				(storeOp != OpCodes.Stelem_I4 &&
-				 storeOp != OpCodes.Stelem_I))
+					storeOp != OpCodes.Stelem_I &&
+					storeOp != OpCodes.Stelem))
 			{
 				return false;
 			}
@@ -740,7 +757,6 @@ internal sealed partial class M68kCodeGenerator
 
 				return false;
 			}
-
 			if (index != startIndex && branchTargets.Contains(instructions[index].Offset))
 			{
 				return false;
@@ -779,16 +795,17 @@ internal sealed partial class M68kCodeGenerator
 		return false;
 	}
 
-	private static bool TryGetStackVarargsCallInfo(
+	private bool TryGetStackVarargsCallInfo(
 		MethodReference target,
 		out StackVarargsCallInfo info)
 	{
 		info = default;
 		if (target.Definition?.ExternalCall is not { } externalCall ||
 			target.Signature.ParameterTypes.Length == 0 ||
-			target.Signature.ParameterTypes[^1].DisplayName != "uint[]" ||
-			target.Signature.ParameterTypes[^1].ElementType?.DisplayName != "uint" ||
-			externalCall.Abi.ParameterRegisters.Count != target.Signature.ParameterTypes.Length)
+			target.Signature.ParameterTypes[^1].ElementType is not { } elementType ||
+			(elementType.DisplayName != "uint" &&
+				!_module.IsTransparentScalarType(elementType)) ||
+			externalCall.Abi.ParameterRegisters.Count == 0)
 		{
 			return false;
 		}

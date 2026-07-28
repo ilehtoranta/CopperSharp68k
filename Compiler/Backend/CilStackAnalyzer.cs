@@ -431,6 +431,7 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Ldelema;
 
 	private static bool IsArrayStore(OpCode op) =>
+		op == OpCodes.Stelem ||
 		op == OpCodes.Stelem_I1 ||
 		op == OpCodes.Stelem_I2 ||
 		op == OpCodes.Stelem_I4 ||

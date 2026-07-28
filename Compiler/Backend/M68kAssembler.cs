@@ -30,11 +30,12 @@ internal enum M68kCondition : byte
 
 internal sealed class M68kAssembler
 {
-	private readonly List<byte> _bytes = new();
-	private readonly Dictionary<string, int> _labels = new(StringComparer.Ordinal);
-	private readonly List<BranchFixup> _branches = new();
-	private readonly List<AddressFixup> _addresses = new();
-	private readonly List<PcRelativeFixup> _pcRelative = new();
+	private readonly M68kAssemblyBuffer _buffer = new();
+	private List<byte> _bytes => _buffer.Bytes;
+	private Dictionary<string, int> _labels => _buffer.Labels;
+	private List<BranchFixup> _branches => _buffer.Branches;
+	private List<AddressFixup> _addresses => _buffer.Addresses;
+	private List<PcRelativeFixup> _pcRelative => _buffer.PcRelative;
 
 	public int Offset => _bytes.Count;
 
@@ -126,6 +127,97 @@ internal sealed class M68kAssembler
 		var displacementOffset = Offset;
 		EmitWord(0);
 		_pcRelative.Add(new PcRelativeFixup(displacementOffset, target));
+	}
+
+	public void OptimizeForM68000() => new M68kOptimizerPipeline(this, _buffer).Run();
+
+	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream()
+	{
+		var displayLabels = new Dictionary<string, string>(StringComparer.Ordinal);
+		var addresses = _addresses.ToDictionary(static fixup => fixup.Offset);
+		var branches = _branches.ToDictionary(static fixup => fixup.OpcodeOffset);
+		var pcRelative = _pcRelative.ToDictionary(static fixup => fixup.DisplacementOffset);
+		var result = new List<M68kEmittedInstruction>();
+
+		for (var offset = 0; offset < _bytes.Count;)
+		{
+			if (!TryRenderInstruction(
+				offset,
+				displayLabels,
+				addresses,
+				branches,
+				pcRelative,
+				out _,
+				out var length))
+			{
+				length = 2;
+			}
+
+			var opcode = _buffer.ReadWord(offset);
+			var extensionWord = length >= 4 && offset + 3 < _bytes.Count
+				? _buffer.ReadWord(offset + 2)
+				: (ushort)0;
+			var extensionLong = length >= 6 && offset + 5 < _bytes.Count
+				? _buffer.ReadLong(offset + 2)
+				: 0;
+			var kind = M68kInstructionKind.Normal;
+			int? targetOffset = null;
+			var externalTarget = false;
+			if (branches.TryGetValue(offset, out var branch))
+			{
+				kind = (opcode & 0xFFF8) == 0x51C8
+					? M68kInstructionKind.Dbcc
+					: opcode == 0x6100
+						? M68kInstructionKind.Call
+						: (opcode & 0xFF00) == 0x6000 && ((opcode >> 8) & 0x0F) == 0
+							? M68kInstructionKind.UnconditionalBranch
+							: M68kInstructionKind.ConditionalBranch;
+				targetOffset = _labels.TryGetValue(branch.Target, out var branchTarget)
+					? branchTarget
+					: null;
+			}
+			else if (opcode == 0x4EB9 && addresses.TryGetValue(offset + 2, out var call))
+			{
+				kind = M68kInstructionKind.Call;
+				externalTarget = call.External;
+				targetOffset = call.External || !_labels.TryGetValue(call.Target, out var callTarget)
+					? null
+					: callTarget;
+			}
+			else if (opcode == 0x4EF9 && addresses.TryGetValue(offset + 2, out var jump))
+			{
+				kind = M68kInstructionKind.UnconditionalBranch;
+				externalTarget = jump.External;
+				targetOffset = jump.External || !_labels.TryGetValue(jump.Target, out var jumpTarget)
+					? null
+					: jumpTarget;
+			}
+			else if ((opcode & 0xFFC0) == 0x4E80)
+			{
+				kind = M68kInstructionKind.Call;
+			}
+			else if ((opcode & 0xFFC0) == 0x4EC0)
+			{
+				kind = M68kInstructionKind.UnconditionalBranch;
+			}
+			else if (opcode == 0x4E75)
+			{
+				kind = M68kInstructionKind.Return;
+			}
+
+			result.Add(new M68kEmittedInstruction(
+				offset,
+				length,
+				opcode,
+				extensionWord,
+				extensionLong,
+				kind,
+				targetOffset,
+				externalTarget));
+			offset += Math.Max(2, length);
+		}
+
+		return result;
 	}
 
 	public LinkedCode Link(
@@ -392,6 +484,14 @@ internal sealed class M68kAssembler
 			length = 10;
 			return true;
 		}
+		if (opcode == 0x23FC &&
+			TryReadLong(offset + 2, out var absoluteLongImmediate) &&
+			addresses.TryGetValue(offset + 6, out var immediateToLongMemoryOperand))
+		{
+			instruction = $"move.l\t#${absoluteLongImmediate:X8},{AssemblySymbol(DisplayLabel(immediateToLongMemoryOperand.Target, displayLabels))}";
+			length = 10;
+			return true;
+		}
 
 		if (addresses.TryGetValue(offset + 2, out var addressOperand))
 		{
@@ -436,6 +536,87 @@ internal sealed class M68kAssembler
 			TryReadWord(offset + 2, out var d0AbsoluteWord))
 		{
 			instruction = $"move.l\t${d0AbsoluteWord:X4}.w,d0";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xF1F8) == 0x3028 &&
+			TryReadWord(offset + 2, out var wordSourceDisplacement))
+		{
+			instruction =
+				$"move.w\t{unchecked((short)wordSourceDisplacement)}(a{opcode & 7}),d{(opcode >> 9) & 7}";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0280 &&
+			TryReadLong(offset + 2, out var andImmediate))
+		{
+			instruction = $"andi.l\t#$" + andImmediate.ToString("X8") + $",d{opcode & 7}";
+			length = 6;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0240 &&
+			TryReadWord(offset + 2, out var andWordImmediate))
+		{
+			instruction = $"andi.w\t#$" + andWordImmediate.ToString("X4") + $",d{opcode & 7}";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0080 &&
+			TryReadLong(offset + 2, out var orImmediate))
+		{
+			instruction = $"ori.l\t#$" + orImmediate.ToString("X8") + $",d{opcode & 7}";
+			length = 6;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0040 &&
+			TryReadWord(offset + 2, out var orWordImmediate))
+		{
+			instruction = $"ori.w\t#$" + orWordImmediate.ToString("X4") + $",d{opcode & 7}";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0A80 &&
+			TryReadLong(offset + 2, out var xorImmediate))
+		{
+			instruction = $"eori.l\t#$" + xorImmediate.ToString("X8") + $",d{opcode & 7}";
+			length = 6;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0A40 &&
+			TryReadWord(offset + 2, out var xorWordImmediate))
+		{
+			instruction = $"eori.w\t#$" + xorWordImmediate.ToString("X4") + $",d{opcode & 7}";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0680 &&
+			TryReadLong(offset + 2, out var addLongImmediate))
+		{
+			instruction = $"addi.l\t#$" + addLongImmediate.ToString("X8") + $",d{opcode & 7}";
+			length = 6;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0640 &&
+			TryReadWord(offset + 2, out var addWordImmediate))
+		{
+			instruction = $"addi.w\t#$" + addWordImmediate.ToString("X4") + $",d{opcode & 7}";
+			length = 4;
+			return true;
+		}
+
+		if ((opcode & 0xFFF8) == 0x0200 &&
+			TryReadWord(offset + 2, out var andByteImmediate))
+		{
+			instruction = $"andi.b\t#$" + (andByteImmediate & 0xFF).ToString("X2") + $",d{opcode & 7}";
 			length = 4;
 			return true;
 		}
@@ -486,9 +667,6 @@ internal sealed class M68kAssembler
 			0x508F => "addq.l\t#8,a7",
 			0x588F => "addq.l\t#4,a7",
 			0x5381 => "subq.l\t#1,d1",
-			0xD080 => "add.l\td0,d0",
-			0xD081 => "add.l\td1,d0",
-			0xD480 => "add.l\td0,d2",
 			0x4680 => "not.l\td0",
 			0x4880 => "ext.w\td0",
 			0x48C0 => "ext.l\td0",
@@ -497,6 +675,8 @@ internal sealed class M68kAssembler
 			0x42A7 => "clr.l\t-(a7)",
 			0x2F00 => "move.l\td0,-(a7)",
 			0x2F08 => "move.l\ta0,-(a7)",
+			_ when (opcode & 0xFFF8) == 0x4850 =>
+				$"pea\t(a{opcode & 7})",
 			0x2F10 => "move.l\t(a0),-(a7)",
 			0x2F17 => "move.l\t(a7),-(a7)",
 			0x2E97 => "move.l\t(a7),(a7)",
@@ -510,8 +690,18 @@ internal sealed class M68kAssembler
 			0x2C4C => "movea.l\ta4,a6",
 			0x2A78 => "movea.l\t$0004.w,a5",
 			0x2C4D => "movea.l\ta5,a6",
+			_ when (opcode & 0xFF00) == 0x7000 =>
+				$"moveq\t#{unchecked((sbyte)(opcode & 0xFF))},d{(opcode >> 9) & 7}",
+			_ when (opcode & 0xF1C0) == 0xD1C0 =>
+				$"adda.l\td{opcode & 7},a{(opcode >> 9) & 7}",
+			_ when (opcode & 0xF1F8) == 0xD080 =>
+				$"add.l\td{opcode & 7},d{(opcode >> 9) & 7}",
+			_ when (opcode & 0xF1F8) == 0xD040 =>
+				$"add.w\td{opcode & 7},d{(opcode >> 9) & 7}",
 			_ when (opcode & 0xF0F8) == 0x50C0 =>
 				$"{SetConditionMnemonic((M68kCondition)((opcode >> 8) & 0x0F))}\td{opcode & 7}",
+			_ when (opcode & 0xFFF8) == 0x4298 =>
+				$"clr.l\t(a{opcode & 7})+",
 			_ when (opcode & 0xF1F8) == 0x2010 =>
 				$"move.l\t(a{opcode & 7}),d{(opcode >> 9) & 7}",
 			_ when (opcode & 0xF1F8) == 0x2050 =>
@@ -607,6 +797,13 @@ internal sealed class M68kAssembler
 			TryReadWord(offset + 2, out var sourceDisplacement) &&
 			TryReadWord(offset + 4, out var destinationDisplacement))
 		{
+			if (sourceDisplacement == 0 && destinationDisplacement == 0)
+			{
+				instruction = "move.l\t(a7),(a7)";
+				length = 6;
+				return true;
+			}
+
 			instruction = $"move.l\t{unchecked((short)sourceDisplacement)}(a7),{unchecked((short)destinationDisplacement)}(a7)";
 			length = 6;
 			return true;
@@ -614,6 +811,13 @@ internal sealed class M68kAssembler
 		if (opcode == 0x2F57 &&
 			TryReadWord(offset + 2, out destinationDisplacement))
 		{
+			if (destinationDisplacement == 0)
+			{
+				instruction = "move.l\t(a7),(a7)";
+				length = 4;
+				return true;
+			}
+
 			instruction = $"move.l\t(a7),{unchecked((short)destinationDisplacement)}(a7)";
 			length = 4;
 			return true;
@@ -621,6 +825,13 @@ internal sealed class M68kAssembler
 		if (opcode == 0x2EAF &&
 			TryReadWord(offset + 2, out sourceDisplacement))
 		{
+			if (sourceDisplacement == 0)
+			{
+				instruction = "move.l\t(a7),(a7)";
+				length = 4;
+				return true;
+			}
+
 			instruction = $"move.l\t{unchecked((short)sourceDisplacement)}(a7),(a7)";
 			length = 4;
 			return true;
@@ -628,6 +839,13 @@ internal sealed class M68kAssembler
 		if ((opcode & 0xFFF8) == 0x2F50 &&
 			TryReadWord(offset + 2, out destinationDisplacement))
 		{
+			if (destinationDisplacement == 0)
+			{
+				instruction = $"move.l\t(a{opcode & 7}),(a7)";
+				length = 4;
+				return true;
+			}
+
 			instruction = $"move.l\t(a{opcode & 7}),{unchecked((short)destinationDisplacement)}(a7)";
 			length = 4;
 			return true;
@@ -649,6 +867,37 @@ internal sealed class M68kAssembler
 		}
 		if (TryReadWord(offset + 2, out var displacement))
 		{
+			if (displacement == 0)
+			{
+				instruction = opcode switch
+				{
+					_ when (opcode & 0xF1F8) == 0x2028 =>
+						$"move.l\t(a{opcode & 7}),d{(opcode >> 9) & 7}",
+					_ when (opcode & 0xF1F8) == 0x2068 =>
+						$"movea.l\t(a{opcode & 7}),a{(opcode >> 9) & 7}",
+					_ when (opcode & 0xF1F8) == 0x41E8 =>
+						$"movea.l\ta{opcode & 7},a{(opcode >> 9) & 7}",
+					_ when (opcode & 0xF1FF) == 0x202F =>
+						$"move.l\t(a7),d{(opcode >> 9) & 7}",
+					_ when (opcode & 0xF1FF) == 0x206F =>
+						$"movea.l\t(a7),a{(opcode >> 9) & 7}",
+					_ when (opcode & 0xF1FF) == 0x41EF =>
+						$"movea.l\ta7,a{(opcode >> 9) & 7}",
+					_ when (opcode & 0xFFF8) == 0x2F40 =>
+						$"move.l\td{opcode & 7},(a7)",
+					_ when (opcode & 0xFFF8) == 0x2F48 =>
+						$"move.l\ta{opcode & 7},(a7)",
+					0x42AF => "clr.l\t(a7)",
+					0x486F => "pea\t(a7)",
+					_ => string.Empty
+				};
+				if (instruction.Length != 0)
+				{
+					length = 4;
+					return true;
+				}
+			}
+
 			instruction = opcode switch
 			{
 				0x2C78 => $"movea.l\t${displacement:X4}.w,a6",
@@ -914,11 +1163,6 @@ internal sealed class M68kAssembler
 		}
 	}
 
-	private readonly record struct BranchFixup(int OpcodeOffset, string Target);
-
-	private readonly record struct AddressFixup(int Offset, string Target, bool External);
-
-	private readonly record struct PcRelativeFixup(int DisplacementOffset, string Target);
 }
 
 internal sealed record LinkedCode(

@@ -15,6 +15,7 @@ internal sealed partial class M68kCodeGenerator
 	private readonly record struct ArgumentValue(
 		CilInstruction? Instruction,
 		bool IsCStringLiteral = false,
+		bool IsExportAddressLiteral = false,
 		bool IsTransparentScalarRawGetter = false,
 		bool IsCompactNullableValueGetter = false,
 		bool AllowsInternalBranchTargets = false);
@@ -22,6 +23,8 @@ internal sealed partial class M68kCodeGenerator
 	private static bool IsArgumentValueInstruction(CilInstruction instruction) =>
 		TryGetConstant(instruction, out _) ||
 		instruction.OpCode == OpCodes.Ldnull ||
+		instruction.OpCode == OpCodes.Ldsfld ||
+		instruction.OpCode == OpCodes.Ldsflda ||
 		TryGetLoadLocalIndex(instruction, out _) ||
 		TryGetArgumentIndex(instruction, out _) ||
 		TryGetLoadLocalAddressIndex(instruction, out _) ||
@@ -61,6 +64,24 @@ internal sealed partial class M68kCodeGenerator
 				instructions[valueIndex + 1].Offset);
 			if (IsTransparentScalarRawGetter(getter))
 			{
+				if (valueIndex + 2 < instructions.Count &&
+					(instructions[valueIndex + 2].OpCode == OpCodes.Call ||
+					 instructions[valueIndex + 2].OpCode == OpCodes.Callvirt))
+				{
+					var wrapper = _module.ResolveMethodToken(
+						(int)instructions[valueIndex + 2].Operand!,
+						caller,
+						instructions[valueIndex + 2].Offset);
+					if (wrapper.ImportName == "intrinsic:cstring-from-pointer")
+					{
+						value = new ArgumentValue(
+							instructions[valueIndex],
+							IsTransparentScalarRawGetter: true);
+						consumed = 3;
+						return true;
+					}
+				}
+
 				value = new ArgumentValue(
 					instructions[valueIndex],
 					IsTransparentScalarRawGetter: true);
@@ -89,6 +110,25 @@ internal sealed partial class M68kCodeGenerator
 			{
 				value = new ArgumentValue(instructions[valueIndex], IsCStringLiteral: true);
 				consumed = 3;
+				return true;
+			}
+		}
+
+		if (instructions[valueIndex].OpCode == OpCodes.Ldstr &&
+			valueIndex + 1 < instructions.Count &&
+			(instructions[valueIndex + 1].OpCode == OpCodes.Call ||
+				instructions[valueIndex + 1].OpCode == OpCodes.Callvirt))
+		{
+			var exportAddress = _module.ResolveMethodToken(
+				(int)instructions[valueIndex + 1].Operand!,
+				caller,
+				instructions[valueIndex + 1].Offset);
+			if (exportAddress.ImportName == "intrinsic:aptr-export-address")
+			{
+				value = new ArgumentValue(
+					instructions[valueIndex],
+					IsExportAddressLiteral: true);
+				consumed = 2;
 				return true;
 			}
 		}
@@ -170,7 +210,9 @@ internal sealed partial class M68kCodeGenerator
 			instructions[valueIndex + 1].Offset);
 		if (target.ImportName is "intrinsic:cstring-from-pointer" or "intrinsic:cstring-to-uint32" ||
 			IsTransparentScalarToUInt32Conversion(target) ||
-			IsUInt32ToTransparentScalarConversion(target))
+			IsUInt32ToTransparentScalarConversion(target) ||
+			IsInt32ToTransparentScalarConversion(target) ||
+			IsTransparentScalarToTransparentScalarConversion(target))
 		{
 			consumed = 2;
 		}
@@ -281,12 +323,35 @@ internal sealed partial class M68kCodeGenerator
 		target.Signature.ParameterTypes.Length == 1 &&
 		target.Signature.ParameterTypes[0].DisplayName == "uint" &&
 		(target.Definition?.Name is "op_Implicit" or "FromPointer" or "FromRaw" ||
-		 target.ImportName?.EndsWith("-from-pointer", StringComparison.Ordinal) == true ||
-		 target.ImportName?.EndsWith("-from-raw", StringComparison.Ordinal) == true) &&
+			target.ImportName?.EndsWith("-from-pointer", StringComparison.Ordinal) == true ||
+			target.ImportName?.EndsWith("-from-raw", StringComparison.Ordinal) == true ||
+			target.ImportName?.EndsWith("-from-uint", StringComparison.Ordinal) == true ||
+			target.ImportName?.EndsWith("-from-value", StringComparison.Ordinal) == true) &&
 		_module.IsTransparentScalarType(new CilType(
 			CilTypeKind.ValueType,
 			4,
 			returnType));
+
+	private bool IsInt32ToTransparentScalarConversion(MethodReference target) =>
+		target.Signature.ReturnType is { DisplayName: var returnType } &&
+		target.Signature.ParameterTypes.Length == 1 &&
+		target.Signature.ParameterTypes[0].DisplayName == "int" &&
+		(target.Definition?.Name == "op_Implicit" ||
+			target.ImportName?.EndsWith("-from-int", StringComparison.Ordinal) == true ||
+			target.ImportName?.EndsWith("-from-value", StringComparison.Ordinal) == true) &&
+		_module.IsTransparentScalarType(new CilType(
+			CilTypeKind.ValueType,
+			4,
+			returnType));
+
+	private bool IsTransparentScalarToTransparentScalarConversion(MethodReference target) =>
+		target.Signature.ReturnType is { Kind: CilTypeKind.ValueType } returnType &&
+		target.Signature.ParameterTypes is [var parameterType] &&
+		(target.Definition?.Name == "op_Implicit" ||
+			target.ImportName?.EndsWith("-from-value", StringComparison.Ordinal) == true) &&
+		_module.IsTransparentScalarType(returnType) &&
+		(parameterType.IsSupportedScalar && parameterType.Size == 4 ||
+			_module.IsTransparentScalarType(parameterType));
 
 	private static bool IsTransparentScalarRawGetterBaseInstruction(CilInstruction instruction) =>
 		TryGetArgumentIndex(instruction, out _) ||
@@ -327,6 +392,13 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
+		if (value.IsExportAddressLiteral)
+		{
+			_assembler.EmitWord(0x2F3C); // MOVE.L #export,-(A7)
+			_assembler.EmitAddress(ResolveExportAddressLabel(caller, instruction));
+			return;
+		}
+
 		if (value.IsTransparentScalarRawGetter)
 		{
 			EmitTransparentScalarRawGetterValue(caller, instruction, stackDepth);
@@ -348,6 +420,34 @@ internal sealed partial class M68kCodeGenerator
 		if (instruction.OpCode == OpCodes.Ldnull)
 		{
 			EmitPushConstant(0);
+			return;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldsflda)
+		{
+			var field = _module.ResolveFieldToken(
+				(int)instruction.Operand!,
+				caller,
+				instruction.Offset);
+			if (!field.IsStatic)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					$"Field '{field.DisplayName}' must be static when loaded by address.",
+					caller.DisplayName,
+					instruction.Offset);
+			}
+
+			_staticFields.TryAdd(field.Handle, field);
+			_assembler.EmitWord(0x4879); // PEA abs.l
+			_assembler.EmitAddress(StaticFieldLabel(field.Handle));
+			return;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldsfld)
+		{
+			EmitLoadStaticFieldToRegister(caller, instruction, M68kRegister.D0);
+			EmitPushD0();
 			return;
 		}
 
@@ -439,6 +539,14 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
+		if (value.IsExportAddressLiteral)
+		{
+			EmitAddressImmediateToRegister(
+				register,
+				ResolveExportAddressLabel(caller, instruction));
+			return;
+		}
+
 		if (TryGetConstant(instruction, out var constant))
 		{
 			EmitImmediateToRegister(register, constant);
@@ -448,6 +556,32 @@ internal sealed partial class M68kCodeGenerator
 		if (instruction.OpCode == OpCodes.Ldnull)
 		{
 			EmitImmediateToRegister(register, 0);
+			return;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldsflda)
+		{
+			var field = _module.ResolveFieldToken(
+				(int)instruction.Operand!,
+				caller,
+				instruction.Offset);
+			if (!field.IsStatic)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					$"Field '{field.DisplayName}' must be static when loaded by address.",
+					caller.DisplayName,
+					instruction.Offset);
+			}
+
+			_staticFields.TryAdd(field.Handle, field);
+			EmitAddressImmediateToRegister(register, StaticFieldLabel(field.Handle));
+			return;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldsfld)
+		{
+			EmitLoadStaticFieldToRegister(caller, instruction, register);
 			return;
 		}
 
@@ -534,6 +668,14 @@ internal sealed partial class M68kCodeGenerator
 			return true;
 		}
 
+		if (value.IsExportAddressLiteral)
+		{
+			EmitAddressImmediateToFrame(
+				ResolveExportAddressLabel(caller, instruction),
+				destination);
+			return true;
+		}
+
 		if (value.IsTransparentScalarRawGetter)
 		{
 			return TryEmitTransparentScalarRawGetterValueToFrame(
@@ -551,6 +693,33 @@ internal sealed partial class M68kCodeGenerator
 		if (instruction.OpCode == OpCodes.Ldnull)
 		{
 			EmitStoreZeroToFrame(destination);
+			return true;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldsfld)
+		{
+			EmitLoadStaticFieldToRegister(caller, instruction, M68kRegister.D0);
+			EmitStoreRegisterToFrame(M68kRegister.D0, destination);
+			return true;
+		}
+
+		if (instruction.OpCode == OpCodes.Ldsflda)
+		{
+			var field = _module.ResolveFieldToken(
+				(int)instruction.Operand!,
+				caller,
+				instruction.Offset);
+			if (!field.IsStatic)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					$"Field '{field.DisplayName}' must be static when loaded by address.",
+					caller.DisplayName,
+					instruction.Offset);
+			}
+
+			_staticFields.TryAdd(field.Handle, field);
+			EmitAddressImmediateToFrame(StaticFieldLabel(field.Handle), destination);
 			return true;
 		}
 
@@ -602,6 +771,57 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return false;
+	}
+
+	private string ResolveExportAddressLabel(
+		CilMethod caller,
+		CilInstruction instruction)
+	{
+		var exportName = _module.GetUserString((int)instruction.Operand!);
+		if (!_module.GetExports().Any(export => export.Name == exportName))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnresolvedImport,
+				$"No [M68kExport] method named '{exportName}' exists.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+
+		return ExportLabel(exportName);
+	}
+
+	private void EmitLoadStaticFieldToRegister(
+		CilMethod caller,
+		CilInstruction instruction,
+		M68kRegister register)
+	{
+		var field = _module.ResolveFieldToken(
+			(int)instruction.Operand!,
+			caller,
+			instruction.Offset);
+		if (!field.IsStatic)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Field '{field.DisplayName}' must be static when loaded by value.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+
+		_staticFields.TryAdd(field.Handle, field);
+		var label = StaticFieldLabel(field.Handle);
+		if (register <= M68kRegister.D7)
+		{
+			InvalidatePlatformBaseIfWritingRegister(register);
+			_assembler.EmitWord((ushort)(0x2039 | ((int)register << 9)));
+			_assembler.EmitAddress(label);
+			return;
+		}
+
+		InvalidatePlatformBaseIfWritingRegister(register);
+		var addressRegister = (int)register - (int)M68kRegister.A0;
+		_assembler.EmitWord((ushort)(0x2079 | (addressRegister << 9)));
+		_assembler.EmitAddress(label);
 	}
 
 	private bool TryEmitTransparentScalarRawGetterValueToFrame(

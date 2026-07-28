@@ -28,6 +28,14 @@ public readonly struct APTR
 		throw new System.NotSupportedException(
 			"APTR.ExportAddress is lowered by CopperSharp.");
 
+	public static uint ReadUInt32(APTR address, int offset) =>
+		throw new System.NotSupportedException(
+			"APTR.ReadUInt32 is lowered by CopperSharp.");
+
+	public static void WriteUInt32(APTR address, int offset, uint value) =>
+		throw new System.NotSupportedException(
+			"APTR.WriteUInt32 is lowered by CopperSharp.");
+
 	public static uint ToUInt32(APTR pointer) => pointer._pointer;
 
 	public static implicit operator APTR(uint pointer) =>

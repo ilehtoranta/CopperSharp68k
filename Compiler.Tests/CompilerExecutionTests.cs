@@ -147,6 +147,36 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(106u, ExecuteHunk(result, M68kCpuModel.M68000));
 	}
 
+	[Fact]
+	public void ClrIsTargetGatedAndOptInForM68000()
+	{
+		var m68000 = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry");
+		Assert.DoesNotContain("\tclr.l\t-(a7)", m68000.Text, StringComparison.Ordinal);
+
+		var m68020 = Compile(
+			M68kCpuTarget.M68020,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry");
+		Assert.Contains("\tclr.l\t-(a7)", m68020.Text, StringComparison.Ordinal);
+
+		var disabled = Compile(
+			M68kCpuTarget.M68020,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry",
+			M68kClrPolicy.Never);
+		Assert.DoesNotContain("\tclr.l\t-(a7)", disabled.Text, StringComparison.Ordinal);
+
+		var optIn = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry",
+			M68kClrPolicy.Always);
+		Assert.Contains("\tclr.l\t-(a7)", optIn.Text, StringComparison.Ordinal);
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void ResolvesAbsoluteImports(
@@ -575,7 +605,14 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(42u, ExecuteHunk(result, model));
-		Assert.Contains("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		if (target is M68kCpuTarget.M68020 or M68kCpuTarget.M68040)
+		{
+			Assert.Contains("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		}
+		else
+		{
+			Assert.Contains("\tmove.l\t#$00000000,_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		}
 		Assert.DoesNotContain("\tmove.l\t(a7)+,_DOSLibraryBase", result.Text, StringComparison.Ordinal);
 	}
 
@@ -594,7 +631,7 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(42u, ExecuteHunk(result, model));
-		Assert.Contains("\ttst.l\td0", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\ttst.l\td0", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tsne\td1", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tneg.b\td1", result.Text, StringComparison.Ordinal);
 	}
@@ -614,7 +651,7 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(0x0000_4400u, ExecuteHunk(result, model));
-		Assert.Contains("\ttst.l\td0", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\ttst.l\td0", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tsne\td1", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tneg.b\td1", result.Text, StringComparison.Ordinal);
 	}
@@ -665,7 +702,8 @@ public sealed class CompilerExecutionTests
 					state.A[0] = 32;
 				}));
 		Assert.Equal(0u, result.EntryPoint);
-		Assert.Contains("\r\nC68K_entry_003Amanaged:\r\n\tmove.l\ta0,d1\r\nC68K_method_", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\r\nC68K_entry_003Amanaged:\r\n\tmove.l\ta0,d1\r\n", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\r\nC68K_method_", result.Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -702,8 +740,8 @@ public sealed class CompilerExecutionTests
 					state.D[0] = 10;
 					state.A[0] = 32;
 				}));
-		Assert.Contains("\tmove.l\td0,-(a7)\r\n\tmove.l\ta0,-(a7)", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmovea.l\t(a7)+,a0\r\n\tmove.l\t(a7)+,d0\r\n\tmove.l\ta0,d1", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\td0,-(a7)\r\n\tpea\t(a0)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t(a7)+,a0\r\n\tmove.l\t(a7)+,d0\r\n\tbsr.w\tC68K_method_", result.Text, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -893,7 +931,7 @@ public sealed class CompilerExecutionTests
 		Assert.NotEmpty(result.Code);
 		Assert.DoesNotContain("Amiga.MUI.WindowObject::op_Implicit", result.Map, StringComparison.Ordinal);
 		Assert.Contains(
-			"\tclr.l\t16(a7)",
+			"\tmove.l\t#$00000000,16(a7)",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.DoesNotMatch(
@@ -1054,6 +1092,10 @@ public sealed class CompilerExecutionTests
 			"\tdc.w\t$2080",
 			result.Text,
 			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tdc.w\t$4298",
+			result.Text,
+			StringComparison.Ordinal);
 		Assert.Contains(
 			"\tmovea.l\t_MUIMasterLibraryBase(pc),a6",
 			result.Text,
@@ -1093,15 +1135,25 @@ public sealed class CompilerExecutionTests
 		Assert.Contains("muitasklist.app.dispatcher", result.Map, StringComparison.Ordinal);
 		Assert.Contains("muitasklist.list.display", result.Map, StringComparison.Ordinal);
 		Assert.Contains(
-			"\tmove.l\t#C68K_export_003Amuitasklist_002Eapp_002Edispatcher,-(a7)",
+			"\tmovea.l\t#C68K_export_003Amuitasklist_002Eapp_002Edispatcher,a3",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
-			"\tmove.l\t#C68K_export_003Amuitasklist_002Elist_002Edisplay,-(a7)",
+			"\tmove.l\t#C68K_export_003Amuitasklist_002Elist_002Edisplay,d0",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
 			"\tjsr\tC68K_amiga_002Eboopsi_002EDoSuperMethodA",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains("\tmove.w\t32(a1),d0", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tadda.l\td0,a0", result.Text, StringComparison.Ordinal);
+		Assert.Contains(
+			"\tmove.l\tC68K_static_003A04000003,d0\r\n\tbeq.w",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmove.l\tC68K_static_003A04000003,-(a7)\r\n\tmove.l\t(a7)+,d0\r\n\ttst.l\td0",
 			result.Text,
 			StringComparison.Ordinal);
 	}
@@ -1607,7 +1659,7 @@ public sealed class CompilerExecutionTests
 		Assert.Contains("__c68k_alloc:", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tbsr.w\t__c68k_gc_mark", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tbsr.w\t__c68k_gc_collect", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tbra.w\t__c68k_gc_coalesce", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tbra.w\t__c68k_gc_coalesce", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmovem.l\td2-d4/a2,-(a7)", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmovem.l\t(a7)+,d2-d4/a2", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain(
@@ -1969,11 +2021,10 @@ public sealed class CompilerExecutionTests
 				[M68kRuntimeImports.Allocate] = 0x0000_2800
 			}
 		});
-
 		Assert.Contains("dc.w\t$1140", result.Text, StringComparison.Ordinal);
 		Assert.Contains("dc.w\t$3140", result.Text, StringComparison.Ordinal);
 		Assert.Contains("dc.w\t$1028", result.Text, StringComparison.Ordinal);
-		Assert.Contains("dc.w\t$3028", result.Text, StringComparison.Ordinal);
+		Assert.Contains("move.w\t12(a0),d0", result.Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -2428,12 +2479,14 @@ public sealed class CompilerExecutionTests
 	private static M68kCompilationResult Compile(
 		M68kCpuTarget cpu,
 		M68kOutputFormat format,
-		string entry) =>
+		string entry,
+		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto) =>
 		AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = entry,
 			Cpu = cpu,
+			ClrPolicy = clrPolicy,
 			OutputFormat = format,
 			Rom = new KickstartRomOutputOptions
 			{

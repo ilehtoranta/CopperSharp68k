@@ -8,11 +8,15 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 
 namespace CopperSharp.Compiler.Metadata;
 
 internal sealed class CompilationModule : IDisposable
 {
+	private const string BoopsiDispatcherAttributeName = "Amiga.BOOPSI+DispatcherAttribute";
+	private const string MuiListDisplayCallbackAttributeName = "Amiga.MUI.List+DisplayCallbackAttribute";
+
 	private readonly FileStream _stream;
 	private readonly PEReader _peReader;
 	private readonly CilSignatureTypeProvider _signatureProvider = new();
@@ -96,9 +100,19 @@ internal sealed class CompilationModule : IDisposable
 		{
 			var definition = Reader.GetMethodDefinition(handle);
 			var exportName = TryGetExportName(definition.GetCustomAttributes());
-			if (exportName is null)
+			var boopsiDispatcherName = TryGetBoopsiDispatcherName(definition.GetCustomAttributes());
+			var muiListDisplayCallbackName = TryGetMuiListDisplayCallbackName(definition.GetCustomAttributes());
+			if (exportName is null && boopsiDispatcherName is null && muiListDisplayCallbackName is null)
 			{
 				continue;
+			}
+
+			if (exportName is not null && (boopsiDispatcherName is not null || muiListDisplayCallbackName is not null) ||
+				boopsiDispatcherName is not null && muiListDisplayCallbackName is not null)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"A method cannot combine [M68kExport], [BOOPSI.Dispatcher], and [MUI.List.DisplayCallback].");
 			}
 
 			var method = GetMethod(handle);
@@ -110,40 +124,84 @@ internal sealed class CompilationModule : IDisposable
 					method.DisplayName);
 			}
 
-			var parameterRegisters = new M68kRegister[method.Signature.ParameterTypes.Length];
-			var hasRegister = new bool[parameterRegisters.Length];
-			M68kRegister? returnRegister = null;
-			foreach (var parameterHandle in definition.GetParameters())
+			M68kRegister[] parameterRegisters;
+			M68kRegister returnRegister;
+			if (boopsiDispatcherName is not null)
 			{
-				var parameter = Reader.GetParameter(parameterHandle);
-				var register = TryGetRegister(parameter.GetCustomAttributes());
-				if (parameter.SequenceNumber == 0)
+				if (method.Signature.ParameterTypes.Length != 3)
 				{
-					returnRegister = register;
-					continue;
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedSignature,
+						"[BOOPSI.Dispatcher] methods must have exactly three parameters (cl, obj, message).",
+						method.DisplayName);
 				}
 
-				var index = parameter.SequenceNumber - 1;
-				if ((uint)index < (uint)parameterRegisters.Length && register is { } value)
+				parameterRegisters = new[]
 				{
-					parameterRegisters[index] = value;
-					hasRegister[index] = true;
-				}
+					M68kRegister.A0,
+					M68kRegister.A2,
+					M68kRegister.A1
+				};
+				returnRegister = M68kRegister.D0;
 			}
-
-			if (hasRegister.Any(static present => !present))
+			else if (muiListDisplayCallbackName is not null)
 			{
-				throw new M68kCompilationException(
-					M68kDiagnosticIds.UnsupportedSignature,
-					"Every exported parameter must carry [M68kRegister].",
-					method.DisplayName);
+				if (method.Signature.ParameterTypes.Length != 2)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedSignature,
+						"[MUI.List.DisplayCallback] methods must have exactly two parameters (entry, columns).",
+						method.DisplayName);
+				}
+
+				parameterRegisters = new[]
+				{
+					M68kRegister.A1,
+					M68kRegister.A2
+				};
+				returnRegister = M68kRegister.D0;
+			}
+			else
+			{
+				parameterRegisters = new M68kRegister[method.Signature.ParameterTypes.Length];
+				var hasRegister = new bool[parameterRegisters.Length];
+				M68kRegister? explicitReturnRegister = null;
+				foreach (var parameterHandle in definition.GetParameters())
+				{
+					var parameter = Reader.GetParameter(parameterHandle);
+					var register = TryGetRegister(parameter.GetCustomAttributes());
+					if (parameter.SequenceNumber == 0)
+					{
+						explicitReturnRegister = register;
+						continue;
+					}
+
+					var index = parameter.SequenceNumber - 1;
+					if ((uint)index < (uint)parameterRegisters.Length && register is { } value)
+					{
+						parameterRegisters[index] = value;
+						hasRegister[index] = true;
+					}
+				}
+
+				if (hasRegister.Any(static present => !present))
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedSignature,
+						"Every exported parameter must carry [M68kRegister].",
+						method.DisplayName);
+				}
+
+				returnRegister = explicitReturnRegister ?? M68kRegister.D0;
 			}
 
 			exports.Add(new CilExport(
 				method,
-				exportName.Length == 0 ? method.DisplayName : exportName,
+				(exportName ?? boopsiDispatcherName ?? muiListDisplayCallbackName)!.Length == 0
+					? method.DisplayName
+					: (exportName ?? boopsiDispatcherName ?? muiListDisplayCallbackName)!,
 				parameterRegisters,
-				returnRegister ?? M68kRegister.D0));
+				returnRegister));
 		}
 
 		return exports;
@@ -469,7 +527,7 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var definition = Reader.GetTypeDefinition(handle);
-		var inheritedSize = 8;
+		var inheritedSize = IsValueTypeDefinition(definition) ? 0 : 8;
 		var inheritedBitmap = 0u;
 		var fieldOffsets = new Dictionary<FieldDefinitionHandle, int>();
 		if (definition.BaseType.Kind == HandleKind.TypeDefinition)
@@ -490,6 +548,13 @@ internal sealed class CompilationModule : IDisposable
 			var field = GetField(fieldHandle);
 			if (field.IsStatic)
 			{
+				continue;
+			}
+
+			if (TryGetFixedBufferSize(field.Type, out var fixedBufferSize))
+			{
+				fieldOffsets.Add(fieldHandle, size);
+				size += fixedBufferSize;
 				continue;
 			}
 
@@ -520,6 +585,36 @@ internal sealed class CompilationModule : IDisposable
 		return layout;
 	}
 
+	private bool TryGetFixedBufferSize(CilType type, out int size)
+	{
+		size = 0;
+		if (type.Kind != CilTypeKind.ValueType ||
+			!type.DisplayName.Contains("e__FixedBuffer", StringComparison.Ordinal))
+		{
+			return false;
+		}
+
+		foreach (var path in Directory.EnumerateFiles(_assemblyDirectory, "*.dll"))
+		{
+			try
+			{
+				var reflectionType = Assembly.LoadFrom(path).GetType(type.DisplayName, throwOnError: false);
+				if (reflectionType is null)
+				{
+					continue;
+				}
+
+				size = Marshal.SizeOf(reflectionType);
+				return size > 0;
+			}
+			catch (BadImageFormatException)
+			{
+			}
+		}
+
+		return false;
+	}
+
 	public bool IsTransparentScalarType(CilType type)
 	{
 		if (type.Kind != CilTypeKind.ValueType)
@@ -544,10 +639,6 @@ internal sealed class CompilationModule : IDisposable
 
 	public bool IsSupportedStructType(CilType type)
 	{
-		if (IsFileInfoBlockType(type))
-		{
-			return true;
-		}
 		if (type.IsSupportedScalar ||
 			IsTransparentScalarType(type))
 		{
@@ -569,23 +660,66 @@ internal sealed class CompilationModule : IDisposable
 			return fields.Length != 0;
 		}
 
+		return TryGetReflectionStructSlotLongs(type.DisplayName, out _);
+	}
+
+	private bool TryGetReflectionStructSlotLongs(string displayName, out int slotLongs)
+	{
+		slotLongs = 0;
+		foreach (var path in Directory.EnumerateFiles(_assemblyDirectory, "*.dll"))
+		{
+			try
+			{
+				var type = Assembly.LoadFrom(path).GetType(displayName, throwOnError: false);
+				if (type is null ||
+					!type.IsValueType)
+				{
+					continue;
+				}
+
+				var fields = type
+					.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+					.Where(static field => !field.IsStatic)
+					.ToArray();
+				if (fields.Length == 0 ||
+					fields.Any(field =>
+						!IsReflectionStructField(field.FieldType) &&
+						!IsReflectionFixedBufferField(field.FieldType)))
+				{
+					continue;
+				}
+
+				var size = ReflectionStructSize(type);
+				if (size == 0)
+				{
+					continue;
+				}
+
+				slotLongs = checked((size + 3) / 4);
+				return true;
+			}
+			catch (BadImageFormatException)
+			{
+			}
+		}
+
 		return false;
 	}
 
 	public int GetStructSlotLongs(CilType type)
 	{
-		if (IsFileInfoBlockType(type))
-		{
-			return 66;
-		}
-
 		foreach (var handle in Reader.TypeDefinitions)
 		{
 			var definition = Reader.GetTypeDefinition(handle);
 			if (TypeNameMatches(definition, type.DisplayName))
 			{
-				return checked((GetTypeLayout(handle).Size - 8 + 3) / 4);
+				return checked((GetTypeLayout(handle).Size + 3) / 4);
 			}
+		}
+
+		if (TryGetReflectionStructSlotLongs(type.DisplayName, out var slotLongs))
+		{
+			return slotLongs;
 		}
 
 		throw new M68kCompilationException(
@@ -670,8 +804,9 @@ internal sealed class CompilationModule : IDisposable
 			Reader.GetString(definition.Name) == displayName;
 	}
 
-	private static bool IsFileInfoBlockType(CilType type) =>
-		type.DisplayName.EndsWith("FileInfoBlock", StringComparison.Ordinal);
+	private bool IsValueTypeDefinition(TypeDefinition definition) =>
+		definition.BaseType.Kind == HandleKind.TypeReference &&
+		GetTypeName(Reader.GetTypeReference((TypeReferenceHandle)definition.BaseType)) == "System.ValueType";
 
 	private static bool IsReflectionTransparentScalarField(Type type) =>
 		type == typeof(bool) ||
@@ -684,6 +819,95 @@ internal sealed class CompilationModule : IDisposable
 		type == typeof(uint) ||
 		type == typeof(IntPtr) ||
 		type == typeof(UIntPtr);
+
+	private static bool IsReflectionScalarField(Type type) =>
+		type == typeof(bool) ||
+		type == typeof(char) ||
+		type == typeof(sbyte) ||
+		type == typeof(byte) ||
+		type == typeof(short) ||
+		type == typeof(ushort) ||
+		type == typeof(int) ||
+		type == typeof(uint) ||
+		type == typeof(IntPtr) ||
+		type == typeof(UIntPtr) ||
+		type.FullName is "Amiga.APTR" or "Amiga.BPTR" or "Amiga.STRPTR" or "Amiga.CONST_STRPTR" or "Amiga.CString";
+
+	private static bool IsReflectionStructField(Type type)
+	{
+		if (IsReflectionScalarField(type))
+		{
+			return true;
+		}
+
+		if (!type.IsValueType || type.Namespace != "Amiga")
+		{
+			return false;
+		}
+
+		var fields = type
+			.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+			.Where(static field => !field.IsStatic)
+			.ToArray();
+		return fields.Length != 0 &&
+			fields.All(field =>
+				IsReflectionStructField(field.FieldType) ||
+				IsReflectionFixedBufferField(field.FieldType));
+	}
+
+	private static bool IsReflectionFixedBufferField(Type type) =>
+		type.IsValueType &&
+		type.GetField("FixedElementField", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic) is not null;
+
+	private static int ReflectionFieldSize(Type type)
+	{
+		if (IsReflectionFixedBufferField(type))
+		{
+			return Marshal.SizeOf(type);
+		}
+
+		if (type == typeof(bool) || type == typeof(byte) || type == typeof(sbyte))
+		{
+			return 1;
+		}
+
+		if (type == typeof(char) || type == typeof(short) || type == typeof(ushort))
+		{
+			return 2;
+		}
+
+		if (IsReflectionScalarField(type))
+		{
+			return 4;
+		}
+
+		return IsReflectionStructField(type) ? ReflectionStructSize(type) : 0;
+	}
+
+	private static int ReflectionStructSize(Type type)
+	{
+		var size = 0;
+		var fields = type
+			.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+			.Where(static field => !field.IsStatic)
+			.ToArray();
+		foreach (var field in fields)
+		{
+			var fieldSize = ReflectionFieldSize(field.FieldType);
+			if (fieldSize == 0)
+			{
+				return 0;
+			}
+
+			size = Align(size, fieldSize >= 2 ? 2 : 1);
+			size += fieldSize;
+		}
+
+		return Align(size, 2);
+	}
+
+	private static int Align(int value, int alignment) =>
+		(value + alignment - 1) / alignment * alignment;
 
 	public string GetUserString(int token)
 	{
@@ -881,6 +1105,12 @@ internal sealed class CompilationModule : IDisposable
 
 	private string GetReferencedAssemblyName(EntityHandle scope)
 	{
+		if (scope.Kind == HandleKind.TypeReference)
+		{
+			return GetReferencedAssemblyName(
+				Reader.GetTypeReference((TypeReferenceHandle)scope).ResolutionScope);
+		}
+
 		if (scope.Kind != HandleKind.AssemblyReference)
 		{
 			return string.Empty;
@@ -1131,6 +1361,14 @@ internal sealed class CompilationModule : IDisposable
 			}
 		}
 
+		if (name == "FromAddress" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
+			signature.ReturnType.IsReference)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:address-to-ref", signature);
+		}
+
 		throw new M68kCompilationException(
 			M68kDiagnosticIds.UnsupportedInstruction,
 			$"External method reference '{name}' must be represented by a local [M68kImport] declaration.",
@@ -1143,6 +1381,14 @@ internal sealed class CompilationModule : IDisposable
 		string name,
 		MethodSignature<CilType> signature)
 	{
+		if (name == "FromAddress" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
+			signature.ReturnType.IsReference)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:address-to-ref", signature);
+		}
+
 		if (typeName == "System.Object" && name == ".ctor" &&
 			signature.ParameterTypes.Length == 0)
 		{
@@ -1179,6 +1425,14 @@ internal sealed class CompilationModule : IDisposable
 			}
 		}
 
+		if (typeName == "Amiga.FileInfoBlock" &&
+			name is "FileName" or "Comment" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].DisplayName == "uint")
+		{
+			return MethodReference.ForIntrinsic("intrinsic:file-info-block-file-name", signature);
+		}
+
 		if (typeName is "Amiga.APTR" or "Amiga.BPTR" or "Amiga.STRPTR" or "Amiga.CONST_STRPTR")
 		{
 			if (name == "get_Null" &&
@@ -1200,6 +1454,25 @@ internal sealed class CompilationModule : IDisposable
 				signature.ParameterTypes[0].DisplayName == "string")
 			{
 				return MethodReference.ForIntrinsic("intrinsic:aptr-export-address", signature);
+			}
+
+			if (typeName == "Amiga.APTR" &&
+				name == "ReadUInt32" &&
+				signature.ParameterTypes.Length == 2 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
+				signature.ParameterTypes[1].DisplayName == "int")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-read-uint32", signature);
+			}
+
+			if (typeName == "Amiga.APTR" &&
+				name == "WriteUInt32" &&
+				signature.ParameterTypes.Length == 3 &&
+				signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
+				signature.ParameterTypes[1].DisplayName == "int" &&
+				signature.ParameterTypes[2].DisplayName == "uint")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:aptr-write-uint32", signature);
 			}
 
 			if ((name == "ToUInt32" || name == "op_Implicit") &&
@@ -1226,6 +1499,7 @@ internal sealed class CompilationModule : IDisposable
 			{
 				return MethodReference.ForIntrinsic("intrinsic:aptr-is-not-null", signature);
 			}
+
 
 			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
 				(name == "get_Address" || name == "ToAddress") &&
@@ -1264,6 +1538,57 @@ internal sealed class CompilationModule : IDisposable
 			{
 				return MethodReference.ForIntrinsic("intrinsic:bptr-from-address", signature);
 			}
+		}
+
+		if (typeName == "Amiga.AmigaVarArg" &&
+			name == "op_Implicit" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].Size == 4)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-value", signature);
+		}
+
+		if (typeName == "Amiga.Hook" &&
+			name == "AddressOf" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].DisplayName == "Amiga.Hook&")
+		{
+			return MethodReference.ForIntrinsic("intrinsic:hook-address-of", signature);
+		}
+
+		if (name == "AddressOf" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].Kind == CilTypeKind.ManagedPointer &&
+			signature.ReturnType.DisplayName == "Amiga.APTR")
+		{
+			return MethodReference.ForIntrinsic("intrinsic:address-of-ref", signature);
+		}
+
+		if (name == "Cast" &&
+			signature.ParameterTypes.Length == 1 &&
+			signature.ParameterTypes[0].Kind == CilTypeKind.ManagedPointer &&
+			signature.ReturnType.Kind == CilTypeKind.ManagedPointer)
+		{
+			return MethodReference.ForIntrinsic("intrinsic:ref-cast", signature);
+		}
+
+		if ((typeName == "Amiga.BOOPSI+Message" || typeName == "Message") &&
+			name == "AddressOf" &&
+			signature.ParameterTypes.Length == 1 &&
+			(signature.ParameterTypes[0].DisplayName == "Amiga.BOOPSI+Message&" ||
+			 signature.ParameterTypes[0].DisplayName == "Message&"))
+		{
+			return MethodReference.ForIntrinsic("intrinsic:boopsi-message-address-of", signature);
+		}
+
+		if (typeName == "Amiga.BOOPSI" &&
+			name == "InstanceData" &&
+			signature.ParameterTypes.Length == 2 &&
+			signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
+			signature.ParameterTypes[1].DisplayName == "Amiga.APTR" &&
+			signature.ReturnType.DisplayName == "Amiga.APTR")
+		{
+			return MethodReference.ForIntrinsic("intrinsic:boopsi-instance-data", signature);
 		}
 
 		if (typeName == "Amiga.BOOPSI" &&
@@ -1395,6 +1720,11 @@ internal sealed class CompilationModule : IDisposable
 		var member = Reader.GetMemberReference(handle);
 		if (member.Parent.Kind != HandleKind.TypeDefinition)
 		{
+			if (member.Parent.Kind == HandleKind.TypeReference)
+			{
+				return ResolveExternalFieldMemberReference(member, caller, ilOffset);
+			}
+
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
 				"External fields are not supported.",
@@ -1418,6 +1748,68 @@ internal sealed class CompilationModule : IDisposable
 		throw new M68kCompilationException(
 			M68kDiagnosticIds.InvalidMetadata,
 			$"Could not resolve field '{name}'.",
+			caller.DisplayName,
+			ilOffset);
+	}
+
+	private CilField ResolveExternalFieldMemberReference(
+		MemberReference member,
+		CilMethod caller,
+		int ilOffset)
+	{
+		var reference = Reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+		var assemblyName = GetReferencedAssemblyName(reference.ResolutionScope);
+		var typeName = GetTypeName(reference);
+		var fieldName = Reader.GetString(member.Name);
+		var fieldType = member.DecodeFieldSignature(_signatureProvider, CilGenericContext.Empty);
+		var path = Path.Combine(_assemblyDirectory, assemblyName + ".dll");
+		if (!File.Exists(path))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				"External fields are not supported.",
+				caller.DisplayName,
+				ilOffset);
+		}
+
+		var type = Assembly.LoadFrom(path).GetType(typeName, throwOnError: false);
+		var fields = type?
+			.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+			.Where(static field => !field.IsStatic)
+			.OrderBy(static field => field.MetadataToken)
+			.ToArray() ?? Array.Empty<FieldInfo>();
+		var offset = 0;
+		foreach (var field in fields)
+		{
+			if (!IsReflectionStructField(field.FieldType) &&
+				!IsReflectionFixedBufferField(field.FieldType))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"Field '{typeName}::{field.Name}' has unsupported type '{ReflectionDisplayName(field.FieldType)}'.",
+					caller.DisplayName,
+					ilOffset);
+			}
+
+			offset = Align(offset, ReflectionFieldSize(field.FieldType) >= 2 ? 2 : 1);
+
+			if (field.Name == fieldName)
+			{
+				return new CilField(
+					default,
+					default,
+					$"{typeName}::{fieldName}",
+					fieldType,
+					IsStatic: false,
+					ExternalOffset: offset);
+			}
+
+			offset += ReflectionFieldSize(field.FieldType);
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.InvalidMetadata,
+			$"Could not resolve field '{typeName}::{fieldName}'.",
 			caller.DisplayName,
 			ilOffset);
 	}
@@ -1514,6 +1906,54 @@ internal sealed class CompilationModule : IDisposable
 		return null;
 	}
 
+	private string? TryGetBoopsiDispatcherName(CustomAttributeHandleCollection handles)
+	{
+		foreach (var handle in handles)
+		{
+			if (!string.Equals(
+				GetAttributeTypeName(handle),
+				BoopsiDispatcherAttributeName,
+				StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			var attribute = Reader.GetCustomAttribute(handle);
+			var value = attribute.DecodeValue(new AttributeTypeProvider(Reader));
+			return value.FixedArguments.Length == 0 || value.FixedArguments[0].Value is null
+				? string.Empty
+				: value.FixedArguments[0].Value as string ?? throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"[BOOPSI.Dispatcher] name must be a string.");
+		}
+
+		return null;
+	}
+
+	private string? TryGetMuiListDisplayCallbackName(CustomAttributeHandleCollection handles)
+	{
+		foreach (var handle in handles)
+		{
+			if (!string.Equals(
+				GetAttributeTypeName(handle),
+				MuiListDisplayCallbackAttributeName,
+				StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			var attribute = Reader.GetCustomAttribute(handle);
+			var value = attribute.DecodeValue(new AttributeTypeProvider(Reader));
+			return value.FixedArguments.Length == 0 || value.FixedArguments[0].Value is null
+				? string.Empty
+				: value.FixedArguments[0].Value as string ?? throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"[MUI.List.DisplayCallback] name must be a string.");
+		}
+
+		return null;
+	}
+
 	private M68kRegister? TryGetRegister(CustomAttributeHandleCollection handles)
 	{
 		foreach (var handle in handles)
@@ -1564,11 +2004,21 @@ internal sealed class CompilationModule : IDisposable
 		};
 	}
 
-	private string GetTypeName(TypeDefinition definition) =>
-		QualifiedName(definition.Namespace, definition.Name);
+	private string GetTypeName(TypeDefinition definition)
+		=> QualifiedName(definition.Namespace, definition.Name);
 
-	private string GetTypeName(TypeReference reference) =>
-		QualifiedName(reference.Namespace, reference.Name);
+	private string GetTypeName(TypeReference reference)
+	{
+		var name = QualifiedName(reference.Namespace, reference.Name);
+		if (reference.ResolutionScope.Kind == HandleKind.TypeReference)
+		{
+			var declaringType = Reader.GetTypeReference(
+				(TypeReferenceHandle)reference.ResolutionScope);
+			return $"{GetTypeName(declaringType)}+{name}";
+		}
+
+		return name;
+	}
 
 	private string QualifiedName(StringHandle namespaceHandle, StringHandle nameHandle)
 	{
@@ -1671,7 +2121,8 @@ internal sealed record CilField(
 	TypeDefinitionHandle DeclaringType,
 	string DisplayName,
 	CilType Type,
-	bool IsStatic);
+	bool IsStatic,
+	int? ExternalOffset = null);
 
 internal sealed record CilTypeLayout(
 	TypeDefinitionHandle Handle,
