@@ -4712,9 +4712,11 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
-			if (target.ImportName == "intrinsic:cstring-from-literal")
+			if (target.ImportName is
+				"intrinsic:cstring-from-literal" or
+				"intrinsic:amiga-vararg-from-literal")
 			{
-				EmitCStringFromLiteral(caller, instruction);
+				EmitCStringFromLiteral(caller, instruction, target.ImportName);
 				return;
 			}
 
@@ -5069,7 +5071,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
-	private void EmitCStringFromLiteral(CilMethod caller, CilInstruction instruction)
+	private void EmitCStringFromLiteral(
+		CilMethod caller,
+		CilInstruction instruction,
+		string intrinsicName = "intrinsic:cstring-from-literal")
 	{
 		var index = -1;
 		for (var candidate = 0; candidate < caller.Instructions.Count; candidate++)
@@ -5087,7 +5092,9 @@ internal sealed partial class M68kCodeGenerator
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
-				"CString.FromLiteral requires a string literal argument.",
+				intrinsicName == "intrinsic:amiga-vararg-from-literal"
+					? "Implicit AmigaVarArg string conversion requires a string literal argument."
+					: "CString.FromLiteral requires a string literal argument.",
 				caller.DisplayName,
 				instruction.Offset);
 		}
@@ -5116,7 +5123,7 @@ internal sealed partial class M68kCodeGenerator
 				(int)next.Operand!,
 				caller,
 				next.Offset);
-			return target.ImportName == "intrinsic:cstring-from-literal";
+			return IsCStringLiteralIntrinsic(target.ImportName);
 		}
 
 		return false;

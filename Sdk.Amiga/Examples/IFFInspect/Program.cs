@@ -32,7 +32,7 @@ public static class Program
 	[M68kEntryPoint]
 	public static int Main(int argLength, CONST_STRPTR argText)
 	{
-		var dosBase = OpenLibrary(CString.FromLiteral("dos.library"));
+		var dosBase = OpenLibrary("dos.library");
 		if (dosBase.IsNull)
 		{
 			return DOS.RETURN_FAIL;
@@ -41,10 +41,10 @@ public static class Program
 		DOS.DOSLibraryBase = dosBase;
 		try
 		{
-			var iffParseBase = OpenLibrary(CString.FromLiteral("iffparse.library"));
+			var iffParseBase = OpenLibrary("iffparse.library");
 			if (iffParseBase.IsNull)
 			{
-				DOS.PutStr(CString.FromLiteral("Cannot open iffparse.library\n"));
+				DOS.PutStr("Cannot open iffparse.library\n");
 				return DOS.RETURN_FAIL;
 			}
 
@@ -59,12 +59,12 @@ public static class Program
 					}
 
 					Inspect(CString.FromPointer(argText.Raw));
-					DOS.PutStr(CString.FromLiteral("IFF stream is valid\n"));
+					DOS.PutStr("IFF stream is valid\n");
 					return DOS.RETURN_OK;
 				}
 				catch (IFFInspectException exception)
 				{
-					DOS.PutStr(CString.FromLiteral("IFF inspection failed\n"));
+					DOS.PutStr("IFF inspection failed\n");
 					return exception.Operation == OperationAllocateIFF
 						? DOS.RETURN_FAIL
 						: DOS.RETURN_ERROR;
@@ -140,10 +140,10 @@ public static class Program
 
 	private static BPTR OpenFile(CString path)
 	{
-		var file = DOS.Open(path, DOS.MODE_OLDFILE);
+		var file = DOS.Open(path, DOS.FileMode.OldFile);
 		if (!file.HasValue)
 		{
-			throw new IFFInspectException(OperationOpenFile, DOS.IoErr());
+			throw new IFFInspectException(OperationOpenFile, (int)DOS.IoErr());
 		}
 
 		return file.Value;

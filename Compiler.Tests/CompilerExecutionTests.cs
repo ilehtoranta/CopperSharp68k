@@ -794,12 +794,36 @@ public sealed class CompilerExecutionTests
 		var bus = CreateHunkBus(result);
 		bus.RegisterGateway(libraryBase - 954, state =>
 		{
-			Assert.Equal("value: %ld\n", ReadCString(bus, state.D[1]));
+			Assert.Equal("value: %ld %s\n", ReadCString(bus, state.D[1]));
 			Assert.Equal(10u, bus.ReadLong(state.D[2]));
+			Assert.Equal("items", ReadCString(bus, bus.ReadLong(state.D[2] + 4)));
 			state.D[0] = 12;
 		});
 
 		Assert.Equal(12u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void LowersImplicitCStringLiteralForAmigaApi(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint libraryBase = 0x0000_3C00;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallDosPutStrImplicitLiteral",
+			Cpu = target
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(libraryBase - 948, state =>
+		{
+			Assert.Equal("implicit CString\n", ReadCString(bus, state.D[1]));
+			state.D[0] = 17;
+		});
+
+		Assert.Equal(17u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
 	}
 
 	[Theory]
@@ -1423,6 +1447,44 @@ public sealed class CompilerExecutionTests
 		Assert.Contains("__c68k_exception_unwind_frame:", result.Text, StringComparison.Ordinal);
 		Assert.Contains("__c68k_gc_mark_roots:", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("__c68k_eh_", result.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void DosErrorsExposeCompleteTypedSdkSurface()
+	{
+		Assert.Equal(49, Enum.GetValues<global::Amiga.DOS.Error>().Length);
+		Assert.Equal(3, Enum.GetValues<global::Amiga.DOS.FileMode>().Length);
+		Assert.Equal(4, Enum.GetValues<global::Amiga.DOS.LockMode>().Length);
+		Assert.Equal(103, (int)global::Amiga.DOS.Error.NoFreeStore);
+		Assert.Equal(232, (int)global::Amiga.DOS.Error.NoMoreEntries);
+		Assert.Equal(305, (int)global::Amiga.DOS.Error.NotExecutable);
+		Assert.Equal(1004, (int)global::Amiga.DOS.FileMode.ReadWrite);
+		Assert.Equal(1005, (int)global::Amiga.DOS.FileMode.OldFile);
+		Assert.Equal(1006, (int)global::Amiga.DOS.FileMode.NewFile);
+		Assert.Equal(-2, (int)global::Amiga.DOS.LockMode.Shared);
+		Assert.Equal(-2, (int)global::Amiga.DOS.LockMode.Read);
+		Assert.Equal(-1, (int)global::Amiga.DOS.LockMode.Exclusive);
+		Assert.Equal(-1, (int)global::Amiga.DOS.LockMode.Write);
+
+		var ioErr = typeof(global::Amiga.DOS).GetMethod(nameof(global::Amiga.DOS.IoErr));
+		var setIoErr = typeof(global::Amiga.DOS).GetMethod(nameof(global::Amiga.DOS.SetIoErr));
+		var open = typeof(global::Amiga.DOS).GetMethod(nameof(global::Amiga.DOS.Open));
+		var lock_ = typeof(global::Amiga.DOS).GetMethod(nameof(global::Amiga.DOS.Lock));
+		Assert.NotNull(ioErr);
+		Assert.NotNull(setIoErr);
+		Assert.NotNull(open);
+		Assert.NotNull(lock_);
+		Assert.Equal(typeof(global::Amiga.DOS.Error), ioErr.ReturnType);
+		Assert.Equal(typeof(global::Amiga.DOS.Error), setIoErr.ReturnType);
+		Assert.Equal(
+			typeof(global::Amiga.DOS.Error),
+			Assert.Single(setIoErr.GetParameters()).ParameterType);
+		Assert.Equal(
+			typeof(global::Amiga.DOS.FileMode),
+			open.GetParameters()[1].ParameterType);
+		Assert.Equal(
+			typeof(global::Amiga.DOS.LockMode),
+			lock_.GetParameters()[1].ParameterType);
 	}
 
 	[Fact]

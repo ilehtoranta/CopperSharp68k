@@ -13,16 +13,16 @@ public static class Program
 	[M68kEntryPoint]
 	public static int Main(int argLength, CONST_STRPTR argText)
 	{
-		var dosBase = Exec.OpenLibrary(CString.FromLiteral("dos.library"), 33);
+		var dosBase = Exec.OpenLibrary("dos.library", 33);
 		if (dosBase != null)
 		{
 			DOS.DOSLibraryBase = dosBase.Value;
 
 			var fib = new FileInfoBlock();
 			var fibAddress = APTR.ToUInt32(FileInfoBlock.AddressOf(ref fib));
-			var path = argLength > 0
+			CString path = argLength > 0
 				? CString.FromPointer(argText.Raw)
-				: CString.FromLiteral("");
+				: "";
 
 			var result = ListDirectory(path, fibAddress);
 
@@ -36,11 +36,11 @@ public static class Program
 
 	private static int ListDirectory(CString path, uint fib)
 	{
-		var lock_ = DOS.Lock(path, DOS.SHARED_LOCK);
+		var lock_ = DOS.Lock(path, DOS.LockMode.Shared);
 		if (!lock_.HasValue)
 		{
 			var error = DOS.IoErr();
-			DOS.Printf(CString.FromLiteral("Cannot lock path, IoErr %ld\n"), (uint)error);
+			DOS.Printf("Cannot lock path, IoErr %ld\n", (uint)error);
 			return DOS.RETURN_FAIL;
 		}
 
@@ -48,7 +48,7 @@ public static class Program
 		if (DOS.Examine(lock_.Value, fib) == 0)
 		{
 			var error = DOS.IoErr();
-			DOS.Printf(CString.FromLiteral("Examine failed, IoErr %ld\n"), (uint)error);
+			DOS.Printf("Examine failed, IoErr %ld\n", (uint)error);
 			result = DOS.RETURN_FAIL;
 		}
 		else if ((int)APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DirEntryTypeOffset) < 0)
@@ -63,9 +63,9 @@ public static class Program
 			}
 
 			var error = DOS.IoErr();
-			if (error != DOS.ERROR_NO_MORE_ENTRIES)
+			if (error != DOS.Error.NoMoreEntries)
 			{
-				DOS.Printf(CString.FromLiteral("ExNext failed, IoErr %ld\n"), (uint)error);
+				DOS.Printf("ExNext failed, IoErr %ld\n", (uint)error);
 				result = DOS.RETURN_FAIL;
 			}
 		}
@@ -82,7 +82,7 @@ public static class Program
 		var minute = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateMinuteOffset);
 		var tick = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateTickOffset);
 		DOS.Printf(
-			CString.FromLiteral("%-30s %10ld  %ld/%ld/%ld\n"),
+			"%-30s %10ld  %ld/%ld/%ld\n",
 			name,
 			size,
 			days,

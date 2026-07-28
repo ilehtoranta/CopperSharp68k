@@ -14,24 +14,24 @@ public static class Program
 	[M68kEntryPoint]
 	public static uint Main()
 	{
-		var title = CString.FromLiteral("MUI Sunflower");
+		CString title = "MUI Sunflower";
 		var button = MUIButton("Grow");
 		var label = MUIText("A tiny MUI window from CopperSharp.Sdk.Amiga.");
 
 		var group = MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Group.Name),
+			Group.Name,
 			Group.Child, label,
 			Group.Child, button,
 			Tag.Done);
 
 		var window = new WindowObject(MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Window.Name),
+			Window.Name,
 			Window.Title, title,
 			Window.RootObject, group,
 			Tag.Done));
 
 		var app = new ApplicationObject(MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Application.Name),
+			Application.Name,
 			Application.Author, CString.FromLiteral("CopperSharp68k"),
 			Application.Base, CString.FromLiteral("SUNFLOWER"),
 			Application.Description, CString.FromLiteral("Simple MUI window and button example."),
@@ -50,7 +50,7 @@ public static class Program
 
 	private static uint MUIText(CString contents) =>
 		MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Text.Name),
+			Text.Name,
 			Text.Contents, contents,
 			Tag.Done);
 

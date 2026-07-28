@@ -866,7 +866,7 @@ internal sealed class CompilationModule : IDisposable
 		foreach (var handle in Reader.TypeDefinitions)
 		{
 			var definition = Reader.GetTypeDefinition(handle);
-			if (GetTypeName(definition) == displayName)
+			if (TypeNameMatches(definition, displayName))
 			{
 				return IsTransparentScalarType(definition);
 			}
@@ -916,6 +916,8 @@ internal sealed class CompilationModule : IDisposable
 		return typeName == displayName ||
 			typeName.EndsWith($".{displayName}", StringComparison.Ordinal) ||
 			typeName.EndsWith($"/{displayName}", StringComparison.Ordinal) ||
+			displayName.EndsWith($"/{typeName}", StringComparison.Ordinal) ||
+			displayName.EndsWith($"+{typeName}", StringComparison.Ordinal) ||
 			Reader.GetString(definition.Name) == displayName;
 	}
 
@@ -1406,8 +1408,9 @@ internal sealed class CompilationModule : IDisposable
 		return ReflectionDisplayName(reflectionType) == cilType.DisplayName;
 	}
 
-	private static string ReflectionDisplayName(Type type) =>
-		type.FullName switch
+	private static string ReflectionDisplayName(Type type)
+	{
+		var displayName = type.FullName switch
 		{
 			"System.Void" => "void",
 			"System.Boolean" => "bool",
@@ -1425,6 +1428,8 @@ internal sealed class CompilationModule : IDisposable
 			"System.String" => "string",
 			_ => type.FullName ?? type.Name
 		};
+		return displayName.Replace('+', '/');
+	}
 
 	private static IReadOnlyList<M68kMetadataAttribute> DecodeReflectionAttributes(
 		IEnumerable<CustomAttributeData> attributes) =>
@@ -1784,10 +1789,17 @@ internal sealed class CompilationModule : IDisposable
 
 		if (typeName == "Amiga.AmigaVarArg" &&
 			name == "op_Implicit" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].Size == 4)
+			signature.ParameterTypes.Length == 1)
 		{
-			return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-value", signature);
+			if (signature.ParameterTypes[0].DisplayName == "string")
+			{
+				return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-literal", signature);
+			}
+
+			if (signature.ParameterTypes[0].Size == 4)
+			{
+				return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-value", signature);
+			}
 		}
 
 		if (typeName == "Amiga.Hook" &&

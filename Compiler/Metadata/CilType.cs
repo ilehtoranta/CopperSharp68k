@@ -145,7 +145,7 @@ internal sealed class CilSignatureTypeProvider :
 		byte rawTypeKind)
 	{
 		var definition = reader.GetTypeDefinition(handle);
-		var name = QualifiedName(reader, definition.Namespace, definition.Name);
+		var name = QualifiedName(reader, handle, definition);
 		return rawTypeKind == 0x11
 			? new(CilTypeKind.ValueType, name == "Amiga.CString" ? 4 : 0, name)
 			: new(CilTypeKind.ManagedReference, 4, name);
@@ -157,7 +157,7 @@ internal sealed class CilSignatureTypeProvider :
 		byte rawTypeKind)
 	{
 		var reference = reader.GetTypeReference(handle);
-		var name = QualifiedName(reader, reference.Namespace, reference.Name);
+		var name = QualifiedName(reader, reference);
 		return rawTypeKind == 0x11
 			? new(CilTypeKind.ValueType, name == "Amiga.CString" ? 4 : 0, name)
 			: new(CilTypeKind.ManagedReference, 4, name);
@@ -172,11 +172,33 @@ internal sealed class CilSignatureTypeProvider :
 
 	private static string QualifiedName(
 		MetadataReader reader,
-		StringHandle namespaceHandle,
-		StringHandle nameHandle)
+		TypeDefinitionHandle handle,
+		TypeDefinition definition)
 	{
-		var typeNamespace = reader.GetString(namespaceHandle);
-		var name = reader.GetString(nameHandle);
+		var name = reader.GetString(definition.Name);
+		var declaringType = definition.GetDeclaringType();
+		if (!declaringType.IsNil)
+		{
+			return $"{QualifiedName(reader, declaringType, reader.GetTypeDefinition(declaringType))}/{name}";
+		}
+
+		var typeNamespace = reader.GetString(definition.Namespace);
+		return string.IsNullOrEmpty(typeNamespace) ? name : $"{typeNamespace}.{name}";
+	}
+
+	private static string QualifiedName(
+		MetadataReader reader,
+		TypeReference reference)
+	{
+		var name = reader.GetString(reference.Name);
+		if (reference.ResolutionScope.Kind == HandleKind.TypeReference)
+		{
+			return $"{QualifiedName(
+				reader,
+				reader.GetTypeReference((TypeReferenceHandle)reference.ResolutionScope))}/{name}";
+		}
+
+		var typeNamespace = reader.GetString(reference.Namespace);
 		return string.IsNullOrEmpty(typeNamespace) ? name : $"{typeNamespace}.{name}";
 	}
 }

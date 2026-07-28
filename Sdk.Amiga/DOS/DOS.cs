@@ -11,16 +11,85 @@ namespace Amiga;
 [AmigaLibrary(Name)]
 public static class DOS
 {
+	public enum Error : int
+	{
+		None = 0,
+
+		NoFreeStore = 103,
+		TaskTableFull = 105,
+
+		BadTemplate = 114,
+		BadNumber = 115,
+		RequiredArgumentMissing = 116,
+		KeyNeedsArgument = 117,
+		TooManyArguments = 118,
+		UnmatchedQuotes = 119,
+		LineTooLong = 120,
+		FileNotObject = 121,
+		InvalidResidentLibrary = 122,
+
+		NoDefaultDirectory = 201,
+		ObjectInUse = 202,
+		ObjectExists = 203,
+		DirectoryNotFound = 204,
+		ObjectNotFound = 205,
+		BadStreamName = 206,
+		ObjectTooLarge = 207,
+		ActionNotKnown = 209,
+		InvalidComponentName = 210,
+		InvalidLock = 211,
+		ObjectWrongType = 212,
+		DiskNotValidated = 213,
+		DiskWriteProtected = 214,
+		RenameAcrossDevices = 215,
+		DirectoryNotEmpty = 216,
+		TooManyLevels = 217,
+		DeviceNotMounted = 218,
+		SeekError = 219,
+		CommentTooBig = 220,
+		DiskFull = 221,
+		DeleteProtected = 222,
+		WriteProtected = 223,
+		ReadProtected = 224,
+		NotADosDisk = 225,
+		NoDisk = 226,
+		NoMoreEntries = 232,
+		IsSoftLink = 233,
+		ObjectLinked = 234,
+		BadHunk = 235,
+		NotImplemented = 236,
+		RecordNotLocked = 240,
+		LockCollision = 241,
+		LockTimeout = 242,
+		UnlockError = 243,
+
+		BufferOverflow = 303,
+		Break = 304,
+		NotExecutable = 305,
+	}
+
+	public enum FileMode : int
+	{
+		ReadWrite = 1004,
+		OldFile = 1005,
+		NewFile = 1006,
+	}
+
+	public enum LockMode : int
+	{
+		Shared = -2,
+		Read = Shared,
+		Exclusive = -1,
+		Write = Exclusive,
+	}
+
 	public const string Name = "dos.library";
 
-	// Return codes and errors from <dos/dos.h>.
+	// Return codes from <dos/dos.h>.
 	public const int RETURN_OK = 0;
 	public const int RETURN_WARN = 5;
 	public const int RETURN_ERROR = 10;
 	public const int RETURN_FAIL = 20;
-	public const int ERROR_NO_MORE_ENTRIES = 232;
-	public const int SHARED_LOCK = -2;
-	public const int MODE_OLDFILE = 1005;
 
 	public static APTR DOSLibraryBase
 	{
@@ -34,7 +103,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? Open(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] int accessMode);
+		[M68kRegister(M68kRegister.D2)] FileMode accessMode);
 
 	[AmigaLvo(-36)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -85,7 +154,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? Lock(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] int type);
+		[M68kRegister(M68kRegister.D2)] LockMode type);
 
 	[AmigaLvo(-90)]
 	public static extern void UnLock(
@@ -126,7 +195,7 @@ public static class DOS
 
 	[AmigaLvo(-132)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern int IoErr();
+	public static extern Error IoErr();
 
 	[AmigaLvo(-138)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -453,13 +522,13 @@ public static class DOS
 
 	[AmigaLvo(-462)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern int SetIoErr(
-		[M68kRegister(M68kRegister.D1)] int result);
+	public static extern Error SetIoErr(
+		[M68kRegister(M68kRegister.D1)] Error result);
 
 	[AmigaLvo(-468)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Fault(
-		[M68kRegister(M68kRegister.D1)] int code,
+		[M68kRegister(M68kRegister.D1)] Error code,
 		[M68kRegister(M68kRegister.D2)] CString header,
 		[M68kRegister(M68kRegister.D3)] uint buffer,
 		[M68kRegister(M68kRegister.D4)] int length);
@@ -467,13 +536,13 @@ public static class DOS
 	[AmigaLvo(-474)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int PrintFault(
-		[M68kRegister(M68kRegister.D1)] int code,
+		[M68kRegister(M68kRegister.D1)] Error code,
 		[M68kRegister(M68kRegister.D2)] CString header);
 
 	[AmigaLvo(-480)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ErrorReport(
-		[M68kRegister(M68kRegister.D1)] int code,
+		[M68kRegister(M68kRegister.D1)] Error code,
 		[M68kRegister(M68kRegister.D2)] int type,
 		[M68kRegister(M68kRegister.D3)] uint arg1,
 		[M68kRegister(M68kRegister.D4)] uint device);

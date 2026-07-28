@@ -182,7 +182,7 @@ internal sealed partial class M68kCodeGenerator
 				(int)instructions[valueIndex + 1].Operand!,
 				caller,
 				instructions[valueIndex + 1].Offset);
-			if (fromLiteral.ImportName == "intrinsic:cstring-from-literal")
+			if (IsCStringLiteralIntrinsic(fromLiteral.ImportName))
 			{
 				value = new ArgumentValue(instructions[valueIndex], IsCStringLiteral: true);
 				consumed = 2;
@@ -848,6 +848,11 @@ internal sealed partial class M68kCodeGenerator
 
 		return false;
 	}
+
+	private static bool IsCStringLiteralIntrinsic(string? importName) =>
+		importName is
+			"intrinsic:cstring-from-literal" or
+			"intrinsic:amiga-vararg-from-literal";
 
 	private string ResolveExportAddressLabel(
 		CilMethod caller,

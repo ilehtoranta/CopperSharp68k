@@ -503,7 +503,14 @@ public static class CompilerFixtures
 	{
 		global::Amiga.DOS.DOSLibraryBase = 0x0000_3C00;
 		var value = 10u;
-		return global::Amiga.DOS.Printf(CString.FromLiteral("value: %ld\n"), value);
+		return global::Amiga.DOS.Printf("value: %ld %s\n", value, "items");
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CallDosPutStrImplicitLiteral()
+	{
+		global::Amiga.DOS.DOSLibraryBase = 0x0000_3C00;
+		return global::Amiga.DOS.PutStr("implicit CString\n");
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -690,7 +697,9 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint CallSdkDosOpen()
 	{
-		var file = global::Amiga.DOS.Open(0x0000_1900, 1005);
+		var file = global::Amiga.DOS.Open(
+			0x0000_1900,
+			global::Amiga.DOS.FileMode.OldFile);
 		return file.HasValue ? file.Value.Raw : 0u;
 	}
 
@@ -1131,7 +1140,9 @@ public static class CompilerFixtures
 
 public static class StaticInitializationFixtures
 {
-	private static readonly BPTR? File = global::Amiga.DOS.Open("s:startup-sequence", 1005);
+	private static readonly BPTR? File = global::Amiga.DOS.Open(
+		"s:startup-sequence",
+		global::Amiga.DOS.FileMode.OldFile);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint Entry() => File.HasValue ? File.Value.Raw : 0u;

@@ -28,4 +28,7 @@ public readonly struct AmigaVarArg
 
 	public static implicit operator AmigaVarArg(CString value) =>
 		new(CString.ToUInt32(value));
+
+	public static implicit operator AmigaVarArg(string value) =>
+		new(CString.ToUInt32(CString.FromLiteral(value)));
 }

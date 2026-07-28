@@ -97,7 +97,7 @@ public static class Program
 
 		var appClass = MUIMaster.MUI_CreateCustomClass(
 			0,
-			CString.FromLiteral(Application.Name),
+			Application.Name,
 			0,
 			TaskListApplication.Data.SizeInBytes,
 			APTR.ExportAddress("muitasklist.app.dispatcher"));
@@ -108,14 +108,14 @@ public static class Program
 		}
 
 		var list = MUIMaster.MUI_NewObject(
-			CString.FromLiteral(List.Name),
+			List.Name,
 			List.Format, CString.FromLiteral("BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20"),
 			List.Title, One(),
 			List.DisplayHook, Hook.AddressOf(ref _displayHook),
 			Tag.Done);
 
 		var listView = MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Listview.Name),
+			Listview.Name,
 			Listview.List, list,
 			Tag.Done);
 
@@ -123,14 +123,14 @@ public static class Program
 		var closeButton = MUIMaster.MUI_MakeObject(MakeObject.Button, CString.FromLiteral("Close"));
 
 		var group = MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Group.Name),
+			Group.Name,
 			Group.Child, listView,
 			Group.Child, refreshButton,
 			Group.Child, closeButton,
 			Tag.Done);
 
 		var window = MUIMaster.MUI_NewObject(
-			CString.FromLiteral(Window.Name),
+			Window.Name,
 			Window.Title, CString.FromLiteral("MUI Task List"),
 			Window.RootObject, group,
 			Tag.Done);
@@ -225,9 +225,9 @@ public static class Program
 	{
 		if (row.IsTitle)
 		{
-			output.Task = CString.FromLiteral("Task");
-			output.State = CString.FromLiteral("State");
-			output.Priority = CString.FromLiteral("Pri");
+			output.Task = "Task";
+			output.State = "State";
+			output.Priority = "Pri";
 			return;
 		}
 
