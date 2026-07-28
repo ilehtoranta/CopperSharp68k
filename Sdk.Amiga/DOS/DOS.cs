@@ -20,6 +20,7 @@ public static class DOS
 	public const int RETURN_FAIL = 20;
 	public const int ERROR_NO_MORE_ENTRIES = 232;
 	public const int SHARED_LOCK = -2;
+	public const int MODE_OLDFILE = 1005;
 
 	public static APTR DOSLibraryBase
 	{

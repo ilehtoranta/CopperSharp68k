@@ -140,4 +140,6 @@ taglists and method messages as guest pointers.
 
 See `Examples/DOS` for a minimal manual `dos.library` open/print/cleanup
 program. See `Examples/MUISunflower` for a minimal MUI object tree with an
-application, window, group, text object, and button.
+application, window, group, text object, and button. See
+`Examples/IFFInspect` for DOS-backed IFF parsing with typed exceptions and
+nested deterministic cleanup.
