@@ -237,7 +237,7 @@ public static class Program
 			return ++data.RefreshCount;
 		}
 
-		return Native.DoSuperMethodA(cl, obj, messageAddress);
+		return BOOPSI.DoSuperMethodA(cl, obj, messageAddress);
 	}
 
 	[List.DisplayCallback("muitasklist.list.display")]
@@ -331,16 +331,6 @@ public static class Program
 		public CString State => TaskListEntry.FromAddress(APTR.FromPointer(_entry)).State;
 
 		public CString Priority => TaskListEntry.FromAddress(APTR.FromPointer(_entry)).Priority;
-	}
-
-	private static class Native
-	{
-		[M68kImport("amiga.boopsi.DoSuperMethodA")]
-		[return: M68kRegister(M68kRegister.D0)]
-		public static extern uint DoSuperMethodA(
-			[M68kRegister(M68kRegister.A0)] uint cl,
-			[M68kRegister(M68kRegister.A2)] uint obj,
-			[M68kRegister(M68kRegister.A1)] uint message);
 	}
 
 }
