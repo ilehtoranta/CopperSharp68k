@@ -85,7 +85,6 @@ public static class Program
 	public static uint Main()
 	{
 		WriteHook(ref _displayHook, APTR.ExportAddress("muitasklist.list.display"));
-		var displayHook = Hook.AddressOf(ref _displayHook);
 		_entryWorkbench = AllocTaskEntry("Workbench", "Ready", "0");
 		_entryInput = AllocTaskEntry("input.device", "Waiting", "20");
 		_entryIdle = AllocTaskEntry("Idle", "Sleeping", "-128");
@@ -108,72 +107,45 @@ public static class Program
 			return 20;
 		}
 
-		var listClass = CString.FromLiteral(List.Name);
-		var listFormatTag = List.Format;
-		var listFormat = CString.FromLiteral("BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20");
-		var listTitleTag = List.Title;
-		var listTitle = One();
-		var listDisplayHookTag = List.DisplayHook;
-		var done = Tag.Done;
 		var list = MUIMaster.MUI_NewObject(
-			listClass,
-			listFormatTag, listFormat,
-			listTitleTag, listTitle,
-			listDisplayHookTag, displayHook,
-			done);
+			CString.FromLiteral(List.Name),
+			List.Format, CString.FromLiteral("BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20"),
+			List.Title, One(),
+			List.DisplayHook, Hook.AddressOf(ref _displayHook),
+			Tag.Done);
 
-		var listViewClass = CString.FromLiteral(Listview.Name);
-		var listViewListTag = Listview.List;
 		var listView = MUIMaster.MUI_NewObject(
-			listViewClass,
-			listViewListTag, list,
-			done);
+			CString.FromLiteral(Listview.Name),
+			Listview.List, list,
+			Tag.Done);
 
 		var refreshButton = MUIMaster.MUI_MakeObject(MakeObject.Button, CString.FromLiteral("Refresh"));
 		var closeButton = MUIMaster.MUI_MakeObject(MakeObject.Button, CString.FromLiteral("Close"));
 
-		var groupClass = CString.FromLiteral(Group.Name);
-		var groupChild = Group.Child;
 		var group = MUIMaster.MUI_NewObject(
-			groupClass,
-			groupChild, listView,
-			groupChild, refreshButton,
-			groupChild, closeButton,
-			done);
+			CString.FromLiteral(Group.Name),
+			Group.Child, listView,
+			Group.Child, refreshButton,
+			Group.Child, closeButton,
+			Tag.Done);
 
-		var windowClass = CString.FromLiteral(Window.Name);
-		var windowTitleTag = Window.Title;
-		var windowTitle = CString.FromLiteral("MUI Task List");
-		var windowRootTag = Window.RootObject;
 		var window = MUIMaster.MUI_NewObject(
-			windowClass,
-			windowTitleTag, windowTitle,
-			windowRootTag, group,
-			done);
+			CString.FromLiteral(Window.Name),
+			Window.Title, CString.FromLiteral("MUI Task List"),
+			Window.RootObject, group,
+			Tag.Done);
 
-		var appAuthor = Application.Author;
-		var appAuthorValue = CString.FromLiteral("CopperSharp68k");
-		var appBase = Application.Base;
-		var appBaseValue = CString.FromLiteral("CSHPTASKLIST");
-		var appDescription = Application.Description;
-		var appDescriptionValue = CString.FromLiteral("MUI subclass and hook example.");
-		var appTitle = Application.Title;
-		var appTitleValue = CString.FromLiteral("MUI Task List");
-		var appVersion = Application.Version;
-		var appVersionValue = CString.FromLiteral("$VER: MUITaskList 1.0");
-		var appWindow = Application.Window;
 		ref var appClassHeader = ref CustomClassHeader.FromAddress(APTR.FromPointer(appClass));
-		var appClassPtr = appClassHeader.Class;
 		var app = Intuition.NewObject(
-			appClassPtr,
+			appClassHeader.Class,
 			0,
-			appAuthor, appAuthorValue,
-			appBase, appBaseValue,
-			appDescription, appDescriptionValue,
-			appTitle, appTitleValue,
-			appVersion, appVersionValue,
-			appWindow, window,
-			done);
+			Application.Author, CString.FromLiteral("CopperSharp68k"),
+			Application.Base, CString.FromLiteral("CSHPTASKLIST"),
+			Application.Description, CString.FromLiteral("MUI subclass and hook example."),
+			Application.Title, CString.FromLiteral("MUI Task List"),
+			Application.Version, CString.FromLiteral("$VER: MUITaskList 1.0"),
+			Application.Window, window,
+			Tag.Done);
 		if (app == 0)
 		{
 			MUIMaster.MUI_DeleteCustomClass(appClass);

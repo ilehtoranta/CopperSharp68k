@@ -30,22 +30,15 @@ public static class Program
 			Window.RootObject, group,
 			Tag.Done));
 
-		var applicationAuthor = Application.Author;
-		var applicationBase = Application.Base;
-		var applicationDescription = Application.Description;
-		var applicationTitle = Application.Title;
-		var applicationVersion = Application.Version;
-		var applicationWindow = Application.Window;
-		var done = Tag.Done;
 		var app = new ApplicationObject(MUIMaster.MUI_NewObject(
 			CString.FromLiteral(Application.Name),
-			applicationAuthor, CString.FromLiteral("CopperSharp68k"),
-			applicationBase, CString.FromLiteral("SUNFLOWER"),
-			applicationDescription, CString.FromLiteral("Simple MUI window and button example."),
-			applicationTitle, title,
-			applicationVersion, CString.FromLiteral("$VER: MUISunflower 1.0"),
-			applicationWindow, window,
-			done));
+			Application.Author, CString.FromLiteral("CopperSharp68k"),
+			Application.Base, CString.FromLiteral("SUNFLOWER"),
+			Application.Description, CString.FromLiteral("Simple MUI window and button example."),
+			Application.Title, title,
+			Application.Version, CString.FromLiteral("$VER: MUISunflower 1.0"),
+			Application.Window, window,
+			Tag.Done));
 
 		app.ConnectCloseRequest(window);
 		window.SetOpen(true);
