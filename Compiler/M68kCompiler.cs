@@ -20,12 +20,44 @@ public static class M68kCompiler
 		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
 		ValidateRuntimeOptions(request);
 
+		var managedAssemblyPaths = request.ManagedAssemblyPaths.ToList();
+		var configuredManagedRuntimePath = request.ManagedAssemblyPaths.FirstOrDefault(path =>
+			string.Equals(
+				Path.GetFileName(path),
+				"CopperSharp.Runtime.Managed.dll",
+				StringComparison.OrdinalIgnoreCase));
+		var managedRuntimePath = configuredManagedRuntimePath ??
+			Path.Combine(AppContext.BaseDirectory, "CopperSharp.Runtime.Managed.dll");
+		if (GetEffectiveMemoryManagement(request) == M68kMemoryManagement.ManagedPoolMarkSweepGc &&
+			!File.Exists(managedRuntimePath))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidInput,
+				$"ManagedPoolMarkSweepGc requires '{managedRuntimePath}'. " +
+				"Add CopperSharp.Runtime.Managed.dll to ManagedAssemblyPaths or the compiler output directory.");
+		}
+		if (File.Exists(managedRuntimePath))
+		{
+			if (!managedAssemblyPaths.Contains(managedRuntimePath, StringComparer.OrdinalIgnoreCase))
+			{
+				managedAssemblyPaths.Add(managedRuntimePath);
+			}
+		}
+
 		using var module = new CompilationModule(
 			request.AssemblyPath,
-			request.ExternalCallResolvers);
+			request.ExternalCallResolvers,
+			managedAssemblyPaths);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
+		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
+				M68kMemoryManagement.ManagedPoolMarkSweepGc
+				? ResolveManagedPoolRuntime(module)
+				: null;
 		M68kStaticAnalyzer.Analyze(module, entry, request);
-		var generated = new M68kCodeGenerator(module, request).Generate(entry);
+		var generated = new M68kCodeGenerator(
+			module,
+			request,
+			managedPoolRuntime).Generate(entry);
 
 		return request.OutputFormat switch
 		{
@@ -36,6 +68,38 @@ public static class M68kCompiler
 				M68kDiagnosticIds.InvalidOutputOptions,
 				$"Unknown output format {request.OutputFormat}.")
 		};
+	}
+
+	private static ManagedPoolRuntimeModule ResolveManagedPoolRuntime(CompilationModule module)
+	{
+		const string assembly = "CopperSharp.Runtime.Managed";
+		const string type = "CopperSharp.Runtime.ManagedPool";
+		CilMethod Method(string name) =>
+			module.ResolveManagedMethod(assembly, $"{type}::{name}");
+		CilField Field(string name) =>
+			module.ResolveManagedField(assembly, type, name);
+
+		return new ManagedPoolRuntimeModule(
+			Method("Initialize"),
+			Method("GetAllocationSize"),
+			Method("Allocate"),
+			Method("Dispose"),
+			Method("Mark"),
+			Method("MarkRoots"),
+			Method("CollectWithRoots"),
+			Method("Collect"),
+			Method("Coalesce"),
+			Method("GetStaleBytes"),
+			Method("GetStaleBlocks"),
+			Method("Shutdown"),
+			Field("HeapStart"),
+			Field("HeapEnd"),
+			Field("FreeHead"),
+			Field("AllocatedHead"),
+			Field("StaleBytes"),
+			Field("StaleBlocks"),
+			Field("StaleBytesThreshold"),
+			Field("StaleBlocksThreshold"));
 	}
 
 	internal static M68kMemoryManagement GetEffectiveMemoryManagement(
@@ -154,7 +218,7 @@ public static class M68kCompiler
 		var methodOffsets = new List<(string Name, int Offset)>();
 		foreach (var method in program.Methods)
 		{
-			var label = $"method:{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle):X8}";
+			var label = program.MethodLabels[method.Identity];
 			methodOffsets.Add((method.DisplayName, linked.Labels[label]));
 		}
 

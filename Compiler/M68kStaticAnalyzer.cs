@@ -147,9 +147,25 @@ internal static class M68kStaticAnalyzer
 		}
 
 		var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
-		if (target.Definition is { IsImport: false } definition)
+		ValidateCallDispatch(method, instruction, target);
+		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 		{
-			pending.Enqueue(definition);
+			foreach (var implementation in module.GetInterfaceImplementations(interfaceMethod))
+			{
+				pending.Enqueue(implementation);
+			}
+		}
+		else if (target.Definition is { IsImport: false } definition &&
+			RequiresVirtualDispatch(instruction, definition))
+		{
+			foreach (var implementation in module.GetVirtualImplementations(definition))
+			{
+				pending.Enqueue(implementation);
+			}
+		}
+		else if (target.Definition is { IsImport: false } directDefinition)
+		{
+			pending.Enqueue(directDefinition);
 		}
 
 		if (target.ImportName is not null &&
@@ -165,6 +181,45 @@ internal static class M68kStaticAnalyzer
 			RequireGcRuntime(method, instruction, request, target.ImportName);
 		}
 	}
+
+	private static void ValidateCallDispatch(
+		CilMethod caller,
+		CilInstruction instruction,
+		MethodReference target)
+	{
+		if (target.Definition is not { } method)
+		{
+			return;
+		}
+
+		if (method.DeclaringTypeIsInterface &&
+			(instruction.OpCode != OpCodes.Callvirt ||
+			 !method.Signature.Header.IsInstance))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedPolymorphism,
+				$"Interface method '{method.DisplayName}' must be invoked through instance callvirt dispatch.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+
+		if (method.IsAbstract &&
+			!method.DeclaringTypeIsInterface &&
+			!RequiresVirtualDispatch(instruction, method))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedPolymorphism,
+				$"Abstract method '{method.DisplayName}' must be invoked through class virtual dispatch.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+	}
+
+	private static bool RequiresVirtualDispatch(CilInstruction instruction, CilMethod method) =>
+		instruction.OpCode == OpCodes.Callvirt &&
+		method.IsVirtual &&
+		!method.IsFinal &&
+		!method.DeclaringTypeIsSealed;
 
 	private static bool IsRuntimeDisposeOperation(string name) =>
 		name is "intrinsic:runtime-dispose" or

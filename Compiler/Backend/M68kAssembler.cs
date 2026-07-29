@@ -46,9 +46,8 @@ internal sealed class M68kAssembler
 		new(0xFFFF, 0x588F, static _ => "addq.l\t#4,a7"),
 		new(0xFFFF, 0x5381, static _ => "subq.l\t#1,d1"),
 		new(0xFFFF, 0x4680, static _ => "not.l\td0"),
-		new(0xFFFF, 0x4A80, static _ => "tst.l\td0"),
-		new(0xFFFF, 0x4A81, static _ => "tst.l\td1"),
 		new(0xFFF8, 0x4A00, static opcode => "tst.b\td" + (opcode & 7)),
+		new(0xFFF8, 0x4A40, static opcode => "tst.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x4A80, static opcode => "tst.l\td" + (opcode & 7)),
 		new(0xFFFF, 0x42A7, static _ => "clr.l\t-(a7)"),
 		new(0xFFFF, 0x4297, static _ => "clr.l\t(a7)"),
@@ -57,6 +56,7 @@ internal sealed class M68kAssembler
 		new(0xFFF8, 0x49C0, static opcode => "extb.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4280, static opcode => "clr.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4850, static opcode => "pea\t(a" + (opcode & 7) + ")"),
+		new(0xFFF8, 0x4E90, static opcode => "jsr\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4ED0, static opcode => "jmp\t(a" + (opcode & 7) + ")"),
 		new(0xF100, 0x7000, static opcode =>
 			"moveq\t#" + unchecked((sbyte)(opcode & 0xFF)) + ",d" + ((opcode >> 9) & 7)),
@@ -78,7 +78,9 @@ internal sealed class M68kAssembler
 			SetConditionMnemonic((M68kCondition)((opcode >> 8) & 0x0F)) + "\td" + (opcode & 7)),
 		new(0xFFF8, 0x4298, static opcode => "clr.l\t(a" + (opcode & 7) + ")+"),
 		new(0xFFF8, 0x4400, static opcode => "neg.b\td" + (opcode & 7)),
+		new(0xFFF8, 0x4440, static opcode => "neg.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x4480, static opcode => "neg.l\td" + (opcode & 7)),
+		new(0xFFF8, 0x4640, static opcode => "not.w\td" + (opcode & 7)),
 		new(0xF1FF, 0x5097, static opcode => "addq.l\t#" + QuickCount(opcode) + ",(a7)"),
 		new(0xF1FF, 0x5197, static opcode => "subq.l\t#" + QuickCount(opcode) + ",(a7)"),
 		new(0xF1F8, 0x5080, static opcode => "addq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
@@ -579,6 +581,13 @@ internal sealed class M68kAssembler
 				$"movea.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
 			return true;
 		}
+		if ((opcode & 0xF1FF) == 0x41FA &&
+			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
+		{
+			instruction = new(
+				$"lea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
+			return true;
+		}
 
 		if (opcode == 0x23EF && TryReadWord(offset + 2, out var frameSourceDisplacement) &&
 			context.Addresses.TryGetValue(offset + 4, out var frameToAddress))
@@ -764,20 +773,51 @@ internal sealed class M68kAssembler
 		out RenderedInstruction instruction)
 	{
 		var opcode = context.Opcode;
-		if ((opcode & 0xF1F8) is 0x9080 or 0x8080 or 0xC080)
+		var binary = opcode & 0xF1F8;
+		if (binary is
+			0xD000 or 0xD040 or 0xD080 or
+			0x9000 or 0x9040 or 0x9080 or
+			0x8000 or 0x8040 or 0x8080 or
+				0xC000 or 0xC040 or 0xC080 or
+				0xB100 or 0xB140 or 0xB180)
 		{
-			var mnemonic = (opcode & 0xF1F8) switch
+			var mnemonic = binary switch
 			{
+				0xD000 => "add.b",
+				0xD040 => "add.w",
+				0xD080 => "add.l",
+				0x9000 => "sub.b",
+				0x9040 => "sub.w",
 				0x9080 => "sub.l",
+				0x8000 => "or.b",
+				0x8040 => "or.w",
 				0x8080 => "or.l",
-				_ => "and.l"
+				0xC000 => "and.b",
+				0xC040 => "and.w",
+				0xC080 => "and.l",
+				0xB100 => "eor.b",
+				0xB140 => "eor.w",
+				_ => "eor.l"
+			};
+			instruction = binary is 0xB100 or 0xB140 or 0xB180
+				? new($"{mnemonic}\td{(opcode >> 9) & 7},d{opcode & 7}", 2)
+				: new($"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
+			return true;
+		}
+		if (binary is 0xB000 or 0xB040 or 0xB080)
+		{
+			var mnemonic = binary switch
+			{
+				0xB000 => "cmp.b",
+				0xB040 => "cmp.w",
+				_ => "cmp.l"
 			};
 			instruction = new($"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
 			return true;
 		}
-		if ((opcode & 0xF1F8) == 0xB180)
+		if (binary is 0xC0C0 or 0xC1C0)
 		{
-			instruction = new($"eor.l\td{(opcode >> 9) & 7},d{opcode & 7}", 2);
+			instruction = new($"{(binary == 0xC1C0 ? "muls" : "mulu")}.w\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
 			return true;
 		}
 
@@ -819,6 +859,12 @@ internal sealed class M68kAssembler
 		var masked = context.Opcode & 0xF1F8;
 		var mnemonic = masked switch
 		{
+			0xE000 => "asr.b",
+			0xE008 => "lsr.b",
+			0xE108 => "lsl.b",
+			0xE040 => "asr.w",
+			0xE048 => "lsr.w",
+			0xE148 => "lsl.w",
 			0xE080 => "asr.l",
 			0xE088 => "lsr.l",
 			0xE188 => "lsl.l",

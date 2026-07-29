@@ -1,11 +1,15 @@
 using System.Runtime.CompilerServices;
 using Amiga;
 using CopperSharp.Sdk.Amiga;
+using CopperSharp.Compiler.Tests.MultiModule;
 
 namespace CopperSharp.Compiler.Tests;
 
 public static class CompilerFixtures
 {
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MultiModuleEntry() => ExternalMethods.AddAndDouble(12, 9);
+
 	private sealed class FixtureException : Exception
 	{
 	}
@@ -801,6 +805,158 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InheritedObjectLayoutEntry()
+	{
+		var value = new InheritedLayoutDerived
+		{
+			BaseValue = 7,
+			BaseReference = new ManagedBox { Value = 11 },
+			DerivedReference = new ManagedBox { Value = 13 },
+			DerivedValue = 11
+		};
+		return value.Sum();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int SealedDirectCallEntry() =>
+		new SealedDirectClass().GetValue();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ExplicitBaseCallEntry() =>
+		new DirectBaseCallDerived().GetBaseValue();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int VirtualDispatchEntry()
+	{
+		VirtualBase value = new SealedVirtualDerived();
+		return value.GetValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int VirtualBaseDispatchEntry()
+	{
+		VirtualBase value = new VirtualBase();
+		return value.GetValue() + 41;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int VirtualArgumentDispatchEntry()
+	{
+		VirtualMathBase value = new VirtualMathDerived();
+		return value.Add(40);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MultiSlotVirtualDispatchEntry()
+	{
+		MultiSlotBase value = new MultiSlotDerived();
+		return value.First() + value.Second();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AbstractVirtualDispatchEntry()
+	{
+		AbstractValueSource value = new ConcreteValueSource();
+		return value.GetValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedWideVirtualDispatchEntry()
+	{
+		WideVirtualBase value = new WideVirtualDerived();
+		return value.Sum(10, 20, 12);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NullVirtualDispatchEntry()
+	{
+		VirtualBase? value = null;
+		try
+		{
+			return value!.GetValue();
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InterfaceDispatchEntry()
+	{
+		IValueSource value = new InterfaceValueSource();
+		return value.GetValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InterfaceArgumentDispatchEntry()
+	{
+		IAdder value = new InterfaceAdder();
+		return value.Add(40);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MultipleInterfaceDispatchEntry()
+	{
+		var implementation = new MultipleInterfaceSource();
+		IFirstValue first = implementation;
+		ISecondValue second = implementation;
+		return first.GetFirst() + second.GetSecond();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InheritedInterfaceDispatchEntry()
+	{
+		IDerivedValueSource derived = new DerivedValueSource();
+		IBaseValueSource baseValue = derived;
+		return baseValue.GetBaseValue() + derived.GetDerivedValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ExplicitInterfaceDispatchEntry()
+	{
+		var implementation = new ExplicitInterfaceSource();
+		IExplicitFirst first = implementation;
+		IExplicitSecond second = implementation;
+		return first.GetValue() + second.GetValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InheritedClassInterfaceDispatchEntry()
+	{
+		IValueSource value = new InheritedInterfaceValueSource();
+		return value.GetValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NullInterfaceDispatchEntry()
+	{
+		IValueSource? value = null;
+		try
+		{
+			return value!.GetValue();
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedWideInterfaceDispatchEntry()
+	{
+		IWideAdder value = new WideInterfaceAdder();
+		return value.Add(10, 20, 12);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedDefaultInterfaceDispatchEntry()
+	{
+		IDefaultValueSource value = new DefaultValueSource();
+		return value.GetValue();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int NullComparisonEntry()
 	{
 		ManagedBox? box = null;
@@ -887,6 +1043,74 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowByteArithmeticEntry()
+	{
+		byte left = 250;
+		byte right = 10;
+		return (byte)(left + right);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowShortArithmeticEntry()
+	{
+		short left = 30000;
+		short right = 10000;
+		return (short)(left + right);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowArithmeticOperationsEntry()
+	{
+		sbyte signedLeft = -120;
+		sbyte signedRight = 10;
+		var signedSum = (sbyte)(signedLeft + signedRight);
+
+		ushort unsignedLeft = 65000;
+		ushort unsignedRight = 1000;
+		var unsignedDifference = (ushort)(unsignedLeft - unsignedRight);
+
+		byte productLeft = 15;
+		byte productRight = 17;
+		var product = (byte)(productLeft * productRight);
+
+		short shiftValue = -100;
+		var shifted = (short)(shiftValue >> 1);
+		var negated = (sbyte)-signedLeft;
+
+		return signedSum + unsignedDifference + product + shifted + negated;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowUnsignedSubtractionEntry()
+	{
+		ushort left = 65000;
+		ushort right = 1000;
+		return (ushort)(left - right);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowByteMultiplyEntry()
+	{
+		byte left = 15;
+		byte right = 17;
+		return (byte)(left * right);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowShortShiftEntry()
+	{
+		short value = -100;
+		return (short)(value >> 1);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowSignedNegateEntry()
+	{
+		sbyte value = -120;
+		return (sbyte)-value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int IndirectMemoryEntry()
 	{
 		var bytes = new byte[2];
@@ -894,6 +1118,21 @@ public static class CompilerFixtures
 		WriteByte(ref bytes[0], 0xF1);
 		WriteWord(ref words[0], -1234);
 		return ReadUnsignedByte(ref bytes[0]) + ReadSignedWord(ref words[0]);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AddressReadConstantEntry()
+	{
+		var address = M68kAddress.FromUInt32(0x0000_4000);
+		return M68kAddress.ReadUInt32(address, 8);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AddressWriteConstantEntry()
+	{
+		var address = M68kAddress.FromUInt32(0x0000_4000);
+		M68kAddress.WriteUInt32(address, 8, 42);
+		return 42;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -929,8 +1168,13 @@ public static class CompilerFixtures
 	{
 		_disposableArray = new int[4];
 		_disposableArray[0] = 13;
+		_disposableArray[1] = 99;
 		M68kRuntime.DisposeInt32Array(ref _disposableArray);
 		var reused = new int[4];
+		if (reused[1] != 0)
+		{
+			return 0;
+		}
 		reused[0] = 42;
 		return reused[0];
 	}
@@ -1114,6 +1358,213 @@ public static class CompilerFixtures
 	{
 		public ManagedChainNode? Next;
 		public int Value;
+	}
+
+	public class InheritedLayoutBase
+	{
+		public int BaseValue;
+		public ManagedBox? BaseReference;
+	}
+
+	public sealed class InheritedLayoutDerived : InheritedLayoutBase
+	{
+		public ManagedBox? DerivedReference;
+		public int DerivedValue;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int Sum() =>
+			BaseValue + BaseReference!.Value + DerivedReference!.Value + DerivedValue;
+	}
+
+	public class VirtualBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public virtual int GetValue() => 1;
+	}
+
+	public sealed class SealedVirtualDerived : VirtualBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public sealed override int GetValue() => 42;
+	}
+
+	public sealed class SealedDirectClass
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetValue() => 42;
+	}
+
+	public sealed class DirectBaseCallDerived : VirtualBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public override int GetValue() => 2;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetBaseValue() => base.GetValue() + 41;
+	}
+
+	public class VirtualMathBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public virtual int Add(int value) => value + 1;
+	}
+
+	public sealed class VirtualMathDerived : VirtualMathBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public override int Add(int value) => value + 2;
+	}
+
+	public class MultiSlotBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public virtual int First() => 20;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public virtual int Second() => 1;
+	}
+
+	public sealed class MultiSlotDerived : MultiSlotBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public override int Second() => 22;
+	}
+
+	public abstract class AbstractValueSource
+	{
+		public abstract int GetValue();
+	}
+
+	public sealed class ConcreteValueSource : AbstractValueSource
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public override int GetValue() => 42;
+	}
+
+	public class WideVirtualBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public virtual int Sum(int first, int second, int third) =>
+			first + second + third;
+	}
+
+	public sealed class WideVirtualDerived : WideVirtualBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public override int Sum(int first, int second, int third) =>
+			first + second + third;
+	}
+
+	public interface IValueSource
+	{
+		int GetValue();
+	}
+
+	public sealed class InterfaceValueSource : IValueSource
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetValue() => 42;
+	}
+
+	public interface IAdder
+	{
+		int Add(int value);
+	}
+
+	public sealed class InterfaceAdder : IAdder
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int Add(int value) => value + 2;
+	}
+
+	public interface IFirstValue
+	{
+		int GetFirst();
+	}
+
+	public interface ISecondValue
+	{
+		int GetSecond();
+	}
+
+	public sealed class MultipleInterfaceSource : IFirstValue, ISecondValue
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetFirst() => 20;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetSecond() => 22;
+	}
+
+	public interface IBaseValueSource
+	{
+		int GetBaseValue();
+	}
+
+	public interface IDerivedValueSource : IBaseValueSource
+	{
+		int GetDerivedValue();
+	}
+
+	public sealed class DerivedValueSource : IDerivedValueSource
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetBaseValue() => 19;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetDerivedValue() => 23;
+	}
+
+	public interface IExplicitFirst
+	{
+		int GetValue();
+	}
+
+	public interface IExplicitSecond
+	{
+		int GetValue();
+	}
+
+	public sealed class ExplicitInterfaceSource : IExplicitFirst, IExplicitSecond
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		int IExplicitFirst.GetValue() => 20;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		int IExplicitSecond.GetValue() => 22;
+	}
+
+	public class InterfaceValueSourceBase
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetValue() => 42;
+	}
+
+	public sealed class InheritedInterfaceValueSource :
+		InterfaceValueSourceBase,
+		IValueSource
+	{
+	}
+
+	public interface IWideAdder
+	{
+		int Add(int first, int second, int third);
+	}
+
+	public sealed class WideInterfaceAdder : IWideAdder
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int Add(int first, int second, int third) =>
+			first + second + third;
+	}
+
+	public interface IDefaultValueSource
+	{
+		int GetValue() => 42;
+	}
+
+	public sealed class DefaultValueSource : IDefaultValueSource
+	{
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

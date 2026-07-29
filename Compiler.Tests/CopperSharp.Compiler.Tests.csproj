@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
+    <ProjectReference Include="..\Compiler.Tests.MultiModule\CopperSharp.Compiler.Tests.MultiModule.csproj" />
+    <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\CopperSharp.Sdk.Amiga.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\IFFInspect\IFFInspect.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\MUITaskList\MUITaskList.csproj" />

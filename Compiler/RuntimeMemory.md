@@ -106,3 +106,34 @@ payload + 12 first array/string element
 
 The compiler-generated managed pointer is always the payload address, not the
 header address.
+
+The descriptor pointer at payload offset zero addresses:
+
+```text
+TypeDescriptor:
+  +0  object size in bytes, or zero for variable-size objects
+  +4  object reference-field bitmap
+  +8  base type descriptor pointer
+  +12 class vtable pointer, or zero when the type has no virtual slots
+  +16 interface map pointer, or zero when no reachable interface call applies
+```
+
+Each vtable entry is a 32-bit code pointer. Derived class tables retain base
+slot numbering and replace entries for overrides in place.
+
+The interface map uses a compact linear representation:
+
+```text
+InterfaceMap:
+  +0  entry count
+  repeated entries:
+      interface identity pointer
+      interface method-table pointer
+```
+
+Interface method tables contain one 32-bit code pointer per inherited or
+declared interface slot. A class receives a separate method table for each
+reachable interface it implements, allowing two explicit implementations with
+the same method signature to select different code. Linear lookup keeps the
+runtime and metadata deterministic and is appropriate for the small interface
+counts expected on 68k targets.

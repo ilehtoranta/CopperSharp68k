@@ -309,8 +309,28 @@ public static class AmigaM68kCompiler
 		ArgumentNullException.ThrowIfNull(request);
 		var resolvedOptions = options ?? new AmigaCompilationOptions();
 		AmigaStaticAnalyzer.Analyze(request, resolvedOptions);
+		var imports = request.Imports;
+		if (request.ExceptionMode == M68kExceptionMode.Full &&
+			request.OutputFormat != M68kOutputFormat.KickstartRom)
+		{
+			var configured = new Dictionary<string, uint>(request.Imports, StringComparer.Ordinal)
+			{
+				[M68kRuntimeImports.AmigaUnhandledExceptionRequester] = 1
+			};
+			imports = new ReadOnlyDictionary<string, uint>(configured);
+		}
+		if (request.MemoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc &&
+			request.OutputFormat != M68kOutputFormat.KickstartRom)
+		{
+			var configured = new Dictionary<string, uint>(imports, StringComparer.Ordinal)
+			{
+				[M68kRuntimeImports.AmigaManagedPoolArena] = 1
+			};
+			imports = new ReadOnlyDictionary<string, uint>(configured);
+		}
 		return M68kCompiler.Compile(request with
 		{
+			Imports = imports,
 			ExternalCallResolvers =
 			[
 				new AmigaExternalCallResolver(resolvedOptions)

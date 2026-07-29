@@ -32,18 +32,21 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveRedundantTest() ||
 				TryRemoveDeadTest(dataflow) ||
 				TryRemoveDeadInstruction(dataflow) ||
+				TryRemoveDataRegisterRoundTrip(dataflow) ||
 				TryFoldAddressToDataRegisterMove(dataflow) ||
 				TryForwardMoveQuickThroughDataMove(dataflow) ||
 				TryForwardMemoryLoadThroughStackToAddressRegister() ||
 				TryNarrowAddition(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryCanonicalizeAddressAdjustments() ||
-				TryRemoveRedundantStackShuffle() ||
+				TryRemoveRedundantStackShuffle(dataflow) ||
 				TryRemoveRedundantStackArgumentShuffle() ||
+				TryRemoveZeroExtendedByteRegisterStackRoundTrip() ||
+				TryRemoveByteRegisterStackRoundTrip() ||
 				TryReplaceZeroRegisterRoundTrip() ||
 				TryReplaceAddressStackRoundTrip() ||
-				TryRemoveStackDuplicateRoundTrip() ||
-				TryRemoveRegisterStackRoundTrip() ||
+				TryRemoveStackDuplicateRoundTrip(dataflow) ||
+				TryRemoveRegisterStackRoundTrip(dataflow) ||
 				TryReplaceCompareRegisterZeroWithTest() ||
 				TryRemoveRedundantRegisterSpill();
 		}
@@ -266,6 +269,63 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryRemoveDataRegisterRoundTrip(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var first = instructions[index];
+			var second = instructions[index + 1];
+			if ((first.Opcode & 0xF1F8) != 0x2000 ||
+				first.Length != 2 ||
+				(second.Opcode & 0xF1F8) != 0x2000 ||
+				second.Length != 2 ||
+				IsReferencedLabelAt(first.Offset) ||
+				IsReferencedLabelAt(second.Offset))
+			{
+				continue;
+			}
+
+			var sourceRegister = first.Opcode & 7;
+			var temporaryRegister = (first.Opcode >> 9) & 7;
+			if (sourceRegister == temporaryRegister ||
+				(second.Opcode & 7) != temporaryRegister ||
+				((second.Opcode >> 9) & 7) != sourceRegister ||
+				!dataflow.TryGetFacts(second.Offset, out var facts))
+			{
+				continue;
+			}
+
+			if (facts.LiveConditionsAfter == M68kConditionCodeSet.None)
+			{
+				MoveLabelsToOffset(
+					first.Offset + first.Length,
+					second.Offset + second.Length,
+					first.Offset);
+				_buffer.RemoveBytes(second.Offset, second.Length);
+				_buffer.RemoveBytes(first.Offset, first.Length);
+			}
+			else if ((facts.LiveConditionsAfter &
+				(M68kConditionCodeSet.Overflow | M68kConditionCodeSet.Carry)) ==
+				M68kConditionCodeSet.None)
+			{
+				_buffer.WriteWord(first.Offset, (ushort)(0x4A80 | sourceRegister));
+				_buffer.RemoveBytes(second.Offset, second.Length);
+			}
+			else
+			{
+				_buffer.WriteWord(
+					first.Offset,
+					(ushort)(0x2000 | (sourceRegister << 9) | sourceRegister));
+				_buffer.RemoveBytes(second.Offset, second.Length);
+			}
+
+			return true;
+		}
+
+		return false;
+	}
+
 	private bool TryFoldAddressToDataRegisterMove(M68kInstructionDataflow dataflow)
 	{
 		var instructions = _assembler.GetInstructionStream();
@@ -427,7 +487,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 					facts.Effects.IsBarrier ||
 					facts.Effects.ReadsMemory != M68kMemorySet.None ||
 					facts.Effects.WritesMemory != M68kMemorySet.None ||
+					(facts.Effects.UsesAddress & (1 << 7)) != 0 ||
 					(facts.Effects.DefinesAddress & (1 << 7)) != 0 ||
+					facts.Effects.ReadsConditions != M68kConditionCodeSet.None ||
 					facts.Effects.StackDelta is { } stackDelta && stackDelta != 0)
 				{
 					break;
@@ -559,7 +621,77 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryRemoveStackDuplicateRoundTrip()
+	private bool TryRemoveZeroExtendedByteRegisterStackRoundTrip()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 2 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var widen = instructions[index + 1];
+			var pop = instructions[index + 2];
+			if (push.Length != 2 ||
+				!TryGetByteRegisterStackPush(push.Opcode, out var sourceRegister) ||
+				widen.Length != 2 ||
+				(widen.Opcode & 0xF100) != 0x7000 ||
+				(widen.Opcode & 0xFF) != 0 ||
+				pop.Length != 2 ||
+				!TryGetByteRegisterStackPop(pop.Opcode, out var destinationRegister) ||
+				sourceRegister == destinationRegister ||
+				IsReferencedLabelAt(widen.Offset) ||
+				IsReferencedLabelAt(pop.Offset))
+			{
+				continue;
+			}
+
+			MoveLabelsToOffset(
+				widen.Offset,
+				pop.Offset + pop.Length,
+				push.Offset);
+			_buffer.WriteWord(
+				push.Offset,
+				(ushort)(0x7000 | (destinationRegister << 9)));
+			_buffer.WriteWord(
+				push.Offset + push.Length,
+				(ushort)(0x1000 | (destinationRegister << 9) | sourceRegister));
+			_buffer.RemoveBytes(pop.Offset, pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveByteRegisterStackRoundTrip()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var pop = instructions[index + 1];
+			if (push.Length != 2 ||
+				!TryGetByteRegisterStackPush(push.Opcode, out var sourceRegister) ||
+				pop.Length != 2 ||
+				!TryGetByteRegisterStackPop(pop.Opcode, out var destinationRegister) ||
+				IsReferencedLabelAt(pop.Offset))
+			{
+				continue;
+			}
+
+			var replacement = sourceRegister == destinationRegister
+				? (ushort)(0x4A00 | sourceRegister) // TST.B Dn preserves the final MOVE.B flags.
+				: (ushort)(0x1000 | (destinationRegister << 9) | sourceRegister);
+			MoveLabelsToOffset(
+				push.Offset + push.Length,
+				pop.Offset + pop.Length,
+				push.Offset);
+			_buffer.WriteWord(push.Offset, replacement);
+			_buffer.RemoveBytes(pop.Offset, pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveStackDuplicateRoundTrip(M68kInstructionDataflow dataflow)
 	{
 		var instructions = _assembler.GetInstructionStream();
 		for (var index = 0; index + 1 < instructions.Count; index++)
@@ -570,7 +702,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				duplicate.Length != 2 ||
 				pop.Length != 2 ||
 				IsReferencedLabelAt(pop.Offset) ||
-				!TryGetRegisterStackPop(pop.Opcode, out var destinationIsAddress, out var destinationRegister))
+				!TryGetRegisterStackPop(pop.Opcode, out var destinationIsAddress, out var destinationRegister) ||
+				destinationIsAddress &&
+				(!dataflow.TryGetFacts(pop.Offset, out var facts) ||
+				 facts.LiveConditionsAfter != M68kConditionCodeSet.None))
 			{
 				continue;
 			}
@@ -621,7 +756,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryRemoveRegisterStackRoundTrip()
+	private bool TryRemoveRegisterStackRoundTrip(M68kInstructionDataflow dataflow)
 	{
 		var instructions = _assembler.GetInstructionStream();
 		for (var index = 0; index + 1 < instructions.Count; index++)
@@ -632,7 +767,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				pop.Length != 2 ||
 				IsReferencedLabelAt(pop.Offset) ||
 				!TryGetRegisterStackPush(push.Opcode, out var sourceIsAddress, out var sourceRegister) ||
-				!TryGetRegisterStackPop(pop.Opcode, out var destinationIsAddress, out var destinationRegister))
+				!TryGetRegisterStackPop(pop.Opcode, out var destinationIsAddress, out var destinationRegister) ||
+				destinationIsAddress &&
+				(!dataflow.TryGetFacts(pop.Offset, out var facts) ||
+				 facts.LiveConditionsAfter != M68kConditionCodeSet.None))
 			{
 				continue;
 			}
@@ -704,6 +842,30 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private static bool TryGetByteRegisterStackPush(ushort opcode, out int register)
+	{
+		if ((opcode & 0xFFF8) == 0x1F00)
+		{
+			register = opcode & 7;
+			return true;
+		}
+
+		register = 0;
+		return false;
+	}
+
+	private static bool TryGetByteRegisterStackPop(ushort opcode, out int register)
+	{
+		if ((opcode & 0xF1FF) == 0x101F)
+		{
+			register = (opcode >> 9) & 7;
+			return true;
+		}
+
+		register = 0;
+		return false;
+	}
+
 	private bool IsReferencedLabelAt(int offset)
 	{
 		return _buffer.Branches.Any(branch =>
@@ -715,10 +877,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_buffer.Labels.TryGetValue(reference.Target, out var target) && target == offset);
 	}
 
-	private bool TryRemoveRedundantStackShuffle()
+	private bool TryRemoveRedundantStackShuffle(M68kInstructionDataflow dataflow)
 	{
 		var instructions = _assembler.GetInstructionStream();
-		var dataflow = M68kInstructionDataflow.Analyze(_assembler);
 		for (var index = 0; index + 4 < instructions.Count; index++)
 		{
 			var firstPush = instructions[index];
@@ -736,8 +897,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				(firstPop.Opcode & 0xF1FF) != 0x201F ||
 				secondPop.Length != 2 ||
 				secondPop.Opcode != (ushort)(0x201F | ((firstPush.Opcode & 7) << 9)) ||
-				!dataflow.TryGetFacts(constant.Offset, out var constantFacts) ||
-				!constantFacts.ConditionsAreDeadAfter ||
+				!dataflow.TryGetFacts(secondPop.Offset, out var secondPopFacts) ||
+				!secondPopFacts.ConditionsAreDeadAfter ||
 				IsReferencedLabelAt(constant.Offset) ||
 				IsReferencedLabelAt(secondPush.Offset) ||
 				IsReferencedLabelAt(firstPop.Offset) ||

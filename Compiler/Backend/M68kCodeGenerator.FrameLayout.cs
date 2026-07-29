@@ -453,6 +453,13 @@ internal sealed partial class M68kCodeGenerator
 		out LocalLiveInterval interval)
 	{
 		interval = default;
+		if (method.Instructions.Any(static instruction =>
+			instruction.OpCode == OpCodes.Conv_I1 || instruction.OpCode == OpCodes.Conv_U1 ||
+			instruction.OpCode == OpCodes.Conv_I2 || instruction.OpCode == OpCodes.Conv_U2))
+		{
+			return false;
+		}
+
 		var localType = method.Locals[localIndex];
 		var isTransparentScalar = _module.IsTransparentScalarType(localType);
 		var isCompactNullable = IsCompactNullableType(localType);

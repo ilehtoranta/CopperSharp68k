@@ -99,6 +99,16 @@ and `CopperSharp.Sdk.Amiga` packages.
 - Static and instance 32-bit fields, object construction with constructor
   arguments that fit the private register ABI, UTF-16 string literals, and
   one-, two-, and four-byte scalar arrays plus reference arrays.
+- Classes with single inheritance, statically direct instance calls, and
+  vtable-based class virtual dispatch. Base-class instance fields retain their
+  inherited offsets, inherited reference fields remain in GC descriptor
+  bitmaps, and overrides replace the inherited slot without renumbering later
+  slots. Virtual calls currently require arguments that fit the private
+  register ABI.
+- Closed-world interface dispatch through per-type interface maps, including
+  interface inheritance, implementations inherited from base classes, multiple
+  interfaces, and explicit interface implementations. Interface calls also
+  currently require the private register ABI.
 - Shared generic method bodies when every generic value uses the same
   four-byte scalar/reference representation.
 - MC68000-compatible software long multiply/divide, with MC68020/MC68040 long
@@ -126,6 +136,7 @@ stale-pressure telemetry. Compiler-emitted allocation-site collection marks the
 current frame and typed managed-reference evaluation-stack slots before
 sweeping.
 `M68kGcTelemetryOptions` carries the
-thresholds for that telemetry mode. Virtual and interface dispatch, type
-initializers, and full generic dictionaries are not part of this first package
-version.
+thresholds for that telemetry mode. Default interface methods, generic
+interfaces, cross-module interface maps, type initializers, and full generic
+dictionaries are not part of this first package version. Unsupported interface
+forms are reported with `C68K0011`.

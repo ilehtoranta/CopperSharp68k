@@ -14,6 +14,8 @@ internal enum CilStackValueKind
 	BooleanByte,
 	UnsignedByte,
 	SignedByte,
+	UnsignedWord,
+	SignedWord,
 	Int32,
 	Int64,
 	Reference,
@@ -674,7 +676,11 @@ internal static class CilStackAnalyzer
 				throw Unsupported(method, instruction, "64-bit arithmetic and comparisons");
 			}
 
-			return Push(Pop(method, instruction, stack, 2), CilStackValueKind.Int32);
+			return Push(
+				Pop(method, instruction, stack, 2),
+				TryGetNarrowArithmeticResult(method, instruction, stack, op, out var narrowResult)
+					? narrowResult
+					: CilStackValueKind.Int32);
 		}
 
 		if (op == OpCodes.Neg || op == OpCodes.Not)
@@ -684,7 +690,11 @@ internal static class CilStackAnalyzer
 				throw Unsupported(method, instruction, "64-bit arithmetic");
 			}
 
-			return Push(Pop(method, instruction, stack, 1), CilStackValueKind.Int32);
+			return Push(
+				Pop(method, instruction, stack, 1),
+				TryGetNarrowArithmeticResult(method, instruction, stack, op, out var narrowResult)
+					? narrowResult
+					: CilStackValueKind.Int32);
 		}
 
 		if (op == OpCodes.Brtrue || op == OpCodes.Brtrue_S ||
@@ -771,6 +781,10 @@ internal static class CilStackAnalyzer
 						? CilStackValueKind.SignedByte
 						: op == OpCodes.Ldelem_U1
 							? CilStackValueKind.UnsignedByte
+							: op == OpCodes.Ldelem_I2
+								? CilStackValueKind.SignedWord
+								: op == OpCodes.Ldelem_U2
+									? CilStackValueKind.UnsignedWord
 					: CilStackValueKind.Int32);
 		}
 
@@ -788,6 +802,10 @@ internal static class CilStackAnalyzer
 						? CilStackValueKind.SignedByte
 						: op == OpCodes.Ldind_U1
 							? CilStackValueKind.UnsignedByte
+							: op == OpCodes.Ldind_I2
+								? CilStackValueKind.SignedWord
+								: op == OpCodes.Ldind_U2
+									? CilStackValueKind.UnsignedWord
 							: CilStackValueKind.Int32);
 		}
 
@@ -831,7 +849,7 @@ internal static class CilStackAnalyzer
 
 		if (IsConversion(op))
 		{
-			return Push(Pop(method, instruction, stack, 1), CilStackValueKind.Int32);
+			return Push(Pop(method, instruction, stack, 1), StackKindForConversion(op));
 		}
 
 		throw Unsupported(method, instruction, $"typed stack effect for opcode '{op.Name}'");
@@ -917,6 +935,79 @@ internal static class CilStackAnalyzer
 		return method.Signature.ParameterTypes[index];
 	}
 
+	private static bool TryGetNarrowArithmeticResult(
+		CilMethod method,
+		CilInstruction instruction,
+		ImmutableArray<CilStackValueKind> stack,
+		OpCode op,
+		out CilStackValueKind result)
+	{
+		result = default;
+		if (!TryGetFallthroughInstruction(method, instruction, out var next) ||
+			!IsNarrowConversion(next.OpCode) ||
+			!TryGetNarrowConversionKind(next.OpCode, out result))
+		{
+			return false;
+		}
+
+		if (op == OpCodes.Shl || op == OpCodes.Shr || op == OpCodes.Shr_Un)
+		{
+			return stack.Length >= 2 && CilStackValueLayout.IsSmall(stack[^2]);
+		}
+
+		if (op == OpCodes.Neg || op == OpCodes.Not)
+		{
+			return stack.Length != 0 && CilStackValueLayout.IsSmall(stack[^1]);
+		}
+
+		return stack.Length >= 2 &&
+			CilStackValueLayout.IsSmall(stack[^2]) &&
+			CilStackValueLayout.IsSmall(stack[^1]);
+	}
+
+	private static bool TryGetFallthroughInstruction(
+		CilMethod method,
+		CilInstruction instruction,
+		out CilInstruction next)
+	{
+		foreach (var candidate in method.Instructions)
+		{
+			if (candidate.Offset == instruction.NextOffset)
+			{
+				next = candidate;
+				return true;
+			}
+		}
+
+		next = null!;
+		return false;
+	}
+
+	private static bool IsNarrowConversion(OpCode op) =>
+		op == OpCodes.Conv_I1 || op == OpCodes.Conv_U1 ||
+		op == OpCodes.Conv_I2 || op == OpCodes.Conv_U2;
+
+	private static bool TryGetNarrowConversionKind(
+		OpCode op,
+		out CilStackValueKind kind)
+	{
+		kind = op == OpCodes.Conv_I1
+			? CilStackValueKind.SignedByte
+			: op == OpCodes.Conv_U1
+				? CilStackValueKind.UnsignedByte
+				: op == OpCodes.Conv_I2
+					? CilStackValueKind.SignedWord
+					: op == OpCodes.Conv_U2
+						? CilStackValueKind.UnsignedWord
+						: default;
+		return IsNarrowConversion(op);
+	}
+
+	private static CilStackValueKind StackKindForConversion(OpCode op) =>
+		TryGetNarrowConversionKind(op, out var kind)
+			? kind
+			: CilStackValueKind.Int32;
+
 	private static CilStackValueKind StackKindForType(CilType type) =>
 		type.Size == 8 && type.IsSupportedScalar
 			? CilStackValueKind.Int64
@@ -926,6 +1017,11 @@ internal static class CilStackAnalyzer
 				? CilStackValueKind.SignedByte
 			: type.Size == 1 && type.Kind == CilTypeKind.UnsignedInteger
 				? CilStackValueKind.UnsignedByte
+			: type.Size == 2 && (type.Kind == CilTypeKind.Character ||
+				type.Kind == CilTypeKind.UnsignedInteger)
+				? CilStackValueKind.UnsignedWord
+			: type.Size == 2 && type.Kind == CilTypeKind.SignedInteger
+				? CilStackValueKind.SignedWord
 			: type.Kind switch
 		{
 			CilTypeKind.ManagedReference => CilStackValueKind.Reference,
@@ -954,6 +1050,16 @@ internal static class CilStackValueLayout
 			CilStackValueKind.UnsignedByte or
 			CilStackValueKind.SignedByte;
 
+	internal static bool IsWord(CilStackValueKind kind) =>
+		kind is CilStackValueKind.UnsignedWord or
+			CilStackValueKind.SignedWord;
+
+	internal static bool IsSmall(CilStackValueKind kind) =>
+		IsByte(kind) || IsWord(kind);
+
+	internal static int ArithmeticWidth(CilStackValueKind kind) =>
+		IsByte(kind) ? 1 : IsWord(kind) ? 2 : 4;
+
 	internal static int SlotBytes(CilStackValueKind kind) =>
 		IsByte(kind) ? 2 : 4;
 
@@ -977,4 +1083,7 @@ internal static class CilStackValueLayout
 
 	internal static bool IsSignedByte(CilStackValueKind kind) =>
 		kind == CilStackValueKind.SignedByte;
+
+	internal static bool IsSignedWord(CilStackValueKind kind) =>
+		kind == CilStackValueKind.SignedWord;
 }

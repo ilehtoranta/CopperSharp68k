@@ -186,6 +186,42 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void KeepsRegisterSpillWhenExpressionReadsStackPointer()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x2017); // MOVE.L (A7),D0
+		assembler.EmitWord(0x200F); // MOVE.L A7,D0
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\ta7,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("addq.l\t#4,a7", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsRegisterSpillWhenExpressionReadsMoveFlags()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x2017); // MOVE.L (A7),D0
+		assembler.EmitWord(0x56C1); // SNE D1
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.Contains("sne\td1", assembly, StringComparison.Ordinal);
+		Assert.Contains("addq.l\t#4,a7", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void FoldsDeadAddressRegisterRoundTripIntoDataMove()
 	{
 		var assembler = new M68kAssembler();
@@ -200,6 +236,41 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains("move.l\td0,d7", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("movea.l\td0,a0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\ta0,d7", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesDataRegisterRoundTrip()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2E00); // MOVE.L D0,D7
+		assembler.EmitWord(0x2007); // MOVE.L D7,D0
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("move.l\td0,d7", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td7,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("\trts", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void ReplacesDataRegisterRoundTripWithTestWhenOnlyZeroFlagsAreLive()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2E00); // MOVE.L D0,D7
+		assembler.EmitWord(0x2007); // MOVE.L D7,D0
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7201); // Keep the branch target beyond the fallthrough
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("tst.l\td0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td0,d7", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td7,d0", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -222,6 +293,25 @@ public sealed class M68kInstructionDataflowTests
 		Assert.DoesNotContain("move.l\tdos-base,d0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\td0,-(a7)", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("movea.l\t(a7),a1", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RendersPcRelativeLeaWithItsSymbol()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x47FA); // LEA requester-text(PC),A3
+		assembler.EmitPcRelativeWord("requester-text");
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("requester-text");
+		assembler.EmitByte(0);
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+
+		Assert.Contains(
+			"lea\tC68K_requester_002Dtext(pc),a3",
+			assembly,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain("dc.w\t$47FA", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -429,6 +519,91 @@ public sealed class M68kInstructionDataflowTests
 		Assert.DoesNotContain("dc.w\t$1F00", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("dc.w\t$101F", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("dc.w\t$1F40", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesByteRegisterStackRoundTrip()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x1F00); // MOVE.B D0,-(A7)
+		assembler.EmitWord(0x101F); // MOVE.B (A7)+,D0
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7201); // Keep the branch target beyond the fallthrough
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("tst.b\td0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.b\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.b\t(a7)+,d0", assembly, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(0x2F00, 0x205F)] // MOVE.L D0,-(A7); MOVEA.L (A7)+,A0
+	[InlineData(0x2F17, 0x205F)] // MOVE.L (A7),-(A7); MOVEA.L (A7)+,A0
+	public void KeepsAddressRegisterStackRoundTripWhenMoveFlagsAreLive(
+		ushort push,
+		ushort pop)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(push);
+		assembler.EmitWord(pop);
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7201);
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("movea.l\t(a7)+,a0", assembly, StringComparison.Ordinal);
+		Assert.Contains("beq.w", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsStackShuffleWhenRestoredRegisterFlagsAreLive()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x7200); // MOVEQ #0,D1
+		assembler.EmitWord(0x2F01); // MOVE.L D1,-(A7)
+		assembler.EmitWord(0x241F); // MOVE.L (A7)+,D2
+		assembler.EmitWord(0x201F); // MOVE.L (A7)+,D0
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7401);
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\t(a7)+,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("beq.w", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesZeroExtendedByteRegisterStackRoundTrip()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x1F00); // MOVE.B D0,-(A7)
+		assembler.EmitWord(0x7200); // MOVEQ #0,D1
+		assembler.EmitWord(0x121F); // MOVE.B (A7)+,D1
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7401); // Keep the branch target beyond the fallthrough
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("moveq\t#0,d1", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.b\td0,d1", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.b\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.b\t(a7)+,d1", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]

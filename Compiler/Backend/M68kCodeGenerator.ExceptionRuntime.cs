@@ -22,11 +22,15 @@ internal sealed partial class M68kCodeGenerator
 	private const short RuntimeFramePendingActionOffset = 20;
 	private const short RuntimeFrameLeaveContinuationOffset = 24;
 
-	private readonly Dictionary<MethodDefinitionHandle, FrameLayout> _runtimeFrameLayouts = new();
-	private readonly Dictionary<MethodDefinitionHandle, ImmutableArray<ExceptionRegionGroup>> _exceptionGroups = new();
+	private readonly Dictionary<CilMethodIdentity, FrameLayout> _runtimeFrameLayouts = new();
+	private readonly Dictionary<CilMethodIdentity, ImmutableArray<ExceptionRegionGroup>> _exceptionGroups = new();
 	private readonly Dictionary<string, ExceptionState> _exceptionStates = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, NormalLeaveChain> _normalLeaveChains = new(StringComparer.Ordinal);
 	private readonly HashSet<string> _runtimeTypeDescriptors = new(StringComparer.Ordinal);
+
+	private bool UsesAmigaUnhandledExceptionRequester =>
+		_usesExceptionRuntime &&
+		_request.Imports.ContainsKey(M68kRuntimeImports.AmigaUnhandledExceptionRequester);
 
 	private sealed record ExceptionRegionEntry(int Index, CilExceptionRegion Region);
 
@@ -101,7 +105,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (CurrentFrameLayout.HasRuntimeFrame)
 		{
-			_runtimeFrameLayouts[method.Handle] = CurrentFrameLayout;
+			_runtimeFrameLayouts[method.Identity] = CurrentFrameLayout;
 		}
 	}
 
@@ -207,7 +211,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private ImmutableArray<ExceptionRegionGroup> GetExceptionGroups(CilMethod method)
 	{
-		if (_exceptionGroups.TryGetValue(method.Handle, out var cached))
+		if (_exceptionGroups.TryGetValue(method.Identity, out var cached))
 		{
 			return cached;
 		}
@@ -222,7 +226,7 @@ internal sealed partial class M68kCodeGenerator
 				group.OrderBy(static entry => entry.Index).ToImmutableArray()))
 			.OrderBy(static group => group.Id)
 			.ToImmutableArray();
-		_exceptionGroups.Add(method.Handle, groups);
+		_exceptionGroups.Add(method.Identity, groups);
 		return groups;
 	}
 
@@ -246,7 +250,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var token = MetadataTokens.GetToken(method.Handle);
-		var key = $"{token:X8}:{string.Join(",", groups.Select(static group => group.Id))}";
+		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{string.Join(",", groups.Select(static group => group.Id))}";
 		if (!_exceptionStates.TryGetValue(key, out var state))
 		{
 			state = new ExceptionState(
@@ -279,7 +283,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var token = MetadataTokens.GetToken(method.Handle);
-		var key = $"{token:X8}:{leaveOffset:X4}:{targetOffset:X4}";
+		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{leaveOffset:X4}:{targetOffset:X4}";
 		if (!_normalLeaveChains.TryGetValue(key, out var chain))
 		{
 			chain = new NormalLeaveChain(key, method, targetOffset, finallyRegions);
@@ -317,6 +321,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitExceptionEndFinallyRuntime();
 		EmitExceptionStateActions();
 		EmitNormalLeaveActions();
+		EmitAmigaUnhandledExceptionRequester();
 	}
 
 	private void EmitExceptionRaiseRuntime()
@@ -397,7 +402,131 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.EmitJsr(M68kRuntimeImports.UnhandledException, external: true);
 		}
+		if (UsesAmigaUnhandledExceptionRequester)
+		{
+			_assembler.EmitJmp(RuntimeAmigaRequesterLabel, external: false);
+			return;
+		}
 		_assembler.EmitWord(0x4AFC); // ILLEGAL
+	}
+
+	private void EmitAmigaUnhandledExceptionRequester()
+	{
+		if (!UsesAmigaUnhandledExceptionRequester)
+		{
+			return;
+		}
+
+		var crash = UniqueLabel("amiga_unhandled_crash");
+
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeAmigaRequesterLabel);
+		_assembler.EmitWord(0x2C78); // MOVEA.L 4.W,A6
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x43FA); // LEA intuition.library(PC),A1
+		_assembler.EmitPcRelativeWord(RuntimeIntuitionNameLabel);
+		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		_assembler.EmitWord(0x4EAE); // JSR -552(A6)
+		_assembler.EmitWord(unchecked((ushort)-552));
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, crash);
+		_assembler.EmitWord(0x2C40); // MOVEA.L D0,A6
+
+		_assembler.EmitWord(0x91C8); // SUBA.L A0,A0
+		_assembler.EmitWord(0x43FA); // LEA body(PC),A1
+		_assembler.EmitPcRelativeWord(RuntimeRequesterBodyLabel);
+		_assembler.EmitWord(0x45FA); // LEA exit(PC),A2
+		_assembler.EmitPcRelativeWord(RuntimeRequesterExitLabel);
+		_assembler.EmitWord(0x47FA); // LEA freeze(PC),A3
+		_assembler.EmitPcRelativeWord(RuntimeRequesterFreezeLabel);
+		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		_assembler.EmitWord(0x7200); // MOVEQ #0,D1
+		_assembler.EmitWord(0x243C); // MOVE.L #320,D2
+		_assembler.EmitLong(320);
+		_assembler.EmitWord(0x7648); // MOVEQ #72,D3
+		_assembler.EmitWord(0x4EAE); // JSR -348(A6)
+		_assembler.EmitWord(unchecked((ushort)-348));
+
+		_assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		_assembler.EmitWord(0x224E); // MOVEA.L A6,A1
+		_assembler.EmitWord(0x2C78); // MOVEA.L 4.W,A6
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x4EAE); // JSR -414(A6)
+		_assembler.EmitWord(unchecked((ushort)-414));
+		_assembler.EmitWord(0x201F); // MOVE.L (A7)+,D0
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, crash);
+
+		if (M68kCompiler.IsManagedRuntime(_request))
+		{
+			EmitRuntimeJsr(RuntimeShutdownTarget, M68kRuntimeImports.GcShutdown);
+		}
+		_assembler.EmitWord(0x2E79); // MOVEA.L initial-stack,A7
+		_assembler.EmitAddress(RuntimeInitialStackLabel);
+		_assembler.EmitWord(0x7014); // MOVEQ #20,D0
+		_assembler.EmitWord(0x4E75); // RTS
+
+		_assembler.Mark(crash);
+		_assembler.EmitWord(0x4AFC); // ILLEGAL
+	}
+
+	private void EmitAmigaUnhandledExceptionRequesterData()
+	{
+		if (!UsesAmigaUnhandledExceptionRequester)
+		{
+			return;
+		}
+
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeInitialStackLabel);
+		_assembler.EmitLong(0);
+		EmitIntuiText(
+			RuntimeRequesterBodyLabel,
+			RuntimeRequesterBodyTextLabel,
+			left: 6,
+			top: 4);
+		EmitIntuiText(
+			RuntimeRequesterExitLabel,
+			RuntimeRequesterExitTextLabel,
+			left: 0,
+			top: 0);
+		EmitIntuiText(
+			RuntimeRequesterFreezeLabel,
+			RuntimeRequesterFreezeTextLabel,
+			left: 0,
+			top: 0);
+		EmitRuntimeCString(
+			RuntimeIntuitionNameLabel,
+			"intuition.library");
+		EmitRuntimeCString(
+			RuntimeRequesterBodyTextLabel,
+			"Unhandled managed exception.");
+		EmitRuntimeCString(RuntimeRequesterExitTextLabel, "Exit");
+		EmitRuntimeCString(RuntimeRequesterFreezeTextLabel, "Freeze");
+	}
+
+	private void EmitIntuiText(string label, string textLabel, short left, short top)
+	{
+		_assembler.AlignWord();
+		_assembler.Mark(label);
+		_assembler.EmitWord(0x0100); // FrontPen=1, BackPen=0
+		_assembler.EmitWord(0); // DrawMode=JAM1, alignment padding
+		_assembler.EmitWord(unchecked((ushort)left));
+		_assembler.EmitWord(unchecked((ushort)top));
+		_assembler.EmitLong(0); // Default font.
+		_assembler.EmitAddress(textLabel);
+		_assembler.EmitLong(0); // No next IntuiText.
+	}
+
+	private void EmitRuntimeCString(string label, string value)
+	{
+		_assembler.AlignWord();
+		_assembler.Mark(label);
+		foreach (var character in value)
+		{
+			_assembler.EmitByte(checked((byte)character));
+		}
+		_assembler.EmitByte(0);
 	}
 
 	private void EmitExceptionTypeMatchRuntime()
@@ -672,7 +801,8 @@ internal sealed partial class M68kCodeGenerator
 
 		if (handle.Kind == HandleKind.TypeDefinition)
 		{
-			_usedTypeLayouts.Add((TypeDefinitionHandle)handle);
+			var layout = _module.GetTypeLayout((TypeDefinitionHandle)handle);
+			_usedTypeLayouts.TryAdd(layout.Identity, layout);
 			return;
 		}
 
@@ -722,40 +852,42 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		var pending = new Queue<TypeDefinitionHandle>(_usedTypeLayouts);
-		while (pending.TryDequeue(out var handle))
+		var pending = new Queue<CilTypeLayout>(_usedTypeLayouts.Values);
+		while (pending.TryDequeue(out var layout))
 		{
-			var baseType = _module.GetBaseType(handle);
+			var baseType = _module.GetBaseType(layout);
 			if (baseType.Kind == HandleKind.TypeDefinition)
 			{
 				var baseHandle = (TypeDefinitionHandle)baseType;
-				if (_usedTypeLayouts.Add(baseHandle))
+				var baseLayout = _module.GetTypeLayout(layout, baseHandle);
+				if (_usedTypeLayouts.TryAdd(baseLayout.Identity, baseLayout))
 				{
-					pending.Enqueue(baseHandle);
+					pending.Enqueue(baseLayout);
 				}
 			}
 			else if (baseType.Kind == HandleKind.TypeReference)
 			{
-				RegisterRuntimeTypeDescriptor(_module.GetTypeDisplayName(baseType));
+				RegisterRuntimeTypeDescriptor(_module.GetTypeDisplayName(baseType, layout));
 			}
 		}
 	}
 
-	private void EmitTypeDescriptorBase(TypeDefinitionHandle handle)
+	private void EmitTypeDescriptorBase(CilTypeLayout layout)
 	{
-		var baseType = _module.GetBaseType(handle);
+		var baseType = _module.GetBaseType(layout);
 		if (baseType.IsNil)
 		{
 			_assembler.EmitLong(0);
 		}
 		else if (baseType.Kind == HandleKind.TypeDefinition)
 		{
-			_assembler.EmitAddress(TypeDescriptorLabel((TypeDefinitionHandle)baseType));
+			_assembler.EmitAddress(TypeDescriptorLabel(
+				_module.GetTypeLayout(layout, (TypeDefinitionHandle)baseType)));
 		}
 		else if (baseType.Kind == HandleKind.TypeReference)
 		{
 			_assembler.EmitAddress(RuntimeTypeDescriptorLabel(
-				_module.GetTypeDisplayName(baseType)));
+				_module.GetTypeDisplayName(baseType, layout)));
 		}
 		else
 		{
@@ -780,6 +912,8 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.EmitAddress(RuntimeTypeDescriptorLabel(baseType));
 			}
+			_assembler.EmitLong(0); // No compiler-managed vtable.
+			_assembler.EmitLong(0); // No compiler-managed interface map.
 		}
 
 		if (!_usesExceptionRuntime)
@@ -820,8 +954,8 @@ internal sealed partial class M68kCodeGenerator
 			_ => "System.Exception"
 		};
 
-	private static string RuntimeMethodDescriptorLabel(CilMethod method) =>
-		$"runtime:method-descriptor:{MetadataTokens.GetToken(method.Handle):X8}";
+	private string RuntimeMethodDescriptorLabel(CilMethod method) =>
+		$"runtime:method-descriptor:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}";
 
 	private static string RuntimeTypeDescriptorLabel(string typeName) =>
 		$"runtime:type-descriptor:{typeName}";
@@ -842,4 +976,13 @@ internal sealed partial class M68kCodeGenerator
 	private const string RuntimeExceptionTypeMatchLabel = "__c68k_exception_type_match";
 	private const string RuntimeExceptionEndFinallyLabel = "__c68k_exception_endfinally";
 	private const string RuntimeExceptionLeaveContinueLabel = "__c68k_exception_leave_continue";
+	private const string RuntimeAmigaRequesterLabel = "__c68k_amiga_unhandled_requester";
+	private const string RuntimeInitialStackLabel = "runtime:amiga-initial-stack";
+	private const string RuntimeIntuitionNameLabel = "runtime:amiga-intuition-name";
+	private const string RuntimeRequesterBodyLabel = "runtime:amiga-requester-body";
+	private const string RuntimeRequesterExitLabel = "runtime:amiga-requester-exit";
+	private const string RuntimeRequesterFreezeLabel = "runtime:amiga-requester-freeze";
+	private const string RuntimeRequesterBodyTextLabel = "runtime:amiga-requester-body-text";
+	private const string RuntimeRequesterExitTextLabel = "runtime:amiga-requester-exit-text";
+	private const string RuntimeRequesterFreezeTextLabel = "runtime:amiga-requester-freeze-text";
 }

@@ -154,6 +154,14 @@ public interface IM68kExternalCallResolver
 /// <summary>Well-known hooks used by generated managed-runtime operations.</summary>
 public static class M68kRuntimeImports
 {
+	/// <summary>Target marker enabling the built-in Amiga unhandled-exception requester.</summary>
+	public const string AmigaUnhandledExceptionRequester =
+		"__c68k_amiga_unhandled_exception_requester";
+
+	/// <summary>Target marker enabling an Exec-owned arena for the built-in managed pool.</summary>
+	public const string AmigaManagedPoolArena =
+		"__c68k_amiga_managed_pool_arena";
+
 	/// <summary>
 	/// Allocates a zero-filled object block. The requested byte count is passed by
 	/// the compiler's stack ABI and the address is returned in D0.
@@ -165,7 +173,8 @@ public static class M68kRuntimeImports
 
 	/// <summary>
 	/// Optional last-chance exception hook. A0 contains the exception object and
-	/// D0 contains the compiler runtime reason code. Returning executes ILLEGAL.
+	/// D0 contains the compiler runtime reason code. Returning continues to the
+	/// target's unhandled-exception action.
 	/// </summary>
 	public const string UnhandledException = "__c68k_unhandled_exception";
 
@@ -336,6 +345,12 @@ public sealed record M68kGcTelemetryOptions
 public sealed record M68kCompilationRequest
 {
 	public required string AssemblyPath { get; init; }
+
+	/// <summary>
+	/// Additional managed assemblies whose IL method bodies may enter the closed-world
+	/// compilation graph. Other references remain metadata-only platform dependencies.
+	/// </summary>
+	public IReadOnlyList<string> ManagedAssemblyPaths { get; init; } = Array.Empty<string>();
 
 	/// <summary>
 	/// Entry selector in <c>Namespace.Type::Method</c> form. When omitted, exactly one

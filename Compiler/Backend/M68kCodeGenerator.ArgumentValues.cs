@@ -450,9 +450,10 @@ internal sealed partial class M68kCodeGenerator
 		if (value.IsCStringLiteral)
 		{
 			var token = (int)instruction.Operand!;
-			_cStringLiterals.TryAdd(token, _module.GetUserString(token));
+			var identity = new CilUserStringIdentity(caller.ModuleName, token);
+			_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
 			_assembler.EmitWord(0x2F3C); // MOVE.L #cstring,-(A7)
-			_assembler.EmitAddress(CStringLabel(token));
+			_assembler.EmitAddress(CStringLabel(identity));
 			return;
 		}
 
@@ -502,9 +503,9 @@ internal sealed partial class M68kCodeGenerator
 					instruction.Offset);
 			}
 
-			_staticFields.TryAdd(field.Handle, field);
+			_staticFields.TryAdd(field.Identity, field);
 			_assembler.EmitWord(0x4879); // PEA abs.l
-			_assembler.EmitAddress(StaticFieldLabel(field.Handle));
+			_assembler.EmitAddress(StaticFieldLabel(field));
 			return;
 		}
 
@@ -598,8 +599,9 @@ internal sealed partial class M68kCodeGenerator
 		if (value.IsCStringLiteral)
 		{
 			var token = (int)instruction.Operand!;
-			_cStringLiterals.TryAdd(token, _module.GetUserString(token));
-			EmitAddressImmediateToRegister(register, CStringLabel(token));
+			var identity = new CilUserStringIdentity(caller.ModuleName, token);
+			_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
+			EmitAddressImmediateToRegister(register, CStringLabel(identity));
 			return;
 		}
 
@@ -638,8 +640,8 @@ internal sealed partial class M68kCodeGenerator
 					instruction.Offset);
 			}
 
-			_staticFields.TryAdd(field.Handle, field);
-			EmitAddressImmediateToRegister(register, StaticFieldLabel(field.Handle));
+			_staticFields.TryAdd(field.Identity, field);
+			EmitAddressImmediateToRegister(register, StaticFieldLabel(field));
 			return;
 		}
 
@@ -739,8 +741,9 @@ internal sealed partial class M68kCodeGenerator
 		if (value.IsCStringLiteral)
 		{
 			var token = (int)instruction.Operand!;
-			_cStringLiterals.TryAdd(token, _module.GetUserString(token));
-			EmitAddressImmediateToFrame(CStringLabel(token), destination);
+			var identity = new CilUserStringIdentity(caller.ModuleName, token);
+			_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
+			EmitAddressImmediateToFrame(CStringLabel(identity), destination);
 			return true;
 		}
 
@@ -794,8 +797,8 @@ internal sealed partial class M68kCodeGenerator
 					instruction.Offset);
 			}
 
-			_staticFields.TryAdd(field.Handle, field);
-			EmitAddressImmediateToFrame(StaticFieldLabel(field.Handle), destination);
+			_staticFields.TryAdd(field.Identity, field);
+			EmitAddressImmediateToFrame(StaticFieldLabel(field), destination);
 			return true;
 		}
 
@@ -858,7 +861,7 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod caller,
 		CilInstruction instruction)
 	{
-		var exportName = _module.GetUserString((int)instruction.Operand!);
+		var exportName = _module.GetUserString((int)instruction.Operand!, caller, instruction.Offset);
 		if (!_module.GetExports().Any(export => export.Name == exportName))
 		{
 			throw new M68kCompilationException(
@@ -889,8 +892,8 @@ internal sealed partial class M68kCodeGenerator
 				instruction.Offset);
 		}
 
-		_staticFields.TryAdd(field.Handle, field);
-		var label = StaticFieldLabel(field.Handle);
+		_staticFields.TryAdd(field.Identity, field);
+		var label = StaticFieldLabel(field);
 		if (register <= M68kRegister.D7)
 		{
 			InvalidatePlatformBaseIfWritingRegister(register);
