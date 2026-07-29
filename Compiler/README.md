@@ -27,8 +27,9 @@ var result = M68kCompiler.Compile(new M68kCompilationRequest
 File.WriteAllBytes("kick.rom", result.Image);
 ```
 
-`M68kClrPolicy.Auto` uses memory `CLR` instructions for MC68020/040 output.
-MC68000-compatible output uses move-based clears unless `ClrPolicy` is set to
+`M68kClrPolicy.Auto` uses `CLR` for known-readable frame and stack slots, and
+for general memory on MC68020/040 output. MC68000-compatible output uses
+move-based clears for arbitrary memory unless `ClrPolicy` is set to
 `M68kClrPolicy.Always`.
 
 The compiler accepts a deliberately bounded, freestanding subset of CIL. Any

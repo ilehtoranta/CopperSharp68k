@@ -172,35 +172,161 @@ internal sealed partial class M68kCodeGenerator
 			RuntimeFramePreviousOffset);
 	}
 
-	private void EmitProtectedInstructionState(CilMethod method, CilInstruction instruction)
+	private void EmitProtectedInstructionState(
+		CilMethod method,
+		CilInstruction instruction,
+		bool forceExceptionState,
+		ref string? emittedExceptionStateLabel)
 	{
 		if (method.ExceptionRegions.Count != 0)
 		{
 			var stateLabel = RegisterExceptionState(
 				method,
 				GetActiveExceptionGroups(method, instruction.Offset));
-			if (stateLabel is null)
+			if (forceExceptionState ||
+				!StringComparer.Ordinal.Equals(stateLabel, emittedExceptionStateLabel))
 			{
-				EmitRuntimeFrameImmediate(0, RuntimeFrameStateOffset);
-			}
-			else
-			{
-				EmitRuntimeFrameAddress(stateLabel, RuntimeFrameStateOffset);
+				if (stateLabel is null)
+				{
+					EmitRuntimeFrameImmediate(0, RuntimeFrameStateOffset);
+				}
+				else
+				{
+					EmitRuntimeFrameAddress(stateLabel, RuntimeFrameStateOffset);
+				}
+
+				emittedExceptionStateLabel = stateLabel;
 			}
 		}
 
 		if (M68kCompiler.IsManagedRuntime(_request) &&
-			InstructionMayReachGcSafepoint(instruction.OpCode))
+			InstructionMayReachGcSafepoint(method, instruction))
 		{
 			EmitSyncRuntimeFrameRoots();
 		}
 	}
 
-	private static bool InstructionMayReachGcSafepoint(OpCode op) =>
-		op == OpCodes.Call ||
-		op == OpCodes.Callvirt ||
-		op == OpCodes.Newobj ||
-		op == OpCodes.Newarr;
+	private bool InstructionMayReachGcSafepoint(
+		CilMethod method,
+		CilInstruction instruction)
+	{
+		var op = instruction.OpCode;
+		if (op == OpCodes.Newobj || op == OpCodes.Newarr)
+		{
+			return true;
+		}
+
+		if (op != OpCodes.Call && op != OpCodes.Callvirt)
+		{
+			return false;
+		}
+
+		var target = _module.ResolveMethodToken(
+			(int)instruction.Operand!,
+			method,
+			instruction.Offset);
+		if (target.ImportName is M68kRuntimeImports.Allocate or
+			M68kRuntimeImports.GcCollect or
+			"intrinsic:runtime-gc-collect")
+		{
+			return true;
+		}
+
+		if (target.Definition is not { IsImport: false } definition)
+		{
+			// Platform calls and compiler intrinsics cannot re-enter the managed
+			// allocator unless they are one of the runtime operations above.
+			return false;
+		}
+
+		if (definition.DeclaringTypeIsInterface)
+		{
+			return _module.GetInterfaceImplementations(definition)
+				.Any(callee => MethodMayReachGcSafepoint(
+					callee,
+					new HashSet<CilMethodIdentity>()));
+		}
+
+		if (RequiresVirtualDispatch(instruction, definition))
+		{
+			return _module.GetVirtualImplementations(definition)
+				.Any(callee => MethodMayReachGcSafepoint(
+					callee,
+					new HashSet<CilMethodIdentity>()));
+		}
+
+		return MethodMayReachGcSafepoint(
+			definition,
+			new HashSet<CilMethodIdentity>());
+	}
+
+	private bool MethodMayReachGcSafepoint(
+		CilMethod method,
+		HashSet<CilMethodIdentity> visiting)
+	{
+		if (!visiting.Add(method.Identity))
+		{
+			return false;
+		}
+
+		foreach (var instruction in method.Instructions)
+		{
+			var op = instruction.OpCode;
+			if (op == OpCodes.Newobj || op == OpCodes.Newarr)
+			{
+				return true;
+			}
+
+			if (op != OpCodes.Call && op != OpCodes.Callvirt)
+			{
+				continue;
+			}
+
+			var target = _module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			if (target.ImportName is M68kRuntimeImports.Allocate or
+				M68kRuntimeImports.GcCollect or
+				"intrinsic:runtime-gc-collect")
+			{
+				return true;
+			}
+
+			if (target.Definition is not { IsImport: false } definition)
+			{
+				continue;
+			}
+
+			if (definition.DeclaringTypeIsInterface)
+			{
+				if (_module.GetInterfaceImplementations(definition)
+					.Any(callee => MethodMayReachGcSafepoint(callee, visiting)))
+				{
+					return true;
+				}
+				continue;
+			}
+
+			if (RequiresVirtualDispatch(instruction, definition))
+			{
+				if (_module.GetVirtualImplementations(definition)
+					.Any(callee => MethodMayReachGcSafepoint(callee, visiting)))
+				{
+					return true;
+				}
+				continue;
+			}
+
+			if (MethodMayReachGcSafepoint(definition, visiting))
+			{
+				return true;
+			}
+		}
+
+		visiting.Remove(method.Identity);
+		return false;
+	}
 
 	private void EmitSyncRuntimeFrameRoots()
 	{
@@ -728,6 +854,13 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitRuntimeFrameImmediate(int value, short displacement)
 	{
+		if (value == 0)
+		{
+			_assembler.EmitWord(0x42AD); // CLR.L d16(A5)
+			_assembler.EmitWord(unchecked((ushort)displacement));
+			return;
+		}
+
 		_assembler.EmitWord(0x2B7C); // MOVE.L #value,d16(A5)
 		_assembler.EmitLong(unchecked((uint)value));
 		_assembler.EmitWord(unchecked((ushort)displacement));

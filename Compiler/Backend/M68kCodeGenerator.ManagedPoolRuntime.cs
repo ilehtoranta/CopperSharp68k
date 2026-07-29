@@ -66,10 +66,15 @@ internal sealed partial class M68kCodeGenerator
 			EmitPushRegister(M68kRegister.A5);
 			EmitImmediateToRegister(M68kRegister.A5, 0);
 		}
+		if (usesManagedRuntime)
+		{
+			EmitPushRegister(M68kRegister.D2);
+			EmitPushRegister(M68kRegister.A2);
+		}
 		if (usesManagedRuntime && usesAmigaStartupArguments)
 		{
-			EmitPushD0();
-			EmitPushRegister(M68kRegister.A0);
+			EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
+			EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
 		}
 		EmitInitializePlatformBases();
 		if (usesManagedRuntime)
@@ -91,17 +96,19 @@ internal sealed partial class M68kCodeGenerator
 			EmitRequireNonNull();
 			if (usesAmigaStartupArguments)
 			{
-				EmitPopRegister(M68kRegister.A0);
-				EmitPopD0();
+				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+				EmitMoveRegister(M68kRegister.A2, M68kRegister.A0);
 			}
 			_assembler.EmitBsr(MethodLabel(entry));
 			_loadedPlatformBase = null;
-			EmitPushD0();
-			EmitPushRegister(M68kRegister.A0);
+			EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
+			EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
 			EmitRuntimeJsr(RuntimeShutdownTarget, M68kRuntimeImports.GcShutdown);
 			_loadedPlatformBase = null;
-			EmitPopRegister(M68kRegister.A0);
-			EmitPopD0();
+			EmitMoveRegister(M68kRegister.A2, M68kRegister.A0);
+			EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+			EmitPopRegister(M68kRegister.A2);
+			EmitPopRegister(M68kRegister.D2);
 			EmitPopRegister(M68kRegister.A5);
 			_assembler.EmitWord(0x4E75); // RTS
 			return label;
@@ -144,8 +151,8 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x7200); // MOVEQ #0,D1, no MEMF_CLEAR
 		_assembler.EmitWord(0x4EAE); // JSR -198(A6)
 		_assembler.EmitWord(unchecked((ushort)-198));
-		EmitStoreD0ToLabel(GcArenaBaseLabel);
-		EmitStoreD0ToLabel(GcConfigHeapStartLabel);
+		EmitStoreD0DirectToLabel(GcArenaBaseLabel);
+		EmitStoreD0DirectToLabel(GcConfigHeapStartLabel);
 		_loadedPlatformBase = null;
 	}
 
@@ -222,8 +229,8 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x4EAE); // JSR -210(A6)
 			_assembler.EmitWord(unchecked((ushort)-210));
 			_assembler.EmitWord(0x7000); // MOVEQ #0,D0
-			EmitStoreD0ToLabel(GcArenaBaseLabel);
-			EmitStoreD0ToLabel(GcConfigHeapStartLabel);
+			EmitStoreD0DirectToLabel(GcArenaBaseLabel);
+			EmitStoreD0DirectToLabel(GcConfigHeapStartLabel);
 			_assembler.Mark(done);
 		}
 		_assembler.EmitWord(0x4E75); // RTS

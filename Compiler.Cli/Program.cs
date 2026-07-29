@@ -111,7 +111,6 @@ static M68kClrPolicy ParseClrPolicy(string value) =>
 	value.ToLowerInvariant() switch
 	{
 		"auto" => M68kClrPolicy.Auto,
-		"never" or "off" => M68kClrPolicy.Never,
 		"always" or "on" => M68kClrPolicy.Always,
 		_ => throw new ArgumentException($"Unknown CLR policy '{value}'.")
 	};
@@ -176,7 +175,7 @@ static void PrintUsage()
 	Console.WriteLine(
 		"""
 		copper68kc <assembly.dll> --entry Namespace.Type::Method --output <file>
-		  [--cpu 68000|68020|68040] [--clr auto|never|always]
+		  [--cpu 68000|68020|68040] [--clr auto|always]
 		  [--exceptions full|yolo] [--format hunk|rom|asm]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]

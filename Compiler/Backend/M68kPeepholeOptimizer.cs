@@ -32,6 +32,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryLayoutColdTerminalBranch() ||
 				TryRemoveBranchToNextLabel() ||
 				TryPromoteBranchStackSpillToD0() ||
+				TryRemoveAliasedRuntimeFrameClear() ||
+				TryRemoveRedundantRuntimeFrameClear() ||
 				TryReplaceZeroAddressMove() ||
 				TryReplaceCompareZeroWithTest() ||
 				TryRemoveRedundantTest() ||
@@ -55,8 +57,12 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceClearStackRoundTrip() ||
 				TryReplaceZeroStackPush(dataflow) ||
 				TryReplaceZeroRegisterRoundTrip() ||
+				TryForwardImmediateStackTemporary() ||
 				TryReplaceAddressStackRoundTrip() ||
 				TryRemoveStackDuplicateRoundTrip(dataflow) ||
+				TryForwardRegisterStackStore() ||
+				TryForwardStackLoadToRegister(dataflow) ||
+				TryReplaceMemoryStackTransferWithRegister(dataflow) ||
 				TryRemoveRegisterStackRoundTrip(dataflow) ||
 				TryReplaceCompareRegisterZeroWithTest() ||
 				TryRemoveRedundantRegisterSpill();
@@ -195,6 +201,73 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 					};
 				}
 			}
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveRedundantRuntimeFrameClear()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var first = instructions[index];
+			var second = instructions[index + 1];
+			if (first.Opcode != 0x42AD ||
+				first.Length != 4 ||
+				second.Opcode != first.Opcode ||
+				second.Length != first.Length ||
+				second.ExtensionWord != first.ExtensionWord ||
+				IsReferencedLabelAt(second.Offset))
+			{
+				continue;
+			}
+
+			_buffer.RemoveBytes(second.Offset, second.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveAliasedRuntimeFrameClear()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var aliasIndex = 1; aliasIndex + 1 < instructions.Count; aliasIndex++)
+		{
+			var alias = instructions[aliasIndex];
+			var frameClear = instructions[aliasIndex + 1];
+			if (alias.Opcode != 0x2A4F || // MOVEA.L A7,A5
+				alias.Length != 2 ||
+				frameClear.Opcode != 0x42AD || // CLR.L d16(A5)
+				frameClear.Length != 4 ||
+				IsReferencedLabelAt(alias.Offset) ||
+				IsReferencedLabelAt(frameClear.Offset))
+			{
+				continue;
+			}
+
+			var matchingStackClear = false;
+			for (var clearIndex = aliasIndex - 1; clearIndex >= 0; clearIndex--)
+			{
+				var stackClear = instructions[clearIndex];
+				if (stackClear.Opcode != 0x42AF || // CLR.L d16(A7)
+					stackClear.Length != 4 ||
+					IsReferencedLabelAt(stackClear.Offset))
+				{
+					break;
+				}
+
+				matchingStackClear |= stackClear.ExtensionWord == frameClear.ExtensionWord;
+			}
+
+			if (!matchingStackClear)
+			{
+				continue;
+			}
+
+			_buffer.RemoveBytes(frameClear.Offset, frameClear.Length);
 			return true;
 		}
 
@@ -478,11 +551,15 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		{
 			var push = instructions[pushIndex];
 			var reload = instructions[pushIndex + 1];
-			if ((push.Opcode & 0xFFF8) != 0x2F00 ||
-				push.Length != 2 ||
+			var pushesRegister = (push.Opcode & 0xFFF8) == 0x2F00 &&
+				push.Length == 2;
+			var pushesImmediate = push.Opcode == 0x2F3C &&
+				push.Length == 6;
+			if ((!pushesRegister && !pushesImmediate) ||
 				(reload.Opcode & 0xF1FF) != 0x2017 ||
 				reload.Length != 2 ||
-				(push.Opcode & 7) != ((reload.Opcode >> 9) & 7) ||
+				(pushesRegister &&
+					(push.Opcode & 7) != ((reload.Opcode >> 9) & 7)) ||
 				IsReferencedLabelAt(reload.Offset))
 			{
 				continue;
@@ -532,7 +609,17 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 			_buffer.RemoveBytes(instructions[cleanupIndex].Offset, instructions[cleanupIndex].Length);
 			_buffer.RemoveBytes(reload.Offset, reload.Length);
-			_buffer.RemoveBytes(push.Offset, push.Length);
+			if (pushesImmediate)
+			{
+				var destinationRegister = (reload.Opcode >> 9) & 7;
+				_buffer.WriteWord(
+					push.Offset,
+					(ushort)(0x203C | (destinationRegister << 9))); // MOVE.L #value,Dn
+			}
+			else
+			{
+				_buffer.RemoveBytes(push.Offset, push.Length);
+			}
 			return true;
 		}
 
@@ -1260,6 +1347,87 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryForwardImmediateStackTemporary()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var pushIndex = 0; pushIndex + 3 < instructions.Count; pushIndex++)
+		{
+			var push = instructions[pushIndex];
+			if (push.Opcode != 0x2F3C ||
+				push.Length != 6)
+			{
+				continue;
+			}
+
+			var reloadIndex = pushIndex + 1;
+			while (reloadIndex < instructions.Count &&
+				instructions[reloadIndex].Opcode == 0x42AF &&
+				instructions[reloadIndex].Length == 4 &&
+				unchecked((short)instructions[reloadIndex].ExtensionWord) >= 4)
+			{
+				reloadIndex++;
+			}
+
+			if (reloadIndex + 1 >= instructions.Count)
+			{
+				continue;
+			}
+
+			var reload = instructions[reloadIndex];
+			var cleanup = instructions[reloadIndex + 1];
+			if ((reload.Opcode & 0xF1FF) != 0x2017 ||
+				reload.Length != 2 ||
+				cleanup.Opcode != 0x588F ||
+				cleanup.Length != 2 ||
+				IsReferencedLabelAt(reload.Offset) ||
+				IsReferencedLabelAt(cleanup.Offset))
+			{
+				continue;
+			}
+
+			var destinationRegister = (reload.Opcode >> 9) & 7;
+			_buffer.WriteWord(
+				push.Offset,
+				(ushort)(0x203C | (destinationRegister << 9))); // MOVE.L #value,Dn
+			for (var index = pushIndex + 1; index < reloadIndex; index++)
+			{
+				var frameClear = instructions[index];
+				_buffer.WriteWord(
+					frameClear.Offset + 2,
+					unchecked((ushort)(
+						(short)frameClear.ExtensionWord - 4)));
+			}
+
+			if (reloadIndex + 2 < instructions.Count &&
+				instructions[reloadIndex + 2].Kind == M68kInstructionKind.Call)
+			{
+				// Calls receive values through the ABI, never through condition
+				// codes, so the reload's flags are unobservable here.
+				MoveLabelsToOffset(
+					reload.Offset,
+					cleanup.Offset + cleanup.Length,
+					cleanup.Offset + cleanup.Length);
+				_buffer.RemoveBytes(cleanup.Offset, cleanup.Length);
+				_buffer.RemoveBytes(reload.Offset, reload.Length);
+				return true;
+			}
+
+			// The intervening CLR instructions replace the immediate's flags.
+			// Retain the reload's final N/Z/V/C result without reading the stack.
+			_buffer.WriteWord(
+				reload.Offset,
+				(ushort)(0x4A80 | destinationRegister)); // TST.L Dn
+			MoveLabelsToOffset(
+				cleanup.Offset,
+				cleanup.Offset + cleanup.Length,
+				cleanup.Offset + cleanup.Length);
+			_buffer.RemoveBytes(cleanup.Offset, cleanup.Length);
+			return true;
+		}
+
+		return false;
+	}
+
 	private bool TryReplaceAddressStackRoundTrip()
 	{
 		var instructions = _assembler.GetInstructionStream();
@@ -1323,6 +1491,136 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			MoveLabelsToOffset(push.Offset + push.Length, pop.Offset + pop.Length, push.Offset);
 			_buffer.WriteWord(push.Offset, (ushort)opcode);
 			_buffer.RemoveBytes(push.Offset + 2, pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardRegisterStackStore()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var store = instructions[index + 1];
+			if (push.Length != 2 ||
+				(push.Opcode & 0xFFF8) != 0x2F00 ||
+				IsReferencedLabelAt(store.Offset))
+			{
+				continue;
+			}
+
+			var sourceRegister = push.Opcode & 7;
+			ushort replacement;
+			if (store.Opcode == 0x2F5F && store.Length == 4)
+			{
+				replacement = (ushort)(0x2F40 | sourceRegister); // MOVE.L Dn,d16(A7)
+			}
+			else if (store.Opcode == 0x23DF && store.Length == 6)
+			{
+				replacement = (ushort)(0x23C0 | sourceRegister); // MOVE.L Dn,abs.l
+			}
+			else
+			{
+				continue;
+			}
+
+			MoveLabelsToOffset(store.Offset, store.Offset + store.Length, push.Offset);
+			_buffer.WriteWord(push.Offset, replacement);
+			_buffer.RemoveBytes(store.Offset, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardStackLoadToRegister(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var pop = instructions[index + 1];
+			if (IsReferencedLabelAt(pop.Offset) ||
+				!TryGetRegisterStackPop(
+					pop.Opcode,
+					out var destinationIsAddress,
+					out var destinationRegister) ||
+				destinationIsAddress &&
+					(!dataflow.TryGetFacts(pop.Offset, out var facts) ||
+					 !facts.ConditionsAreDeadAfter))
+			{
+				continue;
+			}
+
+			ushort replacement;
+			if (push.Opcode == 0x2F2F && push.Length == 4)
+			{
+				replacement = (ushort)((destinationIsAddress ? 0x206F : 0x202F) |
+					(destinationRegister << 9));
+			}
+			else if (push.Opcode == 0x2F39 && push.Length == 6)
+			{
+				replacement = (ushort)((destinationIsAddress ? 0x2079 : 0x2039) |
+					(destinationRegister << 9));
+			}
+			else
+			{
+				continue;
+			}
+
+			MoveLabelsToOffset(pop.Offset, pop.Offset + pop.Length, push.Offset);
+			_buffer.WriteWord(push.Offset, replacement);
+			_buffer.RemoveBytes(pop.Offset, pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryReplaceMemoryStackTransferWithRegister(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var store = instructions[index + 1];
+			if (push.Opcode != 0x2F2F ||
+				push.Length != 4 ||
+				IsReferencedLabelAt(store.Offset) ||
+				!dataflow.TryGetFacts(store.Offset, out var storeFacts))
+			{
+				continue;
+			}
+
+			var destinationKind = store.Opcode switch
+			{
+				0x2F5F when store.Length == 4 => 0,
+				0x23DF when store.Length == 6 => 1,
+				_ => -1
+			};
+			if (destinationKind < 0)
+			{
+				continue;
+			}
+
+			var scratchRegister = Enumerable.Range(0, 8)
+				.FirstOrDefault(
+					register => (storeFacts.LiveDataAfter & (1 << register)) == 0,
+					-1);
+			if (scratchRegister < 0)
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(
+				push.Offset,
+				(ushort)(0x202F | (scratchRegister << 9))); // MOVE.L d16(A7),Dn
+			_buffer.WriteWord(
+				store.Offset,
+				(ushort)((destinationKind == 0 ? 0x2F40 : 0x23C0) |
+					scratchRegister));
 			return true;
 		}
 

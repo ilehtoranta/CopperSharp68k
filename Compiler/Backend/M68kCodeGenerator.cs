@@ -91,13 +91,8 @@ internal sealed partial class M68kCodeGenerator
 	private bool UseClr => _request.ClrPolicy switch
 	{
 		M68kClrPolicy.Always => true,
-		M68kClrPolicy.Never => false,
 		_ => _request.Cpu is M68kCpuTarget.M68020 or M68kCpuTarget.M68040
 	};
-
-	// Stack slots are necessarily readable: generated code uses them for both
-	// stores and loads. CLR is therefore safe for stack clears even on M68000.
-	private bool UseClrForStack => _request.ClrPolicy != M68kClrPolicy.Never;
 
 	public M68kCodeGenerator(
 		CompilationModule module,
@@ -436,6 +431,12 @@ internal sealed partial class M68kCodeGenerator
 		var branchTargets = GetBranchTargets(method.Instructions);
 		var reachableOffsets = reachableStackStates.Keys.ToHashSet();
 		var platformBaseBlockEntries = AnalyzePlatformBaseBlockEntries(method, reachableOffsets);
+		var exceptionStateBlockEntries = method.ExceptionRegions.Count == 0
+			? null
+			: branchTargets
+				.Concat(method.ExceptionRegions.Select(static region => region.HandlerOffset))
+				.ToHashSet();
+		string? emittedExceptionStateLabel = null;
 		_currentFrameLayout = CreateFrameLayout(
 			method,
 			internalAbi,
@@ -510,12 +511,49 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.Mark(IlLabel(method, instruction.Offset));
 			if (CurrentFrameLayout.HasRuntimeFrame)
 			{
-				EmitProtectedInstructionState(method, instruction);
+				EmitProtectedInstructionState(
+					method,
+					instruction,
+					exceptionStateBlockEntries?.Contains(instruction.Offset) == true,
+					ref emittedExceptionStateLabel);
 				if (method.ExceptionRegions.Count != 0)
 				{
+					if (TryEmitAddressNullBranch(
+						method,
+						method.Instructions,
+						instructionIndex,
+						branchTargets,
+						out var addressNullBranchConsumed))
+					{
+						for (var skipped = 1; skipped < addressNullBranchConsumed; skipped++)
+						{
+							_assembler.Mark(IlLabel(
+								method,
+								method.Instructions[instructionIndex + skipped].Offset));
+						}
+						instructionIndex += addressNullBranchConsumed - 1;
+						continue;
+					}
+
 					EmitInstruction(method, instruction);
 					continue;
 				}
+			}
+			if (TryEmitAddressNullBranch(
+				method,
+				method.Instructions,
+				instructionIndex,
+				branchTargets,
+				out var directAddressNullBranchConsumed))
+			{
+				for (var skipped = 1; skipped < directAddressNullBranchConsumed; skipped++)
+				{
+					_assembler.Mark(IlLabel(
+						method,
+						method.Instructions[instructionIndex + skipped].Offset));
+				}
+				instructionIndex += directAddressNullBranchConsumed - 1;
+				continue;
 			}
 			if (TryEmitBoopsiDoMethodFixedCall(
 				method,
@@ -1185,6 +1223,76 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return false;
+	}
+
+	private bool TryEmitAddressNullBranch(
+		CilMethod method,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		IReadOnlySet<int> branchTargets,
+		out int consumed)
+	{
+		consumed = 0;
+		if (startIndex >= instructions.Count ||
+			instructions[startIndex].OpCode != OpCodes.Call)
+		{
+			return false;
+		}
+
+		var call = instructions[startIndex];
+		var target = _module.ResolveMethodToken(
+			(int)call.Operand!,
+			method,
+			call.Offset);
+		var isNull = target.ImportName == "intrinsic:aptr-is-null";
+		if (!isNull &&
+			target.ImportName != "intrinsic:aptr-is-not-null")
+		{
+			return false;
+		}
+
+		var branchIndex = startIndex + 1;
+		var storedLocalIndex = -1;
+		if (branchIndex + 2 < instructions.Count &&
+			TryGetStoreLocalIndex(instructions[branchIndex], out storedLocalIndex) &&
+			TryGetLoadLocalIndex(instructions[branchIndex + 1], out var loadedLocalIndex) &&
+			loadedLocalIndex == storedLocalIndex)
+		{
+			branchIndex += 2;
+		}
+
+		if (branchIndex >= instructions.Count ||
+			!TryGetBooleanBranchCondition(
+				instructions[branchIndex].OpCode,
+				out var branchCondition) ||
+			instructions[branchIndex].Operand is not int targetOffset ||
+			(storedLocalIndex >= 0 &&
+				IsLocalReadAfter(instructions, branchIndex, storedLocalIndex)))
+		{
+			return false;
+		}
+
+		var activeExceptionGroups = GetActiveExceptionGroups(method, call.Offset);
+		for (var index = startIndex + 1; index <= branchIndex; index++)
+		{
+			var instruction = instructions[index];
+			if (branchTargets.Contains(instruction.Offset) ||
+				method.ExceptionRegions.Any(region =>
+					region.HandlerOffset == instruction.Offset) ||
+				!activeExceptionGroups.SequenceEqual(
+					GetActiveExceptionGroups(method, instruction.Offset)))
+			{
+				return false;
+			}
+		}
+
+		EmitPopRegister(M68kRegister.A0);
+		_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		_assembler.EmitBranch(
+			isNull ? InvertCondition(branchCondition) : branchCondition,
+			IlLabel(method, targetOffset));
+		consumed = branchIndex - startIndex + 1;
+		return true;
 	}
 
 	private bool TryEmitNullableHasValueBranch(
@@ -6733,7 +6841,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitImmediateToFrame(int value, short displacement)
 	{
-		if (value == 0 && UseClrForStack)
+		if (value == 0)
 		{
 			EmitClearFrameSlot(displacement);
 			return;
@@ -8494,7 +8602,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitPushConstant(int value)
 	{
-		if (value == 0 && UseClrForStack)
+		if (value == 0)
 		{
 			_assembler.EmitWord(0x42A7); // CLR.L -(A7)
 			return;
@@ -8611,12 +8719,6 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitClearFrameSlot(short displacement)
 	{
-		if (!UseClrForStack)
-		{
-			EmitImmediateToFrame(0, displacement);
-			return;
-		}
-
 		if (displacement == 0)
 		{
 			_assembler.EmitWord(0x4297); // CLR.L (A7)
@@ -8646,20 +8748,9 @@ internal sealed partial class M68kCodeGenerator
 		var loop = UniqueLabel("frame_clear");
 		_assembler.EmitWord(0x41EF); // LEA d16(A7),A0
 		_assembler.EmitWord(unchecked((ushort)startDisplacement));
-		if (!UseClrForStack)
-		{
-			EmitImmediateToRegister(M68kRegister.D1, 0);
-		}
 		EmitImmediateToRegister(M68kRegister.D0, longs - 1);
 		_assembler.Mark(loop);
-		if (UseClrForStack)
-		{
-			_assembler.EmitWord(0x4298); // CLR.L (A0)+
-		}
-		else
-		{
-			_assembler.EmitWord(0x20C1); // MOVE.L D1,(A0)+
-		}
+		_assembler.EmitWord(0x4298); // CLR.L (A0)+
 		_assembler.EmitDbra(0, loop);
 	}
 

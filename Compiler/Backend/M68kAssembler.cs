@@ -994,7 +994,8 @@ internal sealed class M68kAssembler
 			0x4EAE => $"jsr\t{value}(a6)",
 			_ when (opcode & 0xFFF8) == 0x4EA8 => $"jsr\t{value}(a{opcode & 7})",
 			_ when (opcode & 0xFFF8) == 0x4EE8 => $"jmp\t{value}(a{opcode & 7})",
-			0x42AF => $"clr.l\t{value}(a7)",
+			_ when (opcode & 0xFFF8) == 0x42A8 =>
+				$"clr.l\t{value}(a{opcode & 7})",
 			0x486F => $"pea\t{value}(a7)",
 			_ when (opcode & 0xF1FF) == 0x41EF =>
 				$"lea\t{value}(a7),a{(opcode >> 9) & 7}",

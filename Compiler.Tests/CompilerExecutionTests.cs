@@ -158,7 +158,11 @@ public sealed class CompilerExecutionTests
 		Assert.Contains("__c68k_exception_raise:", result.Text, StringComparison.Ordinal);
 		Assert.Contains("C68K_runtime_003Aexception_002Dtable", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmove.l\ta7,8(a7)", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\t#$00000000,12(a5)", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tclr.l\t12(a5)", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tclr.l\t12(a5)\r\n\tclr.l\t12(a5)",
+			result.Text,
+			StringComparison.Ordinal);
 		Assert.Contains("\tmovea.l\t8(a5),a7", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tjmp\t(a1)", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tdc.w\t$2E6D", result.Text, StringComparison.Ordinal);
@@ -170,6 +174,33 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void ExceptionStateIsUpdatedOnlyAtControlFlowBoundaries()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry",
+			exceptionMode: M68kExceptionMode.Full);
+		var text = result.Text!;
+		var methodStart = text.IndexOf(
+			"\nC68K_method_003A",
+			StringComparison.Ordinal) + 1;
+		Assert.True(methodStart > 0);
+		var methodLabelEnd = text.IndexOf(':', methodStart);
+		var methodLabel = text[methodStart..methodLabelEnd];
+		var methodEnd = text.IndexOf(
+			$"\n{methodLabel}_003Aend:",
+			methodLabelEnd,
+			StringComparison.Ordinal);
+		Assert.True(methodEnd > methodLabelEnd);
+		var methodBody = text[methodLabelEnd..methodEnd];
+
+		Assert.Equal(
+			3,
+			methodBody.Split("12(a5)", StringSplitOptions.None).Length - 1);
+	}
+
+	[Fact]
 	public void FullExceptionModeExecutesCatchInGeneratedRuntime()
 	{
 		var result = Compile(
@@ -178,6 +209,24 @@ public sealed class CompilerExecutionTests
 			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry");
 
 		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void AddressNullBranchInProtectedMethodUsesConditionCodesDirectly()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::AddressNullBranchInTryEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+		Assert.Matches(
+			@"\tmove\.l\t\(a0\),d0\r?\n\tb(?:eq|ne)\.w\t",
+			BeforeExceptionRuntime(result));
+		Assert.DoesNotContain(
+			"\tseq\td0\r\n\tneg.b\td0",
+			BeforeExceptionRuntime(result),
+			StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -767,26 +816,20 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void ClrUsesStackSlotsOnM68000AndCanBeDisabled()
+	public void ClrUsesKnownReadableSlotsOnM68000AndSupportsGlobalOptIn()
 	{
 		var m68000FrameClear = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry");
 		Assert.Matches(@"\tclr\.l\t\d+\(a7\)", m68000FrameClear.Text);
+		Assert.Matches(@"\tclr\.l\t\d+\(a5\)", m68000FrameClear.Text);
 
 		var m68020 = Compile(
 			M68kCpuTarget.M68020,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry");
 		Assert.Matches(@"\tclr\.l\t\d+\(a7\)", m68020.Text);
-
-		var disabled = Compile(
-			M68kCpuTarget.M68020,
-			M68kOutputFormat.Assembly,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry",
-			M68kClrPolicy.Never);
-		Assert.DoesNotMatch(@"\tclr\.l\t\d+\(a7\)", disabled.Text);
 
 		var optIn = Compile(
 			M68kCpuTarget.M68000,
@@ -1371,7 +1414,11 @@ public sealed class CompilerExecutionTests
 			state.D[0] = 1;
 			state.A[0] = 2;
 		});
-		bus.RegisterGateway(0x0000_2600, _ => { });
+		bus.RegisterGateway(0x0000_2600, state =>
+		{
+			state.D[0] = 3;
+			state.A[0] = 4;
+		});
 
 		Assert.Equal(
 			42u,
@@ -1384,8 +1431,10 @@ public sealed class CompilerExecutionTests
 					state.D[0] = 10;
 					state.A[0] = 32;
 				}));
-		Assert.Contains("\tmove.l\td0,-(a7)\r\n\tpea\t(a0)", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmovea.l\t(a7)+,a0\r\n\tmove.l\t(a7)+,d0\r\n\tbsr.w\tC68K_method_", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\td0,d2\r\n\tmovea.l\ta0,a2", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\td2,d0\r\n\tmovea.l\ta2,a0\r\n\tbsr.w\tC68K_method_", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\td0,-(a7)\r\n\tpea\t(a0)", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmovea.l\t(a7)+,a0\r\n\tmove.l\t(a7)+,d0", result.Text, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -2402,6 +2451,14 @@ public sealed class CompilerExecutionTests
 			assembly.Text.Split(
 				"\tmovea.l\t_ExecBase(pc),a6",
 				StringSplitOptions.None).Length - 1);
+		Assert.Contains(
+			"\tmove.l\td0,C68K_runtime_003Agc_002Darena_002Dbase",
+			assembly.Text,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmove.l\td0,-(a7)\r\n\tmove.l\t(a7)+,C68K_runtime_003Agc_002Darena_002Dbase",
+			assembly.Text,
+			StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			"\tmovea.l\t$0004.w,a6\r\n\tjsr\t-210(a6)",
 			assembly.Text,
@@ -3406,6 +3463,45 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ManagedPoolSkipsRootSyncForTransitivelyNonAllocatingCall()
+	{
+		var request = new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::NonAllocatingCallWithLiveReferenceEntry",
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 120
+			}
+		};
+		var executable = M68kCompiler.Compile(request);
+		Assert.Equal(42u, ExecuteHunk(executable, M68kCpuModel.M68000));
+
+		var assembly = M68kCompiler.Compile(request with
+		{
+			OutputFormat = M68kOutputFormat.Assembly
+		});
+		var text = assembly.Text!;
+		var methodStart = text.IndexOf(
+			"\nC68K_method_003A",
+			StringComparison.Ordinal) + 1;
+		var methodLabelEnd = text.IndexOf(':', methodStart);
+		var methodLabel = text[methodStart..methodLabelEnd];
+		var methodEnd = text.IndexOf(
+			$"\n{methodLabel}_003Aend:",
+			methodLabelEnd,
+			StringComparison.Ordinal);
+		var methodBody = text[methodLabelEnd..methodEnd];
+
+		Assert.DoesNotContain(
+			"\tmove.l\t(a7),d0\r\n\tmove.l\td0,",
+			methodBody,
+			StringComparison.Ordinal);
 	}
 
 	[Fact]

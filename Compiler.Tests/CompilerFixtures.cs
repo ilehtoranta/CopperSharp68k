@@ -64,6 +64,20 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AddressNullBranchInTryEntry()
+	{
+		var pointer = APTR.FromPointer(0x0000_4400);
+		try
+		{
+			return pointer.IsNull ? 0 : 42;
+		}
+		catch
+		{
+			return 1;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TypedCatchEntry()
 	{
 		try
@@ -1350,6 +1364,17 @@ public static class CompilerFixtures
 	{
 		M68kRuntime.Collect();
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NonAllocatingCallWithLiveReferenceEntry() =>
+		ConsumeLiveReference(new ManagedBox(), NonAllocatingLeaf());
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int NonAllocatingLeaf() => 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ConsumeLiveReference(ManagedBox value, int number) =>
+		value is null ? 0 : number + 35;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int PoolAllocationFailureCollectsRootsEntry()
