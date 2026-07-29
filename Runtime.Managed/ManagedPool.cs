@@ -203,7 +203,7 @@ public static class ManagedPool
 			var frameBase = M68kAddress.ReadUInt32(framePointer, 8);
 			var descriptor = M68kAddress.FromUInt32(descriptorAddress);
 			var rootCount = M68kAddress.ReadUInt32(descriptor, 0);
-			var rootOffsets = descriptorAddress + 4;
+			var rootOffsets = descriptorAddress + 8;
 			while (rootCount != 0)
 			{
 				var offset = M68kAddress.ReadUInt32(

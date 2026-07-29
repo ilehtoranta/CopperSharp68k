@@ -163,8 +163,8 @@ public static class M68kRuntimeImports
 		"__c68k_amiga_managed_pool_arena";
 
 	/// <summary>
-	/// Allocates a zero-filled object block. The requested byte count is passed by
-	/// the compiler's stack ABI and the address is returned in D0.
+	/// Allocates a zero-filled object block. The requested byte count is passed in
+	/// D0 and the address is returned in D0.
 	/// </summary>
 	public const string Allocate = "__c68k_alloc";
 
@@ -180,7 +180,7 @@ public static class M68kRuntimeImports
 
 	/// <summary>
 	/// Explicitly releases a managed allocation slot. The address of a four-byte
-	/// reference slot is passed by the compiler's stack ABI. Runtime code may free
+	/// reference slot is passed in A0. Runtime code may free
 	/// the allocation and should clear the slot to zero.
 	/// </summary>
 	public const string Dispose = "__c68k_dispose";

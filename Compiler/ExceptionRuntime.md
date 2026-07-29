@@ -10,9 +10,9 @@ finally, rethrow, and leave handling do not require host imports.
 
 ## Runtime frames
 
-`A5` points to the current hidden runtime frame. Methods with exception regions,
-and methods participating in a managed GC runtime, link a frame with this
-fixed header:
+`A5` points to the current hidden runtime frame. Methods that can raise or
+propagate a managed exception, and methods participating in a managed GC
+runtime, link a frame with this fixed header:
 
 | Offset | Value |
 | ---: | --- |
@@ -28,10 +28,13 @@ Entry and export adapters isolate managed calls from an incoming `A5` chain.
 Imports and Amiga library calls that use `A5` temporarily preserve and restore
 the runtime-frame pointer.
 
-Method descriptors contain signed frame-base offsets for reference arguments,
-reference locals, the active exception, and evaluation-stack scratch roots.
-The built-in collector walks the complete `A5` chain and the generated static
-root table before sweeping.
+Method descriptors contain a root count, a callee-save unwind-restore thunk,
+and signed frame-base offsets for reference arguments, reference locals, the
+active exception, and evaluation-stack scratch roots. The built-in collector
+walks the complete `A5` chain and the generated static root table before
+sweeping. Exceptional frame removal invokes the thunk before advancing A5, so
+D2-D7/A2-A6 have the same preservation contract on normal and exceptional
+returns.
 
 ## Exceptions
 

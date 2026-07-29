@@ -211,7 +211,9 @@ internal sealed class M68kAssembler
 		_pcRelative.Add(new PcRelativeFixup(displacementOffset, target));
 	}
 
-	public void OptimizeForM68000() => new M68kOptimizerPipeline(this, _buffer).Run();
+	public void OptimizeForM68000() => OptimizeForCpu(M68kCpuTarget.M68000);
+
+	public void OptimizeForCpu(M68kCpuTarget cpu) => new M68kOptimizerPipeline(this, _buffer, cpu).Run();
 
 	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream()
 	{

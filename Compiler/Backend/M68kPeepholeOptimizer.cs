@@ -9,11 +9,16 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 {
 	private readonly M68kAssembler _assembler;
 	private readonly M68kAssemblyBuffer _buffer;
+	private readonly M68kCpuTarget _cpu;
 
-	public M68kPeepholeOptimizer(M68kAssembler assembler, M68kAssemblyBuffer buffer)
+	public M68kPeepholeOptimizer(
+		M68kAssembler assembler,
+		M68kAssemblyBuffer buffer,
+		M68kCpuTarget cpu)
 	{
 		_assembler = assembler;
 		_buffer = buffer;
+		_cpu = cpu;
 	}
 
 	public void Run()
@@ -31,6 +36,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceCompareZeroWithTest() ||
 				TryRemoveRedundantTest() ||
 				TryRemoveDeadTest(dataflow) ||
+				TryRewriteByteStackPreservation(dataflow) ||
 				TryFoldByteAddIntoFrameStore(dataflow) ||
 				TryRemoveDeadInstruction(dataflow) ||
 				TryRemoveDataRegisterRoundTrip(dataflow) ||
@@ -40,13 +46,14 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryNarrowAddition(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryCanonicalizeAddressAdjustments() ||
-				TryReplaceStackPreservationWithRegister(dataflow) ||
+				TryRewriteStackPreservation(dataflow) ||
 				TryRemoveRedundantStackShuffle(dataflow) ||
 				TryRemoveRedundantStackArgumentShuffle() ||
 				TryRemoveZeroExtendedByteRegisterStackRoundTrip() ||
 				TryRemoveByteRegisterStackRoundTrip() ||
 				TryRemoveByteMaskAndTestBeforeFrameStore() ||
 				TryReplaceClearStackRoundTrip() ||
+				TryReplaceZeroStackPush(dataflow) ||
 				TryReplaceZeroRegisterRoundTrip() ||
 				TryReplaceAddressStackRoundTrip() ||
 				TryRemoveStackDuplicateRoundTrip(dataflow) ||
@@ -427,7 +434,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				!IsStackAddressLoad(pop) ||
 				!_buffer.Addresses.Any(address => address.Offset == load.Offset + 2) ||
 				!_buffer.PcRelative.Any(reference => reference.DisplacementOffset == middle.Offset + 2) ||
-				call.Kind != M68kInstructionKind.Call ||
+				(call.Kind != M68kInstructionKind.Call &&
+					(call.Opcode & 0xFFF8) != 0x4EE8) ||
 				IsReferencedLabelAt(push.Offset) ||
 				IsReferencedLabelAt(middle.Offset) ||
 				IsReferencedLabelAt(pop.Offset) ||
@@ -531,7 +539,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryReplaceStackPreservationWithRegister(M68kInstructionDataflow dataflow)
+	private bool TryRewriteStackPreservation(M68kInstructionDataflow dataflow)
 	{
 		var instructions = _assembler.GetInstructionStream();
 		for (var index = 0; index + 2 < instructions.Count; index++)
@@ -548,8 +556,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				shuffle.ExtensionWord != 0 ||
 				IsReferencedLabelAt(store.Offset) ||
 				IsReferencedLabelAt(constant.Offset) ||
-				IsReferencedLabelAt(shuffle.Offset) ||
-				!dataflow.TryGetFacts(shuffle.Offset, out var shuffleFacts))
+				IsReferencedLabelAt(shuffle.Offset))
 			{
 				continue;
 			}
@@ -561,29 +568,349 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				continue;
 			}
 
-			var temporaryRegister = Enumerable.Range(0, 8)
-				.FirstOrDefault(register =>
-				register != sourceRegister &&
-					((shuffleFacts.LiveDataAfter & (1 << register)) == 0 ||
-					 IsClobberedByFollowingExternalCall(instructions, index + 2, register, dataflow)),
-					-1);
-			if (temporaryRegister < 0)
+			if (_cpu == M68kCpuTarget.M68040 &&
+				TryGetScratchRegister(instructions, index + 2, sourceRegister, dataflow, out var scratchRegister))
+			{
+				_buffer.WriteWord(
+					store.Offset,
+					0x2000 | (scratchRegister << 9) | sourceRegister);
+				_buffer.WriteWord(
+					shuffle.Offset,
+					0x2E80 | sourceRegister);
+				_buffer.WriteWord(
+					shuffle.Offset + 2,
+					0x2F40 | scratchRegister);
+				return true;
+			}
+
+			// Store the original value in its final slot before the constant overwrites
+			// the source register, then materialize the constant in the first slot.
+			_buffer.WriteWord(store.Offset, 0x2F40 | sourceRegister);
+			_buffer.WriteWord(store.Offset + 2, _buffer.ReadWord(shuffle.Offset + 4));
+			_buffer.WriteWord(store.Offset + 4, constant.Opcode);
+			_buffer.WriteWord(
+				store.Offset + 6,
+				0x2E80 | sourceRegister);
+			_buffer.RemoveBytes(store.Offset + 8, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRewriteByteStackPreservation(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 6 < instructions.Count; index++)
+		{
+			var save = instructions[index];
+			var push = instructions[index + 1];
+			var reload = instructions[index + 2];
+			var copy = instructions[index + 3];
+			var restore = instructions[index + 4];
+			var add = instructions[index + 5];
+			var store = instructions[index + 6];
+			if (!TryGetByteFrameLoad(save, out var preservedRegister, out _) ||
+				!TryGetByteRegisterStackPush(push.Opcode, out var pushedRegister) ||
+				!TryGetByteFrameLoad(reload, out var reloadedRegister, out var reloadDisplacement) ||
+				!TryGetByteDataMove(copy, out var copiedRegister, out var temporaryRegister) ||
+				!TryGetByteRegisterStackPop(restore.Opcode, out var restoredRegister) ||
+				!TryGetByteDataAdd(add, out var addSourceRegister, out var addDestinationRegister) ||
+				!TryGetByteFrameStore(store, out var storedRegister) ||
+				preservedRegister != pushedRegister ||
+				preservedRegister != reloadedRegister ||
+				preservedRegister != restoredRegister ||
+				preservedRegister != addDestinationRegister ||
+				preservedRegister != storedRegister ||
+				preservedRegister != copiedRegister ||
+				temporaryRegister != addSourceRegister ||
+				!CanRemoveByteStackPreservation(
+					push,
+					reload,
+					copy,
+					restore,
+					add,
+					store,
+					preservedRegister,
+					temporaryRegister,
+					dataflow,
+					instructions,
+					index + 6,
+					out var preservePrimaryRegister))
 			{
 				continue;
 			}
 
-			// Keep the original value in a dead data register, then materialize the
-			// constant in the first slot and the preserved value in the second.
-			_buffer.WriteWord(store.Offset, 0x2000 | (temporaryRegister << 9) | sourceRegister);
+			var unshiftedReloadDisplacement = reloadDisplacement - 2;
+			if (unshiftedReloadDisplacement < short.MinValue ||
+				unshiftedReloadDisplacement > short.MaxValue)
+			{
+				continue;
+			}
+
+			// Dtemporary is dead until COPY overwrites it, so retain the first byte
+			// there rather than using a two-byte stack slot.  The byte push made
+			// subsequent A7-relative loads two bytes larger; undo that bias too.
 			_buffer.WriteWord(
-				shuffle.Offset,
-				0x2E80 | sourceRegister);
+				save.Offset,
+				(ushort)(0x102F | (temporaryRegister << 9)));
 			_buffer.WriteWord(
-				shuffle.Offset + 2,
-				0x2F40 | temporaryRegister);
+				reload.Offset + 2,
+				unchecked((ushort)unshiftedReloadDisplacement));
+			_buffer.WriteWord(
+				add.Offset,
+				(ushort)(0xD000 | (preservedRegister << 9) | temporaryRegister));
+			MoveLabelsToOffset(push.Offset, push.Offset + push.Length, save.Offset);
+			MoveLabelsToOffset(copy.Offset, copy.Offset + copy.Length, reload.Offset);
+			if (preservePrimaryRegister)
+			{
+				_buffer.WriteWord(
+					restore.Offset,
+					(ushort)(0x1000 | (preservedRegister << 9) | temporaryRegister));
+			}
+			else
+			{
+				_buffer.WriteWord(
+					store.Offset,
+					(ushort)(0x1F40 | temporaryRegister));
+				MoveLabelsToOffset(restore.Offset, restore.Offset + restore.Length, add.Offset);
+				_buffer.RemoveBytes(restore.Offset, restore.Length);
+			}
+			_buffer.RemoveBytes(copy.Offset, copy.Length);
+			_buffer.RemoveBytes(push.Offset, push.Length);
 			return true;
 		}
 
+		return false;
+	}
+
+	private bool CanRemoveByteStackPreservation(
+		M68kEmittedInstruction push,
+		M68kEmittedInstruction reload,
+		M68kEmittedInstruction copy,
+		M68kEmittedInstruction restore,
+		M68kEmittedInstruction add,
+		M68kEmittedInstruction store,
+		int preservedRegister,
+		int temporaryRegister,
+		M68kInstructionDataflow dataflow,
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int storeIndex,
+		out bool preservePrimaryRegister)
+	{
+		preservePrimaryRegister = false;
+		if (IsReferencedLabelAt(push.Offset) ||
+			IsReferencedLabelAt(reload.Offset) ||
+			IsReferencedLabelAt(copy.Offset) ||
+			IsReferencedLabelAt(restore.Offset) ||
+			IsReferencedLabelAt(add.Offset) ||
+			IsReferencedLabelAt(store.Offset) ||
+			!dataflow.TryGetFacts(store.Offset, out var storeFacts))
+		{
+			return false;
+		}
+
+		var temporaryRegisterMask = (ushort)(1 << temporaryRegister);
+		if ((storeFacts.LiveDataAfter & temporaryRegisterMask) != 0 &&
+			!IsDataRegisterOverwrittenBeforeUse(
+				instructions,
+				storeIndex + 1,
+				temporaryRegister,
+				dataflow))
+		{
+			return false;
+		}
+
+		preservePrimaryRegister =
+			(storeFacts.LiveDataAfter & (1 << preservedRegister)) != 0;
+		return true;
+	}
+
+	private static bool IsDataRegisterOverwrittenBeforeUse(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var registerMask = (ushort)(1 << register);
+		for (var index = startIndex; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if (instruction.Kind != M68kInstructionKind.Normal ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts))
+			{
+				return false;
+			}
+
+			if (TryGetByteFrameLoad(instruction, out var frameLoadRegister, out _))
+			{
+				if (frameLoadRegister == register)
+				{
+					return true;
+				}
+
+				continue;
+			}
+
+			if (TryGetByteFrameStore(instruction, out var frameStoreRegister))
+			{
+				if (frameStoreRegister == register)
+				{
+					return false;
+				}
+
+				continue;
+			}
+
+			if (TryGetByteDataMove(
+					instruction,
+					out var byteMoveSourceRegister,
+					out var byteMoveDestinationRegister))
+			{
+				if (byteMoveSourceRegister == register)
+				{
+					return false;
+				}
+
+				if (byteMoveDestinationRegister == register)
+				{
+					return true;
+				}
+
+				continue;
+			}
+
+			if (facts.Effects.IsBarrier && IsStackOnlyMove(instruction.Opcode))
+			{
+				continue;
+			}
+
+			if ((facts.Effects.UsesData & registerMask) != 0)
+			{
+				return false;
+			}
+
+			if ((facts.Effects.DefinesData & registerMask) != 0)
+			{
+				return true;
+			}
+
+			if (facts.Effects.IsBarrier)
+			{
+				return false;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsStackOnlyMove(ushort opcode)
+	{
+		if ((opcode & 0xF000) is not (0x1000 or 0x2000 or 0x3000))
+		{
+			return false;
+		}
+
+		var sourceMode = (opcode >> 3) & 7;
+		var sourceRegister = opcode & 7;
+		var destinationMode = (opcode >> 6) & 7;
+		var destinationRegister = (opcode >> 9) & 7;
+		return sourceRegister == 7 && destinationRegister == 7 &&
+			sourceMode is >= 2 and <= 6 && destinationMode is >= 2 and <= 6;
+	}
+
+	private static bool TryGetByteFrameLoad(
+		M68kEmittedInstruction instruction,
+		out int register,
+		out int displacement)
+	{
+		if (instruction.Length == 4 && (instruction.Opcode & 0xF1FF) == 0x102F)
+		{
+			register = (instruction.Opcode >> 9) & 7;
+			displacement = unchecked((short)instruction.ExtensionWord);
+			return true;
+		}
+
+		register = 0;
+		displacement = 0;
+		return false;
+	}
+
+	private static bool TryGetByteFrameStore(
+		M68kEmittedInstruction instruction,
+		out int register)
+	{
+		if (instruction.Length == 4 && (instruction.Opcode & 0xFFF8) == 0x1F40)
+		{
+			register = instruction.Opcode & 7;
+			return true;
+		}
+
+		register = 0;
+		return false;
+	}
+
+	private static bool TryGetByteDataMove(
+		M68kEmittedInstruction instruction,
+		out int sourceRegister,
+		out int destinationRegister)
+	{
+		if (instruction.Length == 2 && (instruction.Opcode & 0xF1F8) == 0x1000)
+		{
+			sourceRegister = instruction.Opcode & 7;
+			destinationRegister = (instruction.Opcode >> 9) & 7;
+			return true;
+		}
+
+		sourceRegister = 0;
+		destinationRegister = 0;
+		return false;
+	}
+
+	private static bool TryGetByteDataAdd(
+		M68kEmittedInstruction instruction,
+		out int sourceRegister,
+		out int destinationRegister)
+	{
+		if (instruction.Length == 2 && (instruction.Opcode & 0xF1F8) == 0xD000)
+		{
+			sourceRegister = instruction.Opcode & 7;
+			destinationRegister = (instruction.Opcode >> 9) & 7;
+			return true;
+		}
+
+		sourceRegister = 0;
+		destinationRegister = 0;
+		return false;
+	}
+
+	private bool TryGetScratchRegister(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int shuffleIndex,
+		int sourceRegister,
+		M68kInstructionDataflow dataflow,
+		out int scratchRegister)
+	{
+		if (!dataflow.TryGetFacts(instructions[shuffleIndex].Offset, out var shuffleFacts))
+		{
+			scratchRegister = -1;
+			return false;
+		}
+
+		for (var register = 0; register < 8; register++)
+		{
+			if (register == sourceRegister ||
+				(shuffleFacts.LiveDataAfter & (1 << register)) != 0 &&
+				!IsClobberedByFollowingExternalCall(instructions, shuffleIndex, register, dataflow))
+			{
+				continue;
+			}
+
+			scratchRegister = register;
+			return true;
+		}
+
+		scratchRegister = -1;
 		return false;
 	}
 
@@ -707,6 +1034,33 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			MoveLabelsToOffset(push.Offset, pop.Offset + pop.Length, zero.Offset);
 			_buffer.WriteWord(zero.Offset, (ushort)(0x4280 | dataRegister));
 			_buffer.RemoveBytes(zero.Offset + 2, push.Length + pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryReplaceZeroStackPush(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var zero = instructions[index];
+			var push = instructions[index + 1];
+			var dataRegister = (zero.Opcode >> 9) & 7;
+			if ((zero.Opcode & 0xF1FF) != 0x7000 ||
+				zero.Length != 2 ||
+				push.Opcode != (ushort)(0x2F00 | dataRegister) ||
+				push.Length != 2 ||
+				IsReferencedLabelAt(push.Offset) ||
+				!dataflow.TryGetFacts(push.Offset, out var pushFacts) ||
+				(pushFacts.LiveDataAfter & (1 << dataRegister)) != 0)
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(zero.Offset, 0x42A7); // CLR.L -(A7)
+			_buffer.RemoveBytes(push.Offset, push.Length);
 			return true;
 		}
 
@@ -1514,12 +1868,16 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				(call.Opcode & 0xFFF8) != 0x4EA8 ||
 				returnInstruction.Kind != M68kInstructionKind.Return ||
 				returnInstruction.Offset != call.Offset + call.Length ||
-				_buffer.HasLabelAt(returnInstruction.Offset))
+				IsReferencedLabelAt(returnInstruction.Offset))
 			{
 				continue;
 			}
 
 			_buffer.WriteWord(call.Offset, call.Opcode + 0x40); // JSR d16(An) -> JMP d16(An)
+			MoveLabelsToOffset(
+				returnInstruction.Offset,
+				returnInstruction.Offset + returnInstruction.Length,
+				call.Offset);
 			_buffer.RemoveBytes(returnInstruction.Offset, returnInstruction.Length);
 			return true;
 		}

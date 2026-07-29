@@ -52,6 +52,29 @@ internal sealed partial class M68kCodeGenerator
 		public int SavedCycles => CallCycles - InlineCycles;
 	}
 
+	private readonly record struct InternalArgumentLocation(
+		int Index,
+		int SlotLongs,
+		M68kRegister? Register,
+		M68kRegister? LowRegister,
+		int StackOffset,
+		bool IsGcReference)
+	{
+		public bool IsStack => Register is null;
+	}
+
+	private sealed record InternalCallAbi(
+		ImmutableArray<InternalArgumentLocation> Arguments,
+		int StackBytes)
+	{
+		public bool IsRegisterOnly => StackBytes == 0;
+
+		public IReadOnlyList<M68kRegister>? RegisterOnlyLocations =>
+			IsRegisterOnly
+				? Arguments.Select(static argument => argument.Register!.Value).ToArray()
+				: null;
+	}
+
 	private bool UsesBuiltInManagedPool =>
 		_memoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc;
 
@@ -100,6 +123,7 @@ internal sealed partial class M68kCodeGenerator
 		var exports = _module.GetExports();
 		var methods = PruneAlwaysInlinedMethods(DiscoverReachableMethods(entry, exports), entry, exports);
 		PreRegisterPlatformBases(methods);
+		EnsureManagedPoolExecBase();
 		var initializesPlatformBase = _usedPlatformBases.Values.Any(RequiresPlatformBaseInitialization);
 		var usesManagedRuntime = M68kCompiler.IsManagedRuntime(_request);
 		var usesAmigaStartupArguments = HasAmigaStartupArguments(entry);
@@ -126,7 +150,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		EmitExceptionRuntime();
 		EmitManagedPoolRuntime();
-		_assembler.OptimizeForM68000();
+		_assembler.OptimizeForCpu(_request.Cpu);
 		EmitData(methods);
 		EmitExceptionMetadata(methods);
 
@@ -335,17 +359,8 @@ internal sealed partial class M68kCodeGenerator
 				(method.IsImport || method.ExternalCall is not null)
 				? "nullable platform return type"
 				: "return type");
-		var allows64BitParameters = method.IsImport || method.ExternalCall is not null;
 		foreach (var parameter in method.Signature.ParameterTypes)
 		{
-			if (Is64BitScalar(parameter) && !allows64BitParameters)
-			{
-				throw new M68kCompilationException(
-					M68kDiagnosticIds.UnsupportedSignature,
-					"64-bit parameters are currently supported only for register-ABI imports and platform calls.",
-					method.DisplayName);
-			}
-
 			ValidateType(parameter, method, "parameter");
 		}
 
@@ -416,13 +431,14 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_loadedPlatformBase = null;
 		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
-		var registerAbi = GetInternalRegisterAbi(method);
+		var internalAbi = GetInternalCallAbi(method);
+		var registerAbi = internalAbi.RegisterOnlyLocations;
 		var branchTargets = GetBranchTargets(method.Instructions);
 		var reachableOffsets = reachableStackStates.Keys.ToHashSet();
 		var platformBaseBlockEntries = AnalyzePlatformBaseBlockEntries(method, reachableOffsets);
 		_currentFrameLayout = CreateFrameLayout(
 			method,
-			registerAbi,
+			internalAbi,
 			branchTargets,
 			reachableOffsets,
 			reachableStackStates);
@@ -444,19 +460,26 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		if (!TryEmitCompactArgumentHomeFrame(registerAbi))
+		if (!TryEmitCompactArgumentHomeFrame(internalAbi))
 		{
 			EmitAllocateFrame(_currentFrameLayout.FrameBytes);
-			if (registerAbi is not null)
+			EmitSaveCalleeSavedRegisters();
+			foreach (var location in internalAbi.Arguments)
 			{
-				for (var index = 0; index < registerAbi.Count; index++)
+				if (location.IsStack ||
+					_currentFrameLayout.ArgumentRegisters[location.Index] is not null)
 				{
-					if (_currentFrameLayout.ArgumentRegisters[index] is not null)
-					{
-						continue;
-					}
+					continue;
+				}
 
-					EmitStoreRegisterToFrame(registerAbi[index], ArgumentOffset(method, index));
+				EmitStoreRegisterToFrame(
+					location.Register!.Value,
+					ArgumentOffset(method, location.Index));
+				if (location.LowRegister is { } lowRegister)
+				{
+					EmitStoreRegisterToFrame(
+						lowRegister,
+						checked((short)(ArgumentOffset(method, location.Index) + 4)));
 				}
 			}
 			EmitClearFrameRegion(
@@ -998,7 +1021,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (registerAbi is not [M68kRegister.D0] ||
 			method.Signature.ReturnType.IsVoid ||
-			method.Signature.ReturnType.IsReference ||
+			IsInternalAddressReturn(method.Signature.ReturnType) ||
 			Is64BitScalar(method.Signature.ReturnType) ||
 			!IsIdentityReturnBody(method))
 		{
@@ -1645,7 +1668,7 @@ internal sealed partial class M68kCodeGenerator
 		_loadedPlatformBase = null;
 		if (!definition.Signature.ReturnType.IsVoid && !discardsResult)
 		{
-			if (definition.Signature.ReturnType.IsReference)
+			if (IsInternalAddressReturn(definition.Signature.ReturnType))
 			{
 				if (!returnsDirectly)
 				{
@@ -2704,7 +2727,7 @@ internal sealed partial class M68kCodeGenerator
 		consumed = 0;
 		if (caller.Signature.ReturnType.IsVoid ||
 			Is64BitScalar(caller.Signature.ReturnType) ||
-			caller.Signature.ReturnType.IsReference ||
+			IsInternalAddressReturn(caller.Signature.ReturnType) ||
 			!TryGetArgumentValueExpression(
 				caller,
 				instructions,
@@ -2996,7 +3019,7 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		var sourceRegister = !definition.IsImport && definition.Signature.ReturnType.IsReference
+		var sourceRegister = !definition.IsImport && IsInternalAddressReturn(definition.Signature.ReturnType)
 			? M68kRegister.A0
 			: M68kRegister.D0;
 		if (destination.IsLocal)
@@ -3868,7 +3891,7 @@ internal sealed partial class M68kCodeGenerator
 					EmitPopRegister(M68kRegister.D1);
 					EmitPopRegister(M68kRegister.D0);
 				}
-				else if (method.Signature.ReturnType.IsReference)
+				else if (IsInternalAddressReturn(method.Signature.ReturnType))
 				{
 					_assembler.EmitWord(0x205F); // MOVEA.L (A7)+,A0
 				}
@@ -5292,9 +5315,9 @@ internal sealed partial class M68kCodeGenerator
 
 			if (target.ImportName == "intrinsic:runtime-dispose")
 			{
+				EmitPopRegister(M68kRegister.A0);
 				EmitRuntimeJsr(RuntimeDisposeLabel, M68kRuntimeImports.Dispose);
 				_loadedPlatformBase = null;
-				EmitDiscardStackArguments(target.ParameterCount);
 				return;
 			}
 
@@ -5398,42 +5421,18 @@ internal sealed partial class M68kCodeGenerator
 		}
 		else
 		{
-			var internalAbi = GetInternalRegisterAbi(target.Definition);
+			var internalAbi = GetInternalCallAbi(target.Definition);
 			if (target.Definition.DeclaringTypeIsInterface)
 			{
-				if (internalAbi is null)
-				{
-					throw new M68kCompilationException(
-						M68kDiagnosticIds.UnsupportedSignature,
-						"Interface calls currently require arguments that fit the private register ABI.",
-						caller.DisplayName,
-						instruction.Offset);
-				}
 				EmitInterfaceCall(target.Definition, internalAbi);
 			}
 			else if (RequiresVirtualDispatch(instruction, target.Definition))
 			{
-				if (internalAbi is null)
-				{
-					throw new M68kCompilationException(
-						M68kDiagnosticIds.UnsupportedSignature,
-						"Virtual calls currently require arguments that fit the private register ABI.",
-						caller.DisplayName,
-						instruction.Offset);
-				}
 				EmitVirtualCall(target.Definition, internalAbi);
 			}
 			else
 			{
-				if (internalAbi is not null)
-				{
-					EmitLoadRegistersFromEvaluationStack(internalAbi);
-					EmitDiscardStackArguments(internalAbi.Count);
-				}
-				else
-				{
-					EmitReorderDirectStackArguments(target.Definition);
-				}
+				EmitPrepareInternalCall(target.Definition, internalAbi);
 				if (!IsAlwaysInlinedMethod(target.Definition))
 				{
 					_assembler.EmitBsr(MethodLabel(target.Definition));
@@ -5446,9 +5445,9 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitDiscardStackArguments(ParameterSlotLongs(target.Definition.Signature.ParameterTypes));
 		}
-		else if (GetInternalRegisterAbi(target.Definition) is null)
+		else
 		{
-			EmitDiscardStackArguments(InternalStackArgumentSlotLongs(target.Definition));
+			EmitReleaseStackBytes(GetInternalCallAbi(target.Definition).StackBytes);
 		}
 		if (pushResult && !target.Signature.ReturnType.IsVoid)
 		{
@@ -5471,7 +5470,7 @@ internal sealed partial class M68kCodeGenerator
 				EmitPushRegister(lowRegister);
 			}
 			else if (!target.Definition.IsImport &&
-				target.Definition.Signature.ReturnType.IsReference)
+				IsInternalAddressReturn(target.Definition.Signature.ReturnType))
 			{
 				_assembler.EmitWord(0x2F08); // MOVE.L A0,-(A7)
 			}
@@ -5491,7 +5490,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitVirtualCall(
 		CilMethod declaration,
-		IReadOnlyList<M68kRegister> registerAbi)
+		InternalCallAbi internalAbi)
 	{
 		var slot = _module.GetVirtualSlot(declaration);
 		if (slot > short.MaxValue / 4)
@@ -5502,9 +5501,11 @@ internal sealed partial class M68kCodeGenerator
 				declaration.DisplayName);
 		}
 
-		EmitLoadRegistersFromEvaluationStack(registerAbi);
-		EmitDiscardStackArguments(registerAbi.Count);
-		EmitPushRegister(M68kRegister.A2);
+		var saveOffset = checked((short)(
+			FrameDisplacement(CurrentFrameLayout.DirectCallScratchOffset, _currentStackDepth) +
+			internalAbi.StackBytes));
+		EmitStoreRegisterToFrame(M68kRegister.A2, saveOffset);
+		EmitPrepareInternalCall(declaration, internalAbi);
 		_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2 descriptor
 		_assembler.EmitWord(0x246A); // MOVEA.L 12(A2),A2 vtable
 		_assembler.EmitWord(0x000C);
@@ -5518,13 +5519,17 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(checked((ushort)(slot * 4)));
 		}
 		_assembler.EmitWord(0x4E92); // JSR (A2)
-		EmitPopRegister(M68kRegister.A2);
+		EmitLoadRegisterFromStack(
+			M68kRegister.A2,
+			checked((short)(
+				CurrentFrameLayout.DirectCallScratchOffset +
+				(internalAbi.StackBytes * 2))));
 		_loadedPlatformBase = null;
 	}
 
 	private void EmitInterfaceCall(
 		CilMethod declaration,
-		IReadOnlyList<M68kRegister> registerAbi)
+		InternalCallAbi internalAbi)
 	{
 		var interfaceDefinition = _module.GetInterfaceDefinition(declaration);
 		_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
@@ -5537,14 +5542,13 @@ internal sealed partial class M68kCodeGenerator
 				declaration.DisplayName);
 		}
 
-		EmitLoadRegistersFromEvaluationStack(registerAbi);
-		EmitDiscardStackArguments(registerAbi.Count);
-		EmitPushRegisters(stackalloc[]
-		{
-			M68kRegister.D2,
-			M68kRegister.A2,
-			M68kRegister.A3
-		});
+		var saveOffset = checked((short)(
+			FrameDisplacement(CurrentFrameLayout.DirectCallScratchOffset, _currentStackDepth) +
+			internalAbi.StackBytes));
+		EmitStoreRegisterToFrame(M68kRegister.D2, saveOffset);
+		EmitStoreRegisterToFrame(M68kRegister.A2, checked((short)(saveOffset + 4)));
+		EmitStoreRegisterToFrame(M68kRegister.A3, checked((short)(saveOffset + 8)));
+		EmitPrepareInternalCall(declaration, internalAbi);
 		_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2 descriptor
 		_assembler.EmitWord(0x246A); // MOVEA.L 16(A2),A2 interface map
 		_assembler.EmitWord(0x0010);
@@ -5575,12 +5579,12 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(checked((ushort)(slot * 4)));
 		}
 		_assembler.EmitWord(0x4E92); // JSR (A2)
-		EmitPopRegisters(stackalloc[]
-		{
-			M68kRegister.D2,
-			M68kRegister.A2,
-			M68kRegister.A3
-		});
+		var restoreOffset = checked((short)(
+			CurrentFrameLayout.DirectCallScratchOffset +
+			(internalAbi.StackBytes * 2)));
+		EmitLoadRegisterFromStack(M68kRegister.D2, restoreOffset);
+		EmitLoadRegisterFromStack(M68kRegister.A2, checked((short)(restoreOffset + 4)));
+		EmitLoadRegisterFromStack(M68kRegister.A3, checked((short)(restoreOffset + 8)));
 		_loadedPlatformBase = null;
 	}
 
@@ -6265,13 +6269,15 @@ internal sealed partial class M68kCodeGenerator
 			callee.Signature.ReturnType.Kind == CilTypeKind.GenericParameter ||
 			caller.Signature.ReturnType.IsVoid != target.Signature.ReturnType.IsVoid ||
 			(!caller.Signature.ReturnType.IsVoid &&
-			 caller.Signature.ReturnType.IsReference != target.Signature.ReturnType.IsReference))
+			 IsInternalAddressReturn(caller.Signature.ReturnType) !=
+			 IsInternalAddressReturn(target.Signature.ReturnType)))
 		{
 			return false;
 		}
 
 		ValidateMethodSignature(callee, isEntry: false);
 		EmitLoadRegistersFromEvaluationStack(registerAbi);
+		EmitRestoreCalleeSavedRegisters();
 		EmitReleaseStackBytes(checked((registerAbi.Count * 4) + CurrentFrameLayout.FrameBytes));
 		_assembler.EmitJmp(MethodLabel(callee), external: false);
 		return true;
@@ -6288,6 +6294,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		ValidateMethodSignature(callee, isEntry: false);
+		EmitRestoreCalleeSavedRegisters();
 		EmitExternalCallArguments(callee, externalCall);
 		EmitEnsurePlatformBase(externalCall.Convention, callee);
 		EmitReleaseStackBytes(checked((ParameterSlotLongs(callee.Signature.ParameterTypes) * 4) + CurrentFrameLayout.FrameBytes));
@@ -6307,7 +6314,8 @@ internal sealed partial class M68kCodeGenerator
 			Is64BitScalar(callee.Signature.ReturnType) ||
 			caller.Signature.ReturnType.IsVoid != callee.Signature.ReturnType.IsVoid ||
 			(!caller.Signature.ReturnType.IsVoid &&
-			 caller.Signature.ReturnType.IsReference != callee.Signature.ReturnType.IsReference) ||
+			 IsInternalAddressReturn(caller.Signature.ReturnType) !=
+			 IsInternalAddressReturn(callee.Signature.ReturnType)) ||
 			(!callee.Signature.ReturnType.IsVoid &&
 				externalCall.Abi.ReturnRegister != M68kRegister.D0) ||
 			externalCall.Convention.ExceptionPolicy != M68kExternalExceptionPolicy.None)
@@ -6315,16 +6323,46 @@ internal sealed partial class M68kCodeGenerator
 			return false;
 		}
 
-		var cacheRegister = externalCall.Convention.CacheRegister;
-		return cacheRegister is null ||
-			(externalCall.Abi.ReturnRegister != cacheRegister &&
-			 !externalCall.Abi.ParameterRegisters.Contains(cacheRegister.Value));
+		if (IsInternalCalleeSavedRegister(externalCall.Convention.BaseRegister) ||
+			externalCall.Convention.CacheRegister is { } cacheRegister &&
+				IsInternalCalleeSavedRegister(cacheRegister) ||
+			externalCall.Abi.ParameterRegisters.Any(IsInternalCalleeSavedRegister) ||
+			IsInternalCalleeSavedRegister(externalCall.Abi.ReturnRegister))
+		{
+			return false;
+		}
+
+		var optionalCacheRegister = externalCall.Convention.CacheRegister;
+		return optionalCacheRegister is null ||
+			(externalCall.Abi.ReturnRegister != optionalCacheRegister &&
+			 !externalCall.Abi.ParameterRegisters.Contains(optionalCacheRegister.Value));
 	}
 
 	private void EmitFrameTeardown(CilMethod method)
 	{
+		EmitRestoreCalleeSavedRegisters();
 		EmitUnlinkRuntimeFrame();
 		EmitReleaseFrame(CurrentFrameLayout.FrameBytes);
+	}
+
+	private void EmitSaveCalleeSavedRegisters()
+	{
+		for (var index = 0; index < CurrentFrameLayout.CalleeSavedRegisters.Length; index++)
+		{
+			EmitStoreRegisterToFrame(
+				CurrentFrameLayout.CalleeSavedRegisters[index],
+				CurrentFrameLayout.CalleeSaveOffsets[index]);
+		}
+	}
+
+	private void EmitRestoreCalleeSavedRegisters()
+	{
+		for (var index = 0; index < CurrentFrameLayout.CalleeSavedRegisters.Length; index++)
+		{
+			EmitLoadRegisterFromStack(
+				CurrentFrameLayout.CalleeSavedRegisters[index],
+				CurrentFrameLayout.CalleeSaveOffsets[index]);
+		}
 	}
 
 	private void EmitLoadRegisterFromStack(M68kRegister register, int offset)
@@ -6463,44 +6501,118 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
-	private void EmitReorderDirectStackArguments(CilMethod target)
+	private int EmitPrepareInternalCall(
+		CilMethod target,
+		InternalCallAbi abi,
+		bool receiverAlreadyLoaded = false)
 	{
-		var argumentBytes = InternalStackArgumentBytes(target);
-		if (argumentBytes == 0)
+		var argumentBytes = checked(
+			InternalStackArgumentBytes(target) - (receiverAlreadyLoaded ? 4 : 0));
+		foreach (var location in abi.Arguments)
 		{
-			return;
-		}
-
-		if (CurrentFrameLayout.DirectCallScratchBytes < argumentBytes)
-		{
-			throw new M68kCompilationException(
-				M68kDiagnosticIds.InvalidEvaluationStack,
-				"The frame does not reserve enough scratch space for a direct stack call.",
-				target.DisplayName);
-		}
-
-		var scratch = FrameDisplacement(
-			CurrentFrameLayout.DirectCallScratchOffset,
-			_currentStackDepth);
-		for (var index = target.ParameterCount - 1; index >= 0; index--)
-		{
-			var argumentLongs = ArgumentSlotLongs(target, index);
-			var sourceOffset = InternalStackArgumentBytesAfter(target, index);
-			var destinationOffset = InternalStackArgumentByteOffset(target, index);
-			for (var slot = 0; slot < argumentLongs; slot++)
+			if (location.IsStack || receiverAlreadyLoaded && location.Index == 0)
 			{
-				EmitMoveFrameSlotToFrameSlot(
-					checked((short)(sourceOffset + ((argumentLongs - 1 - slot) * 4))),
-					checked((short)(scratch + destinationOffset + (slot * 4))));
+				continue;
+			}
+
+			var sourceOffset = InternalStackArgumentBytesAfter(target, location.Index);
+			if (location.LowRegister is { } lowRegister)
+			{
+				EmitLoadRegisterFromStack(lowRegister, sourceOffset);
+				EmitLoadRegisterFromStack(location.Register!.Value, checked(sourceOffset + 4));
+			}
+			else
+			{
+				EmitLoadRegisterFromStack(location.Register!.Value, sourceOffset);
 			}
 		}
 
-		for (var offset = 0; offset < argumentBytes; offset += 4)
+		var releasedBytes = checked(argumentBytes - abi.StackBytes);
+		if (abi.StackBytes != 0)
+		{
+			if (CurrentFrameLayout.DirectCallScratchBytes < abi.StackBytes)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidEvaluationStack,
+					"The frame does not reserve enough scratch space for a hybrid internal call.",
+					target.DisplayName);
+			}
+
+			var scratch = FrameDisplacement(
+				CurrentFrameLayout.DirectCallScratchOffset,
+				_currentStackDepth);
+			foreach (var location in abi.Arguments)
+			{
+				if (!location.IsStack)
+				{
+					continue;
+				}
+
+				var sourceOffset = InternalStackArgumentBytesAfter(target, location.Index);
+				for (var slot = 0; slot < location.SlotLongs; slot++)
+				{
+					EmitMoveFrameSlotToFrameSlot(
+						checked((short)(sourceOffset + ((location.SlotLongs - 1 - slot) * 4))),
+						checked((short)(scratch + location.StackOffset + (slot * 4))));
+				}
+			}
+			for (var offset = 0; offset < abi.StackBytes; offset += 4)
+			{
+				EmitMoveFrameSlotToFrameSlot(
+					checked((short)(scratch + offset)),
+					checked((short)(releasedBytes + offset)));
+			}
+		}
+
+		EmitReleaseStackBytes(releasedBytes);
+		return abi.StackBytes;
+	}
+
+	private void EmitPrepareInternalCallFromDeclarationOrderedStack(
+		CilMethod target,
+		InternalCallAbi abi)
+	{
+		var argumentBytes = InternalStackArgumentBytes(target);
+		foreach (var location in abi.Arguments)
+		{
+			if (location.IsStack)
+			{
+				continue;
+			}
+
+			var sourceOffset = InternalStackArgumentByteOffset(target, location.Index);
+			EmitLoadRegisterFromStack(location.Register!.Value, sourceOffset);
+			if (location.LowRegister is { } lowRegister)
+			{
+				EmitLoadRegisterFromStack(lowRegister, checked(sourceOffset + 4));
+			}
+		}
+
+		var releasedBytes = checked(argumentBytes - abi.StackBytes);
+		EmitAllocateFrame(abi.StackBytes);
+		foreach (var location in abi.Arguments)
+		{
+			if (!location.IsStack)
+			{
+				continue;
+			}
+
+			var sourceOffset = checked(
+				abi.StackBytes + InternalStackArgumentByteOffset(target, location.Index));
+			for (var slot = 0; slot < location.SlotLongs; slot++)
+			{
+				EmitMoveFrameSlotToFrameSlot(
+					checked((short)(sourceOffset + (slot * 4))),
+					checked((short)(location.StackOffset + (slot * 4))));
+			}
+		}
+		for (var offset = 0; offset < abi.StackBytes; offset += 4)
 		{
 			EmitMoveFrameSlotToFrameSlot(
-				checked((short)(scratch + offset)),
-				checked((short)offset));
+				checked((short)offset),
+				checked((short)(abi.StackBytes + releasedBytes + offset)));
 		}
+		EmitReleaseStackBytes(checked(abi.StackBytes + releasedBytes));
 	}
 
 	private void EmitStoreRegisterToFrame(M68kRegister register, short displacement)
@@ -6654,56 +6766,106 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private IReadOnlyList<M68kRegister>? GetInternalRegisterAbi(CilMethod method)
+		=> GetInternalCallAbi(method).RegisterOnlyLocations;
+
+	private InternalCallAbi GetInternalCallAbi(CilMethod method)
 	{
 		if (!method.Signature.Header.IsInstance && HasAmigaStartupArguments(method))
 		{
-			return [M68kRegister.D0, M68kRegister.A0];
+			return new InternalCallAbi(
+				[
+					new InternalArgumentLocation(0, 1, M68kRegister.D0, null, -1, false),
+					new InternalArgumentLocation(1, 1, M68kRegister.A0, null, -1, false)
+				],
+				0);
 		}
 
-		var registers = new List<M68kRegister>(method.ParameterCount);
+		var arguments = ImmutableArray.CreateBuilder<InternalArgumentLocation>(method.ParameterCount);
 		var nextData = 0;
 		var nextAddress = 0;
+		var stackOffset = 0;
 		if (method.Signature.Header.IsInstance)
 		{
 			if (method.Name != ".ctor" &&
 				IsTransparentScalarDeclaringType(method))
 			{
-				registers.Add(M68kRegister.D0);
+				arguments.Add(new InternalArgumentLocation(
+					0,
+					1,
+					M68kRegister.D0,
+					null,
+					-1,
+					false));
 				nextData = 1;
 			}
 			else
 			{
-				registers.Add(M68kRegister.A0);
+				arguments.Add(new InternalArgumentLocation(
+					0,
+					1,
+					M68kRegister.A0,
+					null,
+					-1,
+					true));
 				nextAddress = 1;
 			}
 		}
 
-		foreach (var parameter in method.Signature.ParameterTypes)
+		for (var parameterIndex = 0;
+			parameterIndex < method.Signature.ParameterTypes.Length;
+			parameterIndex++)
 		{
-			if (parameter.Kind == CilTypeKind.GenericParameter)
+			var parameter = method.Signature.ParameterTypes[parameterIndex];
+			var argumentIndex = parameterIndex + (method.Signature.Header.IsInstance ? 1 : 0);
+			var slotLongs = ArgumentSlotLongs(method, argumentIndex);
+			M68kRegister? register = null;
+			M68kRegister? lowRegister = null;
+
+			if (Is64BitScalar(parameter) && nextData == 0)
 			{
-				return null;
+				register = M68kRegister.D0;
+				lowRegister = M68kRegister.D1;
+				nextData = 2;
+			}
+			else if (parameter.Kind != CilTypeKind.GenericParameter &&
+				IsInternalAddressArgument(parameter) &&
+				nextAddress < 2)
+			{
+				register = (M68kRegister)((int)M68kRegister.A0 + nextAddress++);
+			}
+			else if (parameter.Kind != CilTypeKind.GenericParameter &&
+				!Is64BitScalar(parameter) &&
+				nextData < 2)
+			{
+				register = (M68kRegister)((int)M68kRegister.D0 + nextData++);
 			}
 
-			if (parameter.IsReference)
+			var argumentStackOffset = register is null ? stackOffset : -1;
+			if (register is null)
 			{
-				if (nextAddress >= 2)
-				{
-					return null;
-				}
-				registers.Add((M68kRegister)((int)M68kRegister.A0 + nextAddress++));
+				stackOffset = checked(stackOffset + (slotLongs * 4));
 			}
-			else
-			{
-				if (nextData >= 2)
-				{
-					return null;
-				}
-				registers.Add((M68kRegister)((int)M68kRegister.D0 + nextData++));
-			}
+			arguments.Add(new InternalArgumentLocation(
+				argumentIndex,
+				slotLongs,
+				register,
+				lowRegister,
+				argumentStackOffset,
+				parameter.Kind == CilTypeKind.ManagedReference));
 		}
-		return registers;
+
+		return new InternalCallAbi(arguments.MoveToImmutable(), stackOffset);
 	}
+
+	private static bool IsInternalAddressArgument(CilType type) =>
+		type.Kind is
+			CilTypeKind.ManagedReference or
+			CilTypeKind.ManagedPointer or
+			CilTypeKind.UnmanagedPointer or
+			CilTypeKind.FunctionPointer;
+
+	private static bool IsInternalAddressReturn(CilType type) =>
+		IsInternalAddressArgument(type);
 
 	private void EmitMoveRegisterToD0(M68kRegister register)
 	{
@@ -6811,15 +6973,7 @@ internal sealed partial class M68kCodeGenerator
 				instruction.Offset);
 		}
 
-		var constructorAbi = GetInternalRegisterAbi(constructor);
-		if (constructorAbi is null)
-		{
-			throw new M68kCompilationException(
-				M68kDiagnosticIds.UnsupportedSignature,
-				"Object constructors with this signature exceed the private register ABI.",
-				caller.DisplayName,
-				instruction.Offset);
-		}
+		var constructorAbi = GetInternalCallAbi(constructor);
 
 		var layout = _module.GetTypeLayout(constructor);
 		_usedTypeLayouts.TryAdd(layout.Identity, layout);
@@ -6842,10 +6996,10 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x0004);
 
 		EmitMoveRegister(M68kRegister.D0, M68kRegister.A0);
-		EmitLoadRegistersFromEvaluationStack(constructorAbi.Skip(1).ToArray());
+		EmitPrepareInternalCall(constructor, constructorAbi, receiverAlreadyLoaded: true);
 		_assembler.EmitBsr(MethodLabel(constructor));
 		_loadedPlatformBase = null;
-		EmitDiscardStackArguments(constructor.Signature.ParameterTypes.Length);
+		EmitReleaseStackBytes(constructorAbi.StackBytes);
 		EmitPushRegister(M68kRegister.A0);
 	}
 
@@ -7075,12 +7229,16 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (!UsesBuiltInManagedPool)
 		{
+			EmitPopD0();
 			EmitRuntimeJsr(RuntimeAllocLabel, M68kRuntimeImports.Allocate);
 			_loadedPlatformBase = null;
-			EmitDiscardStackArguments(1);
 			EmitRequireAllocationSucceeded();
 			return;
 		}
+
+		EmitPopD0();
+		EmitPushRegister(M68kRegister.D2);
+		EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
 
 		var strategy = M68kCompiler.GetEffectiveGcSweepStrategy(_request);
 		if (strategy == M68kGcSweepStrategy.EveryAllocation)
@@ -7093,6 +7251,7 @@ internal sealed partial class M68kCodeGenerator
 			EmitTelemetryTriggeredCollection();
 		}
 
+		EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
 		_assembler.EmitBsr(RuntimeAllocLabel);
 		_loadedPlatformBase = null;
 		if (strategy == M68kGcSweepStrategy.OnAllocationFailure)
@@ -7102,12 +7261,13 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitBranch(M68kCondition.NotEqual, done);
 			EmitManagedCollectWithRoots();
 			_loadedPlatformBase = null;
+			EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
 			_assembler.EmitBsr(RuntimeAllocLabel);
 			_loadedPlatformBase = null;
 			_assembler.Mark(done);
 		}
 
-		EmitDiscardStackArguments(1);
+		EmitPopRegister(M68kRegister.D2);
 		EmitRequireAllocationSucceeded();
 	}
 
@@ -7417,13 +7577,14 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var method in framedMethods)
 		{
 			var layout = _runtimeFrameLayouts[method.Identity];
+			var internalAbi = GetInternalCallAbi(method);
 			var rootOffsets = new List<short>
 			{
 				RuntimeFrameActiveExceptionOffset
 			};
 			for (var index = 0; index < method.ParameterCount; index++)
 			{
-				if (IsReferenceParameter(method, index))
+				if (internalAbi.Arguments[index].IsGcReference)
 				{
 					rootOffsets.Add(layout.ArgumentOffsets[index]);
 				}
@@ -7440,6 +7601,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.AlignWord();
 			_assembler.Mark(RuntimeMethodDescriptorLabel(method));
 			_assembler.EmitLong((uint)rootOffsets.Distinct().Count());
+			_assembler.EmitAddress(RuntimeMethodUnwindRestoreLabel(method));
 			foreach (var offset in rootOffsets.Distinct())
 			{
 				_assembler.EmitLong(unchecked((uint)offset));
@@ -7464,6 +7626,16 @@ internal sealed partial class M68kCodeGenerator
 					_assembler.EmitAddress(TypeDescriptorLabel(region.CatchType));
 				}
 			}
+
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeMethodUnwindRestoreLabel(method));
+			for (var index = 0; index < layout.CalleeSavedRegisters.Length; index++)
+			{
+				EmitLoadRuntimeFrameRegister(
+					layout.CalleeSavedRegisters[index],
+					layout.CalleeSaveOffsets[index]);
+			}
+			_assembler.EmitWord(0x4E75); // RTS
 		}
 	}
 
@@ -7686,21 +7858,14 @@ internal sealed partial class M68kCodeGenerator
 			EmitPushRegister(export.ParameterRegisters[index]);
 		}
 
-		var internalAbi = GetInternalRegisterAbi(export.Method);
-		if (internalAbi is not null)
-		{
-			EmitLoadInternalArguments(internalAbi);
-			EmitDiscardStackArguments(internalAbi.Count);
-		}
+		var internalAbi = GetInternalCallAbi(export.Method);
+		EmitPrepareInternalCallFromDeclarationOrderedStack(export.Method, internalAbi);
 		if (initializesPlatformBase)
 		{
 			EmitInitializePlatformBases();
 		}
 		_assembler.EmitBsr(MethodLabel(export.Method));
-		if (internalAbi is null)
-		{
-			EmitDiscardStackArguments(export.ParameterRegisters.Count);
-		}
+		EmitReleaseStackBytes(internalAbi.StackBytes);
 
 		EmitPopRegisters(stackalloc[]
 		{
@@ -7717,7 +7882,7 @@ internal sealed partial class M68kCodeGenerator
 			M68kRegister.A6
 		});
 
-		if (export.Method.Signature.ReturnType.IsReference)
+		if (IsInternalAddressReturn(export.Method.Signature.ReturnType))
 		{
 			EmitMoveRegister(M68kRegister.A0, export.ReturnRegister);
 		}

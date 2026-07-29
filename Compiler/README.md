@@ -61,12 +61,13 @@ on `PATH`.
 
 ## ABI
 
-Compiled methods use a private fast ABI when the complete argument list fits:
-32-bit scalar arguments use D0/D1, references (including `this`) use A0/A1,
-scalar results return in D0, and reference results return in A0. D0/D1/A0/A1
-are caller-saved. Larger and shared-generic signatures use the stack ABI.
-Frames, register-argument homes, locals, and the CIL evaluation stack are
-addressed relative to A7.
+Compiled methods use a hybrid private ABI. 32-bit scalar arguments use D0/D1,
+address-class arguments (including `this`) use A0/A1, and only excess
+arguments use a compact caller-owned stack block. Scalar results return in D0,
+reference and pointer results in A0, and 64-bit results in D0:D1. D0/D1/A0/A1
+are volatile; D2-D7/A2-A6 are callee-saved. See
+[InternalAbi.md](InternalAbi.md) for the complete classification, overflow,
+GC-root, preservation, and adapter contracts.
 
 `[M68kExport]` creates a native-callable adapter. Every exported parameter is
 mapped with `[M68kRegister]`; D2-D7 and A2-A6 are preserved. `[M68kImport]`
@@ -96,28 +97,30 @@ and `CopperSharp.Sdk.Amiga` packages.
 - `Nullable<T>` locals for 32-bit scalar values and transparent 32-bit structs,
   including null initialization, construction, `HasValue`, `Value`, and
   `GetValueOrDefault`.
-- Static and instance 32-bit fields, object construction with constructor
-  arguments that fit the private register ABI, UTF-16 string literals, and
+- Static and instance 32-bit fields, object construction with hybrid
+  register/stack arguments, UTF-16 string literals, and
   one-, two-, and four-byte scalar arrays plus reference arrays.
 - Classes with single inheritance, statically direct instance calls, and
   vtable-based class virtual dispatch. Base-class instance fields retain their
   inherited offsets, inherited reference fields remain in GC descriptor
   bitmaps, and overrides replace the inherited slot without renumbering later
-  slots. Virtual calls currently require arguments that fit the private
-  register ABI.
+  slots. Virtual calls use the same hybrid ABI as direct calls.
 - Closed-world interface dispatch through per-type interface maps, including
   interface inheritance, implementations inherited from base classes, multiple
-  interfaces, and explicit interface implementations. Interface calls also
-  currently require the private register ABI.
+  interfaces, and explicit interface implementations. Interface calls use the
+  same hybrid ABI as direct calls.
 - Shared generic method bodies when every generic value uses the same
   four-byte scalar/reference representation.
 - MC68000-compatible software long multiply/divide, with MC68020/MC68040 long
   arithmetic instructions selected for those targets.
+- Table-driven managed exceptions with catch, finally, rethrow, leave, and
+  callee-saved restoration during unwind; see
+  [ExceptionRuntime.md](ExceptionRuntime.md).
 - HUNK executable output with relocations and symbols, and 256/512 KiB
   Kickstart ROM output with reset vectors and checksum.
 
 This preview intentionally rejects floating point, general 64-bit arithmetic,
-exceptions, boxing, delegates, reflection, P/Invoke, and unsupported CIL opcodes. Allocation
+boxing, delegates, reflection, P/Invoke, and unsupported CIL opcodes. Allocation
 is supplied by the `__c68k_alloc` import. Optional explicit release can be
 supplied through `__c68k_dispose`, exposed through helpers such as
 `M68kRuntime.DisposeObject(ref value)` and

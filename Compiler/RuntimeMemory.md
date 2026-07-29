@@ -60,17 +60,21 @@ recursive native calls.
 
 ## Runtime Hooks
 
-The compiler/runtime boundary uses these symbols:
+The compiler/runtime boundary uses these explicit hook conventions (separate
+from the managed [internal ABI](InternalAbi.md)):
 
-- `__c68k_alloc(size)` returns a zero-filled managed payload pointer or zero.
-- `__c68k_dispose(slot)` may free the managed payload stored in a four-byte
-  reference slot and should clear that slot.
-- `__c68k_gc_init(config)` initializes a linked managed runtime before `Main`
-  and returns nonzero on success.
+- `__c68k_alloc`: size in D0; returns a zero-filled managed payload address or
+  zero in D0.
+- `__c68k_dispose`: reference-slot address in A0; may free the payload and
+  should clear the slot.
+- `__c68k_gc_init`: config address in D0; returns nonzero in D0 on success.
 - `__c68k_gc_collect()` runs an explicit collection cycle.
 - `__c68k_gc_get_stale_bytes()` returns approximate stale-pressure bytes.
 - `__c68k_gc_get_stale_blocks()` returns approximate stale-pressure blocks.
 - `__c68k_gc_shutdown()` shuts down a linked managed runtime after `Main`.
+
+Hooks may clobber D0, D1, A0, and A1 and preserve D2-D7 and A2-A6 unless their
+specific contract states otherwise.
 
 `ManagedPoolMarkSweepGc` provides these symbols internally. `ExternalAllocator`
 and `ExecPoolMarkSweepGc` resolve them as imports.

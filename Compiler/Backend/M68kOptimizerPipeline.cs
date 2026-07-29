@@ -14,11 +14,14 @@ internal sealed class M68kOptimizerPipeline
 {
 	private readonly IReadOnlyList<IM68kOptimizerPass> _passes;
 
-	public M68kOptimizerPipeline(M68kAssembler assembler, M68kAssemblyBuffer buffer)
+	public M68kOptimizerPipeline(
+		M68kAssembler assembler,
+		M68kAssemblyBuffer buffer,
+		M68kCpuTarget cpu)
 	{
 		_passes = new[]
 		{
-			new M68kPeepholeOptimizer(assembler, buffer)
+			new M68kPeepholeOptimizer(assembler, buffer, cpu)
 		};
 	}
 

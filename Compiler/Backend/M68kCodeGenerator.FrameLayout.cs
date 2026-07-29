@@ -20,6 +20,8 @@ internal sealed partial class M68kCodeGenerator
 		ImmutableArray<M68kRegister?> LocalRegisters,
 		ImmutableArray<short> ArgumentOffsets,
 		ImmutableArray<M68kRegister?> ArgumentRegisters,
+		ImmutableArray<M68kRegister> CalleeSavedRegisters,
+		ImmutableArray<short> CalleeSaveOffsets,
 		short VarargsScratchOffset,
 		int VarargsScratchBytes,
 		short DirectCallScratchOffset,
@@ -30,24 +32,34 @@ internal sealed partial class M68kCodeGenerator
 
 	private FrameLayout CreateFrameLayout(
 		CilMethod method,
-		IReadOnlyList<M68kRegister>? registerAbi,
+		InternalCallAbi internalAbi,
 		IReadOnlySet<int> branchTargets,
 		IReadOnlySet<int> reachableOffsets,
 		IReadOnlyDictionary<int, ImmutableArray<CilStackValueKind>> reachableStackStates)
 	{
 		var hasRuntimeFrame = RequiresRuntimeFrame(method);
 		var runtimeFrameLongs = hasRuntimeFrame ? RuntimeFrameHeaderLongs : 0;
-		var argumentHomeCount = registerAbi?.Count ?? 0;
+		var argumentHomeCount = internalAbi.Arguments
+			.Where(static argument => !argument.IsStack)
+			.Sum(static argument => argument.SlotLongs);
 		var argumentRegisters = SelectPromotedArgumentRegisters(
 			method,
-			registerAbi,
+			internalAbi,
 			branchTargets,
 			reachableOffsets);
-		if (registerAbi is not null)
+		for (var index = 0; index < argumentRegisters.Length; index++)
 		{
-			argumentHomeCount -= argumentRegisters.Count(static item => item is not null);
+			if (argumentRegisters[index] is not null)
+			{
+				argumentHomeCount -= internalAbi.Arguments[index].SlotLongs;
+			}
 		}
 		var localRegisters = SelectPromotedLocalRegisters(method, branchTargets, reachableOffsets);
+		var calleeSavedRegisters = GetCalleeSavedRegisters(
+			method,
+			localRegisters,
+			reachableOffsets);
+		var calleeSaveCount = calleeSavedRegisters.Length;
 		var varargsScratchBytes = CalculateVarargsScratchBytes(method, branchTargets, reachableOffsets);
 		var varargsScratchLongs = checked(varargsScratchBytes / 4);
 		var directCallScratchBytes = CalculateDirectStackArgumentScratchBytes(
@@ -67,7 +79,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 		var frameBytes = checked(
-			((runtimeFrameLongs + frameLocalLongs + argumentHomeCount + gcScratchLongs) * 4) +
+			((runtimeFrameLongs + calleeSaveCount + frameLocalLongs + argumentHomeCount + gcScratchLongs) * 4) +
 			varargsScratchBytes +
 			directCallScratchBytes);
 		if (frameBytes > short.MaxValue)
@@ -82,6 +94,7 @@ internal sealed partial class M68kCodeGenerator
 		var localOffsets = new short[method.Locals.Length];
 		var gcScratchOffsets = new short[gcScratchLongs];
 		var gcScratchStartSlot = runtimeFrameLongs +
+			calleeSaveCount +
 			argumentHomeCount +
 			varargsScratchLongs +
 			directCallScratchLongs;
@@ -115,12 +128,19 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var argumentOffsets = new short[method.ParameterCount];
-		var nextArgumentHomeSlot = runtimeFrameLongs;
+		var nextArgumentHomeSlot = runtimeFrameLongs + calleeSaveCount;
 		for (var index = 0; index < argumentOffsets.Length; index++)
 		{
-			argumentOffsets[index] = registerAbi is not null && argumentRegisters[index] is null
-				? checked((short)(nextArgumentHomeSlot++ * 4))
-				: checked((short)(frameBytes + 4 + InternalStackArgumentByteOffset(method, index)));
+			var location = internalAbi.Arguments[index];
+			argumentOffsets[index] = location.IsStack
+				? checked((short)(frameBytes + 4 + location.StackOffset))
+				: argumentRegisters[index] is null
+					? checked((short)(nextArgumentHomeSlot * 4))
+					: (short)0;
+			if (!location.IsStack && argumentRegisters[index] is null)
+			{
+				nextArgumentHomeSlot += location.SlotLongs;
+			}
 		}
 
 		return new FrameLayout(
@@ -131,9 +151,13 @@ internal sealed partial class M68kCodeGenerator
 			localRegisters.ToImmutableArray(),
 			argumentOffsets.ToImmutableArray(),
 			argumentRegisters.ToImmutableArray(),
-			checked((short)((runtimeFrameLongs + argumentHomeCount) * 4)),
+			calleeSavedRegisters,
+			Enumerable.Range(0, calleeSaveCount)
+				.Select(index => checked((short)((runtimeFrameLongs + index) * 4)))
+				.ToImmutableArray(),
+			checked((short)((runtimeFrameLongs + calleeSaveCount + argumentHomeCount) * 4)),
 			varargsScratchBytes,
-			checked((short)((runtimeFrameLongs + argumentHomeCount + varargsScratchLongs) * 4)),
+			checked((short)((runtimeFrameLongs + calleeSaveCount + argumentHomeCount + varargsScratchLongs) * 4)),
 			directCallScratchBytes,
 			hasRuntimeFrame,
 			gcScratchOffsets.ToImmutableArray());
@@ -147,7 +171,9 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var instruction in caller.Instructions)
 		{
 			if (!reachableOffsets.Contains(instruction.Offset) ||
-				(instruction.OpCode != OpCodes.Call && instruction.OpCode != OpCodes.Callvirt))
+				(instruction.OpCode != OpCodes.Call &&
+				 instruction.OpCode != OpCodes.Callvirt &&
+				 instruction.OpCode != OpCodes.Newobj))
 			{
 				continue;
 			}
@@ -158,24 +184,28 @@ internal sealed partial class M68kCodeGenerator
 				instruction.Offset).Definition;
 			if (target is null ||
 				target.IsImport ||
-				target.ExternalCall is not null ||
-				target.DeclaringTypeIsInterface ||
-				RequiresVirtualDispatch(instruction, target) ||
-				GetInternalRegisterAbi(target) is not null)
+				target.ExternalCall is not null)
 			{
 				continue;
 			}
 
-			result = Math.Max(result, InternalStackArgumentBytes(target));
+			var abi = GetInternalCallAbi(target);
+			var dispatchSaveBytes =
+				target.DeclaringTypeIsInterface || RequiresVirtualDispatch(instruction, target)
+					? 12
+					: 0;
+			result = Math.Max(result, checked(abi.StackBytes + dispatchSaveBytes));
 		}
 
 		return result;
 	}
 
 
-	private bool TryEmitCompactArgumentHomeFrame(IReadOnlyList<M68kRegister>? registerAbi)
+	private bool TryEmitCompactArgumentHomeFrame(InternalCallAbi internalAbi)
 	{
-		if (registerAbi is null ||
+		if (internalAbi.StackBytes != 0 ||
+			internalAbi.Arguments.Any(static argument => argument.SlotLongs != 1) ||
+			CurrentFrameLayout.CalleeSavedRegisters.Length != 0 ||
 			CurrentFrameLayout.HasRuntimeFrame ||
 			CurrentFrameLayout.ClearLongs != 0 ||
 			CurrentFrameLayout.VarargsScratchBytes != 0 ||
@@ -185,14 +215,16 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var homes = new List<(short Offset, M68kRegister Register)>();
-		for (var index = 0; index < registerAbi.Count; index++)
+		for (var index = 0; index < internalAbi.Arguments.Length; index++)
 		{
 			if (CurrentFrameLayout.ArgumentRegisters[index] is not null)
 			{
 				continue;
 			}
 
-			homes.Add((CurrentFrameLayout.ArgumentOffsets[index], registerAbi[index]));
+			homes.Add((
+				CurrentFrameLayout.ArgumentOffsets[index],
+				internalAbi.Arguments[index].Register!.Value));
 		}
 
 		if (homes.Count == 0 ||
@@ -211,21 +243,25 @@ internal sealed partial class M68kCodeGenerator
 
 	private M68kRegister?[] SelectPromotedArgumentRegisters(
 		CilMethod method,
-		IReadOnlyList<M68kRegister>? registerAbi,
+		InternalCallAbi internalAbi,
 		IReadOnlySet<int> branchTargets,
 		IReadOnlySet<int> reachableOffsets)
 	{
 		var result = new M68kRegister?[method.ParameterCount];
-		if (registerAbi is null || RequiresRuntimeFrame(method))
+		if (RequiresRuntimeFrame(method))
 		{
 			return result;
 		}
 
-		for (var index = 0; index < registerAbi.Count; index++)
+		for (var index = 0; index < internalAbi.Arguments.Length; index++)
 		{
+			if (internalAbi.Arguments[index].IsStack)
+			{
+				continue;
+			}
 			if (CanPromoteArgument(method, index, branchTargets, reachableOffsets))
 			{
-				result[index] = registerAbi[index];
+				result[index] = internalAbi.Arguments[index].Register;
 			}
 		}
 
@@ -436,12 +472,138 @@ internal sealed partial class M68kCodeGenerator
 		return result;
 	}
 
+	private ImmutableArray<M68kRegister> GetCalleeSavedRegisters(
+		CilMethod method,
+		IReadOnlyList<M68kRegister?> localRegisters,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var result = new HashSet<M68kRegister>(
+			localRegisters
+				.OfType<M68kRegister>()
+				.Where(IsInternalCalleeSavedRegister));
+
+		foreach (var instruction in method.Instructions)
+		{
+			if (!reachableOffsets.Contains(instruction.Offset))
+			{
+				continue;
+			}
+
+			if (instruction.OpCode == OpCodes.Mul && _request.Cpu == M68kCpuTarget.M68000)
+			{
+				result.Add(M68kRegister.D2);
+				result.Add(M68kRegister.D3);
+			}
+			if (instruction.OpCode is var divide &&
+				(divide == OpCodes.Div || divide == OpCodes.Div_Un ||
+				 divide == OpCodes.Rem || divide == OpCodes.Rem_Un))
+			{
+				result.Add(M68kRegister.D2);
+				if (_request.Cpu == M68kCpuTarget.M68000)
+				{
+					result.Add(M68kRegister.D3);
+					result.Add(M68kRegister.D4);
+					result.Add(M68kRegister.D5);
+					result.Add(M68kRegister.D6);
+				}
+			}
+			if (instruction.OpCode == OpCodes.Newarr || IsArrayAccess(instruction.OpCode))
+			{
+				result.Add(M68kRegister.D2);
+			}
+
+			if (instruction.OpCode != OpCodes.Call &&
+				instruction.OpCode != OpCodes.Callvirt)
+			{
+				continue;
+			}
+
+			var target = _module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			if (target.ImportName == "intrinsic:boopsi-do-method")
+			{
+				var messageLongs = Math.Clamp(target.ParameterCount - 1, 0, 7);
+				for (var dataIndex = 2; dataIndex < messageLongs; dataIndex++)
+				{
+					result.Add((M68kRegister)((int)M68kRegister.D0 + dataIndex));
+				}
+			}
+			if (target.Definition is { } dispatchDefinition)
+			{
+				if (dispatchDefinition.DeclaringTypeIsInterface)
+				{
+					result.Add(M68kRegister.D2);
+					result.Add(M68kRegister.A2);
+					result.Add(M68kRegister.A3);
+				}
+				else if (RequiresVirtualDispatch(instruction, dispatchDefinition))
+				{
+					result.Add(M68kRegister.A2);
+				}
+			}
+
+			var definition = target.Definition;
+			if (definition?.ExternalCall is { } externalCall)
+			{
+				AddCalleeSavedRegister(result, externalCall.Convention.BaseRegister);
+				if (externalCall.Convention.CacheRegister is { } cacheRegister)
+				{
+					AddCalleeSavedRegister(result, cacheRegister);
+				}
+				foreach (var register in externalCall.Abi.ParameterRegisters)
+				{
+					AddCalleeSavedRegister(result, register);
+				}
+				AddCalleeSavedRegister(result, externalCall.Abi.ReturnRegister);
+				if (RequiresRuntimeFrame(method) &&
+					externalCall.Convention.ExceptionPolicy ==
+						M68kExternalExceptionPolicy.NonZeroStatus)
+				{
+					result.Add(M68kRegister.D5);
+					result.Add(M68kRegister.D6);
+					result.Add(M68kRegister.D7);
+				}
+			}
+			else if (definition?.ImportAbi is { } importAbi)
+			{
+				foreach (var register in importAbi.ParameterRegisters)
+				{
+					AddCalleeSavedRegister(result, register);
+				}
+				AddCalleeSavedRegister(result, importAbi.ReturnRegister);
+			}
+		}
+
+		if (RequiresRuntimeFrame(method))
+		{
+			result.Remove(M68kRegister.A5);
+		}
+
+		return result.OrderBy(static register => register).ToImmutableArray();
+	}
+
+	private static void AddCalleeSavedRegister(
+		ISet<M68kRegister> registers,
+		M68kRegister register)
+	{
+		if (IsInternalCalleeSavedRegister(register))
+		{
+			registers.Add(register);
+		}
+	}
+
+	private static bool IsInternalCalleeSavedRegister(M68kRegister register) =>
+		register is >= M68kRegister.D2 and <= M68kRegister.D7 or
+			>= M68kRegister.A2 and <= M68kRegister.A6;
+
 	private HashSet<M68kRegister> GetReservedAddressLocalRegisters(
 		CilMethod method,
 		IReadOnlySet<int> reachableOffsets)
 	{
 		var result = new HashSet<M68kRegister>();
-		if (_hasExceptionFrames)
+		if (RequiresRuntimeFrame(method))
 		{
 			result.Add(M68kRegister.A5);
 		}

@@ -107,6 +107,27 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CalleeSaveExceptionUnwindEntry()
+	{
+		_counter = 2;
+		try
+		{
+			return DivideThenThrow();
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int DivideThenThrow()
+	{
+		_ = 84 / _counter;
+		throw null!;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int NullDereferenceCatchEntry()
 	{
 		ManagedBox? box = null;
@@ -423,6 +444,20 @@ public static class CompilerFixtures
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TailCallEntry() => TailForwarder(39);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int RecursiveCalleeSaveEntry() => RecursiveCount(6) + 36;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int OverflowTailCallEntry() => OverflowTailTarget(10, 20, 12);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int OverflowTailTarget(int first, int second, int third) =>
+		first + second + third;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int RecursiveCount(int value) =>
+		value == 0 ? 0 : 1 + RecursiveCount(value - 1);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static int TailForwarder(int value) => TailTarget(value, 3);
@@ -818,6 +853,87 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int WideConstructorArgumentsEntry() =>
+		new WideConstructedBox(10, 20, 12).Value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int HybridMixedArgumentsEntry()
+	{
+		var first = new ManagedBox { Value = 10 };
+		var second = new ManagedBox { Value = 11 };
+		var third = new ManagedBox { Value = 15 };
+		return HybridMixedArguments(1, first, 2, second, 3, third);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int HybridMixedArguments(
+		int firstValue,
+		ManagedBox first,
+		int secondValue,
+		ManagedBox second,
+		int thirdValue,
+		ManagedBox third) =>
+		firstValue + first.Value +
+		secondValue + second.Value +
+		thirdValue + third.Value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int GcHybridReferenceArgumentsEntry()
+	{
+		var first = new ManagedBox { Value = 10 };
+		var second = new ManagedBox { Value = 11 };
+		var third = new ManagedBox { Value = 21 };
+		return GcHybridReferenceArguments(first, second, third);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int GcHybridReferenceArguments(
+		ManagedBox first,
+		ManagedBox second,
+		ManagedBox third)
+	{
+		_ = new ManagedBox();
+		return first.Value + second.Value + third.Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int HybridInt64ArgumentsEntry()
+	{
+		ConsumeInt64(0x0000_0001_0000_002A);
+		ConsumeInt64AfterScalar(7, 0x0000_0002_0000_002A);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ConsumeInt64(long value)
+	{
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ConsumeInt64AfterScalar(int prefix, long value)
+	{
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int HybridManagedPointerArgumentsEntry()
+	{
+		var first = new byte[] { 10 };
+		var second = new byte[] { 11 };
+		var third = new byte[] { 15 };
+		return ReadHybridPointers(ref first[0], 1, ref second[0], 2, ref third[0], 3);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadHybridPointers(
+		ref byte first,
+		int firstValue,
+		ref byte second,
+		int secondValue,
+		ref byte third,
+		int thirdValue) =>
+		first + firstValue + second + secondValue + third + thirdValue;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int InheritedObjectLayoutEntry()
 	{
 		var value = new InheritedLayoutDerived
@@ -874,7 +990,7 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static int UnsupportedWideVirtualDispatchEntry()
+	public static int WideVirtualDispatchEntry()
 	{
 		WideVirtualBase value = new WideVirtualDerived();
 		return value.Sum(10, 20, 12);
@@ -956,7 +1072,7 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static int UnsupportedWideInterfaceDispatchEntry()
+	public static int WideInterfaceDispatchEntry()
 	{
 		IWideAdder value = new WideInterfaceAdder();
 		return value.Add(10, 20, 12);
@@ -1360,6 +1476,17 @@ public static class CompilerFixtures
 		public ConstructedBox(int left, int right)
 		{
 			Value = left + right;
+		}
+	}
+
+	public sealed class WideConstructedBox
+	{
+		public int Value;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public WideConstructedBox(int first, int second, int third)
+		{
+			Value = first + second + third;
 		}
 	}
 

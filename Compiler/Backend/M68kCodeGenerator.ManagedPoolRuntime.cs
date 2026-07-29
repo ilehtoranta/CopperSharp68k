@@ -138,8 +138,7 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		_assembler.EmitWord(0x2C78); // MOVEA.L 4.W,A6
-		_assembler.EmitWord(0x0004);
+		EmitLoadAddressRegisterPcRelative(M68kRegister.A6, ExecBaseSlotSymbol);
 		_assembler.EmitWord(0x203C); // MOVE.L #heap-size,D0
 		_assembler.EmitLong(_request.Heap.Size);
 		_assembler.EmitWord(0x7200); // MOVEQ #0,D1, no MEMF_CLEAR
@@ -174,15 +173,12 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeAllocLabel);
-		_assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
-		_assembler.EmitWord(0x0004);
 		_assembler.EmitBsr(MethodLabel(runtime.Allocate));
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeDisposeLabel);
-		_assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
-		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x2008); // MOVE.L A0,D0
 		_assembler.EmitBsr(MethodLabel(runtime.Dispose));
 		_assembler.EmitWord(0x4E75); // RTS
 
@@ -222,8 +218,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x2248); // MOVEA.L A0,A1
 			_assembler.EmitWord(0x2039); // MOVE.L heap-size,D0
 			_assembler.EmitAddress(GcConfigHeapSizeLabel);
-			_assembler.EmitWord(0x2C78); // MOVEA.L 4.W,A6
-			_assembler.EmitWord(0x0004);
+			EmitLoadAddressRegisterPcRelative(M68kRegister.A6, ExecBaseSlotSymbol);
 			_assembler.EmitWord(0x4EAE); // JSR -210(A6)
 			_assembler.EmitWord(unchecked((ushort)-210));
 			_assembler.EmitWord(0x7000); // MOVEQ #0,D0
@@ -234,7 +229,28 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
+	private void EnsureManagedPoolExecBase()
+	{
+		if (!UsesAmigaManagedPoolArena)
+		{
+			return;
+		}
+
+		GetOrAddPlatformBase(
+			new M68kExternalCallConvention(
+				"exec.library",
+				M68kExternalBaseSource.WritableSlot,
+				M68kRegister.A6,
+				0,
+				SourceAddress: 4,
+				SlotSymbol: ExecBaseSlotSymbol),
+			_managedPoolRuntime?.Initialize ??
+				throw new InvalidOperationException(
+					"ManagedPoolMarkSweepGc requires CopperSharp.Runtime.Managed."));
+	}
+
 	private const string GcConfigLabel = "runtime:gc-config";
+	private const string ExecBaseSlotSymbol = "_ExecBase";
 	private const string GcConfigHeapStartLabel = "runtime:gc-config-heap-start";
 	private const string GcConfigHeapSizeLabel = "runtime:gc-config-heap-size";
 	private const string GcArenaBaseLabel = "runtime:gc-arena-base";

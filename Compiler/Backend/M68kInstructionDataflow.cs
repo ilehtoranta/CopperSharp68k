@@ -336,6 +336,26 @@ internal sealed class M68kInstructionDataflow
 
 		if (instruction.Kind == M68kInstructionKind.UnconditionalBranch)
 		{
+			if ((instruction.Opcode & 0xFFF8) == 0x4EE8)
+			{
+				// A base-relative JMP emitted by the tail-call fold transfers to an
+				// external Amiga vector.  It does not return locally, but it still
+				// consumes the complete call ABI; model that use so preceding argument
+				// and library-base setup remains live.
+				return new M68kInstructionEffects(
+					AllRegisters,
+					0,
+					AllRegisters,
+					0,
+					M68kConditionCodeSet.All,
+					M68kConditionCodeSet.None,
+					M68kMemorySet.All,
+					M68kMemorySet.None,
+					0,
+					true,
+					false);
+			}
+
 			return EmptyEffects;
 		}
 

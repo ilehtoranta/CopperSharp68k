@@ -56,10 +56,20 @@ internal sealed partial class M68kCodeGenerator
 
 	private bool RequiresRuntimeFrame(CilMethod method) =>
 		M68kCompiler.IsManagedRuntime(_request) ||
-		(_usesExceptionRuntime && method.ExceptionRegions.Count != 0);
+		(_usesExceptionRuntime && MethodMayRaiseException(method));
 
-	private bool MethodMayRaiseException(CilMethod method)
+	private bool MethodMayRaiseException(CilMethod method) =>
+		MethodMayRaiseException(method, new HashSet<CilMethodIdentity>());
+
+	private bool MethodMayRaiseException(
+		CilMethod method,
+		HashSet<CilMethodIdentity> visiting)
 	{
+		if (!visiting.Add(method.Identity))
+		{
+			return false;
+		}
+
 		if (method.ExceptionRegions.Count != 0)
 		{
 			return true;
@@ -87,12 +97,33 @@ internal sealed partial class M68kCodeGenerator
 				return true;
 			}
 
-			if ((op == OpCodes.Call || op == OpCodes.Callvirt) &&
-				_module.ResolveMethodToken(
-					(int)instruction.Operand!,
-					method,
-					instruction.Offset).Definition?.ExternalCall?.Convention.ExceptionPolicy !=
-					M68kExternalExceptionPolicy.None)
+			if (op != OpCodes.Call && op != OpCodes.Callvirt)
+			{
+				continue;
+			}
+
+			var target = _module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			if (target.Definition?.ExternalCall is { } externalCall)
+			{
+				if (externalCall.Convention.ExceptionPolicy != M68kExternalExceptionPolicy.None)
+				{
+					return true;
+				}
+				continue;
+			}
+
+			if (op == OpCodes.Callvirt)
+			{
+				// The receiver check and any closed-world override can raise. Keep a
+				// runtime frame so unwinding restores this method's callee-saved state.
+				return true;
+			}
+
+			if (target.Definition is { IsImport: false } callee &&
+				MethodMayRaiseException(callee, visiting))
 			{
 				return true;
 			}
@@ -387,6 +418,15 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitBranch(M68kCondition.NotEqual, RuntimeExceptionJumpStateLabel);
 
 		_assembler.Mark(RuntimeExceptionUnwindFrameLabel);
+		EmitLoadRuntimeFrameRegister(
+			M68kRegister.A0,
+			RuntimeFrameDescriptorOffset);
+		_assembler.EmitWord(0x2268); // MOVEA.L 4(A0),A1 unwind restore thunk
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x4E91); // JSR (A1)
+		EmitLoadRuntimeFrameRegister(
+			M68kRegister.A0,
+			RuntimeFrameActiveExceptionOffset);
 		EmitRestoreRuntimeFrameStack();
 		EmitLoadRuntimeFrameRegister(
 			M68kRegister.A5,
@@ -537,15 +577,15 @@ internal sealed partial class M68kCodeGenerator
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeExceptionTypeMatchLabel);
-		_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2
+		_assembler.EmitWord(0x2050); // MOVEA.L (A0),A0
 		_assembler.Mark(loop);
-		EmitMoveRegister(M68kRegister.A2, M68kRegister.D0);
+		EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
 		_assembler.EmitWord(0xB089); // CMP.L A1,D0
 		_assembler.EmitBranch(M68kCondition.Equal, match);
-		EmitMoveRegister(M68kRegister.A2, M68kRegister.D0);
+		EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
 		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.Equal, noMatch);
-		_assembler.EmitWord(0x246A); // MOVEA.L 8(A2),A2
+		_assembler.EmitWord(0x2068); // MOVEA.L 8(A0),A0
 		_assembler.EmitWord(0x0008);
 		_assembler.EmitBranch(M68kCondition.True, loop);
 		_assembler.Mark(match);
@@ -599,6 +639,9 @@ internal sealed partial class M68kCodeGenerator
 				var nextCatch = UniqueLabel("eh_next_catch");
 				if (!entry.Region.CatchType.IsNil)
 				{
+					EmitLoadRuntimeFrameRegister(
+						M68kRegister.A0,
+						RuntimeFrameActiveExceptionOffset);
 					EmitRuntimeTypeAddress(
 						M68kRegister.A1,
 						entry.Region.CatchType);
@@ -956,6 +999,9 @@ internal sealed partial class M68kCodeGenerator
 
 	private string RuntimeMethodDescriptorLabel(CilMethod method) =>
 		$"runtime:method-descriptor:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}";
+
+	private string RuntimeMethodUnwindRestoreLabel(CilMethod method) =>
+		$"runtime:method-unwind-restore:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}";
 
 	private static string RuntimeTypeDescriptorLabel(string typeName) =>
 		$"runtime:type-descriptor:{typeName}";
