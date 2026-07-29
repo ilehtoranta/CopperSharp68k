@@ -304,5 +304,4 @@ public static class Program
 
 		public CString Priority => TaskListEntry.FromAddress(APTR.FromPointer(_entry)).Priority;
 	}
-
 }

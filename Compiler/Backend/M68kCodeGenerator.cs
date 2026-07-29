@@ -518,6 +518,23 @@ internal sealed partial class M68kCodeGenerator
 					ref emittedExceptionStateLabel);
 				if (method.ExceptionRegions.Count != 0)
 				{
+					if (TryEmitCallResultDiscard(
+						method,
+						method.Instructions,
+						instructionIndex,
+						branchTargets,
+						out var protectedCallDiscardConsumed))
+					{
+						for (var skipped = 1; skipped < protectedCallDiscardConsumed; skipped++)
+						{
+							_assembler.Mark(IlLabel(
+								method,
+								method.Instructions[instructionIndex + skipped].Offset));
+						}
+						instructionIndex += protectedCallDiscardConsumed - 1;
+						continue;
+					}
+
 					if (TryEmitAddressNullBranch(
 						method,
 						method.Instructions,
@@ -2390,6 +2407,24 @@ internal sealed partial class M68kCodeGenerator
 			branchTargets.Contains(instructions[popIndex].Offset))
 		{
 			return false;
+		}
+
+		if (caller.ExceptionRegions.Count != 0)
+		{
+			var activeExceptionGroups = GetActiveExceptionGroups(
+				caller,
+				instructions[startIndex].Offset);
+			for (var index = startIndex + 1; index <= popIndex; index++)
+			{
+				var instruction = instructions[index];
+				if (caller.ExceptionRegions.Any(region =>
+						region.HandlerOffset == instruction.Offset) ||
+					!activeExceptionGroups.SequenceEqual(
+						GetActiveExceptionGroups(caller, instruction.Offset)))
+				{
+					return false;
+				}
+			}
 		}
 
 		var target = _module.ResolveMethodToken(

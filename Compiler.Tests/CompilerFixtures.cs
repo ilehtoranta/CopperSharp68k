@@ -78,6 +78,23 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DiscardCallResultInTryEntry()
+	{
+		try
+		{
+			DiscardedCallResult();
+			return 42;
+		}
+		catch
+		{
+			return 0;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int DiscardedCallResult() => 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TypedCatchEntry()
 	{
 		try

@@ -38,6 +38,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceCompareZeroWithTest() ||
 				TryRemoveRedundantTest() ||
 				TryRemoveDeadTest(dataflow) ||
+				TryRemoveDiscardedStackPush(dataflow) ||
 				TryRewriteByteStackPreservation(dataflow) ||
 				TryFoldByteAddIntoFrameStore(dataflow) ||
 				TryRemoveDeadInstruction(dataflow) ||
@@ -1941,6 +1942,39 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			}
 
 			_buffer.RemoveBytes(instruction.Offset, instruction.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveDiscardedStackPush(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var cleanup = instructions[index + 1];
+			var isRegisterPush =
+				((push.Opcode & 0xFFF8) == 0x2F00 ||
+				 (push.Opcode & 0xFFF8) == 0x2F08) &&
+				push.Length == 2;
+			var isImmediatePush = push.Opcode == 0x2F3C &&
+				push.Length == 6;
+			if ((!isRegisterPush && !isImmediatePush) ||
+				cleanup.Opcode != 0x588F ||
+				cleanup.Length != 2 ||
+				IsReferencedLabelAt(push.Offset) ||
+				IsReferencedLabelAt(cleanup.Offset) ||
+				!dataflow.TryGetFacts(push.Offset, out var pushFacts) ||
+				!pushFacts.ConditionsAreDeadAfter)
+			{
+				continue;
+			}
+
+			var endOffset = cleanup.Offset + cleanup.Length;
+			MoveLabelsToOffset(push.Offset, endOffset, endOffset);
+			_buffer.RemoveBytes(push.Offset, endOffset - push.Offset);
 			return true;
 		}
 

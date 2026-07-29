@@ -230,6 +230,21 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void ProtectedMethodDoesNotMaterializeDiscardedCallResult()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DiscardCallResultInTryEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+		Assert.DoesNotContain(
+			"\tmove.l\td0,-(a7)\r\n\taddq.l\t#4,a7",
+			BeforeExceptionRuntime(result),
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void FullExceptionModeEmitsFinallyRuntimeContract()
 	{
 		var result = Compile(

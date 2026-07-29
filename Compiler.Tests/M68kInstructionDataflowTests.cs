@@ -289,6 +289,63 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void RemovesImmediatelyDiscardedStackPush()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("move.l\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("addq.l\t#4,a7", assembly, StringComparison.Ordinal);
+		Assert.Contains("rts", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesDiscardedPushBeforeFlagSettingFramePush()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x2F2F); // MOVE.L 52(A7),-(A7)
+		assembler.EmitWord(52);
+		assembler.EmitWord(0x2017); // MOVE.L (A7),D0
+		assembler.EmitBranch(M68kCondition.NotEqual, "done");
+		assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain(
+			"move.l\td0,-(a7)\r\n\taddq.l\t#4,a7",
+			assembly,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsDiscardedStackPushWhenItsFlagsAreConsumed()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\td0,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.Contains("addq.l\t#4,a7", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void RemovesRedundantRegisterSpillAroundAnExpression()
 	{
 		var assembler = new M68kAssembler();
