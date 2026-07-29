@@ -104,13 +104,51 @@ internal sealed partial class M68kCodeGenerator
 			(int)instructions[callIndex].Operand!,
 			caller,
 			instructions[callIndex].Offset);
-		if (target.ImportName != "intrinsic:boopsi-do-method-stack-varargs" &&
-			!TryGetStackVarargsCallInfo(target, out _))
+		var isBoopsiStackVarargs =
+			target.ImportName == "intrinsic:boopsi-do-method-stack-varargs";
+		if (!isBoopsiStackVarargs && !TryGetStackVarargsCallInfo(target, out _))
 		{
 			return false;
 		}
 
+		if (!isBoopsiStackVarargs &&
+			TryGetForwardStackArgumentListStart(caller, values, out _))
+		{
+			return true;
+		}
+
 		bytes = checked(values.Length * 4);
+		return true;
+	}
+
+	private bool TryGetForwardStackArgumentListStart(
+		CilMethod caller,
+		IReadOnlyList<ArgumentValue> values,
+		out int firstArgumentIndex)
+	{
+		firstArgumentIndex = 0;
+		if (values.Count == 0 || GetInternalRegisterAbi(caller) is not null)
+		{
+			return false;
+		}
+
+		if (values[0].Instruction is not { } firstInstruction ||
+			!TryGetArgumentIndex(firstInstruction, out firstArgumentIndex))
+		{
+			return false;
+		}
+
+		for (var index = 0; index < values.Count; index++)
+		{
+			if (values[index].Instruction is not { } instruction ||
+				!TryGetArgumentIndex(instruction, out var argumentIndex) ||
+				argumentIndex != firstArgumentIndex + index ||
+				ArgumentSlotLongs(caller, argumentIndex) != 1)
+			{
+				return false;
+			}
+		}
+
 		return true;
 	}
 
@@ -867,12 +905,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (fixedValuesAlreadyOnStack)
 		{
-			for (var index = 0; index < info.FixedParameterCount; index++)
-			{
-				EmitLoadRegisterFromStack(
-					info.FixedRegisters[index],
-					checked((info.FixedParameterCount - 1 - index) * 4));
-			}
+			EmitLoadRegistersFromEvaluationStack(info.FixedRegisters);
 			EmitReleaseStackBytes(checked(info.FixedParameterCount * 4));
 		}
 		else
@@ -891,7 +924,14 @@ internal sealed partial class M68kCodeGenerator
 			? checked(_currentStackDepth - info.FixedParameterCount)
 			: _currentStackDepth;
 		var stackBytesToRelease = checked(values.Count * 4);
-		if (TryEmitArgumentValuesToVarargsScratch(
+		if (TryGetForwardStackArgumentListStart(caller, values, out var firstArgumentIndex))
+		{
+			EmitLoadVarargsFramePointer(
+				info,
+				FrameDisplacement(ArgumentOffset(caller, firstArgumentIndex), valueStackDepth));
+			stackBytesToRelease = 0;
+		}
+		else if (TryEmitArgumentValuesToVarargsScratch(
 			caller,
 			values,
 			startIndex: 0,
@@ -904,7 +944,7 @@ internal sealed partial class M68kCodeGenerator
 				.ToHashSet(),
 			out var scratchDisplacement))
 		{
-			EmitLoadVarargsScratchPointer(info, scratchDisplacement);
+			EmitLoadVarargsFramePointer(info, scratchDisplacement);
 			stackBytesToRelease = 0;
 		}
 		else
@@ -934,18 +974,26 @@ internal sealed partial class M68kCodeGenerator
 		return 0;
 	}
 
-	private void EmitLoadVarargsScratchPointer(
+	private void EmitLoadVarargsFramePointer(
 		StackVarargsCallInfo info,
-		short scratchDisplacement)
+		short displacement)
 	{
+		if (info.VarargsRegister <= M68kRegister.D7 &&
+			displacement is > 0 and <= 8)
+		{
+			EmitMoveStackPointerToRegister(info.VarargsRegister);
+			EmitQuickRegisterUpdate(info.VarargsRegister, displacement, subtract: false);
+			return;
+		}
+
 		if (info.VarargsRegister >= M68kRegister.A0)
 		{
-			EmitLoadFrameAddress(info.VarargsRegister, scratchDisplacement);
+			EmitLoadFrameAddress(info.VarargsRegister, displacement);
 			return;
 		}
 
 		var temporaryAddressRegister = SelectVarargsTemporaryAddressRegister(info);
-		EmitLoadFrameAddress(temporaryAddressRegister, scratchDisplacement);
+		EmitLoadFrameAddress(temporaryAddressRegister, displacement);
 		EmitMoveRegister(temporaryAddressRegister, info.VarargsRegister);
 	}
 
@@ -983,6 +1031,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitMoveStackPointerToRegister(M68kRegister register)
 	{
+		InvalidatePlatformBaseIfWritingRegister(register);
 		if (register <= M68kRegister.D7)
 		{
 			_assembler.EmitWord((ushort)(0x200F | ((int)register << 9))); // MOVE.L A7,Dn

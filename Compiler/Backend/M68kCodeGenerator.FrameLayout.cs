@@ -22,6 +22,8 @@ internal sealed partial class M68kCodeGenerator
 		ImmutableArray<M68kRegister?> ArgumentRegisters,
 		short VarargsScratchOffset,
 		int VarargsScratchBytes,
+		short DirectCallScratchOffset,
+		int DirectCallScratchBytes,
 		bool HasRuntimeFrame,
 		ImmutableArray<short> GcScratchOffsets);
 
@@ -48,6 +50,10 @@ internal sealed partial class M68kCodeGenerator
 		var localRegisters = SelectPromotedLocalRegisters(method, branchTargets, reachableOffsets);
 		var varargsScratchBytes = CalculateVarargsScratchBytes(method, branchTargets, reachableOffsets);
 		var varargsScratchLongs = checked(varargsScratchBytes / 4);
+		var directCallScratchBytes = CalculateDirectStackArgumentScratchBytes(
+			method,
+			reachableOffsets);
+		var directCallScratchLongs = checked(directCallScratchBytes / 4);
 		var gcScratchLongs = hasRuntimeFrame && M68kCompiler.IsManagedRuntime(_request)
 			? reachableStackStates.Values.Max(static stack =>
 				stack.Count(static kind => kind == CilStackValueKind.Reference))
@@ -62,7 +68,8 @@ internal sealed partial class M68kCodeGenerator
 		}
 		var frameBytes = checked(
 			((runtimeFrameLongs + frameLocalLongs + argumentHomeCount + gcScratchLongs) * 4) +
-			varargsScratchBytes);
+			varargsScratchBytes +
+			directCallScratchBytes);
 		if (frameBytes > short.MaxValue)
 		{
 			throw new M68kCompilationException(
@@ -74,7 +81,10 @@ internal sealed partial class M68kCodeGenerator
 		var clearLocals = GetLocalsRequiringEntryClear(method, branchTargets, reachableOffsets);
 		var localOffsets = new short[method.Locals.Length];
 		var gcScratchOffsets = new short[gcScratchLongs];
-		var gcScratchStartSlot = runtimeFrameLongs + argumentHomeCount + varargsScratchLongs;
+		var gcScratchStartSlot = runtimeFrameLongs +
+			argumentHomeCount +
+			varargsScratchLongs +
+			directCallScratchLongs;
 		for (var index = 0; index < gcScratchOffsets.Length; index++)
 		{
 			gcScratchOffsets[index] = checked((short)((gcScratchStartSlot + index) * 4));
@@ -110,7 +120,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			argumentOffsets[index] = registerAbi is not null && argumentRegisters[index] is null
 				? checked((short)(nextArgumentHomeSlot++ * 4))
-				: checked((short)(frameBytes + 4 + ((method.ParameterCount - 1 - index) * 4)));
+				: checked((short)(frameBytes + 4 + InternalStackArgumentByteOffset(method, index)));
 		}
 
 		return new FrameLayout(
@@ -123,8 +133,43 @@ internal sealed partial class M68kCodeGenerator
 			argumentRegisters.ToImmutableArray(),
 			checked((short)((runtimeFrameLongs + argumentHomeCount) * 4)),
 			varargsScratchBytes,
+			checked((short)((runtimeFrameLongs + argumentHomeCount + varargsScratchLongs) * 4)),
+			directCallScratchBytes,
 			hasRuntimeFrame,
 			gcScratchOffsets.ToImmutableArray());
+	}
+
+	private int CalculateDirectStackArgumentScratchBytes(
+		CilMethod caller,
+		IReadOnlySet<int> reachableOffsets)
+	{
+		var result = 0;
+		foreach (var instruction in caller.Instructions)
+		{
+			if (!reachableOffsets.Contains(instruction.Offset) ||
+				(instruction.OpCode != OpCodes.Call && instruction.OpCode != OpCodes.Callvirt))
+			{
+				continue;
+			}
+
+			var target = _module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				caller,
+				instruction.Offset).Definition;
+			if (target is null ||
+				target.IsImport ||
+				target.ExternalCall is not null ||
+				target.DeclaringTypeIsInterface ||
+				RequiresVirtualDispatch(instruction, target) ||
+				GetInternalRegisterAbi(target) is not null)
+			{
+				continue;
+			}
+
+			result = Math.Max(result, InternalStackArgumentBytes(target));
+		}
+
+		return result;
 	}
 
 
@@ -133,7 +178,8 @@ internal sealed partial class M68kCodeGenerator
 		if (registerAbi is null ||
 			CurrentFrameLayout.HasRuntimeFrame ||
 			CurrentFrameLayout.ClearLongs != 0 ||
-			CurrentFrameLayout.VarargsScratchBytes != 0)
+			CurrentFrameLayout.VarargsScratchBytes != 0 ||
+			CurrentFrameLayout.DirectCallScratchBytes != 0)
 		{
 			return false;
 		}

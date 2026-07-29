@@ -38,6 +38,19 @@ public static class CompilerFixtures
 	public static int ArithmeticEntry() => Arithmetic(9, 5);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ForwardStackArgumentEntry() =>
+		ForwardStackArgumentTarget("ok", 1, 2, 3, 4);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ForwardStackArgumentTarget(
+		string marker,
+		int first,
+		int second,
+		int third,
+		int fourth) =>
+		(marker.Length * 10_000) + (first * 1_000) + (second * 100) + (third * 10) + fourth;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TryCatchEntry()
 	{
 		try
@@ -1313,7 +1326,8 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int ExportedAdd(
 		[M68kRegister(M68kRegister.D0)] int left,
-		[M68kRegister(M68kRegister.D1)] int right) =>
+		[M68kRegister(M68kRegister.D1)] int right,
+		[M68kRegister(M68kRegister.D2)] int ignored) =>
 		left + right;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

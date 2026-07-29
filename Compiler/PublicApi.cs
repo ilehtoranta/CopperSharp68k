@@ -18,7 +18,7 @@ public enum M68kCpuTarget
 /// <summary>Policy for using the memory-writing <c>CLR</c> instruction.</summary>
 public enum M68kClrPolicy
 {
-	/// <summary>Use CLR for CPUs where its memory read behavior is safe.</summary>
+	/// <summary>Use CLR for stack slots and CPUs where its memory read behavior is safe.</summary>
 	Auto,
 
 	/// <summary>Never use CLR; emit an equivalent move-based clear.</summary>
@@ -361,8 +361,9 @@ public sealed record M68kCompilationRequest
 	public M68kCpuTarget Cpu { get; init; } = M68kCpuTarget.M68000;
 
 	/// <summary>
-	/// Controls memory clears. Auto enables CLR for MC68020 and newer targets;
-	/// MC68000-compatible targets require Always because CLR performs a memory read.
+	/// Controls memory clears. Auto enables CLR for stack slots and MC68020 and
+	/// newer targets; other MC68000-compatible memory targets require Always
+	/// because CLR performs a memory read.
 	/// </summary>
 	public M68kClrPolicy ClrPolicy { get; init; } = M68kClrPolicy.Auto;
 

@@ -773,6 +773,15 @@ internal sealed class M68kAssembler
 		out RenderedInstruction instruction)
 	{
 		var opcode = context.Opcode;
+		if ((opcode & 0xF1FF) == 0xD12F &&
+			TryReadWord(context.Offset + 2, out var stackDisplacement))
+		{
+			instruction = new(
+				$"add.b\td{(opcode >> 9) & 7},{unchecked((short)stackDisplacement)}(a7)",
+				4);
+			return true;
+		}
+
 		var binary = opcode & 0xF1F8;
 		if (binary is
 			0xD000 or 0xD040 or 0xD080 or

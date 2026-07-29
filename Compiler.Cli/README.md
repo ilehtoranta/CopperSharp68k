@@ -12,5 +12,6 @@ copper68kc Firmware.dll --entry Firmware.Boot::Main \
 ```
 
 Run `copper68kc --help` for ROM layout and fixed-address import options.
-`--clr auto` enables `CLR` automatically for 68020/040 output; use `--clr always`
-to opt in on 68000-compatible targets, or `--clr never` to force move-based clears.
+`--clr auto` enables `CLR` for stack slots and automatically for all memory on
+68020/040 output; use `--clr always` to opt in for other 68000-compatible
+memory targets, or `--clr never` to force move-based clears.

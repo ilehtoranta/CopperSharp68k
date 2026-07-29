@@ -31,6 +31,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceCompareZeroWithTest() ||
 				TryRemoveRedundantTest() ||
 				TryRemoveDeadTest(dataflow) ||
+				TryFoldByteAddIntoFrameStore(dataflow) ||
 				TryRemoveDeadInstruction(dataflow) ||
 				TryRemoveDataRegisterRoundTrip(dataflow) ||
 				TryFoldAddressToDataRegisterMove(dataflow) ||
@@ -39,10 +40,13 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryNarrowAddition(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryCanonicalizeAddressAdjustments() ||
+				TryReplaceStackPreservationWithRegister(dataflow) ||
 				TryRemoveRedundantStackShuffle(dataflow) ||
 				TryRemoveRedundantStackArgumentShuffle() ||
 				TryRemoveZeroExtendedByteRegisterStackRoundTrip() ||
 				TryRemoveByteRegisterStackRoundTrip() ||
+				TryRemoveByteMaskAndTestBeforeFrameStore() ||
+				TryReplaceClearStackRoundTrip() ||
 				TryReplaceZeroRegisterRoundTrip() ||
 				TryReplaceAddressStackRoundTrip() ||
 				TryRemoveStackDuplicateRoundTrip(dataflow) ||
@@ -527,6 +531,94 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryReplaceStackPreservationWithRegister(M68kInstructionDataflow dataflow)
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 2 < instructions.Count; index++)
+		{
+			var store = instructions[index];
+			var constant = instructions[index + 1];
+			var shuffle = instructions[index + 2];
+			if (store.Length != 2 ||
+				(store.Opcode & 0xFFF8) != 0x2E80 ||
+				constant.Length != 2 ||
+				(constant.Opcode & 0xF100) != 0x7000 ||
+				shuffle.Opcode != 0x2F6F ||
+				shuffle.Length != 6 ||
+				shuffle.ExtensionWord != 0 ||
+				IsReferencedLabelAt(store.Offset) ||
+				IsReferencedLabelAt(constant.Offset) ||
+				IsReferencedLabelAt(shuffle.Offset) ||
+				!dataflow.TryGetFacts(shuffle.Offset, out var shuffleFacts))
+			{
+				continue;
+			}
+
+			var sourceRegister = store.Opcode & 7;
+			var constantRegister = (constant.Opcode >> 9) & 7;
+			if (sourceRegister != constantRegister)
+			{
+				continue;
+			}
+
+			var temporaryRegister = Enumerable.Range(0, 8)
+				.FirstOrDefault(register =>
+				register != sourceRegister &&
+					((shuffleFacts.LiveDataAfter & (1 << register)) == 0 ||
+					 IsClobberedByFollowingExternalCall(instructions, index + 2, register, dataflow)),
+					-1);
+			if (temporaryRegister < 0)
+			{
+				continue;
+			}
+
+			// Keep the original value in a dead data register, then materialize the
+			// constant in the first slot and the preserved value in the second.
+			_buffer.WriteWord(store.Offset, 0x2000 | (temporaryRegister << 9) | sourceRegister);
+			_buffer.WriteWord(
+				shuffle.Offset,
+				0x2E80 | sourceRegister);
+			_buffer.WriteWord(
+				shuffle.Offset + 2,
+				0x2F40 | temporaryRegister);
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool IsClobberedByFollowingExternalCall(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int shuffleIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var registerMask = (ushort)(1 << register);
+		for (var index = shuffleIndex + 1; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if ((instruction.Opcode & 0xFFC0) == 0x4E80)
+			{
+				return true;
+			}
+
+			if (instruction.Kind == M68kInstructionKind.Call)
+			{
+				return instruction.ExternalTarget;
+			}
+
+			if (instruction.Kind != M68kInstructionKind.Normal ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				(facts.Effects.UsesData & registerMask) != 0 ||
+				(facts.Effects.DefinesData & registerMask) != 0)
+			{
+				return false;
+			}
+		}
+
+		return false;
+	}
+
 	private bool TryRemoveRedundantStackArgumentShuffle()
 	{
 		var instructions = _assembler.GetInstructionStream();
@@ -621,6 +713,32 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryReplaceClearStackRoundTrip()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var clear = instructions[index];
+			var pop = instructions[index + 1];
+			if (clear.Opcode != 0x42A7 ||
+				clear.Length != 2 ||
+				(pop.Opcode & 0xF1FF) != 0x201F ||
+				pop.Length != 2 ||
+				IsReferencedLabelAt(pop.Offset))
+			{
+				continue;
+			}
+
+			var dataRegister = (pop.Opcode >> 9) & 7;
+			MoveLabelsToOffset(pop.Offset, pop.Offset + pop.Length, clear.Offset);
+			_buffer.WriteWord(clear.Offset, (ushort)(0x4280 | dataRegister)); // CLR.L Dn
+			_buffer.RemoveBytes(pop.Offset, pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
 	private bool TryRemoveZeroExtendedByteRegisterStackRoundTrip()
 	{
 		var instructions = _assembler.GetInstructionStream();
@@ -685,6 +803,72 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				push.Offset);
 			_buffer.WriteWord(push.Offset, replacement);
 			_buffer.RemoveBytes(pop.Offset, pop.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveByteMaskAndTestBeforeFrameStore()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 2 < instructions.Count; index++)
+		{
+			var mask = instructions[index];
+			var test = instructions[index + 1];
+			var store = instructions[index + 2];
+			var dataRegister = mask.Opcode & 7;
+			if (mask.Opcode != (ushort)(0x0280 | dataRegister) ||
+				mask.Length != 6 ||
+				_buffer.ReadLong(mask.Offset + 2) != 0x000000FF ||
+				test.Opcode != (ushort)(0x4A00 | dataRegister) ||
+				test.Length != 2 ||
+				store.Opcode != (ushort)(0x1F40 | dataRegister) ||
+				store.Length != 4)
+			{
+				continue;
+			}
+
+			// MOVE.B to the frame slot writes the same byte and establishes the
+			// same final condition codes as TST.B, so neither predecessor is needed.
+			MoveLabelsToOffset(mask.Offset, test.Offset + test.Length, store.Offset);
+			_buffer.RemoveBytes(mask.Offset, mask.Length + test.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryFoldByteAddIntoFrameStore(M68kInstructionDataflow dataflow)
+	{
+		for (var offset = 0; offset + 5 < _buffer.Bytes.Count; offset += 2)
+		{
+			var addOpcode = _buffer.ReadWord(offset);
+			if ((addOpcode & 0xF1F8) != 0xD000)
+			{
+				continue;
+			}
+
+			var sourceRegister = addOpcode & 7;
+			var resultRegister = (addOpcode >> 9) & 7;
+			if (_buffer.ReadWord(offset + 2) != (ushort)(0x1F40 | resultRegister) ||
+				IsReferencedLabelAt(offset + 2) ||
+				!dataflow.TryGetFacts(offset + 2, out var facts) ||
+				(facts.LiveDataAfter & (1 << resultRegister)) != 0 ||
+				(facts.LiveConditionsAfter &
+					(M68kConditionCodeSet.Overflow | M68kConditionCodeSet.Carry)) != 0)
+			{
+				continue;
+			}
+
+			// ADD.B Dn,d16(A7) has the same stored byte, N/Z, and X as the
+			// register add followed by MOVE.B. C and V differ, so retain the
+			// original sequence whenever either flag is live.
+			_buffer.WriteWord(
+				offset,
+				(ushort)(0xD100 | (sourceRegister << 9) | 0x2F)); // ADD.B Dn,d16(A7)
+			_buffer.WriteWord(offset + 2, _buffer.ReadWord(offset + 4));
+			_buffer.RemoveBytes(offset + 4, 2);
 			return true;
 		}
 
@@ -1317,6 +1501,26 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 			_buffer.WriteWord(opcodeOffset, 0x4EF9); // JSR -> JMP
 			_buffer.RemoveBytes(opcodeOffset + 6, 2);
+			return true;
+		}
+
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = instructions.Count - 2; index >= 0; index--)
+		{
+			var call = instructions[index];
+			var returnInstruction = instructions[index + 1];
+			if (call.Kind != M68kInstructionKind.Call ||
+				call.Length != 4 ||
+				(call.Opcode & 0xFFF8) != 0x4EA8 ||
+				returnInstruction.Kind != M68kInstructionKind.Return ||
+				returnInstruction.Offset != call.Offset + call.Length ||
+				_buffer.HasLabelAt(returnInstruction.Offset))
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(call.Offset, call.Opcode + 0x40); // JSR d16(An) -> JMP d16(An)
+			_buffer.RemoveBytes(returnInstruction.Offset, returnInstruction.Length);
 			return true;
 		}
 

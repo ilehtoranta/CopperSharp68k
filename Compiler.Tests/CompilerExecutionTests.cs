@@ -82,6 +82,40 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(16u, ExecuteHunk(result, M68kCpuModel.M68040));
 	}
 
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DirectStackCallsUseForwardArgumentOrder(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ForwardStackArgumentEntry");
+
+		Assert.Equal(21_234u, ExecuteHunk(result, model));
+	}
+
+	[Fact]
+	public void DirectStackCallAssemblyUsesForwardCalleeHomes()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ForwardStackArgumentEntry");
+
+		Assert.Contains("\tlea\t-20(a7),a7", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t4(a7),-(a7)", result.Text, StringComparison.Ordinal);
+		Assert.Contains(
+			"\tmove.l\t12(a7),-(a7)\r\n\tmove.l\t#$000003E8,-(a7)",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"\tmove.l\t20(a7),-(a7)\r\n\tmoveq\t#10,d1",
+			result.Text,
+			StringComparison.Ordinal);
+	}
+
 	[Fact]
 	public void CompilesAndExecutesMethodBodyFromReferencedModule()
 	{
@@ -610,33 +644,33 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void ClrIsTargetGatedAndOptInForM68000()
+	public void ClrUsesStackSlotsOnM68000AndCanBeDisabled()
 	{
-		var m68000 = Compile(
+		var m68000FrameClear = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry");
-		Assert.DoesNotContain("\tclr.l\t-(a7)", m68000.Text, StringComparison.Ordinal);
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry");
+		Assert.Matches(@"\tclr\.l\t\d+\(a7\)", m68000FrameClear.Text);
 
 		var m68020 = Compile(
 			M68kCpuTarget.M68020,
 			M68kOutputFormat.Assembly,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry");
-		Assert.Contains("\tclr.l\t-(a7)", m68020.Text, StringComparison.Ordinal);
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry");
+		Assert.Matches(@"\tclr\.l\t\d+\(a7\)", m68020.Text);
 
 		var disabled = Compile(
 			M68kCpuTarget.M68020,
 			M68kOutputFormat.Assembly,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry",
 			M68kClrPolicy.Never);
-		Assert.DoesNotContain("\tclr.l\t-(a7)", disabled.Text, StringComparison.Ordinal);
+		Assert.DoesNotMatch(@"\tclr\.l\t\d+\(a7\)", disabled.Text);
 
 		var optIn = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::NullableAptrNullEntry",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TryCatchEntry",
 			M68kClrPolicy.Always);
-		Assert.Contains("\tclr.l\t-(a7)", optIn.Text, StringComparison.Ordinal);
+		Assert.Matches(@"\tclr\.l\t\d+\(a7\)", optIn.Text);
 	}
 
 	[Theory]
@@ -3494,6 +3528,13 @@ public sealed class CompilerExecutionTests
 			"CopperSharp.Compiler.Tests.CompilerFixtures::ShiftAndCompare");
 		Assert.Contains("\tmovem.l\td2-d7/a2-a6,-(a7)", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmovem.l\t(a7)+,d2-d7/a2-a6", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains(
+			"\tmove.l\td2,-(a7)\r\n" +
+			"\tmove.l\td1,-(a7)\r\n" +
+			"\tmove.l\td0,-(a7)\r\n" +
+			"\tbsr",
+			assembly.Text,
+			StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			"\tmove.l\td2,-(a7)\r\n\tmove.l\td3,-(a7)\r\n\tmove.l\td4,-(a7)",
 			assembly.Text,
