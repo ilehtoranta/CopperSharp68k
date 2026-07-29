@@ -142,4 +142,5 @@ See `Examples/DOS` for a minimal manual `dos.library` open/print/cleanup
 program. See `Examples/MUISunflower` for a minimal MUI object tree with an
 application, window, group, text object, and button. See
 `Examples/IFFInspect` for DOS-backed IFF parsing with typed exceptions and
-nested deterministic cleanup.
+nested deterministic cleanup. See `Examples/FileStats` for a YOLO-style DOS
+file report that mixes byte, word, and longword arithmetic.

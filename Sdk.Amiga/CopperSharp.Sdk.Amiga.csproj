@@ -15,9 +15,11 @@
   <ItemGroup>
     <Compile Remove="Examples\**\*.cs" />
     <Compile Include="Examples\DOS\Program.cs" />
+    <Compile Include="Examples\FileStats\Program.cs" />
     <Compile Include="Examples\MUISunflower\Program.cs" />
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
     <None Include="Examples\DOS\DOS.csproj" />
+    <None Include="Examples\FileStats\FileStats.csproj" />
     <None Include="Examples\MUITaskList\MUITaskList.csproj" />
     <None Include="Examples\MUISunflower\MUISunflower.csproj" />
     <None Include="README.md" Pack="true" PackagePath="\" />
