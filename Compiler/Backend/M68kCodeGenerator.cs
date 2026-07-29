@@ -518,6 +518,23 @@ internal sealed partial class M68kCodeGenerator
 					ref emittedExceptionStateLabel);
 				if (method.ExceptionRegions.Count != 0)
 				{
+					if (TryEmitDirectComparisonStoreBranch(
+						method,
+						method.Instructions,
+						instructionIndex,
+						branchTargets,
+						out var protectedComparisonStoreBranchConsumed))
+					{
+						for (var skipped = 1; skipped < protectedComparisonStoreBranchConsumed; skipped++)
+						{
+							_assembler.Mark(IlLabel(
+								method,
+								method.Instructions[instructionIndex + skipped].Offset));
+						}
+						instructionIndex += protectedComparisonStoreBranchConsumed - 1;
+						continue;
+					}
+
 					if (TryEmitCallResultDiscard(
 						method,
 						method.Instructions,
@@ -4533,6 +4550,15 @@ internal sealed partial class M68kCodeGenerator
 			return false;
 		}
 
+		if (!ProtectedInstructionRangeCanBeCombined(
+			caller,
+			instructions,
+			startIndex,
+			storeIndex + 2))
+		{
+			return false;
+		}
+
 		if (branchCondition == M68kCondition.Equal)
 		{
 			condition = InvertCondition(condition);
@@ -4875,6 +4901,35 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return false;
+	}
+
+	private bool ProtectedInstructionRangeCanBeCombined(
+		CilMethod method,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		int endIndex)
+	{
+		if (method.ExceptionRegions.Count == 0)
+		{
+			return true;
+		}
+
+		var activeExceptionGroups = GetActiveExceptionGroups(
+			method,
+			instructions[startIndex].Offset);
+		for (var index = startIndex + 1; index <= endIndex; index++)
+		{
+			var instruction = instructions[index];
+			if (method.ExceptionRegions.Any(region =>
+					region.HandlerOffset == instruction.Offset) ||
+				!activeExceptionGroups.SequenceEqual(
+					GetActiveExceptionGroups(method, instruction.Offset)))
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private static bool IsLocalAccessAfter(

@@ -95,6 +95,20 @@ public static class CompilerFixtures
 	private static int DiscardedCallResult() => 7;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ComparisonStoreBranchInTryEntry()
+	{
+		var value = DiscardedCallResult();
+		try
+		{
+			return value == 0 ? 0 : 42;
+		}
+		catch
+		{
+			return 1;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TypedCatchEntry()
 	{
 		try

@@ -245,6 +245,23 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void ProtectedMethodBranchesDirectlyOnScalarComparison()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ComparisonStoreBranchInTryEntry");
+		var methodText = BeforeExceptionRuntime(result);
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+		Assert.Matches(@"\tb(?:eq|ne)\.w\t", methodText);
+		Assert.DoesNotContain("\tseq\td0", methodText, StringComparison.Ordinal);
+		Assert.DoesNotMatch(
+			@"\tmove\.b\td0,\d+\(a7\)\r?\n\tmove\.b\t\d+\(a7\),d0",
+			methodText);
+	}
+
+	[Fact]
 	public void FullExceptionModeEmitsFinallyRuntimeContract()
 	{
 		var result = Compile(
