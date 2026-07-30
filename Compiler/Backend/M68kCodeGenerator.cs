@@ -425,6 +425,7 @@ internal sealed partial class M68kCodeGenerator
 	private void CompileMethod(CilMethod method)
 	{
 		_loadedPlatformBase = null;
+		var ilOptimizations = CilOptimizer.Optimize(method, _module);
 		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
 		var registerAbi = internalAbi.RegisterOnlyLocations;
@@ -516,6 +517,23 @@ internal sealed partial class M68kCodeGenerator
 					instruction,
 					exceptionStateBlockEntries?.Contains(instruction.Offset) == true,
 					ref emittedExceptionStateLabel);
+			}
+			if (ilOptimizations.TryGet(instruction.Offset, out var ilOptimization))
+			{
+				EmitIlOptimization(method, instruction, ilOptimization);
+				for (var skipped = ilOptimization.StartIndex + 1;
+					skipped <= ilOptimization.EndIndex;
+					skipped++)
+				{
+					_assembler.Mark(IlLabel(
+						method,
+						method.Instructions[skipped].Offset));
+				}
+				instructionIndex = ilOptimization.EndIndex;
+				continue;
+			}
+			if (CurrentFrameLayout.HasRuntimeFrame)
+			{
 				if (method.ExceptionRegions.Count != 0)
 				{
 					if (TryEmitDirectComparisonStoreBranch(
@@ -1059,6 +1077,47 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		_assembler.Mark(MethodEndLabel(method));
+	}
+
+	private void EmitIlOptimization(
+		CilMethod method,
+		CilInstruction instruction,
+		CilOptimization optimization)
+	{
+		switch (optimization.Kind)
+		{
+			case CilOptimizationKind.DiscardCallResult:
+				EmitCall(method, instruction, pushResult: false);
+				return;
+
+			case CilOptimizationKind.ComparisonBranch:
+				var leftKind = CurrentStackKindOrLong(1);
+				var rightKind = CurrentStackKindOrLong();
+				var width = CilStackValueLayout.IsSmall(leftKind) &&
+					CilStackValueLayout.IsSmall(rightKind)
+					? Math.Max(
+						CilStackValueLayout.ArithmeticWidth(leftKind),
+						CilStackValueLayout.ArithmeticWidth(rightKind))
+					: 4;
+				EmitPopBinaryOperands(widen: width == 4 || width == 2);
+				_assembler.EmitWord(ComparisonOpcode(width));
+				var condition = ComparisonCondition(optimization.ComparisonOpCode);
+				if (!optimization.BranchOnComparisonTrue)
+				{
+					condition = InvertCondition(condition);
+				}
+				_assembler.EmitBranch(
+					condition,
+					IlLabel(method, optimization.BranchTarget));
+				return;
+
+			case CilOptimizationKind.Suppress:
+				return;
+
+			default:
+				throw new InvalidOperationException(
+					$"Unsupported IL optimization '{optimization.Kind}'.");
+		}
 	}
 
 	private bool TryEmitSimpleWrapperConstructorMethod(
