@@ -11,8 +11,6 @@ namespace MUITaskList;
 
 public static class Program
 {
-	private const uint MEMF_CLEAR = 0x0001_0000u;
-
 	private static Hook _displayHook;
 	private static uint _entryWorkbench;
 	private static uint _entryInput;
@@ -246,7 +244,7 @@ public static class Program
 
 	private static uint AllocTaskEntry(CString name, CString state, CString priority)
 	{
-		var address = APTR.FromPointer(Exec.AllocMem(TaskListEntry.Size, MEMF_CLEAR));
+		var address = APTR.FromPointer(Exec.AllocMem(TaskListEntry.Size, Exec.MemoryFlags.Clear));
 		if (address.IsNull)
 		{
 			return 0;

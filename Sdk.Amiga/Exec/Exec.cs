@@ -13,6 +13,23 @@ public static class Exec
 {
 	public const string Name = "exec.library";
 
+	[System.Flags]
+	public enum MemoryFlags : uint
+	{
+		Any = 0,
+		Public = 1u << 0,
+		Chip = 1u << 1,
+		Fast = 1u << 2,
+		Local = 1u << 8,
+		TwentyFourBitDma = 1u << 9,
+		Kick = 1u << 10,
+		Clear = 1u << 16,
+		Largest = 1u << 17,
+		Reverse = 1u << 18,
+		Total = 1u << 19,
+		NoExpunge = 1u << 31,
+	}
+
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint Supervisor(
@@ -125,7 +142,7 @@ public static class Exec
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AllocMem(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
-		[M68kRegister(M68kRegister.D1)] uint attributes);
+		[M68kRegister(M68kRegister.D1)] MemoryFlags attributes);
 
 	[AmigaLvo(-204)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -141,7 +158,7 @@ public static class Exec
 	[AmigaLvo(-216)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AvailMem(
-		[M68kRegister(M68kRegister.D1)] uint attributes);
+		[M68kRegister(M68kRegister.D1)] MemoryFlags attributes);
 
 	[AmigaLvo(-222)]
 	[return: M68kRegister(M68kRegister.D0)]
