@@ -30,6 +30,24 @@ public unsafe struct FileInfoBlock
 	public static CString Comment(uint fileInfoBlock) =>
 		CString.FromPointer(fileInfoBlock + CommentOffset);
 
+	public static int GetDirEntryType(uint fileInfoBlock) =>
+		ReadInt32(fileInfoBlock, DirEntryTypeOffset);
+
+	public static int GetSize(uint fileInfoBlock) =>
+		ReadInt32(fileInfoBlock, SizeOffset);
+
+	public static int GetDateDays(uint fileInfoBlock) =>
+		ReadInt32(fileInfoBlock, DateDaysOffset);
+
+	public static int GetDateMinute(uint fileInfoBlock) =>
+		ReadInt32(fileInfoBlock, DateMinuteOffset);
+
+	public static int GetDateTick(uint fileInfoBlock) =>
+		ReadInt32(fileInfoBlock, DateTickOffset);
+
+	private static int ReadInt32(uint fileInfoBlock, int offset) =>
+		(int)APTR.ReadUInt32(APTR.FromPointer(fileInfoBlock), offset);
+
 	public int DiskKey;
 	public int DirEntryType;
 	public fixed byte FileNameBuffer[108];

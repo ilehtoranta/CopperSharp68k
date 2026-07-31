@@ -51,7 +51,7 @@ public static class Program
 			DOS.Printf("Examine failed, IoErr %ld\n", (uint)error);
 			result = DOS.RETURN_FAIL;
 		}
-		else if ((int)APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DirEntryTypeOffset) < 0)
+		else if (FileInfoBlock.GetDirEntryType(fib) < 0)
 		{
 			PrintEntry(fib);
 		}
@@ -77,10 +77,10 @@ public static class Program
 	private static void PrintEntry(uint fib)
 	{
 		var name = FileInfoBlock.FileName(fib);
-		var size = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.SizeOffset);
-		var days = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateDaysOffset);
-		var minute = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateMinuteOffset);
-		var tick = APTR.ReadUInt32(APTR.FromPointer(fib), FileInfoBlock.DateTickOffset);
+		var size = (uint)FileInfoBlock.GetSize(fib);
+		var days = (uint)FileInfoBlock.GetDateDays(fib);
+		var minute = (uint)FileInfoBlock.GetDateMinute(fib);
+		var tick = (uint)FileInfoBlock.GetDateTick(fib);
 		DOS.Printf(
 			"%-30s %10ld  %ld/%ld/%ld\n",
 			name,
