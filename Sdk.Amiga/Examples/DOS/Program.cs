@@ -21,7 +21,7 @@ public static class Program
 			var fib = new FileInfoBlock();
 			var fibAddress = APTR.ToUInt32(FileInfoBlock.AddressOf(ref fib));
 			CString path = argLength > 0
-				? CString.FromPointer(argText.Raw)
+				? argText.Raw
 				: "";
 
 			var result = ListDirectory(path, fibAddress);
@@ -77,17 +77,13 @@ public static class Program
 	private static void PrintEntry(uint fib)
 	{
 		var name = FileInfoBlock.FileName(fib);
-		var size = (uint)FileInfoBlock.GetSize(fib);
-		var days = (uint)FileInfoBlock.GetDateDays(fib);
-		var minute = (uint)FileInfoBlock.GetDateMinute(fib);
-		var tick = (uint)FileInfoBlock.GetDateTick(fib);
 		DOS.Printf(
 			"%-30s %10ld  %ld/%ld/%ld\n",
 			name,
-			size,
-			days,
-			minute,
-			tick);
+			FileInfoBlock.GetSize(fib),
+			FileInfoBlock.GetDateDays(fib),
+			FileInfoBlock.GetDateMinute(fib),
+			FileInfoBlock.GetDateTick(fib));
 	}
 
 }
