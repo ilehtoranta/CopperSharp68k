@@ -330,6 +330,7 @@ internal static class CilStackAnalyzer
 				StackBehaviour.Popref_pop1 or
 				StackBehaviour.Popref_popi => -2 + PushCount(op.StackBehaviourPush),
 			StackBehaviour.Popi_popi_popi or
+				StackBehaviour.Popref_popi_pop1 or
 				StackBehaviour.Popref_popi_popi or
 				StackBehaviour.Popref_popi_popi8 or
 				StackBehaviour.Popref_popi_popr4 or
@@ -568,7 +569,7 @@ internal static class CilStackAnalyzer
 			method.DisplayName,
 			instruction.Offset);
 
-	private static ImmutableArray<CilStackValueKind> ApplyStackEffect(
+	internal static ImmutableArray<CilStackValueKind> ApplyStackEffect(
 		CilMethod method,
 		CompilationModule module,
 		CilInstruction instruction,
@@ -855,6 +856,99 @@ internal static class CilStackAnalyzer
 		throw Unsupported(method, instruction, $"typed stack effect for opcode '{op.Name}'");
 	}
 
+	internal static int GetPopSlotCount(
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction instruction,
+		int currentDepth)
+	{
+		var op = instruction.OpCode;
+		if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
+		{
+			var target = module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return ParameterSlotCount(target.Signature.ParameterTypes) +
+				(target.Signature.Header.IsInstance &&
+					(op != OpCodes.Newobj ||
+					 target.ImportName?.StartsWith(
+						"intrinsic:nullable-ctor:",
+						StringComparison.Ordinal) == true)
+					? 1
+					: 0);
+		}
+
+		if (op == OpCodes.Initobj)
+		{
+			return 1;
+		}
+		if (TryGetArgumentIndex(instruction, out _) ||
+			TryGetLoadLocalIndex(instruction, out _) ||
+			TryGetLoadLocalAddressIndex(instruction, out _) ||
+			TryGetLoadArgumentAddressIndex(instruction, out _))
+		{
+			return 0;
+		}
+		if (TryGetStoreLocalIndex(instruction, out var storeLocal))
+		{
+			return SlotCount(method.Locals[storeLocal]);
+		}
+		if (op == OpCodes.Starg || op == OpCodes.Starg_S)
+		{
+			return SlotCount(TypeForParameter(
+				method,
+				Convert.ToInt32(instruction.Operand)));
+		}
+		if (op == OpCodes.Ret)
+		{
+			return SlotCount(method.Signature.ReturnType);
+		}
+		if (op == OpCodes.Throw)
+		{
+			return 1;
+		}
+		if (op == OpCodes.Rethrow || op == OpCodes.Endfinally)
+		{
+			return 0;
+		}
+		if (op == OpCodes.Leave || op == OpCodes.Leave_S)
+		{
+			return currentDepth;
+		}
+
+		return op.StackBehaviourPop switch
+		{
+			StackBehaviour.Pop0 => 0,
+			StackBehaviour.Pop1 or
+				StackBehaviour.Popi or
+				StackBehaviour.Popref => 1,
+			StackBehaviour.Pop1_pop1 or
+				StackBehaviour.Popi_pop1 or
+				StackBehaviour.Popi_popi or
+				StackBehaviour.Popi_popi8 or
+				StackBehaviour.Popi_popr4 or
+				StackBehaviour.Popi_popr8 or
+				StackBehaviour.Popref_pop1 or
+				StackBehaviour.Popref_popi => 2,
+			StackBehaviour.Popi_popi_popi or
+				StackBehaviour.Popref_popi_pop1 or
+				StackBehaviour.Popref_popi_popi or
+				StackBehaviour.Popref_popi_popi8 or
+				StackBehaviour.Popref_popi_popr4 or
+				StackBehaviour.Popref_popi_popr8 or
+				StackBehaviour.Popref_popi_popref => 3,
+			StackBehaviour.Varpop => throw Unsupported(
+				method,
+				instruction,
+				"variable stack effect"),
+			_ => throw Unsupported(
+				method,
+				instruction,
+				$"stack behavior {op.StackBehaviourPop}")
+		};
+	}
+
 	private static ImmutableArray<CilStackValueKind> Push(
 		ImmutableArray<CilStackValueKind> stack,
 		CilStackValueKind kind) =>
@@ -1008,7 +1102,7 @@ internal static class CilStackAnalyzer
 			? kind
 			: CilStackValueKind.Int32;
 
-	private static CilStackValueKind StackKindForType(CilType type) =>
+	internal static CilStackValueKind StackKindForType(CilType type) =>
 		type.Size == 8 && type.IsSupportedScalar
 			? CilStackValueKind.Int64
 			: type.Size == 1 && type.Kind == CilTypeKind.Boolean

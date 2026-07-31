@@ -24,7 +24,7 @@ internal sealed partial class M68kCodeGenerator
 	private readonly Dictionary<string, GeneratedPlatformBase> _usedPlatformBases = new(StringComparer.Ordinal);
 	private readonly M68kMemoryManagement _memoryManagement;
 	private int _uniqueLabel;
-	private int _currentStackDepth;
+	private int _currentStackDepth = 0;
 	private bool _usesExceptionRuntime;
 	private bool _hasExceptionFrames;
 	private ImmutableArray<CilStackValueKind> _currentStackTypes = ImmutableArray<CilStackValueKind>.Empty;
@@ -32,6 +32,9 @@ internal sealed partial class M68kCodeGenerator
 	private FrameLayout? _currentFrameLayout;
 	private GeneratedPlatformBase? _loadedPlatformBase;
 	private readonly ManagedPoolRuntimeModule? _managedPoolRuntime;
+	private readonly Dictionary<CilMethodIdentity, M68kMethodAllocationStatistics>
+		_allocationStatistics = new();
+	private readonly HashSet<CilMethodIdentity> _rootOnlyMethods = new();
 
 	private enum InlineCandidateKind
 	{
@@ -85,9 +88,6 @@ internal sealed partial class M68kCodeGenerator
 	private bool UsesManagedExceptionRuntime =>
 		_usesExceptionRuntime;
 
-	private bool MustPreserveRuntimeFrameRegister =>
-		_hasExceptionFrames || CurrentFrameLayout.HasRuntimeFrame;
-
 	private bool UseClr => _request.ClrPolicy switch
 	{
 		M68kClrPolicy.Always => true,
@@ -135,6 +135,19 @@ internal sealed partial class M68kCodeGenerator
 				usesAmigaStartupArguments,
 				_hasExceptionFrames);
 		}
+		else if (!exports.Any(export => export.Method.Identity == entry.Identity) &&
+			!methods.Any(method =>
+				method.Identity != entry.Identity &&
+				method.Instructions.Any(instruction =>
+					IsCallInstruction(instruction) &&
+					_module.ResolveMethodToken(
+						(int)instruction.Operand!,
+						method,
+						instruction.Offset).Definition?.Identity ==
+						entry.Identity)))
+		{
+			_rootOnlyMethods.Add(entry.Identity);
+		}
 		foreach (var method in methods)
 		{
 			CompileMethod(method);
@@ -145,6 +158,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		EmitExceptionRuntime();
 		EmitManagedPoolRuntime();
+		VerifyAllocatedPrePeepholeOutput();
 		_assembler.OptimizeForCpu(_request.Cpu);
 		EmitData(methods);
 		EmitExceptionMetadata(methods);
@@ -155,8 +169,57 @@ internal sealed partial class M68kCodeGenerator
 			exports,
 			_usedPlatformBases.Values.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal).ToArray(),
 			entryLabel,
-			methods.ToDictionary(method => method.Identity, MethodLabel));
+			methods.ToDictionary(method => method.Identity, MethodLabel),
+			_allocationStatistics);
 	}
+
+	private void VerifyAllocatedPrePeepholeOutput()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			var opcode = instruction.Opcode;
+			var sizeFamily = opcode & 0xF000;
+			var selfDataMove =
+				sizeFamily is 0x1000 or 0x2000 or 0x3000 &&
+				((opcode >> 3) & 7) == 0 &&
+				((opcode >> 6) & 7) == 0 &&
+				(opcode & 7) == ((opcode >> 9) & 7);
+			var selfAddressMove =
+				(opcode & 0xF1F8) == 0x2048 &&
+				(opcode & 7) == ((opcode >> 9) & 7);
+			if (selfDataMove || selfAddressMove)
+			{
+				throw new InvalidOperationException(
+					$"Allocated emission produced a self-move at byte offset " +
+					$"{instruction.Offset} before peephole optimization.");
+			}
+			if (index + 1 >= instructions.Count ||
+				!IsPrePeepholeLongStackPush(opcode))
+			{
+				continue;
+			}
+			var next = instructions[index + 1].Opcode;
+			if (IsPrePeepholeLongStackPop(next) || next == 0x588F)
+			{
+				throw new InvalidOperationException(
+					$"Allocated emission produced an immediate stack round trip " +
+					$"at byte offset {instruction.Offset} before peephole optimization " +
+					$"(opcodes ${opcode:X4}, ${next:X4}).");
+			}
+		}
+	}
+
+	private static bool IsPrePeepholeLongStackPush(ushort opcode) =>
+		(opcode & 0xF000) == 0x2000 &&
+		((opcode >> 6) & 7) == 4 &&
+		((opcode >> 9) & 7) == 7;
+
+	private static bool IsPrePeepholeLongStackPop(ushort opcode) =>
+		(opcode & 0xF000) == 0x2000 &&
+		((opcode >> 3) & 7) == 3 &&
+		(opcode & 7) == 7;
 
 	private IReadOnlyList<CilMethod> DiscoverReachableMethods(
 		CilMethod entry,
@@ -426,9 +489,20 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_loadedPlatformBase = null;
 		var ilOptimizations = CilOptimizer.Optimize(method, _module);
-		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
-		var registerAbi = internalAbi.RegisterOnlyLocations;
+		var machineFunction = CilMachineIrBuilder.Build(
+			method,
+			_module,
+			_request.Cpu,
+			RequiresRuntimeFrame(method),
+			ilOptimizations,
+			internalAbi.Arguments
+				.Select(static argument => argument.Register)
+				.ToArray());
+		machineFunction.PreserveCalleeSavedRegisters =
+			!_rootOnlyMethods.Contains(method.Identity);
+		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(machineFunction);
+		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
 		var branchTargets = GetBranchTargets(method.Instructions);
 		var reachableOffsets = reachableStackStates.Keys.ToHashSet();
 		var platformBaseBlockEntries = AnalyzePlatformBaseBlockEntries(method, reachableOffsets);
@@ -437,7 +511,6 @@ internal sealed partial class M68kCodeGenerator
 			: branchTargets
 				.Concat(method.ExceptionRegions.Select(static region => region.HandlerOffset))
 				.ToHashSet();
-		string? emittedExceptionStateLabel = null;
 		_currentFrameLayout = CreateFrameLayout(
 			method,
 			internalAbi,
@@ -446,729 +519,37 @@ internal sealed partial class M68kCodeGenerator
 			reachableStackStates);
 		RecordRuntimeFrameLayout(method);
 		_assembler.AlignWord();
+		var emittedStart = _assembler.Offset;
 		if (ManagedRuntimeAlias(method) is { } runtimeAlias)
 		{
 			_assembler.Mark(runtimeAlias);
 		}
 		_assembler.Mark(MethodLabel(method));
-		if (TryEmitSimpleWrapperConstructorMethod(method, registerAbi, reachableStackStates))
-		{
-			_assembler.Mark(MethodEndLabel(method));
-			return;
-		}
-		if (TryEmitIdentityReturnMethod(method, registerAbi, reachableStackStates))
-		{
-			_assembler.Mark(MethodEndLabel(method));
-			return;
-		}
-
-		if (!TryEmitCompactArgumentHomeFrame(internalAbi))
-		{
-			EmitAllocateFrame(_currentFrameLayout.FrameBytes);
-			EmitSaveCalleeSavedRegisters();
-			foreach (var location in internalAbi.Arguments)
-			{
-				if (location.IsStack ||
-					_currentFrameLayout.ArgumentRegisters[location.Index] is not null)
-				{
-					continue;
-				}
-
-				EmitStoreRegisterToFrame(
-					location.Register!.Value,
-					ArgumentOffset(method, location.Index));
-				if (location.LowRegister is { } lowRegister)
-				{
-					EmitStoreRegisterToFrame(
-						lowRegister,
-						checked((short)(ArgumentOffset(method, location.Index) + 4)));
-				}
-			}
-			EmitClearFrameRegion(
-				_currentFrameLayout.ClearStartOffset,
-				_currentFrameLayout.ClearLongs);
-		}
-		EmitLinkRuntimeFrame(method);
-
-		for (var instructionIndex = 0; instructionIndex < method.Instructions.Count; instructionIndex++)
-		{
-			var instruction = method.Instructions[instructionIndex];
-			if (!reachableStackStates.TryGetValue(instruction.Offset, out var stackTypes))
-			{
-				continue;
-			}
-
-			_currentStackTypes = stackTypes;
-			_currentStackDepth = stackTypes.Length;
-			_nextStackTypes = reachableStackStates.TryGetValue(
-				instruction.NextOffset,
-				out var successorStackTypes)
-				? successorStackTypes
-				: ImmutableArray<CilStackValueKind>.Empty;
-			if (platformBaseBlockEntries.TryGetValue(instruction.Offset, out var platformBaseIdentity))
-			{
-				ApplyPlatformBaseBlockEntry(platformBaseIdentity);
-			}
-			_assembler.Mark(IlLabel(method, instruction.Offset));
-			if (CurrentFrameLayout.HasRuntimeFrame)
-			{
-				EmitProtectedInstructionState(
-					method,
-					instruction,
-					exceptionStateBlockEntries?.Contains(instruction.Offset) == true,
-					ref emittedExceptionStateLabel);
-			}
-			if (ilOptimizations.TryGet(instruction.Offset, out var ilOptimization))
-			{
-				EmitIlOptimization(method, instruction, ilOptimization);
-				for (var skipped = ilOptimization.StartIndex + 1;
-					skipped <= ilOptimization.EndIndex;
-					skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[skipped].Offset));
-				}
-				instructionIndex = ilOptimization.EndIndex;
-				continue;
-			}
-			if (CurrentFrameLayout.HasRuntimeFrame)
-			{
-				if (method.ExceptionRegions.Count != 0)
-				{
-					if (TryEmitDirectComparisonStoreBranch(
-						method,
-						method.Instructions,
-						instructionIndex,
-						branchTargets,
-						out var protectedComparisonStoreBranchConsumed))
-					{
-						for (var skipped = 1; skipped < protectedComparisonStoreBranchConsumed; skipped++)
-						{
-							_assembler.Mark(IlLabel(
-								method,
-								method.Instructions[instructionIndex + skipped].Offset));
-						}
-						instructionIndex += protectedComparisonStoreBranchConsumed - 1;
-						continue;
-					}
-
-					if (TryEmitCallResultDiscard(
-						method,
-						method.Instructions,
-						instructionIndex,
-						branchTargets,
-						out var protectedCallDiscardConsumed))
-					{
-						for (var skipped = 1; skipped < protectedCallDiscardConsumed; skipped++)
-						{
-							_assembler.Mark(IlLabel(
-								method,
-								method.Instructions[instructionIndex + skipped].Offset));
-						}
-						instructionIndex += protectedCallDiscardConsumed - 1;
-						continue;
-					}
-
-					if (TryEmitAddressNullBranch(
-						method,
-						method.Instructions,
-						instructionIndex,
-						branchTargets,
-						out var addressNullBranchConsumed))
-					{
-						for (var skipped = 1; skipped < addressNullBranchConsumed; skipped++)
-						{
-							_assembler.Mark(IlLabel(
-								method,
-								method.Instructions[instructionIndex + skipped].Offset));
-						}
-						instructionIndex += addressNullBranchConsumed - 1;
-						continue;
-					}
-
-					EmitInstruction(method, instruction);
-					continue;
-				}
-			}
-			if (TryEmitAddressNullBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var directAddressNullBranchConsumed))
-			{
-				for (var skipped = 1; skipped < directAddressNullBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += directAddressNullBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitBoopsiDoMethodFixedCall(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var boopsiFixedConsumed))
-			{
-				for (var skipped = 1; skipped < boopsiFixedConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += boopsiFixedConsumed - 1;
-				continue;
-			}
-			if (TryEmitAddressIntrinsicConstantCall(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var addressIntrinsicConsumed))
-			{
-				for (var skipped = 1; skipped < addressIntrinsicConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += addressIntrinsicConsumed - 1;
-				continue;
-			}
-			if (TryEmitVarargsArrayCall(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				reachableStackStates,
-				out var stackVarargsConsumed))
-			{
-				for (var skipped = 1; skipped < stackVarargsConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += stackVarargsConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectExternalCall(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var directCallConsumed))
-			{
-				for (var skipped = 1; skipped < directCallConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += directCallConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectRelationalBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var relationalBranchConsumed))
-			{
-				for (var skipped = 1; skipped < relationalBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += relationalBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectComparisonBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var comparisonBranchConsumed))
-			{
-				for (var skipped = 1; skipped < comparisonBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += comparisonBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectComparisonStoreBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var comparisonStoreBranchConsumed))
-			{
-				for (var skipped = 1; skipped < comparisonStoreBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += comparisonStoreBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitNullableHasValueBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var nullableHasValueBranchConsumed))
-			{
-				for (var skipped = 1; skipped < nullableHasValueBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += nullableHasValueBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitLoadBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var loadBranchConsumed))
-			{
-				for (var skipped = 1; skipped < loadBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += loadBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectFieldLoad(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var fieldLoadConsumed))
-			{
-				for (var skipped = 1; skipped < fieldLoadConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += fieldLoadConsumed - 1;
-				continue;
-			}
-			if (instructionIndex + 1 < method.Instructions.Count &&
-				(instruction.OpCode == OpCodes.Call || instruction.OpCode == OpCodes.Callvirt))
-			{
-				var returnIndex = instructionIndex + 1;
-				if (TrySkipNonTargetNops(method.Instructions, branchTargets, ref returnIndex) &&
-					returnIndex < method.Instructions.Count &&
-					method.Instructions[returnIndex].OpCode == OpCodes.Ret &&
-					!branchTargets.Contains(method.Instructions[returnIndex].Offset) &&
-					TryEmitTailCall(method, instruction))
-				{
-					for (var skipped = 1; skipped <= returnIndex - instructionIndex; skipped++)
-					{
-						_assembler.Mark(IlLabel(
-							method,
-							method.Instructions[instructionIndex + skipped].Offset));
-					}
-					instructionIndex += returnIndex - instructionIndex;
-					continue;
-				}
-			}
-			if (TryEmitDirectValueReturn(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var valueReturnConsumed))
-			{
-				for (var skipped = 1; skipped < valueReturnConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += valueReturnConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectMaskedAddReturn(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var maskedAddReturnConsumed))
-			{
-				for (var skipped = 1; skipped < maskedAddReturnConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += maskedAddReturnConsumed - 1;
-				continue;
-			}
-			if (TryEmitNullableHasValueComparisonStoreBranch(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var nullableHasValueStoreBranchConsumed))
-			{
-				for (var skipped = 1; skipped < nullableHasValueStoreBranchConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += nullableHasValueStoreBranchConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectComparisonResultStore(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				reachableStackStates,
-				out var comparisonStoreConsumed))
-			{
-				for (var skipped = 1; skipped < comparisonStoreConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += comparisonStoreConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectComparison(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var comparisonConsumed))
-			{
-				for (var skipped = 1; skipped < comparisonConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += comparisonConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectRegisterCallResultStore(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				reachableStackStates,
-				out var registerCallStoreConsumed))
-			{
-				for (var skipped = 1; skipped < registerCallStoreConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += registerCallStoreConsumed - 1;
-				continue;
-			}
-			if (TryEmitVarargsArrayWrapperConstruction(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var varargsWrapperConsumed))
-			{
-				for (var skipped = 1; skipped < varargsWrapperConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += varargsWrapperConsumed - 1;
-				continue;
-			}
-			if (TryEmitVarargsArrayWrapperConstructionWithSubstitutedLocals(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var substitutedVarargsWrapperConsumed))
-			{
-				for (var skipped = 1; skipped < substitutedVarargsWrapperConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += substitutedVarargsWrapperConsumed - 1;
-				continue;
-			}
-			if (TryEmitCallResultDiscard(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var callDiscardConsumed))
-			{
-				for (var skipped = 1; skipped < callDiscardConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += callDiscardConsumed - 1;
-				continue;
-			}
-			if (TryEmitZeroLibraryBaseSet(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var zeroLibraryBaseSetConsumed))
-			{
-				for (var skipped = 1; skipped < zeroLibraryBaseSetConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += zeroLibraryBaseSetConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectRegisterCall(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var registerCallConsumed))
-			{
-				for (var skipped = 1; skipped < registerCallConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += registerCallConsumed - 1;
-				continue;
-			}
-			if (TryEmitCallResultStore(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				reachableStackStates,
-				out var callStoreConsumed))
-			{
-				for (var skipped = 1; skipped < callStoreConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += callStoreConsumed - 1;
-				continue;
-			}
-			if (TryEmitValueStore(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var valueStoreConsumed))
-			{
-				for (var skipped = 1; skipped < valueStoreConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += valueStoreConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectLocalQuickUpdate(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var quickLocalUpdateConsumed))
-			{
-				for (var skipped = 1; skipped < quickLocalUpdateConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += quickLocalUpdateConsumed - 1;
-				continue;
-			}
-			if (TryEmitNullableGetValueLibraryBaseSet(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var nullableLibraryBaseSetConsumed))
-			{
-				for (var skipped = 1; skipped < nullableLibraryBaseSetConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += nullableLibraryBaseSetConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectNullableLocalAccessor(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var nullableAccessorConsumed))
-			{
-				for (var skipped = 1; skipped < nullableAccessorConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += nullableAccessorConsumed - 1;
-				continue;
-			}
-			if (TryEmitDirectTransparentScalarRawGetter(
-				method,
-				method.Instructions,
-				instructionIndex,
-				branchTargets,
-				out var transparentRawGetterConsumed))
-			{
-				for (var skipped = 1; skipped < transparentRawGetterConsumed; skipped++)
-				{
-					_assembler.Mark(IlLabel(
-						method,
-						method.Instructions[instructionIndex + skipped].Offset));
-				}
-				instructionIndex += transparentRawGetterConsumed - 1;
-				continue;
-			}
-			if (instructionIndex + 1 < method.Instructions.Count &&
-				TryGetConstant(instruction, out var quickConstant) &&
-				method.Instructions[instructionIndex + 1] is { } quickInstruction &&
-				!branchTargets.Contains(quickInstruction.Offset) &&
-				TryEmitQuickBinary(quickConstant, quickInstruction.OpCode))
-			{
-				_assembler.Mark(IlLabel(method, quickInstruction.Offset));
-				instructionIndex++;
-				continue;
-			}
-			EmitInstruction(method, instruction);
-		}
-
+		EmitAllocatedMethod(
+			method,
+			internalAbi,
+			allocatedFunction,
+			platformBaseBlockEntries,
+			exceptionStateBlockEntries);
 		_assembler.Mark(MethodEndLabel(method));
-	}
-
-	private void EmitIlOptimization(
-		CilMethod method,
-		CilInstruction instruction,
-		CilOptimization optimization)
-	{
-		switch (optimization.Kind)
-		{
-			case CilOptimizationKind.DiscardCallResult:
-				EmitCall(method, instruction, pushResult: false);
-				return;
-
-			case CilOptimizationKind.ComparisonBranch:
-				var leftKind = CurrentStackKindOrLong(1);
-				var rightKind = CurrentStackKindOrLong();
-				var width = CilStackValueLayout.IsSmall(leftKind) &&
-					CilStackValueLayout.IsSmall(rightKind)
-					? Math.Max(
-						CilStackValueLayout.ArithmeticWidth(leftKind),
-						CilStackValueLayout.ArithmeticWidth(rightKind))
-					: 4;
-				EmitPopBinaryOperands(widen: width == 4 || width == 2);
-				_assembler.EmitWord(ComparisonOpcode(width));
-				var condition = ComparisonCondition(optimization.ComparisonOpCode);
-				if (!optimization.BranchOnComparisonTrue)
+		var emittedEnd = _assembler.Offset;
+		var stackMemoryInstructions = _assembler
+			.GetInstructionStream(emittedStart)
+			.Count(
+				instruction =>
 				{
-					condition = InvertCondition(condition);
-				}
-				_assembler.EmitBranch(
-					condition,
-					IlLabel(method, optimization.BranchTarget));
-				return;
-
-			case CilOptimizationKind.Suppress:
-				return;
-
-			default:
-				throw new InvalidOperationException(
-					$"Unsupported IL optimization '{optimization.Kind}'.");
-		}
-	}
-
-	private bool TryEmitSimpleWrapperConstructorMethod(
-		CilMethod method,
-		IReadOnlyList<M68kRegister>? registerAbi,
-		IReadOnlyDictionary<int, ImmutableArray<CilStackValueKind>> reachableStackStates)
-	{
-		if (method.Name != ".ctor" ||
-			registerAbi is not [M68kRegister.A0, M68kRegister.D0] ||
-			!IsSimpleWrapperConstructorBody(method))
-		{
-			return false;
-		}
-
-		foreach (var instruction in method.Instructions)
-		{
-			if (reachableStackStates.ContainsKey(instruction.Offset))
+					var effects =
+						M68kInstructionDataflow.GetEffects(instruction);
+					return instruction.Offset < emittedEnd &&
+						((effects.ReadsMemory | effects.WritesMemory) &
+							M68kMemorySet.Stack) != 0;
+				});
+		_allocationStatistics[method.Identity] =
+			allocatedFunction.Statistics with
 			{
-				_assembler.Mark(IlLabel(method, instruction.Offset));
-			}
-		}
-
-		_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
-		_assembler.EmitWord(0x4E75); // RTS
-		return true;
-	}
-
-	private bool TryEmitIdentityReturnMethod(
-		CilMethod method,
-		IReadOnlyList<M68kRegister>? registerAbi,
-		IReadOnlyDictionary<int, ImmutableArray<CilStackValueKind>> reachableStackStates)
-	{
-		if (registerAbi is not [M68kRegister.D0] ||
-			method.Signature.ReturnType.IsVoid ||
-			IsInternalAddressReturn(method.Signature.ReturnType) ||
-			Is64BitScalar(method.Signature.ReturnType) ||
-			!IsIdentityReturnBody(method))
-		{
-			return false;
-		}
-
-		foreach (var instruction in method.Instructions)
-		{
-			if (reachableStackStates.ContainsKey(instruction.Offset))
-			{
-				_assembler.Mark(IlLabel(method, instruction.Offset));
-			}
-		}
-
-		_assembler.EmitWord(0x4E75); // RTS
-		return true;
+				CodeBytes = emittedEnd - emittedStart,
+				StackMemoryInstructions = stackMemoryInstructions
+			};
 	}
 
 	private bool IsIdentityReturnBody(CilMethod method)
@@ -1768,10 +1149,6 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return false;
 		}
-		if (DirectCallWouldClobberRuntimeFrame(definition))
-		{
-			return false;
-		}
 		if (definition.Signature.ReturnType.IsNullable)
 		{
 			return false;
@@ -2311,7 +1688,6 @@ internal sealed partial class M68kCodeGenerator
 			instructions[index].Offset);
 		if (target.Definition is not { } definition ||
 			definition.Signature.ReturnType.IsVoid ||
-			DirectCallWouldClobberRuntimeFrame(definition) ||
 			(!definition.Signature.ReturnType.IsNullable &&
 				Is64BitScalar(definition.Signature.ReturnType)) ||
 			definition.Signature.ParameterTypes.Any(Is64BitScalar))
@@ -3442,7 +2818,6 @@ internal sealed partial class M68kCodeGenerator
 			caller,
 			instructions[callIndex].Offset);
 		if (target.Definition?.ExternalCall is not { } externalCall ||
-			DirectCallWouldClobberRuntimeFrame(target.Definition) ||
 			constants.Count != externalCall.Abi.ParameterRegisters.Count ||
 			target.Signature.ReturnType.IsNullable ||
 			target.Signature.ReturnType.Size == 8 ||
@@ -3497,25 +2872,6 @@ internal sealed partial class M68kCodeGenerator
 		}
 		consumed = callIndex - startIndex + 1;
 		return true;
-	}
-
-	private bool DirectCallWouldClobberRuntimeFrame(CilMethod definition)
-	{
-		if (!MustPreserveRuntimeFrameRegister)
-		{
-			return false;
-		}
-
-		if (definition.ExternalCall is { } externalCall)
-		{
-			return externalCall.Convention.BaseRegister == M68kRegister.A5 ||
-				externalCall.Abi.ParameterRegisters.Contains(M68kRegister.A5) ||
-				externalCall.Abi.ReturnRegister == M68kRegister.A5;
-		}
-
-		return definition.ImportAbi is { } importAbi &&
-			(importAbi.ParameterRegisters.Contains(M68kRegister.A5) ||
-			 importAbi.ReturnRegister == M68kRegister.A5);
 	}
 
 	private bool TryEmitQuickBinary(int constant, OpCode operation)
@@ -5580,13 +4936,7 @@ internal sealed partial class M68kCodeGenerator
 
 			if (target.ImportName == "intrinsic:runtime-gc-collect")
 			{
-				if (UsesBuiltInManagedPool)
-				{
-					EmitManagedCollectWithRoots();
-					_loadedPlatformBase = null;
-					return;
-				}
-				EmitRuntimeJsr(RuntimeCollectLabel, M68kRuntimeImports.GcCollect);
+				EmitManagedCollectWithRoots();
 				_loadedPlatformBase = null;
 				return;
 			}
@@ -5632,17 +4982,9 @@ internal sealed partial class M68kCodeGenerator
 		}
 		else if (target.Definition.IsImport)
 		{
-			var preservesRuntimeFrame = MustPreserveRuntimeFrameRegister &&
-				target.Definition.ImportAbi is { } importedAbi &&
-				(importedAbi.ParameterRegisters.Contains(M68kRegister.A5) ||
-				 importedAbi.ReturnRegister == M68kRegister.A5);
-			if (preservesRuntimeFrame)
-			{
-				EmitPushRegister(M68kRegister.A5);
-			}
 			if (target.Definition.ImportAbi is { } importAbi)
 			{
-				var stackOffset = preservesRuntimeFrame ? 4 : 0;
+				var stackOffset = 0;
 				for (var index = importAbi.ParameterRegisters.Count - 1; index >= 0; index--)
 				{
 					var type = target.Definition.Signature.ParameterTypes[index];
@@ -5669,11 +5011,6 @@ internal sealed partial class M68kCodeGenerator
 				!Is64BitScalar(target.Signature.ReturnType))
 			{
 				EmitMoveRegisterToD0(registerAbi.ReturnRegister);
-			}
-			if (preservesRuntimeFrame)
-			{
-				EmitPopRegister(M68kRegister.A5);
-				_loadedPlatformBase = null;
 			}
 		}
 		else
@@ -6043,6 +5380,7 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitManagedCollectWithRoots()
 	{
 		_assembler.EmitBsr(RuntimeCollectWithRootsLabel);
+		RegisterCurrentUnwindSite(exception: false, gc: true);
 	}
 
 	private bool IsReferenceParameter(CilMethod method, int index)
@@ -6282,43 +5620,13 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitExternalCall(CilMethod method, CilExternalCall call)
 	{
 		var binding = call.Convention;
-		var preservesRuntimeFrame = MustPreserveRuntimeFrameRegister &&
-			(call.Abi.ParameterRegisters.Contains(M68kRegister.A5) ||
-			 call.Abi.ReturnRegister == M68kRegister.A5 ||
-			 binding.BaseRegister == M68kRegister.A5);
-		if (preservesRuntimeFrame)
-		{
-			EmitPushRegister(M68kRegister.A5);
-		}
 		EmitEnsurePlatformBase(binding, method);
-		EmitExternalCallArguments(method, call, preservesRuntimeFrame ? 4 : 0);
+		EmitExternalCallArguments(method, call);
 		EmitBaseRelativeJsr(binding.BaseRegister, binding.Displacement);
-		M68kRegister? capturedStatus = null;
-		if (preservesRuntimeFrame &&
-			binding.ExceptionPolicy == M68kExternalExceptionPolicy.NonZeroStatus &&
-			binding.ExceptionStatusRegister is { } statusRegister)
-		{
-			capturedStatus = call.Abi.ReturnRegister switch
-			{
-				M68kRegister.D7 => M68kRegister.D6,
-				M68kRegister.D6 when Is64BitScalar(method.Signature.ReturnType) => M68kRegister.D5,
-				_ => M68kRegister.D7
-			};
-			EmitMoveRegister(statusRegister, capturedStatus.Value);
-		}
-		else
-		{
-			EmitExternalExceptionStatusCheck(binding);
-		}
+		EmitExternalExceptionStatusCheck(binding);
 		if (!method.Signature.ReturnType.IsVoid && !Is64BitScalar(method.Signature.ReturnType))
 		{
 			EmitMoveRegisterToD0(call.Abi.ReturnRegister);
-		}
-		if (preservesRuntimeFrame)
-		{
-			EmitPopRegister(M68kRegister.A5);
-			_loadedPlatformBase = null;
-			EmitExternalExceptionStatusCheck(binding, capturedStatus);
 		}
 	}
 
@@ -6382,16 +5690,6 @@ internal sealed partial class M68kCodeGenerator
 		M68kExternalCallConvention binding,
 		CilMethod method)
 	{
-		if ((_hasExceptionFrames || _currentFrameLayout?.HasRuntimeFrame == true) &&
-			binding.BaseSource == M68kExternalBaseSource.CachedPointer &&
-			binding.CacheRegister == M68kRegister.A5)
-		{
-			throw new M68kCompilationException(
-				M68kDiagnosticIds.StaticAnalysis,
-				"Persistent platform-base caches cannot use A5 while runtime frames are enabled.",
-				method.DisplayName);
-		}
-
 		var platformBase = GetOrAddPlatformBase(binding, method);
 		if (_loadedPlatformBase != platformBase)
 		{
@@ -6508,11 +5806,6 @@ internal sealed partial class M68kCodeGenerator
 		var target = _module.ResolveMethodToken((int)instruction.Operand!, caller, instruction.Offset);
 		if (target.Definition is { } virtualDefinition &&
 			RequiresVirtualDispatch(instruction, virtualDefinition))
-		{
-			return false;
-		}
-		if (target.Definition is { } definition &&
-			DirectCallWouldClobberRuntimeFrame(definition))
 		{
 			return false;
 		}
@@ -7484,31 +6777,64 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitManagedAllocation()
 	{
+		EmitPopD0();
+		EmitManagedAllocationFromD0();
+	}
+
+	private void EmitManagedAllocationFromD0(
+		int? rematerializableSize = null)
+	{
 		if (!UsesBuiltInManagedPool)
 		{
-			EmitPopD0();
 			EmitRuntimeJsr(RuntimeAllocLabel, M68kRuntimeImports.Allocate);
 			_loadedPlatformBase = null;
 			EmitRequireAllocationSucceeded();
 			return;
 		}
 
-		EmitPopD0();
-		EmitPushRegister(M68kRegister.D2);
-		EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
-
 		var strategy = M68kCompiler.GetEffectiveGcSweepStrategy(_request);
+		var needsSizeAfterClobber =
+			strategy != M68kGcSweepStrategy.OnDemand;
+		var rematerialize =
+			rematerializableSize is >= sbyte.MinValue and <= sbyte.MaxValue;
+		var preserveInD2 = needsSizeAfterClobber && !rematerialize;
+		if (preserveInD2)
+		{
+			EmitPushRegister(M68kRegister.D2);
+			EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
+		}
+
+		void RestoreAllocationSize()
+		{
+			if (rematerialize)
+			{
+				_assembler.EmitWord((ushort)(
+					0x7000 |
+					(byte)(sbyte)rematerializableSize!.Value)); // MOVEQ #size,D0
+			}
+			else
+			{
+				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+			}
+		}
+
+		var sizeWasClobbered = false;
 		if (strategy == M68kGcSweepStrategy.EveryAllocation)
 		{
 			EmitManagedCollectWithRoots();
 			_loadedPlatformBase = null;
+			sizeWasClobbered = true;
 		}
 		else if (strategy == M68kGcSweepStrategy.TelemetryTriggered)
 		{
 			EmitTelemetryTriggeredCollection();
+			sizeWasClobbered = true;
 		}
 
-		EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+		if (sizeWasClobbered)
+		{
+			RestoreAllocationSize();
+		}
 		_assembler.EmitBsr(RuntimeAllocLabel);
 		_loadedPlatformBase = null;
 		if (strategy == M68kGcSweepStrategy.OnAllocationFailure)
@@ -7518,13 +6844,16 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitBranch(M68kCondition.NotEqual, done);
 			EmitManagedCollectWithRoots();
 			_loadedPlatformBase = null;
-			EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+			RestoreAllocationSize();
 			_assembler.EmitBsr(RuntimeAllocLabel);
 			_loadedPlatformBase = null;
 			_assembler.Mark(done);
 		}
 
-		EmitPopRegister(M68kRegister.D2);
+		if (preserveInD2)
+		{
+			EmitPopRegister(M68kRegister.D2);
+		}
 		EmitRequireAllocationSucceeded();
 	}
 
@@ -7801,99 +7130,118 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitImmediateToRegister(M68kRegister.A0, 0);
 		}
-		if (!_hasExceptionFrames && !M68kCompiler.IsManagedRuntime(_request))
-		{
-			EmitImmediateToRegister(M68kRegister.A5, 0);
-		}
 		EmitImmediateToRegister(M68kRegister.D0, reason);
 		_assembler.EmitJsr(RuntimeExceptionRaiseLabel, external: false);
+		RegisterCurrentUnwindSite(exception: true, gc: false);
 		_loadedPlatformBase = null;
 	}
 
 	private void EmitExceptionMetadata(IReadOnlyList<CilMethod> methods)
 	{
-		var framedMethods = methods
-			.Where(method => _runtimeFrameLayouts.ContainsKey(method.Identity))
-			.ToArray();
-		if (framedMethods.Length == 0)
+		if (_unwindSites.Count == 0 &&
+			!_usesExceptionRuntime &&
+			!M68kCompiler.IsManagedRuntime(_request))
 		{
 			return;
 		}
 
-		if (_usesExceptionRuntime)
+		_assembler.AlignWord();
+		_assembler.Mark(MethodTableLabel);
+		_assembler.Mark(ExceptionTableLabel);
+		_assembler.EmitLong((uint)_unwindSites.Count);
+		for (var index = 0; index < _unwindSites.Count; index++)
 		{
-			_assembler.AlignWord();
-			_assembler.Mark(ExceptionTableLabel);
-			_assembler.EmitLong((uint)framedMethods.Length);
-			foreach (var method in framedMethods)
+			var site = _unwindSites[index];
+			_assembler.EmitAddress(site.ResumeLabel);
+			_assembler.EmitAddress(RuntimeMethodDescriptorLabel(site.Method));
+			if (site.ExceptionStateLabel is null)
 			{
-				_assembler.EmitAddress(RuntimeMethodDescriptorLabel(method));
+				_assembler.EmitLong(0);
+			}
+			else
+			{
+				_assembler.EmitAddress(site.ExceptionStateLabel);
+			}
+			_assembler.EmitLong(unchecked((uint)site.StackAdjustment));
+			if (site.RootOffsets.IsEmpty)
+			{
+				_assembler.EmitLong(0);
+			}
+			else
+			{
+				_assembler.EmitAddress(RuntimeRootMapLabel(index));
 			}
 		}
 
-		foreach (var method in framedMethods)
+		for (var index = 0; index < _unwindSites.Count; index++)
 		{
-			var layout = _runtimeFrameLayouts[method.Identity];
-			var internalAbi = GetInternalCallAbi(method);
-			var rootOffsets = new List<short>
+			var roots = _unwindSites[index].RootOffsets;
+			if (roots.IsEmpty)
 			{
-				RuntimeFrameActiveExceptionOffset
-			};
-			for (var index = 0; index < method.ParameterCount; index++)
-			{
-				if (internalAbi.Arguments[index].IsGcReference)
-				{
-					rootOffsets.Add(layout.ArgumentOffsets[index]);
-				}
+				continue;
 			}
-			for (var index = 0; index < method.Locals.Length; index++)
-			{
-				if (method.Locals[index].IsReference)
-				{
-					rootOffsets.Add(layout.LocalOffsets[index]);
-				}
-			}
-			rootOffsets.AddRange(layout.GcScratchOffsets);
-
-			_assembler.AlignWord();
-			_assembler.Mark(RuntimeMethodDescriptorLabel(method));
-			_assembler.EmitLong((uint)rootOffsets.Distinct().Count());
-			_assembler.EmitAddress(RuntimeMethodUnwindRestoreLabel(method));
-			foreach (var offset in rootOffsets.Distinct())
+			_assembler.Mark(RuntimeRootMapLabel(index));
+			_assembler.EmitLong((uint)roots.Length);
+			foreach (var offset in roots)
 			{
 				_assembler.EmitLong(unchecked((uint)offset));
 			}
-			_assembler.EmitAddress(MethodLabel(method));
-			_assembler.EmitAddress(MethodEndLabel(method));
-			_assembler.EmitLong((uint)method.ExceptionRegions.Count);
-			foreach (var region in method.ExceptionRegions)
-			{
-				_assembler.EmitAddress(ExceptionBoundaryLabel(method, region.TryOffset));
-				_assembler.EmitAddress(ExceptionBoundaryLabel(method, region.TryEnd));
-				_assembler.EmitAddress(ExceptionBoundaryLabel(method, region.HandlerOffset));
-				_assembler.EmitAddress(ExceptionBoundaryLabel(method, region.HandlerEnd));
-				_assembler.EmitLong((uint)region.Kind);
-				if (region.CatchType.IsNil)
-				{
-					_assembler.EmitLong(0);
-				}
-				else
-				{
-					RegisterRuntimeTypeDescriptor(region.CatchType);
-					_assembler.EmitAddress(TypeDescriptorLabel(region.CatchType));
-				}
-			}
+		}
 
+		foreach (var layout in _unwindMethodLayouts.Values)
+		{
 			_assembler.AlignWord();
-			_assembler.Mark(RuntimeMethodUnwindRestoreLabel(method));
+			_assembler.Mark(RuntimeMethodDescriptorLabel(layout.Method));
+			_assembler.EmitLong((uint)layout.FrameBytes);
+			_assembler.EmitLong((uint)(layout.CalleeSavedRegisters.Length * 4));
+			_assembler.EmitAddress(RuntimeMethodUnwindRestoreLabel(layout.Method));
+
+			_assembler.Mark(RuntimeMethodUnwindRestoreLabel(layout.Method));
+			_assembler.EmitWord(0x2041); // MOVEA.L D1,A0 exception context
 			for (var index = 0; index < layout.CalleeSavedRegisters.Length; index++)
 			{
-				EmitLoadRuntimeFrameRegister(
-					layout.CalleeSavedRegisters[index],
-					layout.CalleeSaveOffsets[index]);
+				var register = layout.CalleeSavedRegisters[index];
+				var savedIndex = layout.CalleeSavedRegisters.Length < 3
+					? layout.CalleeSavedRegisters.Length - 1 - index
+					: index;
+				EmitLoadUnwindRegister(
+					register,
+					checked((short)(layout.FrameBytes + (savedIndex * 4))));
+				EmitStoreUnwindRegisterSnapshot(register);
 			}
 			_assembler.EmitWord(0x4E75); // RTS
 		}
+	}
+
+	private void EmitStoreUnwindRegisterSnapshot(M68kRegister register)
+	{
+		var snapshotIndex = register <= M68kRegister.D7
+			? (int)register - (int)M68kRegister.D2
+			: 6 + (int)register - (int)M68kRegister.A2;
+		if (register <= M68kRegister.D7)
+		{
+			_assembler.EmitWord((ushort)(0x2140 | (int)register)); // MOVE.L Dn,d16(A0)
+		}
+		else
+		{
+			_assembler.EmitWord((ushort)(
+				0x2148 | ((int)register - (int)M68kRegister.A0))); // MOVE.L An,d16(A0)
+		}
+		_assembler.EmitWord(checked((ushort)(ExceptionContextBytes + (snapshotIndex * 4))));
+	}
+
+	private void EmitLoadUnwindRegister(M68kRegister register, short displacement)
+	{
+		if (register <= M68kRegister.D7)
+		{
+			_assembler.EmitWord((ushort)(0x2029 | ((int)register << 9))); // MOVE.L d16(A1),Dn
+		}
+		else
+		{
+			_assembler.EmitWord((ushort)(
+				0x2069 | (((int)register - (int)M68kRegister.A0) << 9))); // MOVEA.L d16(A1),An
+		}
+		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
 	private void EmitData(IReadOnlyList<CilMethod> methods)
@@ -8081,7 +7429,8 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitGcConfigData();
 		}
-		if (UsesBuiltInManagedPool)
+		if (M68kCompiler.IsManagedRuntime(_request) ||
+			_request.Imports.ContainsKey(M68kRuntimeImports.GcCollect))
 		{
 			EmitManagedPoolRuntimeData();
 		}
@@ -8105,11 +7454,6 @@ internal sealed partial class M68kCodeGenerator
 			M68kRegister.A5,
 			M68kRegister.A6
 		});
-		if (_hasExceptionFrames || M68kCompiler.IsManagedRuntime(_request))
-		{
-			EmitImmediateToRegister(M68kRegister.A5, 0);
-		}
-
 		for (var index = export.ParameterRegisters.Count - 1; index >= 0; index--)
 		{
 			EmitPushRegister(export.ParameterRegisters[index]);
@@ -9288,6 +8632,7 @@ internal sealed partial class M68kCodeGenerator
 	private string CStringLabel(CilUserStringIdentity identity) =>
 		$"cstring:{ModuleLabelPrefix(identity.ModuleName)}{identity.Token:X8}";
 
+	private const string MethodTableLabel = "runtime:method-table";
 	private const string ExceptionTableLabel = "runtime:exception-table";
 
 
@@ -9305,7 +8650,9 @@ internal sealed record GeneratedProgram(
 	IReadOnlyList<CilExport> Exports,
 	IReadOnlyList<GeneratedPlatformBase> PlatformBases,
 	string EntryLabel,
-	IReadOnlyDictionary<CilMethodIdentity, string> MethodLabels);
+	IReadOnlyDictionary<CilMethodIdentity, string> MethodLabels,
+	IReadOnlyDictionary<CilMethodIdentity, M68kMethodAllocationStatistics>
+		AllocationStatistics);
 
 internal sealed record GeneratedPlatformBase(
 	M68kExternalCallConvention Binding,

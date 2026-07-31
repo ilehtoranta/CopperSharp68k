@@ -60,12 +60,6 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x23CF); // MOVE.L A7,initial-stack
 			_assembler.EmitAddress(RuntimeInitialStackLabel);
 		}
-		var isolatesRuntimeFrames = usesManagedRuntime || usesExceptionRuntime;
-		if (isolatesRuntimeFrames)
-		{
-			EmitPushRegister(M68kRegister.A5);
-			EmitImmediateToRegister(M68kRegister.A5, 0);
-		}
 		if (usesManagedRuntime)
 		{
 			EmitPushRegister(M68kRegister.D2);
@@ -109,7 +103,6 @@ internal sealed partial class M68kCodeGenerator
 			EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
 			EmitPopRegister(M68kRegister.A2);
 			EmitPopRegister(M68kRegister.D2);
-			EmitPopRegister(M68kRegister.A5);
 			_assembler.EmitWord(0x4E75); // RTS
 			return label;
 		}
@@ -118,7 +111,6 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.EmitBsr(MethodLabel(entry));
 			_loadedPlatformBase = null;
-			EmitPopRegister(M68kRegister.A5);
 			_assembler.EmitWord(0x4E75); // RTS
 			return label;
 		}
@@ -160,6 +152,10 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (!UsesBuiltInManagedPool)
 		{
+			if (_request.Imports.ContainsKey(M68kRuntimeImports.GcCollect))
+			{
+				EmitExternalCollectWithRootsAdapter();
+			}
 			return;
 		}
 
@@ -198,17 +194,38 @@ internal sealed partial class M68kCodeGenerator
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeMarkRootsLabel);
-		_assembler.EmitWord(0x200D); // MOVE.L A5,D0
-		EmitAddressImmediateToRegister(M68kRegister.D1, GcStaticRootsLabel);
+		EmitRootWalkArguments();
+		EmitPushRegister(M68kRegister.A1);
+		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitBsr(MethodLabel(runtime.MarkRoots));
+		EmitDiscardStackArguments(2);
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeCollectWithRootsLabel);
-		_assembler.EmitWord(0x200D); // MOVE.L A5,D0
-		EmitAddressImmediateToRegister(M68kRegister.D1, GcStaticRootsLabel);
+		EmitRootWalkArguments();
+		EmitPushRegister(M68kRegister.A1);
+		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitBsr(MethodLabel(runtime.CollectWithRoots));
+		EmitDiscardStackArguments(2);
 		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitExternalCollectWithRootsAdapter()
+	{
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeCollectWithRootsLabel);
+		EmitRootWalkArguments();
+		_assembler.EmitJsr(M68kRuntimeImports.GcCollect, external: true);
+		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitRootWalkArguments()
+	{
+		_assembler.EmitWord(0x200F); // MOVE.L A7,D0 cursor (return-address slot)
+		_assembler.EmitWord(0x2217); // MOVE.L (A7),D1 resume PC
+		EmitAddressImmediateToRegister(M68kRegister.A0, MethodTableLabel);
+		EmitAddressImmediateToRegister(M68kRegister.A1, GcStaticRootsLabel);
 	}
 
 	private void EmitManagedPoolShutdown(ManagedPoolRuntimeModule runtime)

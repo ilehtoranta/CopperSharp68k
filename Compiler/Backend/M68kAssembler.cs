@@ -215,7 +215,8 @@ internal sealed class M68kAssembler
 
 	public void OptimizeForCpu(M68kCpuTarget cpu) => new M68kOptimizerPipeline(this, _buffer, cpu).Run();
 
-	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream()
+	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream(
+		int startOffset = 0)
 	{
 		var displayLabels = new Dictionary<string, string>(StringComparer.Ordinal);
 		var addresses = _addresses.ToDictionary(static fixup => fixup.Offset);
@@ -223,7 +224,7 @@ internal sealed class M68kAssembler
 		var pcRelative = _pcRelative.ToDictionary(static fixup => fixup.DisplacementOffset);
 		var result = new List<M68kEmittedInstruction>();
 
-		for (var offset = 0; offset < _bytes.Count;)
+		for (var offset = startOffset; offset < _bytes.Count;)
 		{
 			var decoded = TryRenderInstruction(
 				offset,

@@ -101,6 +101,10 @@ internal sealed class M68kInstructionDataflow
 	internal bool TryGetFacts(int offset, out M68kInstructionDataflowFacts facts) =>
 		_facts.TryGetValue(offset, out facts);
 
+	internal static M68kInstructionEffects GetEffects(
+		M68kEmittedInstruction instruction) =>
+		Classify(instruction);
+
 	internal M68kValueRange GetDataValueBefore(int offset, int register) =>
 		_values.GetDataValueBefore(offset, register);
 
@@ -306,9 +310,9 @@ internal sealed class M68kInstructionDataflow
 		{
 			return new M68kInstructionEffects(
 				AllRegisters,
+				0,
 				AllRegisters,
-				AllRegisters,
-				0x007F,
+				0,
 				M68kConditionCodeSet.All,
 				M68kConditionCodeSet.All,
 				M68kMemorySet.All,
@@ -412,9 +416,9 @@ internal sealed class M68kInstructionDataflow
 
 	private static readonly M68kInstructionEffects BarrierEffects = new(
 		AllRegisters,
+		0,
 		AllRegisters,
-		AllRegisters,
-		0x007F,
+		0,
 		M68kConditionCodeSet.All,
 		M68kConditionCodeSet.All,
 		M68kMemorySet.All,
@@ -728,9 +732,9 @@ internal sealed class M68kInstructionDataflow
 
 			_barrier = true;
 			_usesData = AllRegisters;
-			_definesData = AllRegisters;
+			_definesData = 0;
 			_usesAddress = AllRegisters;
-			_definesAddress = 0x007F;
+			_definesAddress = 0;
 			_readsConditions = M68kConditionCodeSet.All;
 			_writesConditions = M68kConditionCodeSet.All;
 			_readsMemory = M68kMemorySet.All;

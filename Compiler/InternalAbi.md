@@ -60,9 +60,9 @@ representation is deferred.
 | void | none |
 
 D0, D1, A0, and A1 are volatile. D2-D7 and A2-A6 are callee-saved; generated
-methods save only registers they can write. A7 is the stack pointer. When
-managed runtime frames are active, A5 carries the current frame chain and is
-restored during normal return and exception unwinding.
+methods save only registers they can write. A7 is the stack pointer. No address
+register is reserved as a frame pointer; A5 is allocatable and is restored by
+normal epilogues or table-driven exception unwind thunks when a method uses it.
 
 Direct calls, constructors, class virtual calls, interface calls, entry
 adapters, export adapters, and linked managed-runtime methods all use this
@@ -72,10 +72,11 @@ normal call and return.
 
 ## Managed roots
 
-Register-resident managed references are homed before a GC safepoint when a
-runtime frame is required. Managed-reference overflow slots are recorded
-directly in the method's root descriptor. Managed pointers are address-class
-arguments but are not object roots by themselves.
+Register-resident managed references are homed before a GC safepoint. Each
+safepoint's exact return PC selects a root map containing signed offsets from
+the canonical A7 frame base. Managed-reference overflow slots are recorded
+directly; managed pointers are address-class arguments but are not object roots
+by themselves.
 
 ## External boundaries
 
@@ -90,7 +91,7 @@ Compiler runtime hooks are also explicit boundaries:
 | `__c68k_alloc` | size in D0; raw allocated address in D0 |
 | `__c68k_dispose` | reference-slot address in A0 |
 | `__c68k_gc_init` | config address in D0; nonzero status in D0 |
-| `__c68k_gc_collect` | no arguments |
+| `__c68k_gc_collect` | suspended return-address slot in D0; resume PC in D1; method table in A0; static-root table in A1 |
 | `__c68k_gc_get_stale_bytes` / `blocks` | result in D0 |
 | `__c68k_unhandled_exception` | exception in A0; reason in D0 |
 

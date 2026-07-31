@@ -51,12 +51,13 @@ foreground collection is worth running. The built-in managed pool currently
 uses allocation pressure since the previous collection as this approximate
 signal and resets the counters after collection.
 
-The current built-in `ManagedPoolMarkSweepGc` runtime uses exact static and
-current-frame roots for explicit `M68kRuntime.Collect()` calls and compiler-
-emitted allocation-site collection. It also uses typed evaluation-stack maps so
-only stack slots known to hold managed references are marked. Object reference
-fields and reference-array elements are traced from descriptor metadata without
-recursive native calls.
+The current built-in `ManagedPoolMarkSweepGc` runtime uses exact static roots
+and return-PC-selected stack maps for explicit `M68kRuntime.Collect()` calls and
+compiler-emitted allocation-site collection. It walks callers from the
+suspended A7 slot using each method descriptor's frame and callee-save sizes.
+Typed maps ensure only slots known to hold managed references are marked.
+Object reference fields and reference-array elements are traced from descriptor
+metadata without recursive native calls.
 
 ## Runtime Hooks
 
@@ -68,7 +69,9 @@ from the managed [internal ABI](InternalAbi.md)):
 - `__c68k_dispose`: reference-slot address in A0; may free the payload and
   should clear the slot.
 - `__c68k_gc_init`: config address in D0; returns nonzero in D0 on success.
-- `__c68k_gc_collect()` runs an explicit collection cycle.
+- `__c68k_gc_collect` runs an explicit collection cycle. D0 is the address of
+  the suspended return-PC slot, D1 is that resume PC, A0 points to the unified
+  method table, and A1 points to the static-root table.
 - `__c68k_gc_get_stale_bytes()` returns approximate stale-pressure bytes.
 - `__c68k_gc_get_stale_blocks()` returns approximate stale-pressure blocks.
 - `__c68k_gc_shutdown()` shuts down a linked managed runtime after `Main`.

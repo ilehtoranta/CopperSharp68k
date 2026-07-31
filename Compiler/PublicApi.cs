@@ -185,7 +185,11 @@ public static class M68kRuntimeImports
 	/// <summary>Initializes a linked managed runtime before the managed entry point.</summary>
 	public const string GcInit = "__c68k_gc_init";
 
-	/// <summary>Runs an explicit managed collection cycle.</summary>
+	/// <summary>
+	/// Runs an explicit managed collection cycle. D0 contains the address of the
+	/// suspended return-PC slot, D1 the resume PC, A0 the generated method table,
+	/// and A1 the static-root table.
+	/// </summary>
 	public const string GcCollect = "__c68k_gc_collect";
 
 	/// <summary>Returns the runtime's approximate stale-pressure byte count.</summary>
@@ -421,7 +425,9 @@ public sealed class M68kCompilationResult
 		IReadOnlyList<M68kSymbol> symbols,
 		IReadOnlyList<M68kRelocation> relocations,
 		string map,
-		string? text = null)
+		string? text,
+		IReadOnlyList<Backend.M68kMethodAllocationStatistics>
+			allocationStatistics)
 	{
 		Image = image;
 		Code = code;
@@ -430,6 +436,7 @@ public sealed class M68kCompilationResult
 		Relocations = relocations;
 		Map = map;
 		Text = text;
+		AllocationStatistics = allocationStatistics;
 	}
 
 	public byte[] Image { get; }
@@ -447,4 +454,7 @@ public sealed class M68kCompilationResult
 
 	/// <summary>Assembler source when <see cref="M68kOutputFormat.Assembly"/> is selected.</summary>
 	public string? Text { get; }
+
+	internal IReadOnlyList<Backend.M68kMethodAllocationStatistics>
+		AllocationStatistics { get; }
 }

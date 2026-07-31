@@ -8,31 +8,21 @@
 `M68kExceptionMode.Full` emits a self-contained 68k exception runtime. Catch,
 finally, rethrow, and leave handling do not require host imports.
 
-## Runtime frames
+## Table-driven unwinding
 
-`A5` points to the current hidden runtime frame. Methods that can raise or
-propagate a managed exception, and methods participating in a managed GC
-runtime, link a frame with this fixed header:
+Normal execution has no linked exception-frame chain and reserves no frame
+pointer. `A5` is available to the register allocator like the other
+callee-saved address registers. A method containing handlers reserves three
+ordinary stack slots for its active exception, pending action, and leave
+continuation; methods that only propagate exceptions have no EH-specific
+prologue or epilogue instructions.
 
-| Offset | Value |
-| ---: | --- |
-| 0 | Previous runtime frame |
-| 4 | Method descriptor |
-| 8 | Stable method frame base |
-| 12 | Current exception action |
-| 16 | Active exception |
-| 20 | Pending unwind or leave action |
-| 24 | Normal leave continuation |
-
-Entry and export adapters isolate managed calls from an incoming `A5` chain.
-Imports and Amiga library calls that use `A5` temporarily preserve and restore
-the runtime-frame pointer.
-
-Method descriptors contain a root count, a callee-save unwind-restore thunk,
-and signed frame-base offsets for reference arguments, reference locals, the
-active exception, and evaluation-stack scratch roots. The built-in collector
-walks the complete `A5` chain and the generated static root table before
-sweeping. Exceptional frame removal invokes the thunk before advancing A5, so
+Every potentially throwing return PC has a generated 20-byte method-table
+entry containing the exact resume PC, method descriptor, exception action,
+stack adjustment, and optional GC root map. Dispatch finds the entry for the
+return PC, computes the canonical frame base from the suspended A7 value, and
+either enters the selected handler or runs the descriptor's unwind thunk.
+The thunk restores only the callee-saved registers owned by that method, so
 D2-D7/A2-A6 have the same preservation contract on normal and exceptional
 returns.
 
@@ -64,10 +54,10 @@ The optional `M68kRuntimeImports.UnhandledException` hook receives the exception
 in `A0` and the compiler reason in `D0`. If the hook is absent, or if it returns,
 the runtime executes `ILLEGAL`.
 
-The linked image exports `__c68k_exception_table`. Its entries point to method
-descriptors containing root offsets, method bounds, and exception-region
-metadata. Catch entries contain linked type-descriptor addresses rather than raw
-metadata tokens.
+The linked image exports aliases `__c68k_exception_table` and
+`__c68k_method_table` for the unified table. Method descriptors contain frame
+size, callee-save area size, and an unwind-thunk pointer. Catch actions contain
+linked type-descriptor addresses rather than raw metadata tokens.
 
 Filters, fault clauses, stack traces, and managed exception messages are not
 implemented.

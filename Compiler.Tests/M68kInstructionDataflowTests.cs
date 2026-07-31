@@ -577,6 +577,86 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void RemovesCopyBackWhileKeepingLivePreservationRegister()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2400); // MOVE.L D0,D2
+		assembler.EmitWord(0x2002); // MOVE.L D2,D0: D0 already has this value
+		assembler.EmitWord(0xD282); // ADD.L D2,D1: keep D2 live
+		assembler.EmitWord(0x2001); // MOVE.L D1,D0
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\td0,d2", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td2,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("add.l\td2,d1", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesAddressCopyBackWhileKeepingLivePreservationRegister()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2448); // MOVEA.L A0,A2
+		assembler.EmitWord(0x204A); // MOVEA.L A2,A0: A0 is unchanged
+		assembler.EmitWord(0x2012); // MOVE.L (A2),D0: keep A2 live
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("movea.l\ta0,a2", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("movea.l\ta2,a0", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\t(a2),d0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesRedundantAddressRegisterReloadAcrossMemoryLoad()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2044); // MOVEA.L D4,A0
+		assembler.EmitWord(0x2628); // MOVE.L 8(A0),D3
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2044); // MOVEA.L D4,A0: both registers are unchanged
+		assembler.EmitWord(0x2428); // MOVE.L 12(A0),D2
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Equal(
+			1,
+			assembly.Split(
+				"movea.l\td4,a0",
+				StringSplitOptions.None).Length - 1);
+		Assert.Contains("move.l\t8(a0),d3", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\t12(a0),d2", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsAddressRegisterReloadWhenItsSourceChanges()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2044); // MOVEA.L D4,A0
+		assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		assembler.EmitWord(0x7801); // MOVEQ #1,D4
+		assembler.EmitWord(0x2044); // MOVEA.L D4,A0: D4 now has another value
+		assembler.EmitWord(0x2210); // MOVE.L (A0),D1
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Equal(
+			2,
+			assembly.Split(
+				"movea.l\td4,a0",
+				StringSplitOptions.None).Length - 1);
+	}
+
+	[Fact]
 	public void ForwardsAbsoluteMemoryLoadDirectlyToCallAddressRegister()
 	{
 		var assembler = new M68kAssembler();

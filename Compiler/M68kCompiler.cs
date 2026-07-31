@@ -167,7 +167,8 @@ public static class M68kCompiler
 			symbols,
 			linked.Relocations,
 			CreateMap(request, entryOffset, symbols, linked.Relocations),
-			text);
+			text,
+			program.AllocationStatistics.Values.ToArray());
 	}
 
 	private static M68kCompilationResult LinkHunk(
@@ -188,7 +189,9 @@ public static class M68kCompiler
 			entryOffset,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryOffset, symbols, linked.Relocations));
+			CreateMap(request, entryOffset, symbols, linked.Relocations),
+			null,
+			program.AllocationStatistics.Values.ToArray());
 	}
 
 	private static M68kCompilationResult LinkRom(
@@ -207,7 +210,9 @@ public static class M68kCompiler
 			entryPoint,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryPoint, symbols, linked.Relocations));
+			CreateMap(request, entryPoint, symbols, linked.Relocations),
+			null,
+			program.AllocationStatistics.Values.ToArray());
 	}
 
 	private static IReadOnlyList<M68kSymbol> CreateSymbols(
@@ -259,6 +264,13 @@ public static class M68kCompiler
 			result.Add(new M68kSymbol(
 				"__c68k_exception_table",
 				checked(origin + (uint)exceptionTableOffset),
+				0));
+		}
+		if (linked.Labels.TryGetValue("runtime:method-table", out var methodTableOffset))
+		{
+			result.Add(new M68kSymbol(
+				"__c68k_method_table",
+				checked(origin + (uint)methodTableOffset),
 				0));
 		}
 

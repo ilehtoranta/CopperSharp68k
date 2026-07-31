@@ -193,33 +193,58 @@ public static class ManagedPool
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static void MarkRoots(uint frameAddress, uint staticRootsAddress)
+	public static void MarkRoots(
+		uint cursorAddress,
+		uint resumePc,
+		M68kAddress methodTable,
+		M68kAddress staticRoots)
 	{
-		var frame = frameAddress;
-		while (frame != 0)
+		var methodTableAddress = M68kAddress.ToUInt32(methodTable);
+		var cursor = cursorAddress;
+		var currentPc = resumePc;
+		while (cursor != 0)
 		{
-			var framePointer = M68kAddress.FromUInt32(frame);
-			var descriptorAddress = M68kAddress.ReadUInt32(framePointer, 4);
-			var frameBase = M68kAddress.ReadUInt32(framePointer, 8);
-			var descriptor = M68kAddress.FromUInt32(descriptorAddress);
-			var rootCount = M68kAddress.ReadUInt32(descriptor, 0);
-			var rootOffsets = descriptorAddress + 8;
+			var siteCount = M68kAddress.ReadUInt32(methodTable, 0);
+			var siteAddress = methodTableAddress + 4;
+			while (siteCount != 0 &&
+				M68kAddress.ReadUInt32(M68kAddress.FromUInt32(siteAddress), 0) != currentPc)
+			{
+				siteAddress += 20;
+				siteCount--;
+			}
+			if (siteCount == 0)
+			{
+				break;
+			}
+
+			var site = M68kAddress.FromUInt32(siteAddress);
+			var descriptorAddress = M68kAddress.ReadUInt32(site, 4);
+			var frameBase = cursor + M68kAddress.ReadUInt32(site, 12);
+			var rootMapAddress = M68kAddress.ReadUInt32(site, 16);
+			var rootCount = rootMapAddress == 0
+				? 0
+				: M68kAddress.ReadUInt32(M68kAddress.FromUInt32(rootMapAddress), 0);
+			var rootOffsets = rootMapAddress + 4;
 			while (rootCount != 0)
 			{
 				var offset = M68kAddress.ReadUInt32(
 					M68kAddress.FromUInt32(rootOffsets),
 					0);
 				Mark(M68kAddress.ReadUInt32(
-					M68kAddress.FromUInt32(frameBase + offset),
+					M68kAddress.FromUInt32(unchecked(frameBase + offset)),
 					0));
 				rootOffsets += 4;
 				rootCount--;
 			}
 
-			frame = M68kAddress.ReadUInt32(framePointer, 0);
+			var descriptor = M68kAddress.FromUInt32(descriptorAddress);
+			cursor = frameBase +
+				M68kAddress.ReadUInt32(descriptor, 0) +
+				M68kAddress.ReadUInt32(descriptor, 4);
+			currentPc = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(cursor), 0);
 		}
 
-		var staticRoots = M68kAddress.FromUInt32(staticRootsAddress);
+		var staticRootsAddress = M68kAddress.ToUInt32(staticRoots);
 		var staticRootCount = M68kAddress.ReadUInt32(staticRoots, 0);
 		var rootAddress = staticRootsAddress + 4;
 		while (staticRootCount != 0)
@@ -236,9 +261,13 @@ public static class ManagedPool
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static void CollectWithRoots(uint frameAddress, uint staticRootsAddress)
+	public static void CollectWithRoots(
+		uint cursorAddress,
+		uint resumePc,
+		M68kAddress methodTable,
+		M68kAddress staticRoots)
 	{
-		MarkRoots(frameAddress, staticRootsAddress);
+		MarkRoots(cursorAddress, resumePc, methodTable, staticRoots);
 		Collect();
 	}
 

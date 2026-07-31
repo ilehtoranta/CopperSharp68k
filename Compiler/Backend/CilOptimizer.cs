@@ -12,6 +12,7 @@ internal enum CilOptimizationKind
 {
 	DiscardCallResult,
 	ComparisonBranch,
+	PredicateBranch,
 	Suppress
 }
 
@@ -70,6 +71,19 @@ internal static class CilOptimizer
 			{
 				optimizations.Add(instructions[index].Offset, comparison);
 				index = comparison.EndIndex + 1;
+				continue;
+			}
+
+			if (TryCreatePredicateBranch(
+					method,
+					module,
+					instructions,
+					index,
+					branchTargets,
+					out var predicate))
+			{
+				optimizations.Add(instructions[index].Offset, predicate);
+				index = predicate.EndIndex + 1;
 				continue;
 			}
 
@@ -274,6 +288,97 @@ internal static class CilOptimizer
 			target);
 		return true;
 	}
+
+	private static bool TryCreatePredicateBranch(
+		CilMethod method,
+		CompilationModule module,
+		IReadOnlyList<CilInstruction> instructions,
+		int startIndex,
+		IReadOnlySet<int> branchTargets,
+		out CilOptimization optimization)
+	{
+		optimization = null!;
+		var predicate = instructions[startIndex];
+		if (predicate.OpCode != OpCodes.Call &&
+			predicate.OpCode != OpCodes.Callvirt)
+		{
+			return false;
+		}
+
+		var target = module.ResolveMethodToken(
+			(int)predicate.Operand!,
+			method,
+			predicate.Offset);
+		if (!IsConditionCodePredicate(target.ImportName))
+		{
+			return false;
+		}
+
+		var branchIndex = startIndex + 1;
+		var inverted = false;
+		if (branchIndex + 1 < instructions.Count &&
+			TryGetConstant(instructions[branchIndex], out var constant) &&
+			constant == 0 &&
+			instructions[branchIndex + 1].OpCode == OpCodes.Ceq)
+		{
+			inverted = true;
+			branchIndex += 2;
+		}
+
+		int? temporaryLocal = null;
+		if (branchIndex + 2 < instructions.Count &&
+			TryGetStoreLocalIndex(
+				instructions[branchIndex],
+				out var storedLocal) &&
+			TryGetLoadLocalIndex(
+				instructions[branchIndex + 1],
+				out var loadedLocal) &&
+			storedLocal == loadedLocal)
+		{
+			temporaryLocal = storedLocal;
+			branchIndex += 2;
+		}
+
+		while (branchIndex < instructions.Count &&
+			instructions[branchIndex].OpCode == OpCodes.Nop &&
+			!branchTargets.Contains(instructions[branchIndex].Offset))
+		{
+			branchIndex++;
+		}
+		if (branchIndex >= instructions.Count ||
+			!TryGetBooleanBranch(
+				instructions[branchIndex],
+				out var branchOnTrue,
+				out var branchTarget) ||
+			(temporaryLocal is { } local &&
+			 IsLocalObservedAfter(instructions, branchIndex, local)) ||
+			!CanCombineRange(
+				method,
+				instructions,
+				startIndex,
+				branchIndex,
+				branchTargets))
+		{
+			return false;
+		}
+
+		optimization = new CilOptimization(
+			CilOptimizationKind.PredicateBranch,
+			startIndex,
+			branchIndex,
+			default,
+			inverted ? !branchOnTrue : branchOnTrue,
+			branchTarget);
+		return true;
+	}
+
+	private static bool IsConditionCodePredicate(string? importName) =>
+		importName is
+			"intrinsic:aptr-is-null" or
+			"intrinsic:aptr-is-not-null" ||
+		importName?.StartsWith(
+			"intrinsic:nullable-has-value:",
+			StringComparison.Ordinal) == true;
 
 	private static bool CanCombineRange(
 		CilMethod method,

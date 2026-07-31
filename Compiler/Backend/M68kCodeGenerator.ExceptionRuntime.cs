@@ -13,16 +13,34 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
-	private const int RuntimeFrameHeaderLongs = 7;
+	private const short RuntimeFrameActiveExceptionOffset = 0;
+	private const short RuntimeFramePendingActionOffset = 4;
+	private const short RuntimeFrameLeaveContinuationOffset = 8;
+	private const int RuntimeFrameHeaderLongs = 0;
 	private const short RuntimeFramePreviousOffset = 0;
-	private const short RuntimeFrameDescriptorOffset = 4;
-	private const short RuntimeFrameBaseOffset = 8;
-	private const short RuntimeFrameStateOffset = 12;
-	private const short RuntimeFrameActiveExceptionOffset = 16;
-	private const short RuntimeFramePendingActionOffset = 20;
-	private const short RuntimeFrameLeaveContinuationOffset = 24;
+	private const short RuntimeFrameDescriptorOffset = 0;
+	private const short RuntimeFrameBaseOffset = 0;
+	private const short RuntimeFrameStateOffset = 0;
+	private const int UnwindSiteEntryBytes = 20;
 
-	private readonly Dictionary<CilMethodIdentity, FrameLayout> _runtimeFrameLayouts = new();
+	private sealed record UnwindMethodLayout(
+		CilMethod Method,
+		int FrameBytes,
+		ImmutableArray<M68kRegister> CalleeSavedRegisters,
+		ImmutableArray<int> RootOffsets);
+
+	private sealed record UnwindSite(
+		CilMethod Method,
+		string ResumeLabel,
+		int StackAdjustment,
+		string? ExceptionStateLabel,
+		ImmutableArray<int> RootOffsets);
+
+	private readonly Dictionary<CilMethodIdentity, UnwindMethodLayout> _unwindMethodLayouts = new();
+	private readonly List<UnwindSite> _unwindSites = new();
+	private CilMethod? _emittingUnwindMethod;
+	private M68kAllocatedFunction? _emittingAllocatedFunction;
+	private M68kMachineInstruction? _emittingMachineInstruction;
 	private readonly Dictionary<CilMethodIdentity, ImmutableArray<ExceptionRegionGroup>> _exceptionGroups = new();
 	private readonly Dictionary<string, ExceptionState> _exceptionStates = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, NormalLeaveChain> _normalLeaveChains = new(StringComparer.Ordinal);
@@ -54,9 +72,14 @@ internal sealed partial class M68kCodeGenerator
 		int TargetOffset,
 		ImmutableArray<CilExceptionRegion> FinallyRegions);
 
-	private bool RequiresRuntimeFrame(CilMethod method) =>
-		M68kCompiler.IsManagedRuntime(_request) ||
-		(_usesExceptionRuntime && MethodMayRaiseException(method));
+	private sealed record ExceptionResumeAction(
+		CilMethod Method,
+		string? StateLabel,
+		string Label);
+
+	private readonly Dictionary<string, ExceptionResumeAction> _exceptionResumeActions = new(StringComparer.Ordinal);
+
+	private bool RequiresRuntimeFrame(CilMethod method) => false;
 
 	private bool MethodMayRaiseException(CilMethod method) =>
 		MethodMayRaiseException(method, new HashSet<CilMethodIdentity>());
@@ -134,10 +157,97 @@ internal sealed partial class M68kCodeGenerator
 
 	private void RecordRuntimeFrameLayout(CilMethod method)
 	{
-		if (CurrentFrameLayout.HasRuntimeFrame)
+		// Runtime layout is recorded after register allocation by RecordUnwindLayout.
+	}
+
+	private void RecordUnwindLayout(
+		CilMethod method,
+		InternalCallAbi abi,
+		M68kAllocatedFunction allocated)
+	{
+		var roots = allocated.Frame.GcHomeOffsets
+			.Concat(Enumerable.Range(0, method.ParameterCount)
+				.Where(index => abi.Arguments[index].IsGcReference && abi.Arguments[index].IsStack)
+				.Select(index => checked(
+					allocated.Frame.FrameBytes +
+					(allocated.Frame.CalleeSavedRegisters.Count * 4) +
+					4 +
+					abi.Arguments[index].StackOffset)))
+			.Distinct()
+			.Order()
+			.ToImmutableArray();
+		_unwindMethodLayouts[method.Identity] = new UnwindMethodLayout(
+			method,
+			allocated.Frame.FrameBytes,
+			allocated.Frame.CalleeSavedRegisters.ToImmutableArray(),
+			roots);
+	}
+
+	private void RegisterCurrentUnwindSite(
+		bool exception,
+		bool gc,
+		int additionalStackBytes = 0)
+	{
+		if (_emittingUnwindMethod is not { } method ||
+			_emittingAllocatedFunction is not { } allocated ||
+			_emittingMachineInstruction is not { } instruction ||
+			(!exception && !gc))
 		{
-			_runtimeFrameLayouts[method.Identity] = CurrentFrameLayout;
+			return;
 		}
+
+		var label = UniqueLabel("unwind_site");
+		_assembler.Mark(label);
+		var state = exception
+			? RegisterExceptionState(
+				method,
+				GetActiveExceptionGroups(method, instruction.IlOffset))
+			: null;
+		var roots = gc
+			? GetSafepointRootOffsets(method, allocated, instruction)
+			: ImmutableArray<int>.Empty;
+		_unwindSites.Add(new UnwindSite(
+			method,
+			label,
+			checked(4 + _allocatedOutgoingStackBytes + additionalStackBytes),
+			state,
+			roots));
+	}
+
+	private ImmutableArray<int> GetSafepointRootOffsets(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var roots = new HashSet<int>(_unwindMethodLayouts[method.Identity].RootOffsets);
+		var safepoint = allocated.Safepoints.Safepoints.FirstOrDefault(
+			item => item.InstructionId == instruction.Id);
+		if (safepoint is not null)
+		{
+			foreach (var value in safepoint.LiveReferences)
+			{
+				if (allocated.Safepoints.RootSlotByValue.TryGetValue(value, out var slot) &&
+					allocated.Frame.RootOffsets.TryGetValue(slot, out var offset))
+				{
+					roots.Add(offset);
+				}
+			}
+			foreach (var slot in safepoint.LiveSpillRootSlots)
+			{
+				if (allocated.Frame.SpillOffsets.TryGetValue(slot, out var offset))
+				{
+					roots.Add(offset);
+				}
+			}
+		}
+		if (allocated.Frame.ActiveExceptionOffset is { } exceptionOffset &&
+			method.ExceptionRegions.Any(region =>
+				region.HandlerOffset <= instruction.IlOffset &&
+				instruction.IlOffset < region.HandlerEnd))
+		{
+			roots.Add(exceptionOffset);
+		}
+		return roots.Order().ToImmutableArray();
 	}
 
 	private void EmitLinkRuntimeFrame(CilMethod method)
@@ -447,14 +557,13 @@ internal sealed partial class M68kCodeGenerator
 			_normalLeaveChains.Add(key, chain);
 		}
 
-		EmitRuntimeFrameImmediate(0, RuntimeFrameActiveExceptionOffset);
-		EmitRuntimeFrameAddress(
+		EmitEhFrameImmediate(0, RuntimeFrameActiveExceptionOffset);
+		EmitEhFrameAddress(
 			ControlFlowTargetLabel(method, targetOffset),
 			RuntimeFrameLeaveContinuationOffset);
-		EmitRuntimeFrameAddress(
+		EmitEhFrameAddress(
 			NormalLeaveNextActionLabel(chain, 1),
 			RuntimeFramePendingActionOffset);
-		EmitRestoreRuntimeFrameStack();
 		_assembler.EmitJmp(
 			ControlFlowTargetLabel(method, finallyRegions[0].HandlerOffset),
 			external: false);
@@ -529,40 +638,66 @@ internal sealed partial class M68kCodeGenerator
 		EmitRuntimeObjectAddress(M68kRegister.A0, "System.Exception");
 
 		_assembler.Mark(haveException);
+		EmitCreateExceptionCursor(fromResumeAddress: true);
+		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionDispatchLabel);
+
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeExceptionResumeLabel);
+		EmitCreateExceptionCursor(fromResumeAddress: false);
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
+		EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.NotEqual, RuntimeExceptionJumpStateLabel);
+		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionUnwindFrameLabel);
+
 		_assembler.Mark(RuntimeExceptionDispatchLabel);
-		EmitMoveRegister(M68kRegister.A5, M68kRegister.D1);
-		_assembler.EmitWord(0x4A81); // TST.L D1
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextCursorOffset);
+		_assembler.EmitWord(0x2211); // MOVE.L (A1),D1 resume PC
+		_assembler.EmitBsr(RuntimeFindUnwindSiteLabel);
+		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.Equal, RuntimeExceptionUnhandledLabel);
-		EmitStoreRuntimeFrameRegister(
-			M68kRegister.A0,
-			RuntimeFrameActiveExceptionOffset);
-		EmitLoadRuntimeFrameRegister(
-			M68kRegister.A1,
-			RuntimeFrameStateOffset);
-		EmitMoveRegister(M68kRegister.A1, M68kRegister.D1);
-		_assembler.EmitWord(0x4A81); // TST.L D1
+		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextSiteOffset);
+		_assembler.EmitWord(0x2069); // MOVEA.L 4(A1),A0 descriptor
+		_assembler.EmitWord(0x0004);
+		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
+		_assembler.EmitWord(0x2029); // MOVE.L 12(A1),D0 stack adjustment
+		_assembler.EmitWord(0x000C);
+		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextCursorOffset);
+		_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextFrameBaseOffset);
+		_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
+		_assembler.EmitWord(0x0008);
+		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
+		EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
+		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.NotEqual, RuntimeExceptionJumpStateLabel);
 
 		_assembler.Mark(RuntimeExceptionUnwindFrameLabel);
-		EmitLoadRuntimeFrameRegister(
-			M68kRegister.A0,
-			RuntimeFrameDescriptorOffset);
-		_assembler.EmitWord(0x2268); // MOVEA.L 4(A0),A1 unwind restore thunk
+		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		_assembler.EmitWord(0x2068); // MOVEA.L 8(A0),A0 unwind thunk
+		_assembler.EmitWord(0x0008);
+		_assembler.EmitWord(0x220E); // MOVE.L A6,D1 context pointer
+		_assembler.EmitWord(0x4E90); // JSR (A0)
+		_assembler.EmitWord(0x2C41); // MOVEA.L D1,A6
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
+		_assembler.EmitWord(0x2010); // MOVE.L (A0),D0 frame bytes
+		_assembler.EmitWord(0xD3C0); // ADDA.L D0,A1
+		_assembler.EmitWord(0x2028); // MOVE.L 4(A0),D0 saved bytes
 		_assembler.EmitWord(0x0004);
-		_assembler.EmitWord(0x4E91); // JSR (A1)
-		EmitLoadRuntimeFrameRegister(
-			M68kRegister.A0,
-			RuntimeFrameActiveExceptionOffset);
-		EmitRestoreRuntimeFrameStack();
-		EmitLoadRuntimeFrameRegister(
-			M68kRegister.A5,
-			RuntimeFramePreviousOffset);
+		_assembler.EmitWord(0xD3C0); // ADDA.L D0,A1
+		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextCursorOffset);
 		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionDispatchLabel);
 
 		_assembler.Mark(RuntimeExceptionJumpStateLabel);
 		_assembler.EmitWord(0x4ED1); // JMP (A1)
 
+		EmitFindUnwindSiteRuntime();
+
 		_assembler.Mark(RuntimeExceptionUnhandledLabel);
+		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
+		EmitRestoreExceptionCursorRegisters();
 		EmitDetermineExceptionReason();
 		if (_request.Imports.ContainsKey(M68kRuntimeImports.UnhandledException))
 		{
@@ -574,6 +709,152 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		_assembler.EmitWord(0x4AFC); // ILLEGAL
+	}
+
+	private void EmitCreateExceptionCursor(bool fromResumeAddress)
+	{
+		ReadOnlySpan<M68kRegister> preserved = stackalloc[]
+		{
+			M68kRegister.D2,
+			M68kRegister.D3,
+			M68kRegister.D4,
+			M68kRegister.D5,
+			M68kRegister.D6,
+			M68kRegister.D7,
+			M68kRegister.A2,
+			M68kRegister.A3,
+			M68kRegister.A4,
+			M68kRegister.A5,
+			M68kRegister.A6
+		};
+		EmitPushRegisters(preserved);
+		EmitAllocateFrame(ExceptionContextBytes);
+		_assembler.EmitWord(0x2C4F); // MOVEA.L A7,A6 context
+		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
+		_assembler.EmitWord(0x43EE); // LEA saved-context-end(A6),A1
+		_assembler.EmitWord(checked((ushort)(ExceptionContextBytes + (preserved.Length * 4))));
+		if (fromResumeAddress)
+		{
+			EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextCursorOffset);
+			return;
+		}
+		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		EmitStoreExceptionContextRegister(M68kRegister.D0, ExceptionContextDescriptorOffset);
+		EmitStoreExceptionContextRegister(M68kRegister.D1, ExceptionContextStateOffset);
+	}
+
+	private void EmitFindUnwindSiteRuntime()
+	{
+		var loop = UniqueLabel("unwind_find_loop");
+		var found = UniqueLabel("unwind_find_found");
+		var missing = UniqueLabel("unwind_find_missing");
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeFindUnwindSiteLabel);
+		EmitAddressImmediateToRegister(M68kRegister.A1, MethodTableLabel);
+		_assembler.EmitWord(0x2019); // MOVE.L (A1)+,D0 count
+		_assembler.Mark(loop);
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, missing);
+		_assembler.EmitWord(0xB291); // CMP.L (A1),D1
+		_assembler.EmitBranch(M68kCondition.Equal, found);
+		_assembler.EmitWord(0x43E9); // LEA next-entry(A1),A1
+		_assembler.EmitWord(UnwindSiteEntryBytes);
+		_assembler.EmitWord(0x5380); // SUBQ.L #1,D0
+		_assembler.EmitBranch(M68kCondition.True, loop);
+		_assembler.Mark(found);
+		_assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		_assembler.EmitWord(0x4E75); // RTS
+		_assembler.Mark(missing);
+		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitStoreExceptionContextRegister(M68kRegister register, short displacement)
+	{
+		if (register <= M68kRegister.D7)
+		{
+			_assembler.EmitWord((ushort)(0x2D40 | (int)register));
+		}
+		else
+		{
+			_assembler.EmitWord((ushort)(
+				0x2D48 | ((int)register - (int)M68kRegister.A0)));
+		}
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitLoadExceptionContextRegister(M68kRegister register, short displacement)
+	{
+		if (register <= M68kRegister.D7)
+		{
+			_assembler.EmitWord((ushort)(0x202E | ((int)register << 9)));
+		}
+		else
+		{
+			_assembler.EmitWord((ushort)(
+				0x206E | (((int)register - (int)M68kRegister.A0) << 9)));
+		}
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitRestoreExceptionCursorRegisters()
+	{
+		// A6 owns the exception-context address. Restoring A6 in the same MOVEM
+		// that uses it as the effective-address register is not portable on 68000,
+		// so use A1 as the base and load A6 separately.
+		_assembler.EmitWord(0x224E); // MOVEA.L A6,A1
+		_assembler.EmitWord(0x4CE9); // MOVEM.L d16(A1),D2-D7/A2-A5
+		_assembler.EmitWord(0x3CFC);
+		_assembler.EmitWord(ExceptionContextBytes);
+		_assembler.EmitWord(0x2C69); // MOVEA.L d16(A1),A6
+		_assembler.EmitWord(ExceptionContextBytes + 40);
+	}
+
+	private void EmitStoreExceptionFrameContextRegister(
+		M68kRegister register,
+		short displacement)
+	{
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		if (register <= M68kRegister.D7)
+		{
+			_assembler.EmitWord((ushort)(0x2340 | (int)register));
+		}
+		else
+		{
+			_assembler.EmitWord((ushort)(
+				0x2348 | ((int)register - (int)M68kRegister.A0)));
+		}
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitStoreExceptionFrameContextAddress(string label, short displacement)
+	{
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		_assembler.EmitWord(0x237C); // MOVE.L #label,d16(A1)
+		_assembler.EmitAddress(label);
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitClearExceptionFrameContextSlot(short displacement)
+	{
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		_assembler.EmitWord(0x42A9); // CLR.L d16(A1)
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitEnterExceptionHandler(string target, bool pushException)
+	{
+		EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextFrameBaseOffset);
+		EmitAddressImmediateToRegister(M68kRegister.D1, target);
+		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
+		EmitRestoreExceptionCursorRegisters();
+		_assembler.EmitWord(0x2E40); // MOVEA.L D0,A7
+		if (pushException)
+		{
+			EmitPushRegister(M68kRegister.A0);
+		}
+		_assembler.EmitWord(0x2241); // MOVEA.L D1,A1
+		_assembler.EmitWord(0x4ED1); // JMP (A1)
 	}
 
 	private void EmitAmigaUnhandledExceptionRequester()
@@ -728,7 +1009,7 @@ internal sealed partial class M68kCodeGenerator
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeExceptionEndFinallyLabel);
-		EmitLoadRuntimeFrameRegister(
+		EmitLoadEhFrameRegister(
 			M68kRegister.A1,
 			RuntimeFramePendingActionOffset);
 		EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
@@ -736,13 +1017,13 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitBranch(M68kCondition.NotEqual, valid);
 		_assembler.EmitWord(0x4AFC); // ILLEGAL
 		_assembler.Mark(valid);
-		EmitLoadRuntimeFrameRegister(
+		EmitLoadEhFrameRegister(
 			M68kRegister.A0,
 			RuntimeFrameActiveExceptionOffset);
 		_assembler.EmitWord(0x4ED1); // JMP (A1)
 
 		_assembler.Mark(RuntimeExceptionLeaveContinueLabel);
-		EmitLoadRuntimeFrameRegister(
+		EmitLoadEhFrameRegister(
 			M68kRegister.A1,
 			RuntimeFrameLeaveContinuationOffset);
 		_assembler.EmitWord(0x4ED1); // JMP (A1)
@@ -756,7 +1037,6 @@ internal sealed partial class M68kCodeGenerator
 			var suffix = RegisterExceptionState(
 				state.Method,
 				state.Groups.RemoveAt(0));
-			var nextAction = suffix ?? RuntimeExceptionUnwindFrameLabel;
 
 			_assembler.AlignWord();
 			_assembler.Mark(state.Label);
@@ -765,9 +1045,9 @@ internal sealed partial class M68kCodeGenerator
 				var nextCatch = UniqueLabel("eh_next_catch");
 				if (!entry.Region.CatchType.IsNil)
 				{
-					EmitLoadRuntimeFrameRegister(
+					EmitLoadExceptionContextRegister(
 						M68kRegister.A0,
-						RuntimeFrameActiveExceptionOffset);
+						ExceptionContextExceptionOffset);
 					EmitRuntimeTypeAddress(
 						M68kRegister.A1,
 						entry.Region.CatchType);
@@ -776,17 +1056,17 @@ internal sealed partial class M68kCodeGenerator
 					_assembler.EmitBranch(M68kCondition.Equal, nextCatch);
 				}
 
-				EmitRuntimeFrameStateAddress(suffix);
-				EmitRuntimeFrameImmediate(0, RuntimeFramePendingActionOffset);
-				EmitRuntimeFrameImmediate(0, RuntimeFrameLeaveContinuationOffset);
-				EmitRestoreRuntimeFrameStack();
-				EmitLoadRuntimeFrameRegister(
+				EmitLoadExceptionContextRegister(
+					M68kRegister.A0,
+					ExceptionContextExceptionOffset);
+				EmitStoreExceptionFrameContextRegister(
 					M68kRegister.A0,
 					RuntimeFrameActiveExceptionOffset);
-				EmitPushRegister(M68kRegister.A0);
-				_assembler.EmitJmp(
+				EmitClearExceptionFrameContextSlot(RuntimeFramePendingActionOffset);
+				EmitClearExceptionFrameContextSlot(RuntimeFrameLeaveContinuationOffset);
+				EmitEnterExceptionHandler(
 					ControlFlowTargetLabel(state.Method, entry.Region.HandlerOffset),
-					external: false);
+					pushException: true);
 				if (!entry.Region.CatchType.IsNil)
 				{
 					_assembler.Mark(nextCatch);
@@ -798,19 +1078,58 @@ internal sealed partial class M68kCodeGenerator
 				.FirstOrDefault(static region => region.IsFinally);
 			if (finallyRegion is not null)
 			{
-				EmitRuntimeFrameStateAddress(suffix);
-				EmitRuntimeFrameAddress(
-					nextAction,
+				var resume = RegisterExceptionResumeAction(state.Method, suffix);
+				EmitLoadExceptionContextRegister(
+					M68kRegister.A0,
+					ExceptionContextExceptionOffset);
+				EmitStoreExceptionFrameContextRegister(
+					M68kRegister.A0,
+					RuntimeFrameActiveExceptionOffset);
+				EmitStoreExceptionFrameContextAddress(
+					resume,
 					RuntimeFramePendingActionOffset);
-				EmitRestoreRuntimeFrameStack();
-				_assembler.EmitJmp(
+				EmitEnterExceptionHandler(
 					ControlFlowTargetLabel(state.Method, finallyRegion.HandlerOffset),
-					external: false);
+					pushException: false);
 				continue;
 			}
 
-			_assembler.EmitJmp(nextAction, external: false);
+			_assembler.EmitJmp(
+				suffix ?? RuntimeExceptionUnwindFrameLabel,
+				external: false);
 		}
+
+		foreach (var action in _exceptionResumeActions.Values)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(action.Label);
+			EmitAddressImmediateToRegister(
+				M68kRegister.D0,
+				RuntimeMethodDescriptorLabel(action.Method));
+			if (action.StateLabel is null)
+			{
+				EmitImmediateToRegister(M68kRegister.D1, 0);
+			}
+			else
+			{
+				EmitAddressImmediateToRegister(M68kRegister.D1, action.StateLabel);
+			}
+			_assembler.EmitJmp(RuntimeExceptionResumeLabel, external: false);
+		}
+	}
+
+	private string RegisterExceptionResumeAction(CilMethod method, string? stateLabel)
+	{
+		var key = $"{method.Identity}:{stateLabel ?? "unwind"}";
+		if (!_exceptionResumeActions.TryGetValue(key, out var action))
+		{
+			action = new ExceptionResumeAction(
+				method,
+				stateLabel,
+				UniqueLabel("eh_resume_action"));
+			_exceptionResumeActions.Add(key, action);
+		}
+		return action.Label;
 	}
 
 	private void EmitNormalLeaveActions()
@@ -821,10 +1140,9 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.AlignWord();
 				_assembler.Mark(NormalLeaveNextActionLabel(chain, index));
-				EmitRuntimeFrameAddress(
+				EmitEhFrameAddress(
 					NormalLeaveNextActionLabel(chain, index + 1),
 					RuntimeFramePendingActionOffset);
-				EmitRestoreRuntimeFrameStack();
 				_assembler.EmitJmp(
 					ControlFlowTargetLabel(
 						chain.Method,
@@ -850,6 +1168,40 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_assembler.EmitWord(0x2E6D); // MOVEA.L d16(A5),A7
 		_assembler.EmitWord(unchecked((ushort)RuntimeFrameBaseOffset));
+	}
+
+	private void EmitEhFrameImmediate(int value, short displacement)
+	{
+		if (value == 0)
+		{
+			_assembler.EmitWord(0x42AF); // CLR.L d16(A7)
+			_assembler.EmitWord(unchecked((ushort)displacement));
+			return;
+		}
+		_assembler.EmitWord(0x2F7C); // MOVE.L #value,d16(A7)
+		_assembler.EmitLong(unchecked((uint)value));
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitEhFrameAddress(string label, short displacement)
+	{
+		_assembler.EmitWord(0x2F7C); // MOVE.L #label,d16(A7)
+		_assembler.EmitAddress(label);
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
+	private void EmitLoadEhFrameRegister(M68kRegister register, short displacement)
+	{
+		if (register <= M68kRegister.D7)
+		{
+			_assembler.EmitWord((ushort)(0x202F | ((int)register << 9)));
+		}
+		else
+		{
+			_assembler.EmitWord((ushort)(
+				0x206F | (((int)register - (int)M68kRegister.A0) << 9)));
+		}
+		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
 	private void EmitRuntimeFrameImmediate(int value, short displacement)
@@ -1136,6 +1488,9 @@ internal sealed partial class M68kCodeGenerator
 	private string RuntimeMethodUnwindRestoreLabel(CilMethod method) =>
 		$"runtime:method-unwind-restore:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}";
 
+	private static string RuntimeRootMapLabel(int index) =>
+		$"runtime:root-map:{index}";
+
 	private static string RuntimeTypeDescriptorLabel(string typeName) =>
 		$"runtime:type-descriptor:{typeName}";
 
@@ -1148,6 +1503,7 @@ internal sealed partial class M68kCodeGenerator
 		$"runtime:exception-object:{typeName}";
 
 	private const string RuntimeExceptionRaiseLabel = "__c68k_exception_raise";
+	private const string RuntimeExceptionResumeLabel = "__c68k_exception_resume";
 	private const string RuntimeExceptionDispatchLabel = "__c68k_exception_dispatch";
 	private const string RuntimeExceptionJumpStateLabel = "__c68k_exception_jump_state";
 	private const string RuntimeExceptionUnwindFrameLabel = "__c68k_exception_unwind_frame";
@@ -1155,7 +1511,16 @@ internal sealed partial class M68kCodeGenerator
 	private const string RuntimeExceptionTypeMatchLabel = "__c68k_exception_type_match";
 	private const string RuntimeExceptionEndFinallyLabel = "__c68k_exception_endfinally";
 	private const string RuntimeExceptionLeaveContinueLabel = "__c68k_exception_leave_continue";
+	private const string RuntimeFindUnwindSiteLabel = "__c68k_find_unwind_site";
 	private const string RuntimeAmigaRequesterLabel = "__c68k_amiga_unhandled_requester";
+
+	private const short ExceptionContextExceptionOffset = 0;
+	private const short ExceptionContextCursorOffset = 4;
+	private const short ExceptionContextSiteOffset = 8;
+	private const short ExceptionContextFrameBaseOffset = 12;
+	private const short ExceptionContextDescriptorOffset = 16;
+	private const short ExceptionContextStateOffset = 20;
+	private const int ExceptionContextBytes = 24;
 	private const string RuntimeInitialStackLabel = "runtime:amiga-initial-stack";
 	private const string RuntimeIntuitionNameLabel = "runtime:amiga-intuition-name";
 	private const string RuntimeRequesterBodyLabel = "runtime:amiga-requester-body";
