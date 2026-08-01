@@ -144,6 +144,18 @@ wrappers around raw MUI object pointers. They expose `Raw`, `DoMethod()`,
 `SetAttrs()`, `Dispose()`, and class-specific `New()` factories while keeping
 taglists and method messages as guest pointers.
 
+The optional `AmiSSLMaster`, `XadMaster`, `XpkMaster`, and `CAMD` bindings are
+manual-base libraries. Open and close their libraries from the program when
+the corresponding service is available; the SDK does not add them to startup
+opening. `AmiSSLMaster` is the bootstrap interface for selecting the versioned
+AmiSSL API, while XAD and XPK delegate archive/compression work to their
+installed clients or sublibraries. `CAMD` provides the shared MIDI framework.
+
+`Amiga.MUI.TextEditor`, `TheBar`, and `BetterString` expose the public class
+names, attributes, methods, and common value constants for the corresponding
+optional `.mcc` files. They use the same `New(tags)` and `Do(object, message)`
+pattern as the built-in MUI declarations.
+
 See `Examples/DOS` for a minimal manual `dos.library` open/print/cleanup
 program. See `Examples/MUISunflower` for a minimal MUI object tree with an
 application, window, group, text object, and button. See

@@ -27,9 +27,11 @@ public static class AmigaLibraryBaseSymbols
 	private static readonly IReadOnlyDictionary<string, string> KnownNames =
 		new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
 		{
+			["amisslmaster"] = "AmiSSLMaster",
 			["amigaguide"] = "AmigaGuide",
 			["asl"] = "ASL",
 			["bsdsocket"] = "BsdSocket",
+			["camd"] = "CAMD",
 			["bullet"] = "Bullet",
 			["commodities"] = "Commodities",
 			["cybergraphics"] = "CyberGraphics",
@@ -60,7 +62,9 @@ public static class AmigaLibraryBaseSymbols
 			["rexxsyslib"] = "RexxSysLib",
 			["utility"] = "Utility",
 			["version"] = "Version",
-			["workbench"] = "Workbench"
+			["workbench"] = "Workbench",
+			["xadmaster"] = "XadMaster",
+			["xpkmaster"] = "XpkMaster"
 		};
 
 	public static string For(string libraryName)
