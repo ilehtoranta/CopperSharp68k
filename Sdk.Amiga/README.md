@@ -24,6 +24,12 @@ calling manual vectors. Clear or replace the base with `APTR.Null` during
 cleanup as needed. These properties map directly to the same writable base
 slots used by the generated LVO calls; they are not managed backing fields.
 
+`Amiga.BsdSocket` exposes the `bsdsocket.library` vector surface. The binding is
+explicitly manual: open `bsdsocket.library` with `Exec.OpenLibrary()` only after
+the TCP/IP stack is online, assign the returned base to
+`BsdSocket.BsdSocketLibraryBase`, and close it during cleanup. Programs that
+start without networking must not open or call this library.
+
 Kickstart 3.1 library folders are present as ABI declaration stubs. Most
 libraries currently expose only their Amiga library name constant until their
 LVO declarations are added.
