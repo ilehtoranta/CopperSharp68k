@@ -29,6 +29,7 @@ public static class AmigaLibraryBaseSymbols
 		{
 			["amigaguide"] = "AmigaGuide",
 			["asl"] = "ASL",
+			["bsdsocket"] = "BsdSocket",
 			["bullet"] = "Bullet",
 			["commodities"] = "Commodities",
 			["cybergraphics"] = "CyberGraphics",
