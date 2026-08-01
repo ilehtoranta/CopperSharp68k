@@ -26,6 +26,7 @@ internal enum M68kMachineOperation
 	Load,
 	Store,
 	LocalLoad,
+	ArgumentLoad,
 	LocalStore,
 	LocalAddress,
 	ArgumentAddress,
@@ -159,6 +160,18 @@ internal sealed record M68kMachinePhi(
 	int Definition,
 	IReadOnlyDictionary<int, int> Inputs);
 
+internal enum M68kMachineConditionSourceKind
+{
+	Test,
+	Compare,
+	Predicate
+}
+
+internal sealed record M68kMachineBranchCondition(
+	M68kMachineConditionSourceKind SourceKind,
+	M68kCondition Condition,
+	CilInstruction? ProducerInstruction = null);
+
 internal sealed record M68kMachineInstruction(
 	int Id,
 	M68kMachineOperation Operation,
@@ -175,7 +188,9 @@ internal sealed record M68kMachineInstruction(
 	int? SpillSlotIndex = null,
 	int? ArgumentIndex = null,
 	M68kRegister? StackVarargsRegister = null,
-	int? Immediate = null)
+	int? Immediate = null,
+	bool AllowCopyCoalescing = true,
+	M68kMachineBranchCondition? BranchCondition = null)
 {
 	public static M68kMachineInstruction Create(
 		int id,
@@ -193,7 +208,9 @@ internal sealed record M68kMachineInstruction(
 		int? spillSlotIndex = null,
 		int? argumentIndex = null,
 		M68kRegister? stackVarargsRegister = null,
-		int? immediate = null) =>
+		int? immediate = null,
+		bool allowCopyCoalescing = true,
+		M68kMachineBranchCondition? branchCondition = null) =>
 		new(
 			id,
 			operation,
@@ -210,7 +227,9 @@ internal sealed record M68kMachineInstruction(
 			spillSlotIndex,
 			argumentIndex,
 			stackVarargsRegister,
-			immediate);
+			immediate,
+			allowCopyCoalescing,
+			branchCondition);
 }
 
 internal sealed class M68kMachineBlock
@@ -306,7 +325,9 @@ internal sealed class M68kMachineFunction
 		int? spillSlotIndex = null,
 		int? argumentIndex = null,
 		M68kRegister? stackVarargsRegister = null,
-		int? immediate = null) =>
+		int? immediate = null,
+		bool allowCopyCoalescing = true,
+		M68kMachineBranchCondition? branchCondition = null) =>
 		M68kMachineInstruction.Create(
 			_nextInstructionId++,
 			operation,
@@ -323,7 +344,9 @@ internal sealed class M68kMachineFunction
 			spillSlotIndex,
 			argumentIndex,
 			stackVarargsRegister,
-			immediate);
+			immediate,
+			allowCopyCoalescing,
+			branchCondition);
 }
 
 internal static class M68kMachineIrVerifier
@@ -383,6 +406,14 @@ internal static class M68kMachineIrVerifier
 						function,
 						$"Instruction id {instruction.Id} is duplicated.");
 				}
+				if (!instruction.AllowCopyCoalescing &&
+					instruction.Operation != M68kMachineOperation.Copy)
+				{
+					throw Invalid(
+						function,
+						$"Instruction {instruction.Id} disables coalescing but is not a copy.");
+				}
+				VerifyBranchCondition(function, instruction);
 				VerifySpillInstruction(function, instruction);
 				foreach (var use in instruction.Uses)
 				{
@@ -427,6 +458,45 @@ internal static class M68kMachineIrVerifier
 		VerifySsaDominance(function);
 	}
 
+	private static void VerifyBranchCondition(
+		M68kMachineFunction function,
+		M68kMachineInstruction instruction)
+	{
+		if (instruction.BranchCondition is null)
+		{
+			return;
+		}
+		if (instruction.Operation != M68kMachineOperation.ConditionalBranch ||
+			instruction.Definitions.Length != 0)
+		{
+			throw Invalid(
+				function,
+				$"Instruction {instruction.Id} has a condition descriptor but is not a definition-free conditional branch.");
+		}
+
+		var expectedUses = instruction.BranchCondition.SourceKind ==
+			M68kMachineConditionSourceKind.Compare
+				? 2
+				: 1;
+		if (instruction.Uses.Length != expectedUses)
+		{
+			throw Invalid(
+				function,
+				$"Conditional branch {instruction.Id} has {instruction.Uses.Length} operands; expected {expectedUses}.");
+		}
+		if (instruction.BranchCondition.SourceKind ==
+			M68kMachineConditionSourceKind.Predicate &&
+			(instruction.BranchCondition.ProducerInstruction is not
+					{ OpCode: var op } ||
+			 op != System.Reflection.Emit.OpCodes.Call &&
+			 op != System.Reflection.Emit.OpCodes.Callvirt))
+		{
+			throw Invalid(
+				function,
+				$"Predicate branch {instruction.Id} has no predicate call metadata.");
+		}
+	}
+
 	private static void VerifySpillInstruction(
 		M68kMachineFunction function,
 		M68kMachineInstruction instruction)
@@ -445,6 +515,7 @@ internal static class M68kMachineIrVerifier
 				break;
 
 			case M68kMachineOperation.LocalLoad:
+			case M68kMachineOperation.ArgumentLoad:
 				if (instruction.ArgumentIndex is null ||
 					instruction.Uses.Length != 0 ||
 					instruction.Definitions.Length != 1 ||

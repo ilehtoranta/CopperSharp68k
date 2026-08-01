@@ -111,6 +111,22 @@ public static class M68kCompiler
 
 	private static void ValidateRuntimeOptions(M68kCompilationRequest request)
 	{
+		if (request.FloatingPoint == M68kFloatingPointMode.M68040 &&
+			request.Cpu is not M68kCpuTarget.M68040 and not M68kCpuTarget.M68060)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidOutputOptions,
+				"M68040 floating-point mode requires an M68040 or M68060 CPU target.");
+		}
+
+		if (request.FloatingPoint == M68kFloatingPointMode.M68882 &&
+			request.Cpu != M68kCpuTarget.M68020)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidOutputOptions,
+				"M68882 floating-point mode requires the M68020 CPU target.");
+		}
+
 		if (request.RuntimeProfile == M68kRuntimeProfile.Rom &&
 			request.OutputFormat != M68kOutputFormat.KickstartRom)
 		{
@@ -158,6 +174,11 @@ public static class M68kCompiler
 
 		var linked = program.Assembler.Link(0, imports);
 		var symbols = CreateSymbols(program, linked, 0);
+		var loopFootprints = M68kLoopFootprintAnalysis.Measure(
+			program.LoopLayouts,
+			linked.Labels,
+			linked.AnalysisAnchors,
+			0);
 		var entryOffset = checked((uint)linked.Labels[program.EntryLabel]);
 		var text = program.Assembler.RenderAssembly(request.Cpu);
 		return new M68kCompilationResult(
@@ -166,9 +187,11 @@ public static class M68kCompiler
 			entryOffset,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryOffset, symbols, linked.Relocations),
+			CreateMap(request, entryOffset, symbols, linked.Relocations, loopFootprints),
 			text,
-			program.AllocationStatistics.Values.ToArray());
+			program.AllocationStatistics.Values.ToArray(),
+			program.TerminalDeadStoreStatistics.Values.ToArray(),
+			loopFootprints);
 	}
 
 	private static M68kCompilationResult LinkHunk(
@@ -177,6 +200,11 @@ public static class M68kCompiler
 	{
 		var linked = program.Assembler.Link(0, request.Imports);
 		var symbols = CreateSymbols(program, linked, 0);
+		var loopFootprints = M68kLoopFootprintAnalysis.Measure(
+			program.LoopLayouts,
+			linked.Labels,
+			linked.AnalysisAnchors,
+			0);
 		var entryOffset = checked((uint)linked.Labels[program.EntryLabel]);
 		var image = HunkWriter.Write(
 			linked.Bytes,
@@ -189,9 +217,11 @@ public static class M68kCompiler
 			entryOffset,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryOffset, symbols, linked.Relocations),
+			CreateMap(request, entryOffset, symbols, linked.Relocations, loopFootprints),
 			null,
-			program.AllocationStatistics.Values.ToArray());
+			program.AllocationStatistics.Values.ToArray(),
+			program.TerminalDeadStoreStatistics.Values.ToArray(),
+			loopFootprints);
 	}
 
 	private static M68kCompilationResult LinkRom(
@@ -202,6 +232,11 @@ public static class M68kCompiler
 		var codeOrigin = checked(romBase + 8);
 		var linked = program.Assembler.Link(codeOrigin, request.Imports);
 		var symbols = CreateSymbols(program, linked, codeOrigin);
+		var loopFootprints = M68kLoopFootprintAnalysis.Measure(
+			program.LoopLayouts,
+			linked.Labels,
+			linked.AnalysisAnchors,
+			codeOrigin);
 		var entryPoint = checked(codeOrigin + (uint)linked.Labels[program.EntryLabel]);
 		var image = KickstartRomWriter.Write(linked.Bytes, entryPoint, request.Rom);
 		return new M68kCompilationResult(
@@ -210,9 +245,11 @@ public static class M68kCompiler
 			entryPoint,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryPoint, symbols, linked.Relocations),
+			CreateMap(request, entryPoint, symbols, linked.Relocations, loopFootprints),
 			null,
-			program.AllocationStatistics.Values.ToArray());
+			program.AllocationStatistics.Values.ToArray(),
+			program.TerminalDeadStoreStatistics.Values.ToArray(),
+			loopFootprints);
 	}
 
 	private static IReadOnlyList<M68kSymbol> CreateSymbols(
@@ -284,7 +321,8 @@ public static class M68kCompiler
 		M68kCompilationRequest request,
 		uint entryPoint,
 		IReadOnlyList<M68kSymbol> symbols,
-		IReadOnlyList<M68kRelocation> relocations)
+		IReadOnlyList<M68kRelocation> relocations,
+		IReadOnlyList<M68kLoopFootprint> loopFootprints)
 	{
 		var map = new StringBuilder();
 		map.AppendLine($"CPU {request.Cpu}");
@@ -300,6 +338,17 @@ public static class M68kCompiler
 		foreach (var relocation in relocations)
 		{
 			map.AppendLine($"{relocation.Offset:X8} {relocation.Target}");
+		}
+
+		map.AppendLine("LOOPS");
+		foreach (var loop in loopFootprints)
+		{
+			map.AppendLine(
+				$"{loop.HeaderAddress:X8} IL_{loop.HeaderIlOffset:X4} " +
+				$"bytes={loop.InstructionBytes} span={loop.SpanBytes} " +
+				$"lines={loop.CacheLineCount} " +
+				$"fits256={(loop.FitsIn256ByteInstructionCache ? "yes" : "no")} " +
+				loop.Method);
 		}
 
 		return map.ToString();

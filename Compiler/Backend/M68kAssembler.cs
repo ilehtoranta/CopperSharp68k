@@ -28,6 +28,27 @@ internal enum M68kCondition : byte
 	LessOrEqual = 15
 }
 
+internal enum M68kFpuFormat : byte
+{
+	LongInteger = 0,
+	Single = 1,
+	Double = 5
+}
+
+internal enum M68kFpuOperation : byte
+{
+	Move = 0x00,
+	SquareRoot = 0x04,
+	Absolute = 0x18,
+	Negate = 0x1A,
+	Divide = 0x20,
+	Add = 0x22,
+	Multiply = 0x23,
+	Subtract = 0x28,
+	Compare = 0x38,
+	Test = 0x3A
+}
+
 internal sealed class M68kAssembler
 {
 	private readonly M68kAssemblyBuffer _buffer = new();
@@ -36,6 +57,7 @@ internal sealed class M68kAssembler
 	private List<BranchFixup> _branches => _buffer.Branches;
 	private List<AddressFixup> _addresses => _buffer.Addresses;
 	private List<PcRelativeFixup> _pcRelative => _buffer.PcRelative;
+	private readonly HashSet<string> _longAlignmentLabels = new(StringComparer.Ordinal);
 
 	private static readonly OpcodeRenderRule[] SimpleInstructionRules =
 	[
@@ -74,6 +96,8 @@ internal sealed class M68kAssembler
 			"cmp.l\t(a" + (opcode & 7) + "),d" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0xB088, static opcode =>
 			"cmp.l\ta" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xC140, static opcode =>
+			"exg\td" + ((opcode >> 9) & 7) + ",d" + (opcode & 7)),
 		new(0xF0F8, 0x50C0, static opcode =>
 			SetConditionMnemonic((M68kCondition)((opcode >> 8) & 0x0F)) + "\td" + (opcode & 7)),
 		new(0xFFF8, 0x4298, static opcode => "clr.l\t(a" + (opcode & 7) + ")+"),
@@ -85,6 +109,8 @@ internal sealed class M68kAssembler
 		new(0xF1FF, 0x5197, static opcode => "subq.l\t#" + QuickCount(opcode) + ",(a7)"),
 		new(0xF1F8, 0x5080, static opcode => "addq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
 		new(0xF1F8, 0x5180, static opcode => "subq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
+		new(0xF1F8, 0x5040, static opcode => "addq.w\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
+		new(0xF1F8, 0x5140, static opcode => "subq.w\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
 		new(0xF1F8, 0x5088, static opcode => "addq.l\t#" + QuickCount(opcode) + ",a" + (opcode & 7)),
 		new(0xF1F8, 0x5188, static opcode => "subq.l\t#" + QuickCount(opcode) + ",a" + (opcode & 7))
 	];
@@ -113,6 +139,10 @@ internal sealed class M68kAssembler
 			"adda.w\t#" + value + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1FF, 0xD1FC, 4, static (opcode, value) =>
 			"adda.l\t#" + value + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1FF, 0xB0FC, 2, static (opcode, value) =>
+			"cmpa.w\t#" + unchecked((short)(ushort)value) + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1FF, 0xB1FC, 4, static (opcode, value) =>
+			"cmpa.l\t#$" + value.ToString("X8") + ",a" + ((opcode >> 9) & 7)),
 		new(0xFFF8, 0x0C80, 4, static (opcode, value) =>
 			"cmpi.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
 		new(0xFFF8, 0x0C40, 2, static (opcode, value) =>
@@ -144,6 +174,31 @@ internal sealed class M68kAssembler
 		}
 	}
 
+	public void RequestLongAlignment(string label) =>
+		_longAlignmentLabels.Add(label);
+
+	public void ApplyRequestedAlignments()
+	{
+		foreach (var requestedLabel in _longAlignmentLabels
+			.OrderBy(label => _labels[label])
+			.ToArray())
+		{
+			var offset = _labels[requestedLabel];
+			if ((offset & 3) == 0)
+			{
+				continue;
+			}
+			_buffer.InsertBytes(offset, 2);
+			_buffer.WriteWord(offset, 0x4E71); // NOP before aligned label
+			foreach (var label in _labels.Keys
+				.Where(label => _labels[label] == offset)
+				.ToArray())
+			{
+				_labels[label] += 2;
+			}
+		}
+	}
+
 	public void EmitByte(byte value) => _bytes.Add(value);
 
 	public void EmitWord(ushort value)
@@ -159,6 +214,91 @@ internal sealed class M68kAssembler
 		_bytes.Add((byte)(value >> 8));
 		_bytes.Add((byte)value);
 	}
+
+	public void EmitFpuDataRegisterToRegister(
+		int dataRegister,
+		int destinationFpuRegister,
+		M68kFpuFormat format)
+	{
+		ValidateDataRegister(dataRegister);
+		ValidateFpuRegister(destinationFpuRegister);
+		EmitWord((ushort)(0xF200 | dataRegister));
+		EmitWord((ushort)(0x4000 | ((int)format << 10) |
+			(destinationFpuRegister << 7)));
+	}
+
+	public void EmitFpuRegisterToDataRegister(
+		int sourceFpuRegister,
+		int dataRegister,
+		M68kFpuFormat format)
+	{
+		ValidateFpuRegister(sourceFpuRegister);
+		ValidateDataRegister(dataRegister);
+		EmitWord((ushort)(0xF200 | dataRegister));
+		EmitWord((ushort)(0x6000 | ((int)format << 10) |
+			(sourceFpuRegister << 7)));
+	}
+
+	public void EmitFpuStackToRegister(
+		int destinationFpuRegister,
+		M68kFpuFormat format)
+	{
+		ValidateFpuRegister(destinationFpuRegister);
+		EmitWord(0xF217); // (A7)
+		EmitWord((ushort)(0x4000 | ((int)format << 10) |
+			(destinationFpuRegister << 7)));
+	}
+
+	public void EmitFpuStackDisplacementToRegister(
+		int destinationFpuRegister,
+		M68kFpuFormat format,
+		short displacement)
+	{
+		ValidateFpuRegister(destinationFpuRegister);
+		EmitWord(0xF22F); // d16(A7)
+		EmitWord((ushort)(0x4000 | ((int)format << 10) |
+			(destinationFpuRegister << 7)));
+		EmitWord(unchecked((ushort)displacement));
+	}
+
+	public void EmitFpuRegisterToStack(
+		int sourceFpuRegister,
+		M68kFpuFormat format)
+	{
+		ValidateFpuRegister(sourceFpuRegister);
+		EmitWord(0xF217); // (A7)
+		EmitWord((ushort)(0x6000 | ((int)format << 10) |
+			(sourceFpuRegister << 7)));
+	}
+
+	public void EmitFpuRegisterToStackDisplacement(
+		int sourceFpuRegister,
+		M68kFpuFormat format,
+		short displacement)
+	{
+		ValidateFpuRegister(sourceFpuRegister);
+		EmitWord(0xF22F); // d16(A7)
+		EmitWord((ushort)(0x6000 | ((int)format << 10) |
+			(sourceFpuRegister << 7)));
+		EmitWord(unchecked((ushort)displacement));
+	}
+
+	public void EmitFpuRegisterOperation(
+		int sourceFpuRegister,
+		int destinationFpuRegister,
+		M68kFpuOperation operation)
+	{
+		ValidateFpuRegister(sourceFpuRegister);
+		ValidateFpuRegister(destinationFpuRegister);
+		EmitWord(0xF200);
+		EmitWord((ushort)((sourceFpuRegister << 10) |
+			(destinationFpuRegister << 7) | (int)operation));
+	}
+
+	public void EmitFpuUnaryOperation(
+		int destinationFpuRegister,
+		M68kFpuOperation operation) =>
+		EmitFpuRegisterOperation(destinationFpuRegister, destinationFpuRegister, operation);
 
 	public void EmitBranch(M68kCondition condition, string target)
 	{
@@ -211,9 +351,207 @@ internal sealed class M68kAssembler
 		_pcRelative.Add(new PcRelativeFixup(displacementOffset, target));
 	}
 
+	internal void MarkDataStart() => _buffer.MarkDataStart();
+
+	internal void MarkAnalysisAnchor(string name)
+	{
+		if (!_buffer.AnalysisAnchors.TryAdd(name, Offset))
+		{
+			throw new InvalidOperationException($"Duplicate analysis anchor '{name}'.");
+		}
+	}
+
 	public void OptimizeForM68000() => OptimizeForCpu(M68kCpuTarget.M68000);
 
-	public void OptimizeForCpu(M68kCpuTarget cpu) => new M68kOptimizerPipeline(this, _buffer, cpu).Run();
+	public void OptimizeForCpu(
+		M68kCpuTarget cpu,
+		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto) =>
+		new M68kOptimizerPipeline(this, _buffer, cpu, clrPolicy).Run();
+
+	internal void RelaxBranches()
+	{
+		// Each shortening shifts every later label and fixup, so keep iterating
+		// until no branch or local jump can enable another relaxation.
+		while (TryRelaxShortBranch() || TryRelaxLocalAbsoluteJump())
+		{
+		}
+	}
+
+	internal void RelaxFinalLayout()
+	{
+		// Every shortening can move a later hot-loop header off its requested
+		// boundary. Re-apply padding after each individual relaxation so branch
+		// range decisions always see the aligned layout rather than a transiently
+		// smaller one.
+		ApplyRequestedAlignments();
+		while (true)
+		{
+			if (TryRelaxShortBranch() ||
+				TryRelaxLocalAbsoluteJump() ||
+				TryRemoveBranchToNextInstruction() ||
+				TryRelaxLocalAbsoluteLoad())
+			{
+				ApplyRequestedAlignments();
+				continue;
+			}
+			return;
+		}
+	}
+
+	private bool TryRemoveBranchToNextInstruction()
+	{
+		for (var index = 0; index < _branches.Count; index++)
+		{
+			var branch = _branches[index];
+			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			var length = IsWordBranchOpcode(opcode) ? 4 : 2;
+			if (!_labels.TryGetValue(branch.Target, out var targetOffset) ||
+				targetOffset != branch.OpcodeOffset + length)
+			{
+				continue;
+			}
+
+			_branches.RemoveAt(index);
+			_buffer.RemoveBytes(branch.OpcodeOffset, length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRelaxLocalAbsoluteLoad()
+	{
+		for (var index = 0; index < _addresses.Count; index++)
+		{
+			var address = _addresses[index];
+			var opcodeOffset = address.Offset - 2;
+			if (address.External ||
+				opcodeOffset < 0 ||
+				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
+				!_labels.TryGetValue(address.Target, out var targetOffset) ||
+				!TryGetPcRelativeLoadOpcode(
+					_buffer.ReadWord(opcodeOffset),
+					out var pcRelativeOpcode))
+			{
+				continue;
+			}
+
+			// The absolute long form is six bytes.  After removing its final
+			// word, labels after the instruction move two bytes closer.
+			var relaxedTargetOffset = targetOffset >= opcodeOffset + 6
+				? targetOffset - 2
+				: targetOffset;
+			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
+			if (displacement < short.MinValue || displacement > short.MaxValue)
+			{
+				continue;
+			}
+			_buffer.WriteWord(opcodeOffset, pcRelativeOpcode);
+			_addresses.RemoveAt(index);
+			_buffer.RemoveBytes(opcodeOffset + 4, 2);
+			_pcRelative.Add(new PcRelativeFixup(opcodeOffset + 2, address.Target));
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool TryGetPcRelativeLoadOpcode(
+		ushort opcode,
+		out ushort pcRelativeOpcode)
+	{
+		if ((opcode & 0xF1FF) == 0x2039)
+		{
+			pcRelativeOpcode = (ushort)((opcode & 0xFFC0) | 0x003A);
+			return true;
+		}
+
+		if ((opcode & 0xF1FF) == 0x2079)
+		{
+			pcRelativeOpcode = (ushort)((opcode & 0xFFC0) | 0x003A);
+			return true;
+		}
+
+		pcRelativeOpcode = opcode switch
+		{
+			0x2F39 => 0x2F3A, // MOVE.L abs.l,-(A7)
+			0x4879 => 0x487A, // PEA abs.l
+			_ => 0
+		};
+		return pcRelativeOpcode != 0;
+	}
+
+	private bool TryRelaxShortBranch()
+	{
+		for (var index = 0; index < _branches.Count; index++)
+		{
+			var branch = _branches[index];
+			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			if (!branch.CanRelaxToShort ||
+				!IsWordBranchOpcode(opcode) ||
+				!_labels.TryGetValue(branch.Target, out var targetOffset))
+			{
+				continue;
+			}
+
+			var relaxedTargetOffset = targetOffset >= branch.OpcodeOffset + 4
+				? targetOffset - 2
+				: targetOffset;
+			var displacement = relaxedTargetOffset - (branch.OpcodeOffset + 2);
+			if (displacement is < sbyte.MinValue or > sbyte.MaxValue || displacement == 0)
+			{
+				continue;
+			}
+			_buffer.WriteWord(
+				branch.OpcodeOffset,
+				(opcode & 0xFF00) | unchecked((byte)displacement));
+			_buffer.RemoveBytes(branch.OpcodeOffset + 2, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRelaxLocalAbsoluteJump()
+	{
+		for (var index = 0; index < _addresses.Count; index++)
+		{
+			var address = _addresses[index];
+			var opcodeOffset = address.Offset - 2;
+			if (address.External ||
+				opcodeOffset < 0 ||
+				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
+				_buffer.ReadWord(opcodeOffset) != 0x4EF9 ||
+				!_labels.TryGetValue(address.Target, out var targetOffset) ||
+				(targetOffset > opcodeOffset && targetOffset < opcodeOffset + 6))
+			{
+				continue;
+			}
+
+			var relaxedTargetOffset = targetOffset >= opcodeOffset + 6
+				? targetOffset - 2
+				: targetOffset;
+			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
+			if (displacement < short.MinValue || displacement > short.MaxValue)
+			{
+				continue;
+			}
+			_buffer.WriteWord(opcodeOffset, 0x6000); // JMP -> BRA.W
+			_buffer.WriteWord(opcodeOffset + 2, 0);
+			_addresses.RemoveAt(index);
+			_buffer.RemoveBytes(opcodeOffset + 4, 2);
+			_branches.Add(new BranchFixup(opcodeOffset, address.Target, CanRelaxToShort: false));
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool IsWordBranchOpcode(ushort opcode) =>
+		(opcode & 0xF000) == 0x6000 && (opcode & 0x00FF) == 0;
+
+	private static bool IsShortBranchOpcode(ushort opcode) =>
+		(opcode & 0xF000) == 0x6000 && (opcode & 0x00FF) != 0;
 
 	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream(
 		int startOffset = 0)
@@ -249,11 +587,12 @@ internal sealed class M68kAssembler
 			var kind = M68kInstructionKind.Normal;
 			int? targetOffset = null;
 			var externalTarget = false;
+			var isNonReturning = opcode == 0x4AFC; // ILLEGAL
 			if (branches.TryGetValue(offset, out var branch))
 			{
 				kind = (opcode & 0xFFF8) == 0x51C8
 					? M68kInstructionKind.Dbcc
-					: opcode == 0x6100
+					: (opcode & 0xFF00) == 0x6100
 						? M68kInstructionKind.Call
 						: (opcode & 0xFF00) == 0x6000 && ((opcode >> 8) & 0x0F) == 0
 							? M68kInstructionKind.UnconditionalBranch
@@ -266,6 +605,8 @@ internal sealed class M68kAssembler
 			{
 				kind = M68kInstructionKind.Call;
 				externalTarget = call.External;
+				isNonReturning = !call.External &&
+					string.Equals(call.Target, "__c68k_exception_raise", StringComparison.Ordinal);
 				targetOffset = call.External || !_labels.TryGetValue(call.Target, out var callTarget)
 					? null
 					: callTarget;
@@ -300,7 +641,8 @@ internal sealed class M68kAssembler
 				decoded,
 				kind,
 				targetOffset,
-				externalTarget));
+				externalTarget,
+				isNonReturning));
 			offset += Math.Max(2, length);
 		}
 
@@ -311,6 +653,7 @@ internal sealed class M68kAssembler
 		uint origin,
 		IReadOnlyDictionary<string, uint> imports)
 	{
+		RelaxFinalLayout();
 		var code = _bytes.ToArray();
 		foreach (var branch in _branches)
 		{
@@ -320,6 +663,19 @@ internal sealed class M68kAssembler
 			}
 
 			var displacement = targetOffset - (branch.OpcodeOffset + 2);
+			if (IsShortBranchOpcode(_buffer.ReadWord(branch.OpcodeOffset)))
+			{
+				if (displacement is < sbyte.MinValue or > sbyte.MaxValue || displacement == 0)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.ImageOverflow,
+						$"Short branch to '{branch.Target}' exceeds the signed 8-bit displacement range.");
+				}
+
+				code[branch.OpcodeOffset + 1] = unchecked((byte)displacement);
+				continue;
+			}
+
 			if (displacement < short.MinValue || displacement > short.MaxValue)
 			{
 				throw new M68kCompilationException(
@@ -382,17 +738,22 @@ internal sealed class M68kAssembler
 		return new LinkedCode(
 			code,
 			new Dictionary<string, int>(_labels, StringComparer.Ordinal),
+			new Dictionary<string, int>(
+				_buffer.AnalysisAnchors,
+				StringComparer.Ordinal),
 			relocations);
 	}
 
 	public string RenderAssembly(M68kCpuTarget cpu)
 	{
+		RelaxFinalLayout();
 		var output = new StringBuilder();
 		output.AppendLine(cpu switch
 		{
 			M68kCpuTarget.M68000 => "\tmc68000",
 			M68kCpuTarget.M68020 => "\tmc68020",
 			M68kCpuTarget.M68040 => "\tmc68040",
+			M68kCpuTarget.M68060 => "\tmc68060",
 			_ => throw new ArgumentOutOfRangeException(nameof(cpu))
 		});
 		output.AppendLine("\tsection\tcode,code");
@@ -508,9 +869,12 @@ internal sealed class M68kAssembler
 			branches,
 			pcRelative);
 		if (TryRenderControlFlow(context, out var rendered) ||
+			TryRenderFpu(context, out rendered) ||
 			TryRenderFixupOperand(context, out rendered) ||
 			TryRenderMove(context, out rendered) ||
 			TryRenderMovem(context, out rendered) ||
+			TryRenderDataRegisterArithmetic(context, out rendered) ||
+			TryRenderMemoryDestinationArithmetic(context, out rendered) ||
 			TryRenderSimpleInstruction(context.Opcode, out rendered) ||
 			TryRenderImmediateInstruction(context.Offset, context.Opcode, out rendered) ||
 			TryRenderStackAdjustment(context, out rendered) ||
@@ -528,6 +892,74 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
+	private bool TryRenderFpu(
+		InstructionRenderContext context,
+		out RenderedInstruction rendered)
+	{
+		if ((context.Opcode & 0xFFC0) != 0xF200 ||
+			context.Offset + 3 >= _bytes.Count)
+		{
+			rendered = default;
+			return false;
+		}
+
+		var extension = (ushort)((_bytes[context.Offset + 2] << 8) |
+			_bytes[context.Offset + 3]);
+		var mode = (context.Opcode >> 3) & 7;
+		var register = context.Opcode & 7;
+		var transfer = extension & 0x6000;
+		if (transfer is 0x4000 or 0x6000)
+		{
+			var format = (extension >> 10) & 7;
+			var suffix = format switch { 1 => "s", 5 => "d", _ => "l" };
+			var fp = (extension >> 7) & 7;
+			var ea = mode == 0
+				? $"d{register}"
+				: mode == 2 && register == 7
+					? "(a7)"
+					: mode == 5 && register == 7 && context.Offset + 5 < _bytes.Count
+						? $"{unchecked((short)((_bytes[context.Offset + 4] << 8) | _bytes[context.Offset + 5]))}(a7)"
+						: null;
+			if (ea is null)
+			{
+				rendered = default;
+				return false;
+			}
+			rendered = new RenderedInstruction(
+				transfer == 0x4000
+					? $"fmove.{suffix}\t{ea},fp{fp}"
+					: $"fmove.{suffix}\tfp{fp},{ea}",
+				mode == 5 ? 6 : 4);
+			return true;
+		}
+
+		var source = (extension >> 10) & 7;
+		var destination = (extension >> 7) & 7;
+		var mnemonic = (extension & 0x7F) switch
+		{
+			0x00 => "fmove.x",
+			0x04 => "fsqrt.x",
+			0x18 => "fabs.x",
+			0x1A => "fneg.x",
+			0x20 => "fdiv.x",
+			0x22 => "fadd.x",
+			0x23 => "fmul.x",
+			0x28 => "fsub.x",
+			0x38 => "fcmp.x",
+			0x3A => "ftst.x",
+			_ => null
+		};
+		if (mnemonic is null)
+		{
+			rendered = default;
+			return false;
+		}
+		rendered = new RenderedInstruction(
+			$"{mnemonic}\tfp{source},fp{destination}",
+			4);
+		return true;
+	}
+
 	private static bool TryRenderControlFlow(
 		in InstructionRenderContext context,
 		out RenderedInstruction instruction)
@@ -541,16 +973,19 @@ internal sealed class M68kAssembler
 				return true;
 			}
 
-			if (context.Opcode == 0x6100)
+			if ((context.Opcode & 0xFF00) == 0x6100)
 			{
-				instruction = new($"bsr.w\t{target}", 4);
+				instruction = new($"bsr.{(IsShortBranchOpcode(context.Opcode) ? 's' : 'w')}\t{target}",
+					IsShortBranchOpcode(context.Opcode) ? 2 : 4);
 				return true;
 			}
 
 			var condition = (M68kCondition)((context.Opcode >> 8) & 0x0F);
+			var suffix = IsShortBranchOpcode(context.Opcode) ? 's' : 'w';
 			instruction = new(condition == M68kCondition.True
-				? $"bra.w\t{target}"
-				: $"{ConditionMnemonic(condition)}.w\t{target}", 4);
+				? $"bra.{suffix}\t{target}"
+				: $"{ConditionMnemonic(condition)}.{suffix}\t{target}",
+				IsShortBranchOpcode(context.Opcode) ? 2 : 4);
 			return true;
 		}
 
@@ -577,8 +1012,16 @@ internal sealed class M68kAssembler
 		var opcode = context.Opcode;
 		var offset = context.Offset;
 		var labels = context.DisplayLabels;
-		if ((opcode & 0xF1FF) == 0x207A &&
+		if ((opcode & 0xF1FF) == 0x203A &&
 			context.PcRelative.TryGetValue(offset + 2, out var pcRelativeOperand))
+		{
+			instruction = new(
+				$"move.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),d{(opcode >> 9) & 7}",
+				4);
+			return true;
+		}
+		if ((opcode & 0xF1FF) == 0x207A &&
+			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
 		{
 			instruction = new(
 				$"movea.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
@@ -589,6 +1032,31 @@ internal sealed class M68kAssembler
 		{
 			instruction = new(
 				$"lea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
+			return true;
+		}
+		if (opcode == 0x2F3A &&
+			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
+		{
+			instruction = new(
+				$"move.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),-(a7)",
+				4);
+			return true;
+		}
+		if (opcode == 0x487A &&
+			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
+		{
+			instruction = new(
+				$"pea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc)",
+				4);
+			return true;
+		}
+		if (LongMemoryArithmeticMnemonic(opcode) is { } pcRelativeMnemonic &&
+			(opcode & 0x003F) == 0x003A &&
+			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
+		{
+			instruction = new(
+				$"{pcRelativeMnemonic}\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),d{(opcode >> 9) & 7}",
+				4);
 			return true;
 		}
 
@@ -619,6 +1087,27 @@ internal sealed class M68kAssembler
 
 		if (context.Addresses.TryGetValue(offset + 2, out var addressOperand))
 		{
+			if (TryGetLongMemoryDestinationArithmetic(
+					opcode,
+					out var destinationArithmeticMnemonic,
+					out var destinationArithmeticSource) &&
+				(opcode & 0x003F) == 0x0039)
+			{
+				instruction = new(
+					$"{destinationArithmeticMnemonic}\t{destinationArithmeticSource},{Symbol(addressOperand)}",
+					6);
+				return true;
+			}
+
+			if (LongMemoryArithmeticMnemonic(opcode) is { } addressArithmeticMnemonic &&
+				(opcode & 0x003F) == 0x0039)
+			{
+				instruction = new(
+					$"{addressArithmeticMnemonic}\t{Symbol(addressOperand)},d{(opcode >> 9) & 7}",
+					6);
+				return true;
+			}
+
 			if ((opcode & 0xF1FF) == 0x217C && TryReadWord(offset + 6, out var displacement))
 			{
 				instruction = new($"move.l\t#{Symbol(addressOperand)},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})", 8);
@@ -629,6 +1118,8 @@ internal sealed class M68kAssembler
 			var text = opcode switch
 			{
 				0x2EBC => $"move.l\t#{target},(a7)",
+				_ when (opcode & 0xF1FF) == 0x20BC =>
+					$"move.l\t#{target},(a{(opcode >> 9) & 7})",
 				0x2F3C => $"move.l\t#{target},-(a7)",
 				0x2F39 => $"move.l\t{target},-(a7)",
 				0x23DF => $"move.l\t(a7)+,{target}",
@@ -678,25 +1169,25 @@ internal sealed class M68kAssembler
 
 	private bool TryRenderMovem(in InstructionRenderContext context, out RenderedInstruction instruction)
 	{
-		if (context.Opcode == 0x48E7 && TryReadWord(context.Offset + 2, out var saveMask))
+		var isStore = (context.Opcode & 0xFFC0) == 0x48C0;
+		var isLoad = (context.Opcode & 0xFFC0) == 0x4CC0;
+		if ((isStore || isLoad) &&
+			TryReadWord(context.Offset + 2, out var registerMask) &&
+			TryDecodeEffectiveAddress(
+				context.Offset + 4,
+				(context.Opcode >> 3) & 7,
+				context.Opcode & 7,
+				4,
+				out var memory) &&
+			memory.Kind == M68kOperandKind.Memory)
 		{
-			instruction = new($"movem.l\t{MovemRegisterList(saveMask, predecrement: true)},-(a7)", 4);
-			return true;
-		}
-		if (context.Opcode == 0x4CDF && TryReadWord(context.Offset + 2, out var restoreMask))
-		{
-			instruction = new($"movem.l\t(a7)+,{MovemRegisterList(restoreMask, predecrement: false)}", 4);
-			return true;
-		}
-		if (context.Opcode == 0x48EF && TryReadWord(context.Offset + 2, out var storeMask) &&
-			TryReadWord(context.Offset + 4, out var displacement))
-		{
-			instruction = new($"movem.l\t{MovemRegisterList(storeMask, predecrement: false)},{unchecked((short)displacement)}(a7)", 6);
-			return true;
-		}
-		if (context.Opcode == 0x48D7 && TryReadWord(context.Offset + 2, out var indirectStoreMask))
-		{
-			instruction = new($"movem.l\t{MovemRegisterList(indirectStoreMask, predecrement: false)},(a7)", 4);
+			var predecrement = isStore && ((context.Opcode >> 3) & 7) == 4;
+			var registers = MovemRegisterList(registerMask, predecrement);
+			instruction = new(
+				isStore
+					? $"movem.l\t{registers},{memory.Text}"
+					: $"movem.l\t{memory.Text},{registers}",
+				4 + memory.ExtensionBytes);
 			return true;
 		}
 
@@ -748,16 +1239,109 @@ internal sealed class M68kAssembler
 
 	private bool TryRenderLea(in InstructionRenderContext context, out RenderedInstruction instruction)
 	{
-		if ((context.Opcode & 0xF1F8) == 0x41E8 &&
-			((context.Opcode >> 9) & 7) == (context.Opcode & 7) &&
-			TryReadWord(context.Offset + 2, out var displacement))
+		if ((context.Opcode & 0xF1C0) == 0x41C0 &&
+			TryDecodeEffectiveAddress(
+				context.Offset + 2,
+				(context.Opcode >> 3) & 7,
+				context.Opcode & 7,
+				4,
+				out var source) &&
+			source.Kind == M68kOperandKind.Memory)
 		{
-			instruction = new($"lea\t{unchecked((short)displacement)}(a{context.Opcode & 7}),a{(context.Opcode >> 9) & 7}", 4);
+			instruction = new(
+				$"lea\t{source.Text},a{(context.Opcode >> 9) & 7}",
+				2 + source.ExtensionBytes);
 			return true;
 		}
 
 		instruction = default;
 		return false;
+	}
+
+	private bool TryRenderDataRegisterArithmetic(
+		in InstructionRenderContext context,
+		out RenderedInstruction instruction)
+	{
+		var mnemonic = LongMemoryArithmeticMnemonic(context.Opcode);
+		if (mnemonic is null ||
+			!TryDecodeEffectiveAddress(
+				context.Offset + 2,
+				(context.Opcode >> 3) & 7,
+				context.Opcode & 7,
+				4,
+				out var source) ||
+			source.Kind == M68kOperandKind.Immediate)
+		{
+			instruction = default;
+			return false;
+		}
+
+		instruction = new(
+			$"{mnemonic}\t{source.Text},d{(context.Opcode >> 9) & 7}",
+			2 + source.ExtensionBytes);
+		return true;
+	}
+
+	private static string? LongMemoryArithmeticMnemonic(ushort opcode) =>
+		(opcode & 0xF1C0) switch
+		{
+			0xD080 => "add.l",
+			0x9080 => "sub.l",
+			0xB080 => "cmp.l",
+			0xC080 => "and.l",
+			_ => null
+		};
+
+	private bool TryRenderMemoryDestinationArithmetic(
+		in InstructionRenderContext context,
+		out RenderedInstruction instruction)
+	{
+		if (!TryGetLongMemoryDestinationArithmetic(
+				context.Opcode,
+				out var mnemonic,
+				out var source) ||
+			!TryDecodeEffectiveAddress(
+				context.Offset + 2,
+				(context.Opcode >> 3) & 7,
+				context.Opcode & 7,
+				4,
+				out var destination) ||
+			destination.Kind != M68kOperandKind.Memory)
+		{
+			instruction = default;
+			return false;
+		}
+
+		instruction = new(
+			$"{mnemonic}\t{source},{destination.Text}",
+			2 + destination.ExtensionBytes);
+		return true;
+	}
+
+	private static bool TryGetLongMemoryDestinationArithmetic(
+		ushort opcode,
+		out string mnemonic,
+		out string source)
+	{
+		var operation = opcode & 0xF1C0;
+		mnemonic = operation switch
+		{
+			0xD180 => "add.l",
+			0x9180 => "sub.l",
+			0x5080 => "addq.l",
+			0x5180 => "subq.l",
+			_ => string.Empty
+		};
+		if (mnemonic.Length == 0)
+		{
+			source = string.Empty;
+			return false;
+		}
+
+		source = operation is 0x5080 or 0x5180
+			? $"#{QuickCount(opcode)}"
+			: $"d{(opcode >> 9) & 7}";
+		return true;
 	}
 
 	private bool TryRenderDisplacementInstruction(int offset, ushort opcode, out RenderedInstruction instruction)
@@ -1147,6 +1731,7 @@ internal sealed class M68kAssembler
 				{
 					return false;
 				}
+				var indexScale = 1 << ((indexExtension >> 9) & 3);
 				operand = new M68kOperand(
 					M68kOperandKind.Memory,
 					FormatDisplacement(
@@ -1154,7 +1739,8 @@ internal sealed class M68kAssembler
 						"(a" + register + "," +
 						((indexExtension & 0x8000) != 0 ? "a" : "d") +
 						((indexExtension >> 12) & 7) + "." +
-						((indexExtension & 0x0800) != 0 ? "l" : "w") + ")"),
+						((indexExtension & 0x0800) != 0 ? "l" : "w") +
+						(indexScale == 1 ? "" : "*" + indexScale) + ")"),
 					2);
 				return true;
 			case 7:
@@ -1438,6 +2024,14 @@ internal sealed class M68kAssembler
 		}
 	}
 
+	private static void ValidateFpuRegister(int register)
+	{
+		if ((uint)register > 7)
+		{
+			throw new ArgumentOutOfRangeException(nameof(register));
+		}
+	}
+
 	private enum M68kOperandKind : byte
 	{
 		DataRegister,
@@ -1482,4 +2076,5 @@ internal sealed class M68kAssembler
 internal sealed record LinkedCode(
 	byte[] Bytes,
 	IReadOnlyDictionary<string, int> Labels,
+	IReadOnlyDictionary<string, int> AnalysisAnchors,
 	IReadOnlyList<M68kRelocation> Relocations);

@@ -49,7 +49,8 @@ internal sealed record CilType(
 			CilTypeKind.ManagedReference or
 			CilTypeKind.ManagedPointer or
 			CilTypeKind.UnmanagedPointer or
-			CilTypeKind.GenericParameter ||
+			CilTypeKind.GenericParameter or
+			CilTypeKind.FloatingPoint ||
 		DisplayName == "Amiga.CString";
 
 	public bool IsNullable =>

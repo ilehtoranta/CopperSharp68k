@@ -12,13 +12,33 @@ public enum M68kCpuTarget
 {
 	M68000,
 	M68020,
-	M68040
+	M68040,
+	M68060
+}
+
+/// <summary>Floating-point implementation selected for generated code.</summary>
+public enum M68kFloatingPointMode
+{
+	/// <summary>Reject managed floating-point values and emit no FPU instructions.</summary>
+	Disabled,
+
+	/// <summary>Use the integrated MC68040/MC68060 floating-point unit.</summary>
+	M68040,
+
+	/// <summary>Use an external MC68882 coprocessor with an MC68020 host CPU.</summary>
+	M68882,
+
+	/// <summary>Use the compiler's bundled integer-only CopperFloat runtime.</summary>
+	SoftFloat
 }
 
 /// <summary>Policy for using the memory-writing <c>CLR</c> instruction.</summary>
 public enum M68kClrPolicy
 {
-	/// <summary>Use CLR for stack slots and CPUs where its memory read behavior is safe.</summary>
+	/// <summary>
+	/// Use CLR for isolated compiler-owned clears where materializing zero is not
+	/// faster, and for general memory on CPUs without MC68000 read-before-write.
+	/// </summary>
 	Auto = 0,
 
 	/// <summary>Use CLR even for MC68000-compatible targets.</summary>
@@ -36,8 +56,16 @@ public enum M68kOutputFormat
 /// <summary>High-level runtime assumptions selected for the generated image.</summary>
 public enum M68kRuntimeProfile
 {
+	/// <summary>No post-entry lifetime or shutdown contract is assumed.</summary>
 	Freestanding,
+
+	/// <summary>
+	/// The selected entry is invoked once as an application and its private
+	/// image storage becomes unobservable when the entry terminates.
+	/// </summary>
 	Application,
+
+	/// <summary>The generated image is persistent and may be entered again.</summary>
 	Rom
 }
 
@@ -88,6 +116,19 @@ public enum M68kRegister
 	A4,
 	A5,
 	A6
+}
+
+/// <summary>Physical floating-point register used by a native FPU ABI.</summary>
+public enum M68kFpuRegister
+{
+	FP0,
+	FP1,
+	FP2,
+	FP3,
+	FP4,
+	FP5,
+	FP6,
+	FP7
 }
 
 /// <summary>How a platform extension supplies a base register for an external call.</summary>
@@ -245,6 +286,18 @@ public sealed class M68kRegisterAttribute : Attribute
 	public M68kRegister Register { get; }
 }
 
+/// <summary>Maps a floating-point parameter or return value to an FPU register.</summary>
+[AttributeUsage(AttributeTargets.Parameter | AttributeTargets.ReturnValue, AllowMultiple = false)]
+public sealed class M68kFpuRegisterAttribute : Attribute
+{
+	public M68kFpuRegisterAttribute(M68kFpuRegister register)
+	{
+		Register = register;
+	}
+
+	public M68kFpuRegister Register { get; }
+}
+
 /// <summary>
 /// Marks a value type used solely as caller-provided storage for an external
 /// routine that initializes the pointed-to buffer before it is read.
@@ -362,9 +415,18 @@ public sealed record M68kCompilationRequest
 	public M68kCpuTarget Cpu { get; init; } = M68kCpuTarget.M68000;
 
 	/// <summary>
-	/// Controls memory clears. Auto enables CLR for stack slots and MC68020 and
-	/// newer targets; other MC68000-compatible memory targets require Always
-	/// because CLR performs a memory read.
+	/// Selects native FPU or bundled software floating-point code generation.
+	/// Disabled preserves the historical integer-only compiler behavior.
+	/// </summary>
+	public M68kFloatingPointMode FloatingPoint { get; init; } =
+		M68kFloatingPointMode.Disabled;
+
+	/// <summary>
+	/// Controls memory clears. Auto accounts for the MC68000 CLR read cycle: it
+	/// reuses an available zero register with MOVE, permits isolated CLR clears of
+	/// compiler-owned memory when MOVEQ plus MOVE would not be faster, and enables
+	/// CLR for general memory on MC68020 and newer targets. Always explicitly opts
+	/// MC68000-compatible general memory into CLR's read-before-write behavior.
 	/// </summary>
 	public M68kClrPolicy ClrPolicy { get; init; } = M68kClrPolicy.Auto;
 
@@ -415,6 +477,16 @@ public readonly record struct M68kSymbol(string Name, uint Address, int Size);
 /// <summary>An absolute 32-bit address patched by the linker.</summary>
 public readonly record struct M68kRelocation(int Offset, string Target);
 
+/// <summary>Final linked footprint of one natural loop.</summary>
+public sealed record M68kLoopFootprint(
+	string Method,
+	int HeaderIlOffset,
+	uint HeaderAddress,
+	int InstructionBytes,
+	int SpanBytes,
+	int CacheLineCount,
+	bool FitsIn256ByteInstructionCache);
+
 /// <summary>Successful compiler output.</summary>
 public sealed class M68kCompilationResult
 {
@@ -427,7 +499,10 @@ public sealed class M68kCompilationResult
 		string map,
 		string? text,
 		IReadOnlyList<Backend.M68kMethodAllocationStatistics>
-			allocationStatistics)
+			allocationStatistics,
+		IReadOnlyList<Backend.M68kTerminalDeadStoreStatistics>
+			terminalDeadStoreStatistics,
+		IReadOnlyList<M68kLoopFootprint> loopFootprints)
 	{
 		Image = image;
 		Code = code;
@@ -437,6 +512,8 @@ public sealed class M68kCompilationResult
 		Map = map;
 		Text = text;
 		AllocationStatistics = allocationStatistics;
+		TerminalDeadStoreStatistics = terminalDeadStoreStatistics;
+		LoopFootprints = loopFootprints;
 	}
 
 	public byte[] Image { get; }
@@ -455,6 +532,15 @@ public sealed class M68kCompilationResult
 	/// <summary>Assembler source when <see cref="M68kOutputFormat.Assembly"/> is selected.</summary>
 	public string? Text { get; }
 
+	/// <summary>
+	/// Natural-loop footprints measured from final linked instruction ranges.
+	/// Cache lines use the MC68020/MC68030 256-byte, four-byte-line model.
+	/// </summary>
+	public IReadOnlyList<M68kLoopFootprint> LoopFootprints { get; }
+
 	internal IReadOnlyList<Backend.M68kMethodAllocationStatistics>
 		AllocationStatistics { get; }
+
+	internal IReadOnlyList<Backend.M68kTerminalDeadStoreStatistics>
+		TerminalDeadStoreStatistics { get; }
 }

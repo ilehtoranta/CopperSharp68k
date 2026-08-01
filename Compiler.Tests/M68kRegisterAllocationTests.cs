@@ -1,9 +1,356 @@
+using System.Reflection.Emit;
 using CopperSharp.Compiler.Backend;
+using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kRegisterAllocationTests
 {
+	[Fact]
+	public void LoopFootprintDetectsInstructionCacheIndexConflicts()
+	{
+		var layouts = new[]
+		{
+			new M68kLoopLayout(
+				"cache-conflict",
+				12,
+				"header",
+				new[]
+				{
+					new M68kLoopBlockLayout("header", "first-end"),
+					new M68kLoopBlockLayout("second", "second-end")
+				})
+		};
+		var labels = new Dictionary<string, int>
+		{
+			["header"] = 0,
+			["second"] = 256
+		};
+		var anchors = new Dictionary<string, int>
+		{
+			["first-end"] = 128,
+			["second-end"] = 384
+		};
+
+		var footprint = Assert.Single(
+			M68kLoopFootprintAnalysis.Measure(layouts, labels, anchors, 0x1000));
+
+		Assert.Equal(0x1000u, footprint.HeaderAddress);
+		Assert.Equal(256, footprint.InstructionBytes);
+		Assert.Equal(384, footprint.SpanBytes);
+		Assert.Equal(64, footprint.CacheLineCount);
+		Assert.False(footprint.FitsIn256ByteInstructionCache);
+	}
+
+	[Fact]
+	public void BlockLayoutUsesOriginalFalseSuccessorAsDiamondFallthrough()
+	{
+		var function = new M68kMachineFunction("layout-diamond", 0);
+		var entry = AddBlock(function, 0, 0);
+		var taken = AddBlock(function, 1, 10);
+		var fallthrough = AddBlock(function, 2, 20);
+		var join = AddBlock(function, 3, 30);
+		Connect(entry, taken);
+		Connect(entry, fallthrough);
+		Connect(taken, join);
+		Connect(fallthrough, join);
+
+		var layout = CreateIdentityLayout(function);
+
+		Assert.Equal(entry.Id, layout.BlockIds[0]);
+		Assert.Equal(fallthrough.Id, layout.BlockIds[1]);
+		Assert.Equal(layout.BlockIds, CreateIdentityLayout(function).BlockIds);
+	}
+
+	[Fact]
+	public void BlockLayoutKeepsLoopBodyAheadOfExit()
+	{
+		var function = new M68kMachineFunction("layout-loop", 0);
+		var entry = AddBlock(function, 0, 0);
+		var header = AddBlock(function, 1, 10);
+		var exit = AddBlock(function, 2, 20);
+		var body = AddBlock(function, 3, 30);
+		Connect(entry, header);
+		Connect(header, exit);
+		Connect(header, body);
+		Connect(body, header);
+		M68kControlFlowAnalysis.ComputeLoopDepths(function);
+
+		var layout = CreateIdentityLayout(function);
+		var order = layout.BlockIds.ToList();
+
+		Assert.True(
+			order.IndexOf(body.Id) < order.IndexOf(exit.Id));
+	}
+
+	[Fact]
+	public void BlockLayoutSinksTransitiveColdFailureChain()
+	{
+		var function = new M68kMachineFunction("layout-cold-chain", 0);
+		var entry = AddBlock(function, 0, 0);
+		var hot = AddBlock(function, 1, 10);
+		var coldForwarder = AddBlock(function, 2, 20);
+		var coldThrow = AddBlock(function, 3, 30);
+		Connect(entry, hot);
+		Connect(entry, coldForwarder);
+		Connect(coldForwarder, coldThrow);
+		coldForwarder.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			20));
+		coldThrow.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Throw,
+			30));
+
+		var layout = CreateIdentityLayout(function);
+
+		Assert.Equal(entry.Id, layout.BlockIds[0]);
+		Assert.Equal(hot.Id, layout.BlockIds[1]);
+		Assert.True(
+			layout.BlockIds.ToList().IndexOf(coldForwarder.Id) >
+			layout.BlockIds.ToList().IndexOf(hot.Id));
+	}
+
+	[Fact]
+	public void BlockLayoutPlacesConditionalHeaderBeforeReciprocalLoopBody()
+	{
+		var function = new M68kMachineFunction("layout-loop-fallthrough", 0);
+		var entry = AddBlock(function, 0, 0);
+		var header = AddBlock(function, 1, 10);
+		var body = AddBlock(function, 2, 20);
+		var exit = AddBlock(function, 3, 30);
+		Connect(entry, header);
+		Connect(header, body);
+		Connect(header, exit);
+		Connect(body, header);
+		M68kControlFlowAnalysis.ComputeLoopDepths(function);
+
+		var layout = CreateIdentityLayout(function);
+		var order = layout.BlockIds.ToList();
+
+		var headerIndex = order.IndexOf(header.Id);
+		Assert.True(headerIndex < order.IndexOf(body.Id));
+		Assert.Contains(order[headerIndex + 1], new[] { body.Id, exit.Id });
+	}
+
+	[Fact]
+	public void BlockLayoutPlacesSelectedCriticalEdgeBlockAfterConditional()
+	{
+		var function = new M68kMachineFunction("layout-critical-edge", 0);
+		var entry = AddBlock(function, 0, 0);
+		var alternate = AddBlock(function, 1, 10);
+		var join = AddBlock(function, 2, 20);
+		var split = AddBlock(function, 3, 20);
+		Connect(entry, alternate);
+		Connect(entry, split);
+		Connect(alternate, join);
+		Connect(split, join);
+		split.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			20));
+
+		var layout = CreateIdentityLayout(function);
+		var order = layout.BlockIds.ToList();
+
+		var entryIndex = order.IndexOf(entry.Id);
+		Assert.Equal(split.Id, layout.BlockIds[entryIndex + 1]);
+	}
+
+	[Fact]
+	public void BlockLayoutCanSelectTrueEdgeBlockAsFallthrough()
+	{
+		var function = new M68kMachineFunction("layout-true-edge", 0);
+		var entry = AddBlock(function, 0, 0);
+		var falseBlock = AddBlock(function, 1, 10);
+		var join = AddBlock(function, 2, 20);
+		var trueEdge = AddBlock(function, 3, 20);
+		Connect(entry, trueEdge);
+		Connect(entry, falseBlock);
+		Connect(trueEdge, join);
+		trueEdge.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			20));
+
+		var layout = CreateIdentityLayout(function);
+
+		Assert.Equal([entry.Id, trueEdge.Id], layout.BlockIds.Take(2));
+	}
+
+	[Fact]
+	public void BlockLayoutKeepsEntryAndExceptionBlocksAsChainRoots()
+	{
+		var function = new M68kMachineFunction("layout-roots", 0);
+		var entry = AddBlock(function, 0, 0);
+		var normal = AddBlock(function, 1, 10);
+		var handler = AddBlock(function, 2, 20);
+		handler.IsExceptionEntry = true;
+		Connect(entry, normal);
+		Connect(normal, handler);
+
+		var layout = CreateIdentityLayout(function);
+
+		Assert.Equal(entry.Id, layout.BlockIds[0]);
+		Assert.Equal(handler.Id, layout.BlockIds[^1]);
+	}
+
+	[Fact]
+	public void FinalDestinationsCollapseForwardingChainsAndPreserveAliases()
+	{
+		var function = new M68kMachineFunction("final-destinations-chain", 0);
+		var entry = AddBlock(function, 0, 0);
+		var first = AddBlock(function, 1, 10);
+		var second = AddBlock(function, 2, 20);
+		var merge = AddBlock(function, 3, 30);
+		var target = AddBlock(function, 4, 40);
+		Connect(entry, first);
+		Connect(entry, second);
+		Connect(first, merge);
+		Connect(second, merge);
+		Connect(merge, target);
+		AddPlainBranch(function, first);
+		AddPlainBranch(function, second);
+		AddPlainBranch(function, merge);
+
+		var plan = M68kFinalDestinationPlan.Create(
+			function,
+			CreateEmptyParallelCopies());
+
+		Assert.Equal(target.Id, plan.Resolve(first.Id));
+		Assert.Equal(target.Id, plan.Resolve(second.Id));
+		Assert.Equal(target.Id, plan.Resolve(merge.Id));
+		Assert.Equal([entry.Id, target.Id], plan.EmittedBlockIds);
+		Assert.Equal([first.Id, second.Id, merge.Id], plan.AliasesByDestination[target.Id]);
+		var repeated = M68kFinalDestinationPlan.Create(
+			function,
+			CreateEmptyParallelCopies());
+		Assert.Equal(
+			plan.FinalDestinationByBlock.OrderBy(static item => item.Key),
+			repeated.FinalDestinationByBlock.OrderBy(static item => item.Key));
+	}
+
+	[Fact]
+	public void FinalDestinationsRetainCyclesAndCollapseTheirAcyclicPrefix()
+	{
+		var function = new M68kMachineFunction("final-destinations-cycle", 0);
+		var entry = AddBlock(function, 0, 0);
+		var prefix = AddBlock(function, 1, 10);
+		var firstCycle = AddBlock(function, 2, 20);
+		var secondCycle = AddBlock(function, 3, 30);
+		Connect(entry, prefix);
+		Connect(prefix, firstCycle);
+		Connect(firstCycle, secondCycle);
+		Connect(secondCycle, firstCycle);
+		AddPlainBranch(function, prefix);
+		AddPlainBranch(function, firstCycle);
+		AddPlainBranch(function, secondCycle);
+
+		var plan = M68kFinalDestinationPlan.Create(
+			function,
+			CreateEmptyParallelCopies());
+
+		Assert.Equal(firstCycle.Id, plan.Resolve(prefix.Id));
+		Assert.Equal(firstCycle.Id, plan.Resolve(firstCycle.Id));
+		Assert.Equal(secondCycle.Id, plan.Resolve(secondCycle.Id));
+		Assert.Equal([entry.Id, firstCycle.Id, secondCycle.Id], plan.EmittedBlockIds);
+		Assert.Equal([prefix.Id], plan.AliasesByDestination[firstCycle.Id]);
+	}
+
+	[Fact]
+	public void FinalDestinationsRetainSemanticForwarders()
+	{
+		var function = new M68kMachineFunction("final-destinations-effects", 0);
+		var entry = AddBlock(function, 0, 0);
+		var exceptionEntry = AddBlock(function, 1, 10);
+		var phiBlock = AddBlock(function, 2, 20);
+		var copiedEdge = AddBlock(function, 3, 30);
+		var leave = AddBlock(function, 4, 40);
+		var effectful = AddBlock(function, 5, 50);
+		var target = AddBlock(function, 6, 60);
+		exceptionEntry.IsExceptionEntry = true;
+		foreach (var block in new[]
+			{
+				exceptionEntry,
+				phiBlock,
+				copiedEdge,
+				leave,
+				effectful
+			})
+		{
+			Connect(entry, block);
+			Connect(block, target);
+		}
+		var source = CreateLong(function);
+		var result = CreateLong(function);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [source.Id]));
+		phiBlock.Phis.Add(new M68kMachinePhi(
+			result.Id,
+			new Dictionary<int, int> { [entry.Id] = source.Id }));
+		AddPlainBranch(function, exceptionEntry);
+		AddPlainBranch(function, phiBlock);
+		AddPlainBranch(function, copiedEdge);
+		leave.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			leave.StartIlOffset,
+			sourceInstruction: new CilInstruction(
+				leave.StartIlOffset,
+				OpCodes.Leave,
+				target.StartIlOffset,
+				leave.StartIlOffset + 5)));
+		effectful.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			effectful.StartIlOffset,
+			memoryEffect: M68kMachineMemoryEffect.Write));
+		var edgeCopies = new Dictionary<
+			(int From, int To),
+			IReadOnlyList<M68kParallelCopy>>
+		{
+			[(entry.Id, copiedEdge.Id)] =
+			[
+				new M68kParallelCopy(
+					M68kStorageLocation.Register(M68kRegister.D0),
+					M68kStorageLocation.Register(M68kRegister.D1))
+			]
+		};
+
+		var plan = M68kFinalDestinationPlan.Create(
+			function,
+			new M68kParallelCopyPlan(edgeCopies, NeedsTemporarySlot: false));
+
+		foreach (var block in new[]
+			{
+				entry,
+				exceptionEntry,
+				phiBlock,
+				copiedEdge,
+				leave,
+				effectful
+			})
+		{
+			Assert.Equal(block.Id, plan.Resolve(block.Id));
+		}
+	}
+
+	[Fact]
+	public void BlockLayoutUsesFinalDestinationsAndOmitsForwarders()
+	{
+		var function = new M68kMachineFunction("layout-final-destinations", 0);
+		var entry = AddBlock(function, 0, 0);
+		var forwarding = AddBlock(function, 1, 10);
+		var target = AddBlock(function, 2, 20);
+		Connect(entry, forwarding);
+		Connect(forwarding, target);
+		AddPlainBranch(function, forwarding);
+		var finalDestinations = M68kFinalDestinationPlan.Create(
+			function,
+			CreateEmptyParallelCopies());
+
+		var layout = M68kBlockLayoutPlan.Create(function, finalDestinations);
+
+		Assert.Equal([entry.Id, target.Id], layout.BlockIds);
+	}
+
 	[Fact]
 	public void VerifierRejectsByteValueInAddressRegisterClass()
 	{
@@ -140,6 +487,206 @@ public sealed class M68kRegisterAllocationTests
 			allocation.Registers[source.Id],
 			allocation.Registers[copy.Id]);
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void AddressConstraintCoalescesAnExistingAddressValue()
+	{
+		var function = new M68kMachineFunction("address-copy", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		var constrained = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			1,
+			uses: [source.Id],
+			definitions: [constrained.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			2,
+			uses: [constrained.Id]));
+
+		var allocation = Allocate(function, out var graph);
+
+		Assert.Equal(allocation.Registers[source.Id], allocation.Registers[constrained.Id]);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void AddressConstraintCoalescesAFlexiblePointerIntoItsAddressRegister()
+	{
+		var function = new M68kMachineFunction("flexible-address-copy", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress);
+		var constrained = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			1,
+			uses: [source.Id],
+			definitions: [constrained.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			2,
+			uses: [constrained.Id, source.Id]));
+
+		var allocation = Allocate(function, out var graph);
+
+		Assert.InRange(
+			allocation.Registers[source.Id].Register,
+			M68kRegister.A0,
+			M68kRegister.A6);
+		Assert.Equal(
+			allocation.Registers[source.Id],
+			allocation.Registers[constrained.Id]);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void AddressConstraintPropagatesThroughFlexibleCopyChain()
+	{
+		var function = new M68kMachineFunction("transitive-address-copy", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress);
+		var localLoad = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress);
+		var constrained = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			1,
+			uses: [source.Id],
+			definitions: [localLoad.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			2,
+			uses: [localLoad.Id],
+			definitions: [constrained.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			3,
+			uses: [constrained.Id, localLoad.Id, source.Id]));
+
+		var allocation = Allocate(function, out var graph);
+
+		Assert.InRange(
+			allocation.Registers[source.Id].Register,
+			M68kRegister.A0,
+			M68kRegister.A6);
+		Assert.Equal(
+			allocation.Registers[source.Id],
+			allocation.Registers[localLoad.Id]);
+		Assert.Equal(
+			allocation.Registers[source.Id],
+			allocation.Registers[constrained.Id]);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void AddressConstraintMovesADataRegisterPointerToAnAddressRegister()
+	{
+		var function = new M68kMachineFunction("data-address-copy", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.D2),
+			precoloredRegister: M68kRegister.D2);
+		var constrained = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			1,
+			uses: [source.Id],
+			definitions: [constrained.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			2,
+			uses: [constrained.Id]));
+
+		var allocation = Allocate(function, out var graph);
+
+		Assert.Equal(M68kRegister.D2, allocation.Registers[source.Id].Register);
+		Assert.InRange(
+			allocation.Registers[constrained.Id].Register,
+			M68kRegister.A0,
+			M68kRegister.A6);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void NonCoalescingCopySeparatesALiveSourceButReusesADeadSource()
+	{
+		static (M68kAllocationResult Allocation, M68kInterferenceGraph Graph, int Source, int Copy)
+			Build(bool sourceRemainsLive)
+		{
+			var function = new M68kMachineFunction("destructive-copy", 0);
+			var block = AddBlock(function, 0, 0);
+			var source = CreateLong(function);
+			var copy = CreateLong(function);
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Constant,
+				0,
+				definitions: [source.Id]));
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Copy,
+				1,
+				uses: [source.Id],
+				definitions: [copy.Id],
+				allowCopyCoalescing: false));
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Other,
+				2,
+				uses: sourceRemainsLive ? [copy.Id, source.Id] : [copy.Id]));
+			var allocation = Allocate(function, out var graph);
+			return (allocation, graph, source.Id, copy.Id);
+		}
+
+		var live = Build(sourceRemainsLive: true);
+		var dead = Build(sourceRemainsLive: false);
+
+		Assert.NotEqual(
+			live.Allocation.Registers[live.Source],
+			live.Allocation.Registers[live.Copy]);
+		Assert.Equal(
+			dead.Allocation.Registers[dead.Source],
+			dead.Allocation.Registers[dead.Copy]);
 	}
 
 	[Fact]
@@ -808,6 +1355,31 @@ public sealed class M68kRegisterAllocationTests
 		var block = new M68kMachineBlock(id, ilOffset);
 		function.Blocks.Add(block);
 		return block;
+	}
+
+	private static void AddPlainBranch(
+		M68kMachineFunction function,
+		M68kMachineBlock block) =>
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			block.StartIlOffset));
+
+	private static M68kParallelCopyPlan CreateEmptyParallelCopies() =>
+		new(
+			new Dictionary<
+				(int From, int To),
+				IReadOnlyList<M68kParallelCopy>>(),
+			NeedsTemporarySlot: false);
+
+	private static M68kBlockLayoutPlan CreateIdentityLayout(
+		M68kMachineFunction function)
+	{
+		var blockIds = function.Blocks.Select(static block => block.Id).ToArray();
+		var finalDestinations = new M68kFinalDestinationPlan(
+			blockIds.ToDictionary(static blockId => blockId),
+			blockIds,
+			new Dictionary<int, IReadOnlyList<int>>());
+		return M68kBlockLayoutPlan.Create(function, finalDestinations);
 	}
 
 	private static void Connect(M68kMachineBlock from, M68kMachineBlock to)

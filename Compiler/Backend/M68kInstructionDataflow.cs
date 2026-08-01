@@ -24,7 +24,8 @@ internal readonly record struct M68kEmittedInstruction(
 	bool IsDecoded,
 	M68kInstructionKind Kind,
 	int? TargetOffset,
-	bool ExternalTarget);
+	bool ExternalTarget,
+	bool IsNonReturning);
 
 [Flags]
 internal enum M68kConditionCodeSet : byte
@@ -85,15 +86,18 @@ internal sealed class M68kInstructionDataflow
 	private readonly IReadOnlyList<M68kEmittedInstruction> _instructions;
 	private readonly IReadOnlyDictionary<int, M68kInstructionDataflowFacts> _facts;
 	private readonly M68kValueRangeAnalysis _values;
+	private readonly M68kConditionProvenanceAnalysis _conditions;
 
 	private M68kInstructionDataflow(
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyDictionary<int, M68kInstructionDataflowFacts> facts,
-		M68kValueRangeAnalysis values)
+		M68kValueRangeAnalysis values,
+		M68kConditionProvenanceAnalysis conditions)
 	{
 		_instructions = instructions;
 		_facts = facts;
 		_values = values;
+		_conditions = conditions;
 	}
 
 	internal IReadOnlyList<M68kEmittedInstruction> Instructions => _instructions;
@@ -111,6 +115,16 @@ internal sealed class M68kInstructionDataflow
 	internal M68kAddressAlias GetAddressAliasBefore(int offset, int register) =>
 		_values.GetAddressAliasBefore(offset, register);
 
+	internal bool IsConditionInstructionRedundant(
+		M68kEmittedInstruction instruction,
+		M68kConditionCodeSet required) =>
+		_conditions.IsRedundant(instruction, required);
+
+	internal bool TryGetKnownZeroTest(
+		M68kEmittedInstruction instruction,
+		out bool nonZero) =>
+		_conditions.TryGetKnownZeroTest(instruction, out nonZero);
+
 	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler)
 	{
 		var instructions = assembler.GetInstructionStream();
@@ -119,7 +133,8 @@ internal sealed class M68kInstructionDataflow
 			return new M68kInstructionDataflow(
 				instructions,
 				new Dictionary<int, M68kInstructionDataflowFacts>(),
-				M68kValueRangeAnalysis.Empty);
+				M68kValueRangeAnalysis.Empty,
+				M68kConditionProvenanceAnalysis.Empty);
 		}
 
 		var indexByOffset = instructions
@@ -229,7 +244,12 @@ internal sealed class M68kInstructionDataflow
 		return new M68kInstructionDataflow(
 			instructions,
 			result,
-			M68kValueRangeAnalysis.Analyze(instructions, successors, predecessors, effects));
+			M68kValueRangeAnalysis.Analyze(instructions, successors, predecessors, effects),
+			M68kConditionProvenanceAnalysis.Analyze(
+				instructions,
+				successors,
+				predecessors,
+				effects));
 	}
 
 	private static IReadOnlyList<int>[] BuildSuccessors(
@@ -255,7 +275,10 @@ internal sealed class M68kInstructionDataflow
 				case M68kInstructionKind.Return:
 					break;
 				default:
-					AddNext(successors, next);
+					if (!instruction.IsNonReturning)
+					{
+						AddNext(successors, next);
+					}
 					break;
 			}
 			result[index] = successors;
@@ -371,7 +394,7 @@ internal sealed class M68kInstructionDataflow
 				register,
 				0,
 				0,
-				M68kConditionCodeSet.None,
+				ConditionCodes((instruction.Opcode >> 8) & 0x0F),
 				M68kConditionCodeSet.None,
 				M68kMemorySet.None,
 				M68kMemorySet.None,
@@ -572,9 +595,11 @@ internal sealed class M68kInstructionDataflow
 		private int? _stackDelta = 0;
 		private bool _barrier;
 		private bool _canRemoveWhenOutputsDead;
+		private ushort _extensionWord;
 
 		internal void ClassifyNormal(ushort opcode, ushort extensionWord)
 		{
+			_extensionWord = extensionWord;
 			if ((opcode & 0xF100) == 0x7000)
 			{
 				DefineData((opcode >> 9) & 7);
@@ -584,7 +609,7 @@ internal sealed class M68kInstructionDataflow
 			}
 
 			if ((opcode & 0xF1FF) == 0x41EF || opcode == 0x4FEF ||
-				(opcode & 0xFFC0) == 0x41C0)
+				(opcode & 0xF1C0) == 0x41C0)
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.AddressOnly);
 				var destination = (opcode >> 9) & 7;
@@ -606,7 +631,7 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
-			if (opcode is 0x48E7 or 0x48D7 or 0x48EF or 0x4CDF)
+			if ((opcode & 0xFFC0) is 0x48C0 or 0x4CC0)
 			{
 				ClassifyMovem(opcode, extensionWord);
 				return;
@@ -629,6 +654,16 @@ internal sealed class M68kInstructionDataflow
 			if ((opcode & 0xF000) == 0x3000)
 			{
 				ClassifyMove(opcode);
+				_canRemoveWhenOutputsDead = true;
+				return;
+			}
+
+			if ((opcode & 0xF1F8) == 0xC140)
+			{
+				UseData((opcode >> 9) & 7);
+				DefineData((opcode >> 9) & 7);
+				UseData(opcode & 7);
+				DefineData(opcode & 7);
 				_canRemoveWhenOutputsDead = true;
 				return;
 			}
@@ -682,6 +717,14 @@ internal sealed class M68kInstructionDataflow
 			{
 				ClassifyQuickOrSet(opcode);
 				_canRemoveWhenOutputsDead = true;
+				return;
+			}
+
+			if (((opcode & 0xF100) == 0x0100 ||
+				 (opcode & 0xFF00) == 0x0800) &&
+				((opcode >> 3) & 7) != 1)
+			{
+				ClassifyBitOperation(opcode);
 				return;
 			}
 
@@ -787,12 +830,15 @@ internal sealed class M68kInstructionDataflow
 
 		private void ClassifyMovem(ushort opcode, ushort mask)
 		{
-			var predecrement = opcode == 0x48E7;
-			var postincrement = opcode == 0x4CDF;
-			UseAddress(7);
-			DefineAddress(7);
+			var isStore = (opcode & 0xFFC0) == 0x48C0;
+			var mode = (opcode >> 3) & 7;
+			var addressRegister = opcode & 7;
+			var predecrement = isStore && mode == 4;
+			var postincrement = !isStore && mode == 3;
 			if (predecrement)
 			{
+				UseAddress(addressRegister);
+				DefineAddress(addressRegister);
 				for (var register = 0; register < 8; register++)
 				{
 					if ((mask & (1 << register)) != 0)
@@ -810,6 +856,8 @@ internal sealed class M68kInstructionDataflow
 
 			if (postincrement)
 			{
+				UseAddress(addressRegister);
+				DefineAddress(addressRegister);
 				for (var register = 0; register < 8; register++)
 				{
 					if ((mask & (1 << register)) != 0)
@@ -825,16 +873,32 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
-			_writesMemory |= M68kMemorySet.Stack;
-			foreach (var register in Enumerable.Range(0, 8))
+			AddEffectiveAddress(
+				opcode,
+				isStore ? EffectiveAddressAccess.Write : EffectiveAddressAccess.Read);
+			for (var registerIndex = 0; registerIndex < 8; registerIndex++)
 			{
-				if ((mask & (1 << register)) != 0)
+				if ((mask & (1 << registerIndex)) != 0)
 				{
-					UseData(register);
+					if (isStore)
+					{
+						UseData(registerIndex);
+					}
+					else
+					{
+						DefineData(registerIndex);
+					}
 				}
-				if ((mask & (1 << (register + 8))) != 0)
+				if ((mask & (1 << (registerIndex + 8))) != 0)
 				{
-					UseAddress(register);
+					if (isStore)
+					{
+						UseAddress(registerIndex);
+					}
+					else
+					{
+						DefineAddress(registerIndex);
+					}
 				}
 			}
 		}
@@ -873,6 +937,13 @@ internal sealed class M68kInstructionDataflow
 		private void ClassifyArithmetic(ushort opcode)
 		{
 			var operationMode = (opcode >> 6) & 7;
+			if (operationMode is >= 4 and <= 6 &&
+				(opcode & 0xF130) is 0xD100 or 0x9100)
+			{
+				_readsConditions |= M68kConditionCodeSet.Extend |
+					M68kConditionCodeSet.Zero;
+			}
+
 			if ((opcode & 0xF000) == 0xB000)
 			{
 				if (operationMode is 3 or 7)
@@ -919,6 +990,22 @@ internal sealed class M68kInstructionDataflow
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 			}
 			WriteArithmeticConditions();
+		}
+
+		private void ClassifyBitOperation(ushort opcode)
+		{
+			if ((opcode & 0xF100) == 0x0100)
+			{
+				UseData((opcode >> 9) & 7);
+			}
+			var operation = (opcode >> 6) & 3;
+			AddEffectiveAddress(
+				opcode,
+				operation == 0
+					? EffectiveAddressAccess.Read
+					: EffectiveAddressAccess.ReadWrite);
+			_writesConditions = M68kConditionCodeSet.Zero;
+			_canRemoveWhenOutputsDead = operation == 0;
 		}
 
 		private void ClassifyShift(ushort opcode)
@@ -982,9 +1069,27 @@ internal sealed class M68kInstructionDataflow
 					}
 					break;
 				case 5:
+					UseAddress(register);
+					if (access != EffectiveAddressAccess.AddressOnly)
+					{
+						AddMemory(register == 7 ? M68kMemorySet.Stack : M68kMemorySet.Indirect, access);
+					}
+					break;
 				case 6:
 					UseAddress(register);
-					AddMemory(register == 7 ? M68kMemorySet.Stack : M68kMemorySet.Indirect, access);
+					var indexRegister = (_extensionWord >> 12) & 7;
+					if ((_extensionWord & 0x8000) != 0)
+					{
+						UseAddress(indexRegister);
+					}
+					else
+					{
+						UseData(indexRegister);
+					}
+					if (access != EffectiveAddressAccess.AddressOnly)
+					{
+						AddMemory(register == 7 ? M68kMemorySet.Stack : M68kMemorySet.Indirect, access);
+					}
 					break;
 				case 7:
 					if (register is 0 or 1)

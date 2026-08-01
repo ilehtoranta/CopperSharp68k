@@ -19,7 +19,7 @@
     <IsPackable>true</IsPackable>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <PackageTags>compiler;aot;cil;amiga;hunk;kickstart;m68000;m68020;m68040</PackageTags>
+    <PackageTags>compiler;aot;cil;amiga;hunk;kickstart;m68000;m68020;m68040;m68060</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

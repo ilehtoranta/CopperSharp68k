@@ -22,9 +22,18 @@ static int Run(string[] args)
 		var output = GetRequired(args, "--output");
 		var entry = GetRequired(args, "--entry");
 		var cpu = ParseCpu(GetOptional(args, "--cpu") ?? "68000");
+		var floatingPoint = ParseFloatingPoint(GetOptional(args, "--fpu") ?? "disabled");
 		var clrPolicy = ParseClrPolicy(GetOptional(args, "--clr") ?? "auto");
 		var exceptionMode = ParseExceptionMode(GetOptional(args, "--exceptions") ?? "full");
 		var format = ParseFormat(GetOptional(args, "--format") ?? "hunk");
+		var runtimeProfile = ParseRuntimeProfile(
+			GetOptional(args, "--runtime") ??
+			format switch
+			{
+				M68kOutputFormat.Hunk => "application",
+				M68kOutputFormat.KickstartRom => "rom",
+				_ => "freestanding"
+			});
 		var romSize = ParseInt(GetOptional(args, "--rom-size") ?? "524288");
 		var romBase = ParseUInt(GetOptional(args, "--rom-base") ?? "0");
 		var stack = ParseUInt(GetOptional(args, "--stack") ?? "0x80000");
@@ -35,9 +44,11 @@ static int Run(string[] args)
 			AssemblyPath = input,
 			EntryPoint = entry,
 			Cpu = cpu,
+			FloatingPoint = floatingPoint,
 			ClrPolicy = clrPolicy,
 			ExceptionMode = exceptionMode,
 			OutputFormat = format,
+			RuntimeProfile = runtimeProfile,
 			Imports = imports,
 			Rom = new KickstartRomOutputOptions
 			{
@@ -104,7 +115,18 @@ static M68kCpuTarget ParseCpu(string value) =>
 		"68000" or "m68000" => M68kCpuTarget.M68000,
 		"68020" or "m68020" => M68kCpuTarget.M68020,
 		"68040" or "m68040" => M68kCpuTarget.M68040,
+		"68060" or "m68060" => M68kCpuTarget.M68060,
 		_ => throw new ArgumentException($"Unknown CPU '{value}'.")
+	};
+
+static M68kFloatingPointMode ParseFloatingPoint(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"disabled" or "none" => M68kFloatingPointMode.Disabled,
+		"040" or "68040" or "m68040" or "native" => M68kFloatingPointMode.M68040,
+		"68882" or "m68882" => M68kFloatingPointMode.M68882,
+		"soft" or "softfloat" or "copperfloat" => M68kFloatingPointMode.SoftFloat,
+		_ => throw new ArgumentException($"Unknown floating-point mode '{value}'.")
 	};
 
 static M68kClrPolicy ParseClrPolicy(string value) =>
@@ -130,6 +152,15 @@ static M68kOutputFormat ParseFormat(string value) =>
 		"rom" or "kickstart" => M68kOutputFormat.KickstartRom,
 		"asm" or "assembly" or "text" => M68kOutputFormat.Assembly,
 		_ => throw new ArgumentException($"Unknown output format '{value}'.")
+	};
+
+static M68kRuntimeProfile ParseRuntimeProfile(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"freestanding" or "unknown" => M68kRuntimeProfile.Freestanding,
+		"application" or "app" => M68kRuntimeProfile.Application,
+		"rom" or "persistent" => M68kRuntimeProfile.Rom,
+		_ => throw new ArgumentException($"Unknown runtime profile '{value}'.")
 	};
 
 static int ParseInt(string value) =>
@@ -175,8 +206,10 @@ static void PrintUsage()
 	Console.WriteLine(
 		"""
 		copper68kc <assembly.dll> --entry Namespace.Type::Method --output <file>
-		  [--cpu 68000|68020|68040] [--clr auto|always]
+		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
+		  [--clr auto|always]
 		  [--exceptions full|yolo] [--format hunk|rom|asm]
+		  [--runtime freestanding|application|rom]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]
 		""");

@@ -167,7 +167,24 @@ internal sealed class M68kValueRangeAnalysis
 		M68kInstructionEffects effects)
 	{
 		var output = input.Clone();
-		InvalidateDefinedRegisters(output, effects);
+		if (effects.IsBarrier)
+		{
+			// A call or undecoded instruction can replace register values even when
+			// the conservative liveness model treats every register as an input.
+			// Do not let constants or address aliases survive that boundary.
+			Array.Fill(output.Data, M68kValueRange.Unknown);
+			var addressRegisterCount = instruction.Kind == M68kInstructionKind.Call
+				? 7
+				: 8;
+			for (var register = 0; register < addressRegisterCount; register++)
+			{
+				output.Address[register] = M68kAddressAlias.Unknown;
+			}
+		}
+		else
+		{
+			InvalidateDefinedRegisters(output, effects);
+		}
 
 		var preciseStackWrite = TryGetPreciseStackWrite(input, instruction, out var writeOffset, out var writeValue);
 		if ((effects.WritesMemory &

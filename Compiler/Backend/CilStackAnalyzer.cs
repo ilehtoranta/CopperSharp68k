@@ -18,6 +18,8 @@ internal enum CilStackValueKind
 	SignedWord,
 	Int32,
 	Int64,
+	Float32,
+	Float64,
 	Reference,
 	ManagedPointer
 }
@@ -591,6 +593,16 @@ internal static class CilStackAnalyzer
 			return Push(Push(stack, CilStackValueKind.Int64), CilStackValueKind.Int64);
 		}
 
+		if (op == OpCodes.Ldc_R4)
+		{
+			return Push(stack, CilStackValueKind.Float32);
+		}
+
+		if (op == OpCodes.Ldc_R8)
+		{
+			return PushValue(stack, CilStackValueKind.Float64);
+		}
+
 		if (op == OpCodes.Ldnull || op == OpCodes.Ldstr)
 		{
 			return Push(stack, CilStackValueKind.Reference);
@@ -654,7 +666,8 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Ceq || op == OpCodes.Cgt || op == OpCodes.Cgt_Un ||
 			op == OpCodes.Clt || op == OpCodes.Clt_Un)
 		{
-			if (stack.TakeLast(Math.Min(4, stack.Length)).Contains(CilStackValueKind.Int64))
+			var comparisonKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
+			if (comparisonKind == CilStackValueKind.Int64)
 			{
 				throw Unsupported(method, instruction, "64-bit comparisons");
 			}
@@ -663,7 +676,8 @@ internal static class CilStackAnalyzer
 			// evaluation-stack representation 32-bit so merges with integer
 			// constants remain ABI-compatible; compact nullable predicates use
 			// BooleanByte independently until a consumer widens them.
-			return Push(Pop(method, instruction, stack, 2), CilStackValueKind.Int32);
+			return Push(Pop(method, instruction, stack,
+				comparisonKind == CilStackValueKind.Float64 ? 4 : 2), CilStackValueKind.Int32);
 		}
 
 		if (op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.And ||
@@ -672,30 +686,45 @@ internal static class CilStackAnalyzer
 			op == OpCodes.Rem_Un || op == OpCodes.Shl || op == OpCodes.Shr ||
 			op == OpCodes.Shr_Un)
 		{
-			if (stack.TakeLast(Math.Min(4, stack.Length)).Contains(CilStackValueKind.Int64))
+			var arithmeticKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
+			if (arithmeticKind == CilStackValueKind.Int64)
 			{
 				throw Unsupported(method, instruction, "64-bit arithmetic and comparisons");
 			}
+			if (arithmeticKind is CilStackValueKind.Float32 or CilStackValueKind.Float64 &&
+				(op == OpCodes.And || op == OpCodes.Or || op == OpCodes.Xor ||
+				 op == OpCodes.Shl || op == OpCodes.Shr || op == OpCodes.Shr_Un))
+			{
+				throw Unsupported(method, instruction, "floating-point bitwise arithmetic");
+			}
 
-			return Push(
-				Pop(method, instruction, stack, 2),
+			return PushValue(
+				Pop(method, instruction, stack,
+					arithmeticKind == CilStackValueKind.Float64 ? 4 : 2),
 				TryGetNarrowArithmeticResult(method, instruction, stack, op, out var narrowResult)
 					? narrowResult
-					: CilStackValueKind.Int32);
+					: arithmeticKind is CilStackValueKind.Float32 or CilStackValueKind.Float64
+						? arithmeticKind
+						: CilStackValueKind.Int32);
 		}
 
 		if (op == OpCodes.Neg || op == OpCodes.Not)
 		{
-			if (stack.Length != 0 && stack[^1] == CilStackValueKind.Int64)
+			var unaryKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
+			if (unaryKind == CilStackValueKind.Int64)
 			{
 				throw Unsupported(method, instruction, "64-bit arithmetic");
 			}
+			if (unaryKind is CilStackValueKind.Float32 or CilStackValueKind.Float64 && op == OpCodes.Not)
+			{
+				throw Unsupported(method, instruction, "floating-point bitwise complement");
+			}
 
-			return Push(
-				Pop(method, instruction, stack, 1),
+			return PushValue(
+				Pop(method, instruction, stack, unaryKind == CilStackValueKind.Float64 ? 2 : 1),
 				TryGetNarrowArithmeticResult(method, instruction, stack, op, out var narrowResult)
 					? narrowResult
-					: CilStackValueKind.Int32);
+					: unaryKind);
 		}
 
 		if (op == OpCodes.Brtrue || op == OpCodes.Brtrue_S ||
@@ -860,7 +889,7 @@ internal static class CilStackAnalyzer
 		CilMethod method,
 		CompilationModule module,
 		CilInstruction instruction,
-		int currentDepth)
+		ImmutableArray<CilStackValueKind> currentStack)
 	{
 		var op = instruction.OpCode;
 		if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
@@ -914,7 +943,20 @@ internal static class CilStackAnalyzer
 		}
 		if (op == OpCodes.Leave || op == OpCodes.Leave_S)
 		{
-			return currentDepth;
+			return currentStack.Length;
+		}
+		if ((op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.Mul ||
+			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
+			op == OpCodes.Rem_Un || op == OpCodes.Ceq || op == OpCodes.Cgt ||
+			op == OpCodes.Cgt_Un || op == OpCodes.Clt || op == OpCodes.Clt_Un) &&
+			currentStack.Length != 0 && currentStack[^1] == CilStackValueKind.Float64)
+		{
+			return 4;
+		}
+		if ((op == OpCodes.Neg || op == OpCodes.Not) &&
+			currentStack.Length != 0 && currentStack[^1] == CilStackValueKind.Float64)
+		{
+			return 2;
 		}
 
 		return op.StackBehaviourPop switch
@@ -957,8 +999,8 @@ internal static class CilStackAnalyzer
 	private static ImmutableArray<CilStackValueKind> PushValue(
 		ImmutableArray<CilStackValueKind> stack,
 		CilStackValueKind kind) =>
-		kind == CilStackValueKind.Int64
-			? stack.Add(CilStackValueKind.Int64).Add(CilStackValueKind.Int64)
+		kind is CilStackValueKind.Int64 or CilStackValueKind.Float64
+			? stack.Add(kind).Add(kind)
 			: stack.Add(kind);
 
 	private static ImmutableArray<CilStackValueKind> Pop(
@@ -1008,7 +1050,10 @@ internal static class CilStackAnalyzer
 			index--;
 		}
 
-		return StackKindForType(method.Signature.ParameterTypes[index]);
+		var parameter = method.Signature.ParameterTypes[index];
+		return module.IsTransparentScalarType(parameter)
+			? CilStackValueKind.ManagedPointer
+			: StackKindForType(parameter);
 	}
 
 	private static CilType TypeForParameter(CilMethod method, int index)
@@ -1103,7 +1148,9 @@ internal static class CilStackAnalyzer
 			: CilStackValueKind.Int32;
 
 	internal static CilStackValueKind StackKindForType(CilType type) =>
-		type.Size == 8 && type.IsSupportedScalar
+		type.IsFloatingPoint
+			? type.Size == 8 ? CilStackValueKind.Float64 : CilStackValueKind.Float32
+		: type.Size == 8 && type.IsSupportedScalar
 			? CilStackValueKind.Int64
 			: type.Size == 1 && type.Kind == CilTypeKind.Boolean
 				? CilStackValueKind.BooleanByte

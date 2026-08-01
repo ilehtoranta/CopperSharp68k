@@ -97,7 +97,8 @@ The remaining high-value opportunities are no longer primarily peepholes:
 - instruction scheduling and addressing-mode selection informed by a 68000
   byte-and-cycle cost model;
 - broader interprocedural inlining and tail-call analysis;
-- CPU-specific cost policies for MC68020 and MC68040.
+- broader table-driven CPU cost policies beyond the existing MC68020,
+  MC68040, and MC68060 instruction-selection rules.
 
 These should be implemented as explicit optimizer passes with control-flow and
 analysis support, not accumulated as example-specific patterns in

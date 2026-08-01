@@ -15,6 +15,13 @@ public static class CompilerFixtures
 	}
 
 	private static int _counter;
+	private static int _zeroStatic;
+	private static uint _terminalScalar;
+	private static uint _terminalReadFlag;
+	#pragma warning disable CS0414 // Written-only terminal GC fixture.
+	private static object? _terminalReference;
+	#pragma warning restore CS0414
+	private static APTR _terminalAddress;
 
 	[M68kEntryPoint]
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -23,6 +30,127 @@ public static class CompilerFixtures
 		var left = 9;
 		var right = 5;
 		return Arithmetic(left, right) + LoopAndBranch(6);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalPrivateDefaultStoresEntry()
+	{
+		_terminalScalar = 0;
+		_terminalReference = null;
+		_terminalAddress = APTR.Null;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalObservedReferenceStoreEntry()
+	{
+		_terminalReference = null;
+		M68kRuntime.Collect();
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalStoreBeforeUnknownCallEntry()
+	{
+		_terminalScalar = 0;
+		return NonTerminalPrivateStore();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalOverwriteEntry()
+	{
+		_terminalScalar = 17;
+		_terminalScalar = 0;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalConditionalReadEntry()
+	{
+		_terminalScalar = 0;
+		return _terminalReadFlag != 0 ? _terminalScalar : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalEscapedStaticAddressEntry()
+	{
+		_terminalScalar = 0;
+		IgnoreReference(ref _terminalScalar);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void IgnoreReference(ref uint value)
+	{
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalExceptionalReadEntry()
+	{
+		try
+		{
+			_terminalScalar = 0;
+			return 84 / _terminalReadFlag;
+		}
+		catch (DivideByZeroException)
+		{
+			return _terminalScalar;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalMultipleReturnsEntry()
+	{
+		if (_terminalReadFlag != 0)
+		{
+			_terminalScalar = 0;
+			return 1;
+		}
+		_terminalScalar = 0;
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalLoopEntry()
+	{
+		while (_terminalReadFlag != 0)
+		{
+			_terminalReadFlag--;
+		}
+		_terminalScalar = 0;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalArrayStoreEntry()
+	{
+		var values = new int[1];
+		values[0] = 0;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalFinallyStoreEntry()
+	{
+		try
+		{
+			return 42;
+		}
+		finally
+		{
+			_terminalAddress = APTR.Null;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NonTerminalPrivateStoreEntry() =>
+		NonTerminalPrivateStore();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint NonTerminalPrivateStore()
+	{
+		_terminalAddress = APTR.Null;
+		return 42;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -468,6 +596,100 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CacheBoundaryLoop240Entry() => CacheBoundaryLoop240(2);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint CacheBoundaryLoop240(int count)
+	{
+		var value = 1u;
+		var remaining = count;
+		while (remaining-- != 0)
+		{
+			value = (value << 3) ^ (value + 1);
+			value = (value << 3) ^ (value + 2);
+			value = (value << 3) ^ (value + 3);
+			value = (value << 3) ^ (value + 4);
+			value = (value << 3) ^ (value + 5);
+			value = (value << 3) ^ (value + 6);
+			value = (value << 3) ^ (value + 7);
+			value = (value << 3) ^ (value + 8);
+			value = (value << 3) ^ (value + 9);
+			value = (value << 3) ^ (value + 10);
+			value = (value << 3) ^ (value + 11);
+			value = (value << 3) ^ (value + 12);
+			value = (value << 3) ^ (value + 13);
+			value = (value << 3) ^ (value + 14);
+			value = (value << 3) ^ (value + 15);
+			value = (value << 3) ^ (value + 16);
+		}
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CacheBoundaryLoop256Entry() => CacheBoundaryLoop256(2);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint CacheBoundaryLoop256(int count)
+	{
+		var value = 1u;
+		var remaining = count;
+		while (remaining-- != 0)
+		{
+			value = (value << 3) ^ (value + 1);
+			value = (value << 3) ^ (value + 2);
+			value = (value << 3) ^ (value + 3);
+			value = (value << 3) ^ (value + 4);
+			value = (value << 3) ^ (value + 5);
+			value = (value << 3) ^ (value + 6);
+			value = (value << 3) ^ (value + 7);
+			value = (value << 3) ^ (value + 8);
+			value = (value << 3) ^ (value + 9);
+			value = (value << 3) ^ (value + 10);
+			value = (value << 3) ^ (value + 11);
+			value = (value << 3) ^ (value + 12);
+			value = (value << 3) ^ (value + 13);
+			value = (value << 3) ^ (value + 14);
+			value = (value << 3) ^ (value + 15);
+			value = (value << 3) ^ (value + 16);
+			value = (value << 3) ^ (value + 17);
+		}
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CacheBoundaryLoop280Entry() => CacheBoundaryLoop280(2);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint CacheBoundaryLoop280(int count)
+	{
+		var value = 1u;
+		var remaining = count;
+		while (remaining-- != 0)
+		{
+			value = (value << 3) ^ (value + 1);
+			value = (value << 3) ^ (value + 2);
+			value = (value << 3) ^ (value + 3);
+			value = (value << 3) ^ (value + 4);
+			value = (value << 3) ^ (value + 5);
+			value = (value << 3) ^ (value + 6);
+			value = (value << 3) ^ (value + 7);
+			value = (value << 3) ^ (value + 8);
+			value = (value << 3) ^ (value + 9);
+			value = (value << 3) ^ (value + 10);
+			value = (value << 3) ^ (value + 11);
+			value = (value << 3) ^ (value + 12);
+			value = (value << 3) ^ (value + 13);
+			value = (value << 3) ^ (value + 14);
+			value = (value << 3) ^ (value + 15);
+			value = (value << 3) ^ (value + 16);
+			value = (value << 3) ^ (value + 17);
+			value = (value << 3) ^ (value + 18);
+			value = (value << 3) ^ (value + 19);
+		}
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int ShiftAndCompare()
 	{
 		var value = 3 << 5;
@@ -476,7 +698,24 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ConstantUnsignedShiftEntry()
+	{
+		var value = AddThree(40);
+		return (int)((uint)value >> 1);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ConstantUnsignedShiftNineEntry()
+	{
+		var value = AddThree(1024);
+		return (int)((uint)value >> 9);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int QuickArithmeticEntry() => QuickArithmetic(40);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BoundaryQuickConstantEntry() => 135;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static int QuickArithmetic(int value) => SubtractTwo(AddThree(value));
@@ -644,6 +883,13 @@ public static class CompilerFixtures
 	{
 		global::Amiga.DOS.DOSLibraryBase = APTR.Null;
 		return global::Amiga.DOS.DOSLibraryBase.IsNull ? 42u : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ClearDosLibraryBaseBeforeVectorCall()
+	{
+		global::Amiga.DOS.DOSLibraryBase = APTR.Null;
+		return global::Amiga.DOS.PutStr("terminal base read\n");
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -881,6 +1127,15 @@ public static class CompilerFixtures
 		var box = new ManagedBox();
 		box.Value = 7 + _counter;
 		return box.Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ZeroManagedStoresEntry()
+	{
+		var box = new ManagedBox();
+		box.Value = 0;
+		_zeroStatic = 0;
+		return box.Value + _zeroStatic;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -1516,6 +1771,14 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static float UnsupportedFloat() => 1.25f;
 
+	public static float NativeFloatAdd() => AddFloat(1.25f, 2.5f);
+
+	private static float AddFloat(float left, float right) => left + right;
+
+	public static double NativeDoubleMultiply() => MultiplyDouble(1.5d, 4.0d);
+
+	private static double MultiplyDouble(double left, double right) => left * right;
+
 	public sealed class ManagedBox
 	{
 		public int Value;
@@ -1783,6 +2046,34 @@ public static class CompilerFixtures
 	{
 		var equal = left == right;
 		return equal ? 20 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BooleanOrControlFlowEntry() =>
+		BooleanOrControlFlow(17, 10, 42);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int BooleanOrControlFlow(
+		int value,
+		int lowerBound,
+		int upperBound)
+	{
+		var outside = value < lowerBound || value >= upperBound;
+		return outside ? 1 : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BooleanAndControlFlowEntry() =>
+		BooleanAndControlFlow(17, 10, 42);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int BooleanAndControlFlow(
+		int value,
+		int lowerBound,
+		int upperBound)
+	{
+		var inside = value >= lowerBound && value < upperBound;
+		return inside ? 42 : 1;
 	}
 }
 

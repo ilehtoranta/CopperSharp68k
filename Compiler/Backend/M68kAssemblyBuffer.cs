@@ -11,13 +11,19 @@ internal sealed class M68kAssemblyBuffer
 
 	internal Dictionary<string, int> Labels { get; } = new(StringComparer.Ordinal);
 
+	internal Dictionary<string, int> AnalysisAnchors { get; } = new(StringComparer.Ordinal);
+
 	internal List<BranchFixup> Branches { get; } = new();
 
 	internal List<AddressFixup> Addresses { get; } = new();
 
 	internal List<PcRelativeFixup> PcRelative { get; } = new();
 
+	internal int? DataStartOffset { get; private set; }
+
 	internal bool HasLabelAt(int offset) => Labels.Values.Contains(offset);
+
+	internal void MarkDataStart() => DataStartOffset ??= Bytes.Count;
 
 	internal ushort ReadWord(int offset) =>
 		(ushort)((Bytes[offset] << 8) | Bytes[offset + 1]);
@@ -31,10 +37,69 @@ internal sealed class M68kAssemblyBuffer
 		Bytes[offset + 1] = (byte)value;
 	}
 
+	internal void InsertBytes(int offset, int count)
+	{
+		Bytes.InsertRange(offset, Enumerable.Repeat((byte)0, count));
+		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= offset)
+		{
+			DataStartOffset = dataStartOffset + count;
+		}
+
+		foreach (var label in Labels.Keys.ToArray())
+		{
+			if (Labels[label] > offset)
+			{
+				Labels[label] += count;
+			}
+		}
+		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
+		{
+			if (AnalysisAnchors[anchor] > offset)
+			{
+				AnalysisAnchors[anchor] += count;
+			}
+		}
+
+		for (var index = 0; index < Branches.Count; index++)
+		{
+			if (Branches[index].OpcodeOffset >= offset)
+			{
+				Branches[index] = Branches[index] with
+				{
+					OpcodeOffset = Branches[index].OpcodeOffset + count
+				};
+			}
+		}
+		for (var index = 0; index < Addresses.Count; index++)
+		{
+			if (Addresses[index].Offset >= offset)
+			{
+				Addresses[index] = Addresses[index] with
+				{
+					Offset = Addresses[index].Offset + count
+				};
+			}
+		}
+		for (var index = 0; index < PcRelative.Count; index++)
+		{
+			if (PcRelative[index].DisplacementOffset >= offset)
+			{
+				PcRelative[index] = PcRelative[index] with
+				{
+					DisplacementOffset = PcRelative[index].DisplacementOffset + count
+				};
+			}
+		}
+	}
+
 	internal void RemoveBytes(int offset, int count)
 	{
 		var end = checked(offset + count);
 		Bytes.RemoveRange(offset, count);
+		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= end)
+		{
+			DataStartOffset = dataStartOffset - count;
+		}
 		Branches.RemoveAll(branch =>
 			branch.OpcodeOffset >= offset && branch.OpcodeOffset < end);
 		Addresses.RemoveAll(address =>
@@ -48,6 +113,18 @@ internal sealed class M68kAssemblyBuffer
 			if (value >= end)
 			{
 				Labels[label] = value - count;
+			}
+		}
+		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
+		{
+			var value = AnalysisAnchors[anchor];
+			if (value >= end)
+			{
+				AnalysisAnchors[anchor] = value - count;
+			}
+			else if (value > offset)
+			{
+				AnalysisAnchors[anchor] = offset;
 			}
 		}
 
@@ -80,7 +157,10 @@ internal sealed class M68kAssemblyBuffer
 	}
 }
 
-internal readonly record struct BranchFixup(int OpcodeOffset, string Target);
+internal readonly record struct BranchFixup(
+	int OpcodeOffset,
+	string Target,
+	bool CanRelaxToShort = true);
 
 internal readonly record struct AddressFixup(int Offset, string Target, bool External);
 

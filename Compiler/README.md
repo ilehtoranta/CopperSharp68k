@@ -2,10 +2,27 @@
 
 `CopperSharp.Compiler` is an optional closed-world CIL-to-68k ahead-of-time
 compiler. It emits Amiga loadable HUNK executables and 256/512 KiB Kickstart ROM
-images, plus portable assembler text, for MC68000, MC68020, and MC68040 targets.
+images, plus portable assembler text, for MC68000, MC68020, MC68040, and MC68060 targets.
 
 The compiler package is deliberately separate from the `Copper68k` emulator.
 Installing or using the emulator does not pull in the compiler.
+
+## Floating point
+
+Floating point is opt-in through `M68kCompilationRequest.FloatingPoint`; the
+default `Disabled` mode preserves the integer-only behavior. `M68040` targets
+the integrated FPU on 68040/68060, while `M68882` targets an external
+coprocessor with a 68020 host. The native backend supports exact IEEE
+single/double constants plus add, subtract, multiply, divide, and negation.
+For MC68040, double-precision operations reuse one 8-byte `(a7)` scratch slot
+for both operands and the result, avoiding repeated stack writeback chains.
+For MC68060, double-precision operations use one shared stack scratch window so
+operand loads and result stores do not repeatedly adjust A7; single-precision
+operations remain direct D-register-to-FPU transfers.
+
+`SoftFloat` reserves the raw-bit software ABI. Operations requiring the bundled
+CopperFloat target runtime currently produce an explicit unsupported-operation
+diagnostic rather than emitting native FPU instructions.
 
 ## Library API
 
@@ -28,7 +45,7 @@ File.WriteAllBytes("kick.rom", result.Image);
 ```
 
 `M68kClrPolicy.Auto` uses `CLR` for known-readable frame and stack slots, and
-for general memory on MC68020/040 output. MC68000-compatible output uses
+for general memory on MC68020/040/060 output. MC68000-compatible output uses
 move-based clears for arbitrary memory unless `ClrPolicy` is set to
 `M68kClrPolicy.Always`.
 
@@ -36,13 +53,30 @@ The compiler accepts a deliberately bounded, freestanding subset of CIL. Any
 reachable unsupported instruction or type is reported with a stable `C68Kxxxx`
 diagnostic rather than silently changing its semantics.
 
+MC68020, MC68040, and MC68060 have separate optimization profiles. MC68020
+selection uses the processor manual's cache-case timings and favors compact
+`MOVEQ` plus register operations over long immediate forms where both time and
+size improve. MC68040 selection accounts for its single-issue integer pipeline,
+while MC68060 can retain short register forms that benefit its dual execution pipelines.
+Instruction reordering is deliberately deferred until the backend has
+dependency- and alias-aware scheduling.
+
+Every compilation result also exposes `LoopFootprints`, measured after final
+branch relaxation and linking. Each natural-loop report includes its header IL
+offset and linked address, emitted instruction bytes, physical span, four-byte
+instruction-cache lines touched, and whether those lines fit without index
+conflicts in the 256-byte MC68020/MC68030 instruction-cache model. The same
+information is written under the `LOOPS` section of the map output. Reporting is
+observational and does not align or otherwise change generated code.
+
 ## Command line
 
 Install `CopperSharp.Compiler.Cli`, then compile an assembly:
 
 ```text
 copper68kc Firmware.dll --entry Firmware.Boot::Main --output Firmware.hunk
-copper68kc Firmware.dll --entry Firmware.Boot::Main --format asm --output Firmware.s
+copper68kc Firmware.dll --entry Firmware.Boot::Main --format asm \
+  --runtime application --output Firmware.s
 copper68kc Firmware.dll --entry Firmware.Boot::Main --cpu 68040 \
   --format rom --rom-size 524288 --output kick.rom
 ```
@@ -51,6 +85,10 @@ External symbols are fixed at link time. Freestanding and application profiles
 default to `ExternalAllocator`, so managed `new` and arrays call
 `__c68k_alloc`. ROM profile defaults to `None`, so managed allocation is
 rejected unless the request explicitly selects another memory policy.
+The application profile also promises that the selected entry is invoked once
+and its private image storage is unobservable after return. That contract lets
+the compiler remove proven terminal stores. Assembly output otherwise defaults
+to the conservative freestanding profile; HUNK output defaults to application.
 
 ```text
 --import platform.service=0x00F81234 --import __c68k_alloc=0x00002800
@@ -112,7 +150,7 @@ and `CopperSharp.Sdk.Amiga` packages.
   same hybrid ABI as direct calls.
 - Shared generic method bodies when every generic value uses the same
   four-byte scalar/reference representation.
-- MC68000-compatible software long multiply/divide, with MC68020/MC68040 long
+- MC68000-compatible software long multiply/divide, with MC68020/MC68040/MC68060 long
   arithmetic instructions selected for those targets.
 - Table-driven managed exceptions with catch, finally, rethrow, leave, and
   callee-saved restoration during unwind; see

@@ -616,8 +616,11 @@ internal sealed partial class M68kCodeGenerator
 		EmitCompareImmediateLong(M68kRegister.D0, 4);
 		_assembler.EmitBranch(M68kCondition.Equal, overflowFault);
 		EmitCompareImmediateLong(M68kRegister.D0, 6);
-		_assembler.EmitBranch(M68kCondition.Equal, outOfMemoryFault);
-		_assembler.EmitBranch(M68kCondition.True, systemFault);
+		_assembler.EmitBranch(M68kCondition.NotEqual, systemFault);
+
+		_assembler.Mark(outOfMemoryFault);
+		EmitRuntimeObjectAddress(M68kRegister.A0, "System.OutOfMemoryException");
+		_assembler.EmitBranch(M68kCondition.True, haveException);
 
 		_assembler.Mark(nullFault);
 		EmitRuntimeObjectAddress(M68kRegister.A0, "System.NullReferenceException");
@@ -631,9 +634,6 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(overflowFault);
 		EmitRuntimeObjectAddress(M68kRegister.A0, "System.OverflowException");
 		_assembler.EmitBranch(M68kCondition.True, haveException);
-		_assembler.Mark(outOfMemoryFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.OutOfMemoryException");
-		_assembler.EmitBranch(M68kCondition.True, haveException);
 		_assembler.Mark(systemFault);
 		EmitRuntimeObjectAddress(M68kRegister.A0, "System.Exception");
 
@@ -644,11 +644,11 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeExceptionResumeLabel);
 		EmitCreateExceptionCursor(fromResumeAddress: false);
-		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
-		EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
+		EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextStateOffset);
 		_assembler.EmitWord(0x4A80); // TST.L D0
-		_assembler.EmitBranch(M68kCondition.NotEqual, RuntimeExceptionJumpStateLabel);
-		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionUnwindFrameLabel);
+		_assembler.EmitBranch(M68kCondition.Equal, RuntimeExceptionUnwindFrameLabel);
+		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
+		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionJumpStateLabel);
 
 		_assembler.Mark(RuntimeExceptionDispatchLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextCursorOffset);
@@ -660,11 +660,10 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x2069); // MOVEA.L 4(A1),A0 descriptor
 		_assembler.EmitWord(0x0004);
 		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
-		_assembler.EmitWord(0x2029); // MOVE.L 12(A1),D0 stack adjustment
+		EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
+		_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
 		_assembler.EmitWord(0x000C);
-		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextCursorOffset);
-		_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
-		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextFrameBaseOffset);
+		EmitStoreExceptionContextRegister(M68kRegister.D0, ExceptionContextFrameBaseOffset);
 		_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
 		_assembler.EmitWord(0x0008);
 		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
@@ -812,9 +811,13 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitStoreExceptionFrameContextRegister(
 		M68kRegister register,
-		short displacement)
+		short displacement,
+		bool frameBaseAlreadyLoaded = false)
 	{
-		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		if (!frameBaseAlreadyLoaded)
+		{
+			EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		}
 		if (register <= M68kRegister.D7)
 		{
 			_assembler.EmitWord((ushort)(0x2340 | (int)register));
@@ -827,34 +830,48 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
-	private void EmitStoreExceptionFrameContextAddress(string label, short displacement)
+	private void EmitStoreExceptionFrameContextAddress(
+		string label,
+		short displacement,
+		bool frameBaseAlreadyLoaded = false)
 	{
-		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		if (!frameBaseAlreadyLoaded)
+		{
+			EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		}
 		_assembler.EmitWord(0x237C); // MOVE.L #label,d16(A1)
 		_assembler.EmitAddress(label);
 		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
-	private void EmitClearExceptionFrameContextSlot(short displacement)
+	private void EmitClearExceptionFrameContextSlot(
+		short displacement,
+		bool frameBaseAlreadyLoaded = false)
 	{
-		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
+		if (!frameBaseAlreadyLoaded)
+		{
+			EmitLoadExceptionContextRegister(
+				M68kRegister.A1,
+				ExceptionContextFrameBaseOffset);
+		}
 		_assembler.EmitWord(0x42A9); // CLR.L d16(A1)
 		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
-	private void EmitEnterExceptionHandler(string target, bool pushException)
+	private void EmitEnterExceptionHandler(
+		string target,
+		bool pushException,
+		string restoreAndJump)
 	{
 		EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextFrameBaseOffset);
 		EmitAddressImmediateToRegister(M68kRegister.D1, target);
-		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
-		EmitRestoreExceptionCursorRegisters();
 		_assembler.EmitWord(0x2E40); // MOVEA.L D0,A7
 		if (pushException)
 		{
+			EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
 			EmitPushRegister(M68kRegister.A0);
 		}
-		_assembler.EmitWord(0x2241); // MOVEA.L D1,A1
-		_assembler.EmitWord(0x4ED1); // JMP (A1)
+		_assembler.EmitJmp(restoreAndJump, external: false);
 	}
 
 	private void EmitAmigaUnhandledExceptionRequester()
@@ -1031,6 +1048,8 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitExceptionStateActions()
 	{
+		var restoreAndJump = UniqueLabel("eh_restore_and_jump");
+		var usesRestoreAndJump = false;
 		foreach (var state in _exceptionStates.Values.ToArray())
 		{
 			var group = state.Groups[0];
@@ -1062,11 +1081,35 @@ internal sealed partial class M68kCodeGenerator
 				EmitStoreExceptionFrameContextRegister(
 					M68kRegister.A0,
 					RuntimeFrameActiveExceptionOffset);
-				EmitClearExceptionFrameContextSlot(RuntimeFramePendingActionOffset);
-				EmitClearExceptionFrameContextSlot(RuntimeFrameLeaveContinuationOffset);
+				if (UseClr)
+				{
+					EmitClearExceptionFrameContextSlot(
+						RuntimeFramePendingActionOffset,
+						frameBaseAlreadyLoaded: true);
+					EmitClearExceptionFrameContextSlot(
+						RuntimeFrameLeaveContinuationOffset,
+						frameBaseAlreadyLoaded: true);
+				}
+				else
+				{
+					// D0 is scratch here and is reloaded by
+					// EmitEnterExceptionHandler. Reusing one zero for both
+					// stores saves four MC68000 cycles and both read accesses.
+					_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+					EmitStoreExceptionFrameContextRegister(
+						M68kRegister.D0,
+						RuntimeFramePendingActionOffset,
+						frameBaseAlreadyLoaded: true);
+					EmitStoreExceptionFrameContextRegister(
+						M68kRegister.D0,
+						RuntimeFrameLeaveContinuationOffset,
+						frameBaseAlreadyLoaded: true);
+				}
 				EmitEnterExceptionHandler(
 					ControlFlowTargetLabel(state.Method, entry.Region.HandlerOffset),
-					pushException: true);
+					pushException: true,
+					restoreAndJump);
+				usesRestoreAndJump = true;
 				if (!entry.Region.CatchType.IsNil)
 				{
 					_assembler.Mark(nextCatch);
@@ -1087,16 +1130,28 @@ internal sealed partial class M68kCodeGenerator
 					RuntimeFrameActiveExceptionOffset);
 				EmitStoreExceptionFrameContextAddress(
 					resume,
-					RuntimeFramePendingActionOffset);
+					RuntimeFramePendingActionOffset,
+					frameBaseAlreadyLoaded: true);
 				EmitEnterExceptionHandler(
 					ControlFlowTargetLabel(state.Method, finallyRegion.HandlerOffset),
-					pushException: false);
+					pushException: false,
+					restoreAndJump);
+				usesRestoreAndJump = true;
 				continue;
 			}
 
 			_assembler.EmitJmp(
 				suffix ?? RuntimeExceptionUnwindFrameLabel,
 				external: false);
+		}
+
+		if (usesRestoreAndJump)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(restoreAndJump);
+			EmitRestoreExceptionCursorRegisters();
+			_assembler.EmitWord(0x2241); // MOVEA.L D1,A1
+			_assembler.EmitWord(0x4ED1); // JMP (A1)
 		}
 
 		foreach (var action in _exceptionResumeActions.Values)

@@ -60,10 +60,35 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x23CF); // MOVE.L A7,initial-stack
 			_assembler.EmitAddress(RuntimeInitialStackLabel);
 		}
+		var returnType = entry.Signature.ReturnType;
+		var preservesScalarResult =
+			!returnType.IsVoid &&
+			!Is64BitScalar(returnType) &&
+			!IsInternalAddressReturn(returnType);
+		var preservesAddressResult = IsInternalAddressReturn(returnType);
+		var preservesWideResult = Is64BitScalar(returnType);
+		var needsD2 = usesAmigaStartupArguments ||
+			preservesScalarResult ||
+			preservesWideResult;
+		var needsD3 = preservesWideResult;
+		var needsA2 = usesAmigaStartupArguments || preservesAddressResult;
 		if (usesManagedRuntime)
 		{
-			EmitPushRegister(M68kRegister.D2);
-			EmitPushRegister(M68kRegister.A2);
+			// D0/D1/A0/A1 are volatile in the private ABI. Only the result
+			// registers that the entry method actually uses need a callee-saved
+			// temporary while the shutdown hook runs.
+			if (needsD2)
+			{
+				EmitPushRegister(M68kRegister.D2);
+			}
+			if (needsD3)
+			{
+				EmitPushRegister(M68kRegister.D3);
+			}
+			if (needsA2)
+			{
+				EmitPushRegister(M68kRegister.A2);
+			}
 		}
 		if (usesManagedRuntime && usesAmigaStartupArguments)
 		{
@@ -95,14 +120,46 @@ internal sealed partial class M68kCodeGenerator
 			}
 			_assembler.EmitBsr(MethodLabel(entry));
 			_loadedPlatformBase = null;
-			EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
-			EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
+			if (preservesScalarResult)
+			{
+				EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
+			}
+			else if (preservesAddressResult)
+			{
+				EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
+			}
+			else if (preservesWideResult)
+			{
+				EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
+				EmitMoveRegister(M68kRegister.D1, M68kRegister.D3);
+			}
 			EmitRuntimeJsr(RuntimeShutdownTarget, M68kRuntimeImports.GcShutdown);
 			_loadedPlatformBase = null;
-			EmitMoveRegister(M68kRegister.A2, M68kRegister.A0);
-			EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
-			EmitPopRegister(M68kRegister.A2);
-			EmitPopRegister(M68kRegister.D2);
+			if (preservesScalarResult)
+			{
+				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+			}
+			else if (preservesAddressResult)
+			{
+				EmitMoveRegister(M68kRegister.A2, M68kRegister.A0);
+			}
+			else if (preservesWideResult)
+			{
+				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
+				EmitMoveRegister(M68kRegister.D3, M68kRegister.D1);
+			}
+			if (needsA2)
+			{
+				EmitPopRegister(M68kRegister.A2);
+			}
+			if (needsD3)
+			{
+				EmitPopRegister(M68kRegister.D3);
+			}
+			if (needsD2)
+			{
+				EmitPopRegister(M68kRegister.D2);
+			}
 			_assembler.EmitWord(0x4E75); // RTS
 			return label;
 		}
@@ -137,7 +194,10 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		EmitLoadAddressRegisterPcRelative(M68kRegister.A6, ExecBaseSlotSymbol);
+		if (_loadedPlatformBase?.Label != ExecBaseSlotSymbol)
+		{
+			EmitLoadAddressRegisterPcRelative(M68kRegister.A6, ExecBaseSlotSymbol);
+		}
 		_assembler.EmitWord(0x203C); // MOVE.L #heap-size,D0
 		_assembler.EmitLong(_request.Heap.Size);
 		_assembler.EmitWord(0x7200); // MOVEQ #0,D1, no MEMF_CLEAR

@@ -312,6 +312,7 @@ internal static class M68kLivenessAnalysis
 internal sealed class M68kInterferenceGraph
 {
 	private readonly Dictionary<int, HashSet<int>> _neighbors;
+	private readonly HashSet<(int Left, int Right)> _coalescableCopies = new();
 
 	public M68kInterferenceGraph(IEnumerable<int> values)
 	{
@@ -328,7 +329,7 @@ internal sealed class M68kInterferenceGraph
 
 	public void AddEdge(int left, int right)
 	{
-		if (left == right)
+		if (left == right || _coalescableCopies.Contains(Order(left, right)))
 		{
 			return;
 		}
@@ -347,9 +348,66 @@ internal sealed class M68kInterferenceGraph
 	{
 		if (left != right)
 		{
-			CopyPreferences.Add(left < right ? (left, right) : (right, left));
+			CopyPreferences.Add(Order(left, right));
 		}
 	}
+
+	public void AddCoalescableCopy(int left, int right)
+	{
+		if (left == right)
+		{
+			return;
+		}
+		var pair = Order(left, right);
+		_coalescableCopies.Add(pair);
+		CopyPreferences.Add(pair);
+		_neighbors[left].Remove(right);
+		_neighbors[right].Remove(left);
+	}
+
+	public void FinalizeCoalescableCopies()
+	{
+		var adjacency = _neighbors.Keys.ToDictionary(
+			static value => value,
+			static _ => new List<int>());
+		foreach (var (left, right) in _coalescableCopies)
+		{
+			adjacency[left].Add(right);
+			adjacency[right].Add(left);
+		}
+		var visited = new HashSet<int>();
+		foreach (var start in adjacency.Keys.Order())
+		{
+			if (!visited.Add(start) || adjacency[start].Count == 0)
+			{
+				continue;
+			}
+			var component = new List<int>();
+			var pending = new Stack<int>();
+			pending.Push(start);
+			while (pending.TryPop(out var value))
+			{
+				component.Add(value);
+				foreach (var neighbor in adjacency[value])
+				{
+					if (visited.Add(neighbor))
+					{
+						pending.Push(neighbor);
+					}
+				}
+			}
+			foreach (var left in component)
+			{
+				foreach (var right in component)
+				{
+					_neighbors[left].Remove(right);
+				}
+			}
+		}
+	}
+
+	private static (int Left, int Right) Order(int left, int right) =>
+		left < right ? (left, right) : (right, left);
 }
 
 internal static class M68kInterferenceBuilder
@@ -377,10 +435,27 @@ internal static class M68kInterferenceBuilder
 				var instruction = block.Instructions[index];
 				var liveAfter = new HashSet<int>(live);
 				var copySource = instruction.Operation == M68kMachineOperation.Copy &&
+					instruction.AllowCopyCoalescing &&
 					instruction.Uses.Length == 1 &&
 					instruction.Definitions.Length == 1
 						? instruction.Uses[0]
 						: (int?)null;
+				var equivalentCopy = copySource is { } equivalentSource &&
+					function.Values[equivalentSource].Kind ==
+						function.Values[instruction.Definitions[0]].Kind &&
+					function.Values[equivalentSource].Width ==
+						function.Values[instruction.Definitions[0]].Width;
+				for (var leftIndex = 0; leftIndex < instruction.Uses.Length; leftIndex++)
+				{
+					for (var rightIndex = leftIndex + 1;
+						rightIndex < instruction.Uses.Length;
+						rightIndex++)
+					{
+						graph.AddEdge(
+							instruction.Uses[leftIndex],
+							instruction.Uses[rightIndex]);
+					}
+				}
 
 				foreach (var definition in instruction.Definitions)
 				{
@@ -394,7 +469,14 @@ internal static class M68kInterferenceBuilder
 				}
 				if (copySource is { } source)
 				{
-					graph.AddCopyPreference(instruction.Definitions[0], source);
+					if (equivalentCopy)
+					{
+						graph.AddCoalescableCopy(instruction.Definitions[0], source);
+					}
+					else
+					{
+						graph.AddCopyPreference(instruction.Definitions[0], source);
+					}
 				}
 				if (instruction.Operation == M68kMachineOperation.Subtract &&
 					instruction.Uses.Length == 2 &&
@@ -405,19 +487,6 @@ internal static class M68kInterferenceBuilder
 						instruction.Definitions[0],
 						instruction.Uses[1]);
 				}
-				if (instruction.Operation == M68kMachineOperation.Store &&
-					instruction.Uses.Length >= 2 &&
-					instruction.SourceInstruction?.OpCode is { } storeOp &&
-					(storeOp == System.Reflection.Emit.OpCodes.Stfld ||
-					 storeOp.Name?.StartsWith(
-						"stind",
-						StringComparison.Ordinal) == true))
-				{
-					graph.AddForbidden(
-						instruction.Uses[^1],
-						M68kRegisterSet.From(M68kRegister.A0));
-				}
-
 				live.ExceptWith(instruction.Definitions);
 				live.UnionWith(instruction.Uses);
 				if (!instruction.Clobbers.IsEmpty)
@@ -461,6 +530,7 @@ internal static class M68kInterferenceBuilder
 			}
 		}
 
+		graph.FinalizeCoalescableCopies();
 		return graph;
 	}
 }
@@ -508,6 +578,8 @@ internal sealed record M68kAllocatedFunction(
 	M68kSafepointPlan Safepoints,
 	M68kParallelCopyPlan ParallelCopies,
 	M68kAllocatedFramePlan Frame,
+	M68kFinalDestinationPlan FinalDestinations,
+	M68kBlockLayoutPlan BlockLayout,
 	M68kMethodAllocationStatistics Statistics);
 
 internal static class M68kRegisterAllocatorPipeline
@@ -563,6 +635,12 @@ internal static class M68kRegisterAllocatorPipeline
 					safepoints,
 					parallelCopies);
 				M68kRootSynchronizer.Insert(function, safepoints, instructionLiveness);
+				var finalDestinations = M68kFinalDestinationPlan.Create(
+					function,
+					parallelCopies);
+				var blockLayout = M68kBlockLayoutPlan.Create(
+					function,
+					finalDestinations);
 				var statistics = M68kAllocationStatistics.Create(
 					function,
 					interference,
@@ -582,6 +660,8 @@ internal static class M68kRegisterAllocatorPipeline
 					safepoints,
 					parallelCopies,
 					frame,
+					finalDestinations,
+					blockLayout,
 					statistics);
 			}
 			if (iteration == MaximumAllocationIterations)
@@ -844,7 +924,28 @@ internal static class M68kGraphColoringAllocator
 				}
 			}
 
-			var selected = CandidateRegisters(group)
+			var preferredCopyRegisters = graph.CopyPreferences
+				.Select(pair =>
+				{
+					var leftGroup = groupForValue[pair.Left];
+					var rightGroup = groupForValue[pair.Right];
+					if (leftGroup == groupId &&
+						allocatedGroups.TryGetValue(rightGroup, out var rightLocation))
+					{
+						return (M68kRegister?)rightLocation.Register;
+					}
+					if (rightGroup == groupId &&
+						allocatedGroups.TryGetValue(leftGroup, out var leftLocation))
+					{
+						return (M68kRegister?)leftLocation.Register;
+					}
+					return null;
+				})
+				.Where(static register => register is not null)
+				.Select(static register => register!.Value);
+			var selected = preferredCopyRegisters
+				.Concat(CandidateRegisters(group))
+				.Distinct()
 				.FirstOrDefault(register =>
 					CandidateIsAvailable(group, register, forbidden));
 			if (!CandidateIsAvailable(group, selected, forbidden) ||
@@ -908,7 +1009,10 @@ internal static class M68kGraphColoringAllocator
 		}
 
 		foreach (var (left, right) in graph.CopyPreferences
-			.OrderBy(static pair => pair.Left)
+			.OrderByDescending(pair =>
+				function.Values[pair.Left].AllowedRegisters == M68kRegisterSet.Address ||
+				function.Values[pair.Right].AllowedRegisters == M68kRegisterSet.Address)
+			.ThenBy(static pair => pair.Left)
 			.ThenBy(static pair => pair.Right))
 		{
 			var leftId = groupForValue[left];
@@ -1001,6 +1105,14 @@ internal static class M68kGraphColoringAllocator
 			{
 				return false;
 			}
+		}
+		if (left.AllowedRegisters == M68kRegisterSet.Address ||
+			right.AllowedRegisters == M68kRegisterSet.Address)
+		{
+			// Address constraints are short-lived machine requirements, not
+			// independent values. Coalescing them with an already-addressable
+			// source removes the otherwise unavoidable An-to-A0 base copy.
+			return true;
 		}
 
 		var neighborGroups = left.Members

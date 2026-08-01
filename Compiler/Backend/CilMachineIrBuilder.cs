@@ -191,6 +191,8 @@ internal static class CilMachineIrBuilder
 		}
 		PopulatePhiInputs(states);
 		EliminateDeadMachineValues(function);
+		M68kConditionFlowOptimizer.Run(function, method, module);
+		EliminateDeadMachineValues(function);
 		M68kMachineCostAnalysis.Apply(function);
 		M68kMachineIrVerifier.Verify(function);
 		return function;
@@ -559,9 +561,9 @@ internal static class CilMachineIrBuilder
 		for (var index = 0; index < kinds.Length;)
 		{
 			var kind = kinds[index];
-			if (kind == CilStackValueKind.Int64 &&
+			if (kind is CilStackValueKind.Int64 or CilStackValueKind.Float64 &&
 				index + 1 < kinds.Length &&
-				kinds[index + 1] == CilStackValueKind.Int64)
+				kinds[index + 1] == kind)
 			{
 				var pair = CreateValue(function, kind, M68kMachineValueWidth.LongPair);
 				result.Add(pair.Id);
@@ -691,7 +693,7 @@ internal static class CilMachineIrBuilder
 				method,
 				module,
 				instruction,
-				stackKinds.Length);
+				stackKinds);
 			var uses = CollapseStackOperands(
 				stackKinds,
 				stackValues,
@@ -798,6 +800,23 @@ internal static class CilMachineIrBuilder
 					frameIndex = argumentAddress;
 				}
 			}
+			if (operation == M68kMachineOperation.Load &&
+				(IsIndirectLoad(instruction.OpCode) ||
+					instruction.OpCode == OpCodes.Ldfld) &&
+				uses.Length == 1 &&
+				TryFoldDirectFrameAddress(
+					state.Block,
+					uses[0],
+					method,
+					module,
+					instruction,
+					out var frameLoadOperation,
+					out var frameLoadIndex))
+			{
+				operation = frameLoadOperation;
+				frameIndex = frameLoadIndex;
+				uses = [];
+			}
 			if (instruction.OpCode == OpCodes.Newarr)
 			{
 				var generatedStart = state.Block.Instructions.Count;
@@ -868,6 +887,7 @@ internal static class CilMachineIrBuilder
 					function,
 					state.Block,
 					instruction,
+					cpu,
 					operation,
 					uses,
 					definitions);
@@ -898,6 +918,22 @@ internal static class CilMachineIrBuilder
 				{
 					invalidCandidate.IsInvalidated = true;
 				}
+			}
+			else if (RequiresAddressBase(instruction.OpCode) &&
+				operation is not
+					M68kMachineOperation.LocalLoad and not
+					M68kMachineOperation.ArgumentLoad)
+			{
+				AddAddressConstrainedOperation(
+					function,
+					state.Block,
+					method,
+					module,
+					instruction,
+					cpu,
+					operation,
+					uses,
+					definitions);
 			}
 			else if (instruction.OpCode == OpCodes.Newobj &&
 				module.ResolveMethodToken(
@@ -950,7 +986,9 @@ internal static class CilMachineIrBuilder
 					definitions,
 					stackVarargsRegister: stackVarargsRegister);
 			}
-			else if (RequiresFixedDataOperands(instruction.OpCode))
+			else if (RequiresFixedDataOperands(instruction.OpCode) &&
+				(uses.Length == 0 || function.Values[uses[0]].Kind is not
+					(CilStackValueKind.Float32 or CilStackValueKind.Float64)))
 			{
 				AddFixedDataOperation(
 					function,
@@ -1100,6 +1138,62 @@ internal static class CilMachineIrBuilder
 		return false;
 	}
 
+	private static bool TryFoldDirectFrameAddress(
+		M68kMachineBlock block,
+		int addressValue,
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction sourceInstruction,
+		out M68kMachineOperation loadOperation,
+		out int frameIndex)
+	{
+		// A managed pointer created by ldloca/ldarga is already a validated
+		// frame address. Fold its sole direct load before register allocation so
+		// no address temporary or null check is needed.
+		loadOperation = default;
+		frameIndex = default;
+		if (sourceInstruction.OpCode == OpCodes.Ldfld)
+		{
+			var field = module.ResolveFieldToken(
+				(int)sourceInstruction.Operand!,
+				method,
+				sourceInstruction.Offset);
+			if (field.IsStatic || !module.IsTransparentScalarField(field))
+			{
+				return false;
+			}
+		}
+		M68kMachineInstruction? addressInstruction = null;
+		foreach (var instruction in block.Instructions)
+		{
+			if (!instruction.Definitions.Contains(addressValue))
+			{
+				continue;
+			}
+			addressInstruction = instruction;
+			break;
+		}
+		if (addressInstruction is not
+			{
+				Operation: M68kMachineOperation.LocalAddress or
+					M68kMachineOperation.ArgumentAddress,
+				Definitions.Length: 1,
+				ArgumentIndex: { } index
+			} ||
+			block.Instructions.Any(instruction =>
+				instruction.Uses.Contains(addressValue)))
+		{
+			return false;
+		}
+		block.Instructions.Remove(addressInstruction);
+		loadOperation = addressInstruction.Operation ==
+			M68kMachineOperation.LocalAddress
+			? M68kMachineOperation.LocalLoad
+			: M68kMachineOperation.ArgumentLoad;
+		frameIndex = index;
+		return true;
+	}
+
 	private static bool TryGetIlIntegerConstant(
 		CilInstruction instruction,
 		out int constant)
@@ -1143,7 +1237,7 @@ internal static class CilMachineIrBuilder
 				$"Argument {argumentIndex} has no machine value kind.");
 		}
 		var kind = pushedKinds[0];
-		var width = kind == CilStackValueKind.Int64
+		var width = kind is CilStackValueKind.Int64 or CilStackValueKind.Float64
 			? M68kMachineValueWidth.LongPair
 			: WidthFor(kind);
 		var value = CreateValue(function, kind, width);
@@ -1216,8 +1310,8 @@ internal static class CilMachineIrBuilder
 		if (sourceValue.IsRegisterPair)
 		{
 			if (stackKinds.Length < 2 ||
-				stackKinds[^1] != CilStackValueKind.Int64 ||
-				stackKinds[^2] != CilStackValueKind.Int64)
+				stackKinds[^1] != sourceValue.Kind ||
+				stackKinds[^2] != sourceValue.Kind)
 			{
 				throw new InvalidOperationException(
 					$"Machine IR duplicate at IL_{instruction.Offset:X4} has a malformed 64-bit value.");
@@ -1237,9 +1331,9 @@ internal static class CilMachineIrBuilder
 		for (var index = start; index < stackValues.Count; index++)
 		{
 			result.Add(stackValues[index]);
-			if (stackKinds[index] == CilStackValueKind.Int64 &&
+			if (stackKinds[index] is CilStackValueKind.Int64 or CilStackValueKind.Float64 &&
 				index + 1 < stackValues.Count &&
-				stackKinds[index + 1] == CilStackValueKind.Int64 &&
+				stackKinds[index + 1] == stackKinds[index] &&
 				stackValues[index + 1] == stackValues[index])
 			{
 				index++;
@@ -1314,6 +1408,7 @@ internal static class CilMachineIrBuilder
 		M68kMachineFunction function,
 		M68kMachineBlock block,
 		CilInstruction instruction,
+		M68kCpuTarget cpu,
 		M68kMachineOperation operation,
 		IReadOnlyList<int> uses,
 		IReadOnlyList<int> definitions)
@@ -1326,64 +1421,148 @@ internal static class CilMachineIrBuilder
 			throw new InvalidOperationException(
 				$"Array access at IL_{instruction.Offset:X4} has invalid arity.");
 		}
-		var fixedUses = new int[uses.Count];
-		var registers = isStore
-			? new[] { M68kRegister.A0, M68kRegister.D1, M68kRegister.D0 }
-			: isLength
-				? new[] { M68kRegister.A0 }
-				: new[] { M68kRegister.A0, M68kRegister.D1 };
-		for (var index = 0; index < uses.Count; index++)
+		var constrainedUses = uses.ToArray();
+		constrainedUses[0] = AddRegisterClassCopy(
+			function,
+			block,
+			instruction,
+			uses[0],
+			M68kRegisterSet.Address);
+		if (!isLength)
 		{
-			var source = function.Values[uses[index]];
-			var fixedValue = function.CreateValue(
-				source.Kind,
-				source.Width,
-				M68kRegisterSet.From(registers[index]),
-				precoloredRegister: registers[index],
-				isGcReference: source.IsGcReference);
-			block.Instructions.Add(function.CreateInstruction(
-				M68kMachineOperation.Copy,
-				instruction.Offset,
-				uses: [source.Id],
-				definitions: [fixedValue.Id]));
-			fixedUses[index] = fixedValue.Id;
+			var elementSize = ArrayElementSize(instruction.OpCode);
+			constrainedUses[1] = AddRegisterClassCopy(
+				function,
+				block,
+				instruction,
+				uses[1],
+				M68kRegisterSet.Data,
+				allowCopyCoalescing:
+					cpu != M68kCpuTarget.M68000 || elementSize == 1);
 		}
-		var fixedDefinitions = Array.Empty<int>();
-		M68kMachineValue? fixedResult = null;
-		if (!isStore)
+		var constrainedDefinitions = definitions.ToArray();
+		M68kMachineValue? addressResult = null;
+		if (operation == M68kMachineOperation.ArrayAddress)
 		{
 			var result = function.Values[definitions[0]];
-			var resultRegister = operation == M68kMachineOperation.ArrayAddress
-				? M68kRegister.A0
-				: M68kRegister.D0;
-			fixedResult = function.CreateValue(
+			addressResult = function.CreateValue(
 				result.Kind,
 				result.Width,
-				M68kRegisterSet.From(resultRegister),
-				precoloredRegister: resultRegister,
-				isGcReference: result.IsGcReference);
-			fixedDefinitions = [fixedResult.Id];
+				M68kRegisterSet.Address,
+				isGcReference: result.IsGcReference,
+				spillWeight: result.SpillWeight);
+			constrainedDefinitions[0] = addressResult.Id;
 		}
 		block.Instructions.Add(function.CreateInstruction(
 			operation,
 			instruction.Offset,
-			fixedUses,
-			fixedDefinitions,
-			clobbers: M68kRegisterSet.From(M68kRegister.D2),
+			constrainedUses,
+			constrainedDefinitions,
 			memoryEffect: isStore
 				? M68kMachineMemoryEffect.Write
 				: M68kMachineMemoryEffect.Read,
 			mayThrow: true,
 			sourceInstruction: instruction));
-		if (fixedResult is not null)
+		if (addressResult is not null)
 		{
 			block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.Copy,
 				instruction.Offset,
-				uses: [fixedResult.Id],
+				uses: [addressResult.Id],
 				definitions: definitions));
 		}
 	}
+
+	private static void AddAddressConstrainedOperation(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction instruction,
+		M68kCpuTarget cpu,
+		M68kMachineOperation operation,
+		IReadOnlyList<int> uses,
+		IReadOnlyList<int> definitions)
+	{
+		if (uses.Count == 0)
+		{
+			throw new InvalidOperationException(
+				$"Address operation at IL_{instruction.Offset:X4} has no base operand.");
+		}
+		var constrainedUses = uses.ToArray();
+		constrainedUses[0] = AddRegisterClassCopy(
+			function,
+			block,
+			instruction,
+			uses[0],
+			M68kRegisterSet.Address);
+		var constrainedDefinitions = definitions.ToArray();
+		M68kMachineValue? addressResult = null;
+		if (instruction.OpCode == OpCodes.Ldflda)
+		{
+			var result = function.Values[definitions.Single()];
+			addressResult = function.CreateValue(
+				result.Kind,
+				result.Width,
+				M68kRegisterSet.Address,
+				isGcReference: result.IsGcReference,
+				spillWeight: result.SpillWeight);
+			constrainedDefinitions[0] = addressResult.Id;
+		}
+		block.Instructions.Add(function.CreateInstruction(
+			operation,
+			instruction.Offset,
+			constrainedUses,
+			constrainedDefinitions,
+			ClobbersFor(method, module, instruction, cpu),
+			MemoryEffectFor(operation, instruction.OpCode),
+			isSafepoint: IsConservativeSafepoint(instruction.OpCode),
+			mayThrow: MayThrow(instruction.OpCode),
+			producesConditionCodes: IsComparison(instruction.OpCode),
+			sourceInstruction: instruction));
+		if (addressResult is not null)
+		{
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Copy,
+				instruction.Offset,
+				uses: [addressResult.Id],
+				definitions: definitions));
+		}
+	}
+
+	private static int AddRegisterClassCopy(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilInstruction instruction,
+		int sourceId,
+		M68kRegisterSet allowedRegisters,
+		bool allowCopyCoalescing = true)
+	{
+		var source = function.Values[sourceId];
+		var constrained = function.CreateValue(
+			source.Kind,
+			source.Width,
+			allowedRegisters,
+			isGcReference: source.IsGcReference,
+			spillWeight: source.SpillWeight);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			instruction.Offset,
+			uses: [sourceId],
+			definitions: [constrained.Id],
+			sourceInstruction: instruction,
+			allowCopyCoalescing: allowCopyCoalescing));
+		return constrained.Id;
+	}
+
+	private static int ArrayElementSize(OpCode op) =>
+		op == OpCodes.Ldelem_I1 || op == OpCodes.Ldelem_U1 ||
+		op == OpCodes.Stelem_I1
+			? 1
+			: op == OpCodes.Ldelem_I2 || op == OpCodes.Ldelem_U2 ||
+				op == OpCodes.Stelem_I2
+					? 2
+					: 4;
 
 	private static void AddFixedDataOperation(
 		M68kMachineFunction function,
@@ -1401,7 +1580,10 @@ internal static class CilMachineIrBuilder
 			throw new InvalidOperationException(
 				$"Fixed operation at IL_{instruction.Offset:X4} has an invalid arity.");
 		}
-		var fixedUses = new int[2];
+		var constantShiftCount = 0;
+		var hasConstantShiftCount = operation == M68kMachineOperation.Shift &&
+			TryGetMachineIntegerConstant(block, uses[1], out constantShiftCount);
+		var fixedUses = new int[hasConstantShiftCount ? 1 : 2];
 		for (var index = 0; index < fixedUses.Length; index++)
 		{
 			var source = function.Values[uses[index]];
@@ -1428,16 +1610,23 @@ internal static class CilMachineIrBuilder
 			precoloredRegister: M68kRegister.D0,
 			isGcReference: result.IsGcReference,
 			spillWeight: result.SpillWeight);
+		var fixedClobbers = ClobbersFor(method, module, instruction, cpu)
+			.Add(M68kRegister.D0);
+		if (!hasConstantShiftCount)
+		{
+			fixedClobbers = fixedClobbers.Add(M68kRegister.D1);
+		}
 		block.Instructions.Add(function.CreateInstruction(
 			operation,
 			instruction.Offset,
 			fixedUses,
 			[fixedResult.Id],
-			ClobbersFor(method, module, instruction, cpu)
-				.Add(M68kRegister.D0)
-				.Add(M68kRegister.D1),
+			fixedClobbers,
 			MemoryEffectFor(instruction.OpCode),
 			mayThrow: MayThrow(instruction.OpCode),
+			immediate: hasConstantShiftCount
+				? constantShiftCount & 31
+				: null,
 			sourceInstruction: instruction));
 		block.Instructions.Add(function.CreateInstruction(
 			M68kMachineOperation.Copy,
@@ -1469,7 +1658,7 @@ internal static class CilMachineIrBuilder
 					method,
 					module,
 					first,
-					stackKinds.Length);
+					stackKinds);
 				var uses = CollapseStackOperands(
 					stackKinds,
 					stackValues,
@@ -1494,29 +1683,31 @@ internal static class CilMachineIrBuilder
 
 			case CilOptimizationKind.ComparisonBranch:
 			{
-				const int popSlots = 2;
+				var popSlots = stackKinds.Length != 0 &&
+					stackKinds[^1] == CilStackValueKind.Float64 ? 4 : 2;
 				var uses = CollapseStackOperands(
 					stackKinds,
 					stackValues,
 					popSlots);
 				stackValues.RemoveRange(stackValues.Count - popSlots, popSlots);
-				block.Instructions.Add(function.CreateInstruction(
-					M68kMachineOperation.Compare,
-					first.Offset,
-					uses: uses,
-					producesConditionCodes: true,
-					sourceInstruction: first));
+				var condition = ComparisonCondition(first.OpCode);
+				if (!optimization.BranchOnComparisonTrue)
+				{
+					condition = InvertCondition(condition);
+				}
 				block.Instructions.Add(function.CreateInstruction(
 					M68kMachineOperation.ConditionalBranch,
 					last.Offset,
-					consumesConditionCodes: true,
+					uses: uses,
 					sourceInstruction: new CilInstruction(
 						last.Offset,
-						optimization.BranchOnComparisonTrue
-							? OpCodes.Brtrue
-							: OpCodes.Brfalse,
+						OpCodes.Brtrue,
 						optimization.BranchTarget,
-						last.NextOffset)));
+						last.NextOffset),
+					branchCondition: new M68kMachineBranchCondition(
+						M68kMachineConditionSourceKind.Compare,
+						condition,
+						first)));
 				stackKinds = ApplyRangeStackEffect(
 					method,
 					module,
@@ -1531,7 +1722,7 @@ internal static class CilMachineIrBuilder
 					method,
 					module,
 					first,
-					stackKinds.Length);
+					stackKinds);
 				var uses = CollapseStackOperands(
 					stackKinds,
 					stackValues,
@@ -1555,25 +1746,33 @@ internal static class CilMachineIrBuilder
 					throw new InvalidOperationException(
 						"Predicate branch lowering did not produce a call instruction.");
 				}
+				var predicateCondition = PredicateCondition(
+					method,
+					module,
+					first);
+				if (!optimization.BranchOnComparisonTrue)
+				{
+					predicateCondition = InvertCondition(predicateCondition);
+				}
 				block.Instructions[predicateIndex] =
 					block.Instructions[predicateIndex] with
 					{
+						Operation = M68kMachineOperation.ConditionalBranch,
+						IlOffset = last.Offset,
 						MemoryEffect = M68kMachineMemoryEffect.Read,
 						IsSafepoint = false,
 						MayThrow = false,
-						ProducesConditionCodes = true
+						ProducesConditionCodes = false,
+						SourceInstruction = new CilInstruction(
+							last.Offset,
+							OpCodes.Brtrue,
+							optimization.BranchTarget,
+							last.NextOffset),
+						BranchCondition = new M68kMachineBranchCondition(
+							M68kMachineConditionSourceKind.Predicate,
+							predicateCondition,
+							first)
 					};
-				block.Instructions.Add(function.CreateInstruction(
-					M68kMachineOperation.ConditionalBranch,
-					last.Offset,
-					consumesConditionCodes: true,
-					sourceInstruction: new CilInstruction(
-						last.Offset,
-						optimization.BranchOnComparisonTrue
-							? OpCodes.Brtrue
-							: OpCodes.Brfalse,
-						optimization.BranchTarget,
-						last.NextOffset)));
 				stackKinds = ApplyRangeStackEffect(
 					method,
 					module,
@@ -1694,7 +1893,17 @@ internal static class CilMachineIrBuilder
 			(int)instruction.Operand!,
 			caller,
 			instruction.Offset);
-		var argumentRegisters = (stackVarargsRegister is not null
+		if (IsLiteralAddressIntrinsic(target.ImportName))
+		{
+			AddLiteralAddressIntrinsic(
+				function,
+				block,
+				instruction,
+				uses,
+				definitions);
+			return;
+		}
+		var argumentConstraints = (stackVarargsRegister is not null
 			? GetStackVarargsArgumentRegisters(target, uses.Count)
 			: GetCallArgumentRegisters(
 				function,
@@ -1721,15 +1930,35 @@ internal static class CilMachineIrBuilder
 		{
 			embeddedDisplacement = constantDisplacement;
 			sourceUses.RemoveAt(1);
-			argumentRegisters.RemoveAt(1);
+			argumentConstraints.RemoveAt(1);
+		}
+		if (embeddedDisplacement is null &&
+			target.ImportName is
+				"intrinsic:aptr-read-uint32" or
+				"intrinsic:aptr-write-uint32" &&
+			argumentConstraints.Count != 0)
+		{
+			argumentConstraints[0] = argumentConstraints[0] with
+			{
+				AllowCopyCoalescing = false
+			};
+		}
+		if (embeddedDisplacement is not null &&
+			target.ImportName == "intrinsic:aptr-write-uint32" &&
+			argumentConstraints.Count != 0)
+		{
+			// A constant displacement leaves the value as a direct memory-store
+			// operand; it does not need the legacy D1 ABI scratch register.
+			argumentConstraints[^1] = CallArgumentConstraint.RegisterClass(
+				M68kRegisterSet.Data);
 		}
 		var constrainedUses = sourceUses.ToArray();
 		var stackArgumentBytes = 0;
-		for (var index = Math.Min(constrainedUses.Length, argumentRegisters.Count) - 1;
+		for (var index = Math.Min(constrainedUses.Length, argumentConstraints.Count) - 1;
 			index >= 0;
 			index--)
 		{
-			if (argumentRegisters[index] is not null)
+			if (!argumentConstraints[index].IsStack)
 			{
 				continue;
 			}
@@ -1744,33 +1973,36 @@ internal static class CilMachineIrBuilder
 			stackArgumentBytes = checked(stackArgumentBytes + bytes);
 		}
 		for (var index = 0;
-			index < constrainedUses.Length && index < argumentRegisters.Count;
+			index < constrainedUses.Length && index < argumentConstraints.Count;
 			index++)
 		{
-			if (argumentRegisters[index] is not { } register)
+			var constraint = argumentConstraints[index];
+			if (constraint.IsStack)
 			{
 				continue;
 			}
 			var source = function.Values[constrainedUses[index]];
-			var fixedValue = function.CreateValue(
+			var constrainedValue = function.CreateValue(
 				source.Kind,
 				source.Width,
-				M68kRegisterSet.From(register),
-				precoloredRegister: register,
+				constraint.Registers,
+				precoloredRegister: constraint.FixedRegister,
 				isGcReference: source.IsGcReference,
 				spillWeight: source.SpillWeight);
 			block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.Copy,
 				instruction.Offset,
 				uses: [source.Id],
-				definitions: [fixedValue.Id],
-				sourceInstruction: instruction));
-			constrainedUses[index] = fixedValue.Id;
+				definitions: [constrainedValue.Id],
+				sourceInstruction: instruction,
+				allowCopyCoalescing: constraint.AllowCopyCoalescing));
+			constrainedUses[index] = constrainedValue.Id;
 		}
 
 		var constrainedDefinitions = definitions.ToArray();
 		M68kMachineValue? fixedReturn = null;
-		if (definitions.Count == 1)
+		if (definitions.Count == 1 &&
+			target.ImportName != "intrinsic:aptr-read-uint32")
 		{
 			var result = function.Values[definitions[0]];
 			var returnRegister = GetCallReturnRegister(target, result);
@@ -1786,8 +2018,8 @@ internal static class CilMachineIrBuilder
 
 		var registerUses = constrainedUses
 			.Where((_, index) =>
-				index >= argumentRegisters.Count ||
-				argumentRegisters[index] is not null)
+				index >= argumentConstraints.Count ||
+				!argumentConstraints[index].IsStack)
 			.ToArray();
 		block.Instructions.Add(function.CreateInstruction(
 			M68kMachineOperation.Call,
@@ -1818,7 +2050,59 @@ internal static class CilMachineIrBuilder
 		}
 	}
 
-	private static IReadOnlyList<M68kRegister?>
+	private static void AddLiteralAddressIntrinsic(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilInstruction instruction,
+		IReadOnlyList<int> uses,
+		IReadOnlyList<int> definitions)
+	{
+		if (uses.Count != 1 || definitions.Count > 1)
+		{
+			throw new InvalidOperationException(
+				$"Literal intrinsic at IL_{instruction.Offset:X4} has invalid arity.");
+		}
+		if (definitions.Count == 0)
+		{
+			return;
+		}
+
+		// The managed string operand only identifies a compile-time literal. The
+		// intrinsic emitter materializes the corresponding native address and
+		// never calls managed code, so keeping the operand would create a false
+		// GC root and safepoint around a non-call.
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			instruction.Offset,
+			definitions: definitions,
+			sourceInstruction: instruction));
+	}
+
+	private static bool IsLiteralAddressIntrinsic(string? name) =>
+		name is
+			"intrinsic:cstring-from-literal" or
+			"intrinsic:amiga-vararg-from-literal" or
+			"intrinsic:aptr-export-address";
+
+	private readonly record struct CallArgumentConstraint(
+		bool IsStack,
+		M68kRegisterSet Registers,
+		M68kRegister? FixedRegister,
+		bool AllowCopyCoalescing = true)
+	{
+		public static CallArgumentConstraint Stack =>
+			new(true, M68kRegisterSet.None, null);
+
+		public static CallArgumentConstraint Fixed(M68kRegister register) =>
+			new(false, M68kRegisterSet.From(register), register);
+
+		public static CallArgumentConstraint RegisterClass(
+			M68kRegisterSet registers,
+			bool allowCopyCoalescing = true) =>
+			new(false, registers, null, allowCopyCoalescing);
+	}
+
+	private static IReadOnlyList<CallArgumentConstraint>
 		GetStackVarargsArgumentRegisters(
 			MethodReference target,
 			int useCount)
@@ -1829,8 +2113,8 @@ internal static class CilMachineIrBuilder
 			return Enumerable.Range(0, useCount)
 				.Select(static index =>
 					index == 0
-						? (M68kRegister?)M68kRegister.A0
-						: null)
+						? CallArgumentConstraint.Fixed(M68kRegister.A0)
+						: CallArgumentConstraint.Stack)
 				.ToArray();
 		}
 		var fixedParameterCount =
@@ -1840,12 +2124,12 @@ internal static class CilMachineIrBuilder
 		return Enumerable.Range(0, useCount)
 			.Select(index =>
 				index < fixedParameterCount
-					? (M68kRegister?)fixedRegisters[index]
-					: null)
+					? CallArgumentConstraint.Fixed(fixedRegisters[index])
+					: CallArgumentConstraint.Stack)
 			.ToArray();
 	}
 
-	private static IReadOnlyList<M68kRegister?> GetCallArgumentRegisters(
+	private static IReadOnlyList<CallArgumentConstraint> GetCallArgumentRegisters(
 		M68kMachineFunction function,
 		MethodReference target,
 		IReadOnlyList<int> uses,
@@ -1858,39 +2142,59 @@ internal static class CilMachineIrBuilder
 				"intrinsic:nullable-get-value-or-default:",
 				StringComparison.Ordinal) == true)
 		{
-			return [M68kRegister.A0, M68kRegister.D0];
+			return [
+				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
+				CallArgumentConstraint.Fixed(M68kRegister.D0)];
 		}
 		if (target.ImportName == "intrinsic:aptr-read-uint32")
 		{
-			return [M68kRegister.A0, M68kRegister.D0];
+			return [
+				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
+				CallArgumentConstraint.Fixed(M68kRegister.D0)];
 		}
 		if (target.ImportName == "intrinsic:aptr-write-uint32")
 		{
-			return [M68kRegister.A0, M68kRegister.D0, M68kRegister.D1];
+			return [
+				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
+				CallArgumentConstraint.Fixed(M68kRegister.D0),
+				CallArgumentConstraint.Fixed(M68kRegister.D1)];
+		}
+		if (IsAddressBaseIntrinsic(target.ImportName))
+		{
+			var destructiveBase = target.ImportName is
+				"intrinsic:iff-handle-stream" or
+				"intrinsic:iff-handle-set-stream";
+			return Enumerable.Range(0, uses.Count)
+				.Select(index => index == 0
+					? CallArgumentConstraint.RegisterClass(
+						M68kRegisterSet.Address,
+						allowCopyCoalescing: !destructiveBase)
+					: CallArgumentConstraint.Fixed(M68kRegister.D0))
+				.ToArray();
 		}
 		if (target.ImportName == "intrinsic:boopsi-do-method")
 		{
 			return Enumerable.Range(0, uses.Count)
 				.Select(static index =>
 					index == 0
-						? (M68kRegister?)M68kRegister.A0
-						: null)
+						? CallArgumentConstraint.Fixed(M68kRegister.A0)
+						: CallArgumentConstraint.Stack)
 				.ToArray();
 		}
 		if (target.Definition?.ExternalCall is { } externalCall)
 		{
 			return externalCall.Abi.ParameterRegisters
-				.Select(static register => (M68kRegister?)register)
+				.Select(CallArgumentConstraint.Fixed)
 				.ToArray();
 		}
 		if (target.Definition?.ImportAbi is { } importAbi)
 		{
 			return importAbi.ParameterRegisters
-				.Select(static register => (M68kRegister?)register)
+				.Select(CallArgumentConstraint.Fixed)
 				.ToArray();
 		}
 
-		var result = new List<M68kRegister?>();
+		var result = new List<CallArgumentConstraint>();
 		var nextData = 0;
 		var nextAddress = 0;
 		var useIndex = 0;
@@ -1900,7 +2204,8 @@ internal static class CilMachineIrBuilder
 				function.Values[uses[useIndex]].Kind is
 					CilStackValueKind.Reference or
 					CilStackValueKind.ManagedPointer;
-			result.Add(instanceIsAddress ? M68kRegister.A0 : M68kRegister.D0);
+			result.Add(CallArgumentConstraint.Fixed(
+				instanceIsAddress ? M68kRegister.A0 : M68kRegister.D0));
 			if (instanceIsAddress)
 			{
 				nextAddress = 1;
@@ -1924,24 +2229,26 @@ internal static class CilMachineIrBuilder
 				parameter.Size == 8 &&
 				nextData == 0)
 			{
-				result.Add(M68kRegister.D0);
+				result.Add(CallArgumentConstraint.Fixed(M68kRegister.D0));
 				nextData = 2;
 			}
 			else if (parameter.Kind != CilTypeKind.GenericParameter &&
 				IsAddressType(parameter) &&
 				nextAddress < 2)
 			{
-				result.Add((M68kRegister)((int)M68kRegister.A0 + nextAddress++));
+				result.Add(CallArgumentConstraint.Fixed(
+					(M68kRegister)((int)M68kRegister.A0 + nextAddress++)));
 			}
 			else if (parameter.Kind != CilTypeKind.GenericParameter &&
 				parameter.Size != 8 &&
 				nextData < 2)
 			{
-				result.Add((M68kRegister)((int)M68kRegister.D0 + nextData++));
+				result.Add(CallArgumentConstraint.Fixed(
+					(M68kRegister)((int)M68kRegister.D0 + nextData++)));
 			}
 			else
 			{
-				result.Add(null);
+				result.Add(CallArgumentConstraint.Stack);
 			}
 		}
 		return result;
@@ -1977,6 +2284,17 @@ internal static class CilMachineIrBuilder
 			CilTypeKind.ManagedPointer or
 			CilTypeKind.UnmanagedPointer or
 			CilTypeKind.FunctionPointer;
+
+	private static bool IsAddressBaseIntrinsic(string? name) =>
+		name?.StartsWith("intrinsic:nullable-has-value:", StringComparison.Ordinal) == true ||
+		name?.StartsWith("intrinsic:nullable-get-value:", StringComparison.Ordinal) == true ||
+		name is
+			"intrinsic:aptr-raw" or
+			"intrinsic:aptr-is-null" or
+			"intrinsic:aptr-is-not-null" or
+			"intrinsic:iff-handle-stream" or
+			"intrinsic:iff-handle-set-stream" or
+			"intrinsic:string-length";
 
 	private static void PopulatePhiInputs(IReadOnlyList<BlockBuildState> states)
 	{
@@ -2033,7 +2351,7 @@ internal static class CilMachineIrBuilder
 		return CreateValue(
 			function,
 			kind,
-			kind == CilStackValueKind.Int64
+			kind is CilStackValueKind.Int64 or CilStackValueKind.Float64
 				? M68kMachineValueWidth.LongPair
 				: WidthFor(kind));
 	}
@@ -2072,7 +2390,7 @@ internal static class CilMachineIrBuilder
 			CilStackValueKind.UnsignedWord or
 				CilStackValueKind.SignedWord =>
 				M68kMachineValueWidth.Word,
-			CilStackValueKind.Int64 => M68kMachineValueWidth.LongPair,
+			CilStackValueKind.Int64 or CilStackValueKind.Float64 => M68kMachineValueWidth.LongPair,
 			_ => M68kMachineValueWidth.Long
 		};
 
@@ -2118,6 +2436,8 @@ internal static class CilMachineIrBuilder
 		}
 		if (IsIntegerConstant(op) ||
 			op == OpCodes.Ldc_I8 ||
+			op == OpCodes.Ldc_R4 ||
+			op == OpCodes.Ldc_R8 ||
 			op == OpCodes.Ldnull)
 		{
 			return M68kMachineOperation.Constant;
@@ -2253,6 +2573,14 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Stelem_I ||
 		op == OpCodes.Stelem_Ref;
 
+	private static bool RequiresAddressBase(OpCode op) =>
+		op == OpCodes.Ldfld ||
+		op == OpCodes.Ldflda ||
+		op == OpCodes.Stfld ||
+		op == OpCodes.Initobj ||
+		IsIndirectLoad(op) ||
+		IsIndirectStore(op);
+
 	private static bool IsIntegerConstant(OpCode op) =>
 		op == OpCodes.Ldc_I4_M1 ||
 		(op.Value >= OpCodes.Ldc_I4_0.Value &&
@@ -2274,6 +2602,33 @@ internal static class CilMachineIrBuilder
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
+			if (target.Definition is null &&
+				target.ImportName is
+					"intrinsic:aptr-read-uint32" or
+					"intrinsic:aptr-write-uint32" or
+					"intrinsic:aptr-raw" or
+					"intrinsic:iff-handle-stream" or
+					"intrinsic:iff-handle-set-stream" or
+					"intrinsic:string-length")
+			{
+				// These intrinsics lower to a single effective-address operation.
+				// Their explicit uses/definitions already describe every register
+				// they touch, so caller-save clobbers would manufacture needless
+				// live-range preservation around ordinary loads and stores.
+				return M68kRegisterSet.None;
+			}
+			if (target.Definition is null &&
+				(target.ImportName?.StartsWith(
+					"intrinsic:nullable-",
+					StringComparison.Ordinal) == true ||
+				 target.ImportName is
+					"intrinsic:aptr-is-null" or
+					"intrinsic:aptr-is-not-null"))
+			{
+				return M68kRegisterSet.From(
+					M68kRegister.D0,
+					M68kRegister.D1);
+			}
 			if (target.Definition?.ExternalCall is { } externalCall)
 			{
 				var result = RegistersUsedByAbi(
@@ -2341,18 +2696,6 @@ internal static class CilMachineIrBuilder
 		if (op == OpCodes.Switch)
 		{
 			return M68kRegisterSet.From(M68kRegister.D0);
-		}
-		if (op.Name?.Contains("elem", StringComparison.Ordinal) == true)
-		{
-			return M68kRegisterSet.From(M68kRegister.D2);
-		}
-		if (op == OpCodes.Ldfld ||
-			op == OpCodes.Ldflda ||
-			op == OpCodes.Stfld ||
-			IsIndirectLoad(op) ||
-			IsIndirectStore(op))
-		{
-			return M68kRegisterSet.From(M68kRegister.A0);
 		}
 		return M68kRegisterSet.None;
 	}
@@ -2439,6 +2782,8 @@ internal static class CilMachineIrBuilder
 		{
 			M68kMachineOperation.LocalLoad =>
 				M68kMachineMemoryEffect.Read,
+			M68kMachineOperation.ArgumentLoad =>
+				M68kMachineMemoryEffect.Read,
 			M68kMachineOperation.LocalStore =>
 				M68kMachineMemoryEffect.Write,
 			M68kMachineOperation.LocalAddress or
@@ -2466,6 +2811,34 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Cgt_Un ||
 		op == OpCodes.Clt ||
 		op == OpCodes.Clt_Un;
+
+	private static M68kCondition ComparisonCondition(OpCode op) =>
+		op == OpCodes.Ceq
+			? M68kCondition.Equal
+			: op == OpCodes.Cgt
+				? M68kCondition.GreaterThan
+				: op == OpCodes.Cgt_Un
+					? M68kCondition.Higher
+					: op == OpCodes.Clt
+						? M68kCondition.LessThan
+						: M68kCondition.CarrySet;
+
+	private static M68kCondition PredicateCondition(
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction instruction)
+	{
+		var target = module.ResolveMethodToken(
+			(int)instruction.Operand!,
+			method,
+			instruction.Offset);
+		return target.ImportName == "intrinsic:aptr-is-null"
+			? M68kCondition.Equal
+			: M68kCondition.NotEqual;
+	}
+
+	private static M68kCondition InvertCondition(M68kCondition condition) =>
+		(M68kCondition)((int)condition ^ 1);
 
 	private static bool EndsBlock(OpCode op) =>
 		op.FlowControl is

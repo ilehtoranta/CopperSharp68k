@@ -34,7 +34,12 @@ internal sealed partial class M68kCodeGenerator
 	private readonly ManagedPoolRuntimeModule? _managedPoolRuntime;
 	private readonly Dictionary<CilMethodIdentity, M68kMethodAllocationStatistics>
 		_allocationStatistics = new();
+	private readonly Dictionary<CilMethodIdentity, M68kTerminalDeadStoreStatistics>
+		_terminalDeadStoreStatistics = new();
+	private readonly List<M68kLoopLayout> _loopLayouts = new();
 	private readonly HashSet<CilMethodIdentity> _rootOnlyMethods = new();
+	private readonly HashSet<CilMethodIdentity> _terminatingEntryMethods = new();
+	private readonly HashSet<CilFieldIdentity> _escapedStaticFields = new();
 
 	private enum InlineCandidateKind
 	{
@@ -91,7 +96,7 @@ internal sealed partial class M68kCodeGenerator
 	private bool UseClr => _request.ClrPolicy switch
 	{
 		M68kClrPolicy.Always => true,
-		_ => _request.Cpu is M68kCpuTarget.M68020 or M68kCpuTarget.M68040
+		_ => _request.Cpu != M68kCpuTarget.M68000
 	};
 
 	public M68kCodeGenerator(
@@ -126,6 +131,38 @@ internal sealed partial class M68kCodeGenerator
 			methods.Any(MethodMayRaiseException);
 		_hasExceptionFrames = _usesExceptionRuntime &&
 			methods.Any(static method => method.ExceptionRegions.Count != 0);
+		var entryHasOtherInvocation =
+			exports.Any(export => export.Method.Identity == entry.Identity) ||
+			methods.Any(method =>
+				method.Identity != entry.Identity &&
+				method.Instructions.Any(instruction =>
+					IsCallInstruction(instruction) &&
+					_module.ResolveMethodToken(
+						(int)instruction.Operand!,
+						method,
+						instruction.Offset).Definition?.Identity ==
+							entry.Identity));
+		var hasTerminatingTargetLifetime =
+			_request.OutputFormat == M68kOutputFormat.Hunk ||
+			(_request.OutputFormat == M68kOutputFormat.Assembly &&
+			 _request.RuntimeProfile == M68kRuntimeProfile.Application);
+		if (!entryHasOtherInvocation &&
+			hasTerminatingTargetLifetime &&
+			(!usesManagedRuntime || _managedPoolRuntime is not null))
+		{
+			_terminatingEntryMethods.Add(entry.Identity);
+		}
+		foreach (var method in methods)
+		{
+			foreach (var instruction in method.Instructions.Where(static instruction =>
+				instruction.OpCode == OpCodes.Ldsflda))
+			{
+				_escapedStaticFields.Add(_module.ResolveFieldToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset).Identity);
+			}
+		}
 		var entryLabel = MethodLabel(entry);
 		if (initializesPlatformBase || usesManagedRuntime || usesAmigaStartupArguments || _hasExceptionFrames)
 		{
@@ -135,16 +172,7 @@ internal sealed partial class M68kCodeGenerator
 				usesAmigaStartupArguments,
 				_hasExceptionFrames);
 		}
-		else if (!exports.Any(export => export.Method.Identity == entry.Identity) &&
-			!methods.Any(method =>
-				method.Identity != entry.Identity &&
-				method.Instructions.Any(instruction =>
-					IsCallInstruction(instruction) &&
-					_module.ResolveMethodToken(
-						(int)instruction.Operand!,
-						method,
-						instruction.Offset).Definition?.Identity ==
-						entry.Identity)))
+		else if (!entryHasOtherInvocation)
 		{
 			_rootOnlyMethods.Add(entry.Identity);
 		}
@@ -159,7 +187,9 @@ internal sealed partial class M68kCodeGenerator
 		EmitExceptionRuntime();
 		EmitManagedPoolRuntime();
 		VerifyAllocatedPrePeepholeOutput();
-		_assembler.OptimizeForCpu(_request.Cpu);
+		_assembler.OptimizeForCpu(_request.Cpu, _request.ClrPolicy);
+		_assembler.ApplyRequestedAlignments();
+		_assembler.MarkDataStart();
 		EmitData(methods);
 		EmitExceptionMetadata(methods);
 
@@ -170,7 +200,9 @@ internal sealed partial class M68kCodeGenerator
 			_usedPlatformBases.Values.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal).ToArray(),
 			entryLabel,
 			methods.ToDictionary(method => method.Identity, MethodLabel),
-			_allocationStatistics);
+			_allocationStatistics,
+			_terminalDeadStoreStatistics,
+			_loopLayouts);
 	}
 
 	private void VerifyAllocatedPrePeepholeOutput()
@@ -442,10 +474,14 @@ internal sealed partial class M68kCodeGenerator
 
 		if (type.IsFloatingPoint)
 		{
-			throw new M68kCompilationException(
-				M68kDiagnosticIds.UnsupportedSignature,
-				$"Floating-point {role} '{type.DisplayName}' is disabled; no FPU code is emitted.",
-				method.DisplayName);
+			if (_request.FloatingPoint == M68kFloatingPointMode.Disabled)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"Floating-point {role} '{type.DisplayName}' is disabled; select an FPU or SoftFloat mode.",
+					method.DisplayName);
+			}
+			return;
 		}
 
 		if (type.IsNullable)
@@ -501,6 +537,13 @@ internal sealed partial class M68kCodeGenerator
 				.ToArray());
 		machineFunction.PreserveCalleeSavedRegisters =
 			!_rootOnlyMethods.Contains(method.Identity);
+		_terminalDeadStoreStatistics[method.Identity] =
+			M68kTerminalDeadStoreEliminator.Run(
+			machineFunction,
+			method,
+			_module,
+			_terminatingEntryMethods.Contains(method.Identity),
+			_escapedStaticFields);
 		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(machineFunction);
 		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
 		var branchTargets = GetBranchTargets(method.Instructions);
@@ -3650,11 +3693,20 @@ internal sealed partial class M68kCodeGenerator
 		EmitShift(op, CilStackValueKind.Int32);
 	}
 
-	private void EmitShift(OpCode op, CilStackValueKind resultKind)
+	private void EmitShift(
+		OpCode op,
+		CilStackValueKind resultKind,
+		int? immediate = null)
 	{
+		var width = CilStackValueLayout.ArithmeticWidth(resultKind);
+		if (immediate is { } shiftCount)
+		{
+			EmitImmediateShift(op, width, shiftCount);
+			return;
+		}
+
 		var done = UniqueLabel("shift_done");
 		var loop = UniqueLabel("shift_loop");
-		var width = CilStackValueLayout.ArithmeticWidth(resultKind);
 		_assembler.EmitWord(0x0281); // ANDI.L #31,D1
 		_assembler.EmitLong(31);
 		_assembler.EmitWord(0x4A81); // TST.L D1
@@ -3664,6 +3716,21 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x5381); // SUBQ.L #1,D1
 		_assembler.EmitBranch(M68kCondition.NotEqual, loop);
 		_assembler.Mark(done);
+	}
+
+	private void EmitImmediateShift(OpCode op, int width, int count)
+	{
+		count &= 31;
+		while (count != 0)
+		{
+			var chunk = Math.Min(count, 8);
+			var encodedCount = chunk == 8 ? 0 : chunk;
+			var opcode = ShiftOpcode(op, width);
+			_assembler.EmitWord((ushort)(
+				(opcode & ~(7 << 9)) |
+				(encodedCount << 9)));
+			count -= chunk;
+		}
 	}
 
 	private void EmitComparison(OpCode op)
@@ -7501,6 +7568,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitInitializePlatformBases()
 	{
+		_loadedPlatformBase = null;
 		foreach (var platformBase in _usedPlatformBases.Values
 			.Where(item => item.Binding.BaseSource == M68kExternalBaseSource.CachedPointer)
 			.DistinctBy(item => (item.Binding.CacheRegister, item.Binding.SourceAddress)))
@@ -7516,9 +7584,13 @@ internal sealed partial class M68kCodeGenerator
 				item.Binding.SourceAddress != 0)
 			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 		{
-			EmitStoreMemoryLongDirectToLabel(
-				platformBase.Binding.SourceAddress,
+			EmitLoadAddressRegisterFromMemory(
+				platformBase.Binding.BaseRegister,
+				platformBase.Binding.SourceAddress);
+			EmitStoreRegisterDirectToLabel(
+				platformBase.Binding.BaseRegister,
 				platformBase.Label!);
+			_loadedPlatformBase = platformBase;
 		}
 	}
 
@@ -7811,32 +7883,11 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitAddress(label);
 	}
 
-	private void EmitStoreMemoryLongDirectToLabel(uint sourceAddress, string label)
-	{
-		if (sourceAddress <= short.MaxValue)
-		{
-			_assembler.EmitWord(0x23F8); // MOVE.L abs.w,abs.l
-			_assembler.EmitWord((ushort)sourceAddress);
-			_assembler.EmitAddress(label);
-			return;
-		}
-
-		_assembler.EmitWord(0x23F9); // MOVE.L abs.l,abs.l
-		_assembler.EmitLong(sourceAddress);
-		_assembler.EmitAddress(label);
-	}
-
 	private void EmitClearLabel(string label)
 	{
-		if (UseClr)
-		{
-			_assembler.EmitWord(0x42B9); // CLR.L abs.l
-			_assembler.EmitAddress(label);
-			return;
-		}
-
-		_assembler.EmitWord(0x23FC); // MOVE.L #0,abs.l
-		_assembler.EmitLong(0);
+		// These labels are compiler-owned writable slots, so CLR's MC68000
+		// read-before-write is safe even when general memory uses MOVE.
+		_assembler.EmitWord(0x42B9); // CLR.L abs.l
 		_assembler.EmitAddress(label);
 	}
 
@@ -8652,7 +8703,10 @@ internal sealed record GeneratedProgram(
 	string EntryLabel,
 	IReadOnlyDictionary<CilMethodIdentity, string> MethodLabels,
 	IReadOnlyDictionary<CilMethodIdentity, M68kMethodAllocationStatistics>
-		AllocationStatistics);
+		AllocationStatistics,
+	IReadOnlyDictionary<CilMethodIdentity, M68kTerminalDeadStoreStatistics>
+		TerminalDeadStoreStatistics,
+	IReadOnlyList<M68kLoopLayout> LoopLayouts);
 
 internal sealed record GeneratedPlatformBase(
 	M68kExternalCallConvention Binding,
