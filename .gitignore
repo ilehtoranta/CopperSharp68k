@@ -499,6 +499,7 @@ CopperMod.Amiga/References
 *.bin
 *.png
 !docs/assets/*.png
+!assets/branding/*.png
 !CopperDisk/copperdisk-icon.png
 !CopperFloat/copperfloat-icon.png
 *.bgra

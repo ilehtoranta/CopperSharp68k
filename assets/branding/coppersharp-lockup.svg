@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="320" viewBox="0 0 256 320" role="img" aria-labelledby="title desc">
+  <title id="title">CopperSharp lockup</title>
+  <desc id="desc">CopperSharp C# emblem with the CopperSharp wordmark underneath.</desc>
+
+  <image href="coppersharp-emblem.svg" x="32" y="8" width="192" height="192"/>
+
+  <text x="128" y="252" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="0.2" fill="#1c2734">Copper<tspan fill="#7438e5">Sharp</tspan></text>
+  <rect x="95" y="266" width="66" height="2" rx="1" fill="#7438e5" opacity="0.85"/>
+</svg>

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">CopperSharp emblem</title>
+  <desc id="desc">A beveled purple C# emblem for CopperSharp.</desc>
+  <defs>
+    <linearGradient id="badge" x1="48" y1="20" x2="208" y2="216" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d05bff"/>
+      <stop offset="0.42" stop-color="#7438e5"/>
+      <stop offset="1" stop-color="#2e176f"/>
+    </linearGradient>
+    <linearGradient id="badgeFace" x1="0" y1="28" x2="0" y2="212" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.2"/>
+      <stop offset="0.3" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="badgeShadow" x="-25%" y="-25%" width="150%" height="170%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="10" stdDeviation="6" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#badgeShadow)">
+    <rect x="30" y="14" width="196" height="196" rx="30" fill="#070b10" stroke="#111923" stroke-width="5"/>
+    <rect x="40" y="24" width="176" height="176" rx="24" fill="url(#badge)" stroke="#d6adff" stroke-width="3.5"/>
+    <rect x="50" y="34" width="156" height="156" rx="15" fill="url(#badgeFace)" stroke="#210f55" stroke-opacity="0.8" stroke-width="2.5"/>
+    <path d="M45 38v148M211 38v148" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="2"/>
+    <path d="M33 48v128M223 48v128" fill="none" stroke="#000000" stroke-opacity="0.45" stroke-width="2"/>
+    <text x="128" y="140" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="78" font-weight="900" letter-spacing="-3.4" fill="#160a38" opacity="0.55" transform="translate(0 5)">C#</text>
+    <text x="128" y="140" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="78" font-weight="900" letter-spacing="-3.4" fill="#ffffff">C#</text>
+    <rect x="66" y="169" width="124" height="3.5" rx="1.75" fill="#ffffff" opacity="0.16"/>
+  </g>
+</svg>
