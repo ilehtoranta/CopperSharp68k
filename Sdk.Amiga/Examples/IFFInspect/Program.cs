@@ -92,7 +92,7 @@ public static class Program
 			var iff = IffParse.AllocIFF();
 			if (iff.IsNull)
 			{
-				throw new IFFInspectException(OperationAllocateIFF, IffParse.IFFERR_NOMEM);
+				throw new IFFInspectException(OperationAllocateIFF, (int)IffError.NoMem);
 			}
 
 			try
@@ -109,7 +109,7 @@ public static class Program
 				try
 				{
 					error = IffParse.ParseIFF(iff, IffParse.IFFPARSE_SCAN);
-					if (error != IffParse.IFFERR_EOF)
+					if (error != (int)IffError.Eof)
 					{
 						throw new IFFInspectException(OperationParseIFF, error);
 					}
@@ -130,13 +130,8 @@ public static class Program
 		}
 	}
 
-	private static APTR OpenLibrary(CString name)
-	{
-		var library = Exec.OpenLibrary(name, 33);
-		return library.HasValue
-			? library.Value
-			: APTR.Null;
-	}
+	private static APTR OpenLibrary(CString name) =>
+		Exec.OpenLibrary(name, 33).GetValueOrDefault();
 
 	private static BPTR OpenFile(CString path)
 	{
