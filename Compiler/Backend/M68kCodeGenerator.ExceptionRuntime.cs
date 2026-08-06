@@ -21,20 +21,30 @@ internal sealed partial class M68kCodeGenerator
 	private const short RuntimeFrameDescriptorOffset = 0;
 	private const short RuntimeFrameBaseOffset = 0;
 	private const short RuntimeFrameStateOffset = 0;
-	private const int UnwindSiteEntryBytes = 20;
+	private bool UsesExtendedUnwindSites =>
+		_unwindMethodLayouts.Values.Any(static layout => layout.HasDynamicStackAllocation);
+
+	private int UnwindSiteEntryBytes =>
+		UsesExtendedUnwindSites ||
+		_unwindSites.Any(static site => site.ExceptionCleanupLabel is not null)
+			? 24
+			: 20;
 
 	private sealed record UnwindMethodLayout(
 		CilMethod Method,
 		int FrameBytes,
 		ImmutableArray<M68kRegister> CalleeSavedRegisters,
-		ImmutableArray<int> RootOffsets);
+		ImmutableArray<int> RootOffsets,
+		bool HasDynamicStackAllocation,
+		int? SavedFrameAnchorOffset);
 
 	private sealed record UnwindSite(
 		CilMethod Method,
 		string ResumeLabel,
 		int StackAdjustment,
 		string? ExceptionStateLabel,
-		ImmutableArray<int> RootOffsets);
+		ImmutableArray<int> RootOffsets,
+		string? ExceptionCleanupLabel);
 
 	private readonly Dictionary<CilMethodIdentity, UnwindMethodLayout> _unwindMethodLayouts = new();
 	private readonly List<UnwindSite> _unwindSites = new();
@@ -176,17 +186,48 @@ internal sealed partial class M68kCodeGenerator
 			.Distinct()
 			.Order()
 			.ToImmutableArray();
+		var savedFrameAnchorOffset = SavedRegisterOffset(
+			allocated.Frame,
+			M68kRegister.A5);
 		_unwindMethodLayouts[method.Identity] = new UnwindMethodLayout(
 			method,
 			allocated.Frame.FrameBytes,
 			allocated.Frame.CalleeSavedRegisters.ToImmutableArray(),
-			roots);
+			roots,
+			allocated.Function.HasDynamicStackAllocation,
+			savedFrameAnchorOffset);
+	}
+
+	private static int? SavedRegisterOffset(
+		M68kAllocatedFramePlan frame,
+		M68kRegister register)
+	{
+		var index = -1;
+		for (var candidate = 0;
+			candidate < frame.CalleeSavedRegisters.Count;
+			candidate++)
+		{
+			if (frame.CalleeSavedRegisters[candidate] == register)
+			{
+				index = candidate;
+				break;
+			}
+		}
+		if (index < 0)
+		{
+			return null;
+		}
+		var savedIndex = frame.CalleeSavedRegisters.Count < 3
+			? frame.CalleeSavedRegisters.Count - 1 - index
+			: index;
+		return checked(frame.FrameBytes + (savedIndex * 4));
 	}
 
 	private void RegisterCurrentUnwindSite(
 		bool exception,
 		bool gc,
-		int additionalStackBytes = 0)
+		int additionalStackBytes = 0,
+		string? exceptionCleanupLabel = null)
 	{
 		if (_emittingUnwindMethod is not { } method ||
 			_emittingAllocatedFunction is not { } allocated ||
@@ -211,7 +252,8 @@ internal sealed partial class M68kCodeGenerator
 			label,
 			checked(4 + _allocatedOutgoingStackBytes + additionalStackBytes),
 			state,
-			roots));
+			roots,
+			exceptionCleanupLabel));
 	}
 
 	private ImmutableArray<int> GetSafepointRootOffsets(
@@ -592,12 +634,24 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitExceptionRaiseRuntime()
 	{
+		var usesInvalidCast = _runtimeTypeDescriptors.Contains("System.InvalidCastException");
+		var usesArrayTypeMismatch = _runtimeTypeDescriptors.Contains("System.ArrayTypeMismatchException");
+		var usesArgument = _runtimeTypeDescriptors.Contains("System.ArgumentException");
+		var usesArgumentOutOfRange = _runtimeTypeDescriptors.Contains(
+			"System.ArgumentOutOfRangeException");
+		var usesArgumentNull = _runtimeTypeDescriptors.Contains(
+			"System.ArgumentNullException");
 		var haveException = UniqueLabel("eh_have_exception");
 		var nullFault = UniqueLabel("eh_null_fault");
 		var boundsFault = UniqueLabel("eh_bounds_fault");
 		var divideFault = UniqueLabel("eh_divide_fault");
 		var overflowFault = UniqueLabel("eh_overflow_fault");
 		var outOfMemoryFault = UniqueLabel("eh_oom_fault");
+		var invalidCastFault = UniqueLabel("eh_invalid_cast_fault");
+		var arrayTypeMismatchFault = UniqueLabel("eh_array_type_mismatch_fault");
+		var argumentFault = UniqueLabel("eh_argument_fault");
+		var argumentOutOfRangeFault = UniqueLabel("eh_argument_out_of_range_fault");
+		var argumentNullFault = UniqueLabel("eh_argument_null_fault");
 		var systemFault = UniqueLabel("eh_system_fault");
 
 		_assembler.AlignWord();
@@ -616,7 +670,75 @@ internal sealed partial class M68kCodeGenerator
 		EmitCompareImmediateLong(M68kRegister.D0, 4);
 		_assembler.EmitBranch(M68kCondition.Equal, overflowFault);
 		EmitCompareImmediateLong(M68kRegister.D0, 6);
-		_assembler.EmitBranch(M68kCondition.NotEqual, systemFault);
+		if (!usesInvalidCast && !usesArrayTypeMismatch && !usesArgument &&
+			!usesArgumentOutOfRange && !usesArgumentNull)
+		{
+			_assembler.EmitBranch(M68kCondition.NotEqual, systemFault);
+		}
+		else
+		{
+			_assembler.EmitBranch(M68kCondition.Equal, outOfMemoryFault);
+			if (usesInvalidCast)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 7);
+				_assembler.EmitBranch(M68kCondition.Equal, invalidCastFault);
+			}
+			if (usesArrayTypeMismatch)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 8);
+				_assembler.EmitBranch(M68kCondition.Equal, arrayTypeMismatchFault);
+			}
+			if (usesArgument)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 9);
+				_assembler.EmitBranch(M68kCondition.Equal, argumentFault);
+			}
+			if (usesArgumentOutOfRange)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 10);
+				_assembler.EmitBranch(M68kCondition.Equal, argumentOutOfRangeFault);
+			}
+			if (usesArgumentNull)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 11);
+				_assembler.EmitBranch(M68kCondition.Equal, argumentNullFault);
+			}
+			_assembler.EmitBranch(M68kCondition.True, systemFault);
+		}
+		if (usesArrayTypeMismatch)
+		{
+			_assembler.Mark(arrayTypeMismatchFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArrayTypeMismatchException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesInvalidCast)
+		{
+			_assembler.Mark(invalidCastFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.InvalidCastException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesArgument)
+		{
+			_assembler.Mark(argumentFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArgumentException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesArgumentOutOfRange)
+		{
+			_assembler.Mark(argumentOutOfRangeFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.ArgumentOutOfRangeException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesArgumentNull)
+		{
+			_assembler.Mark(argumentNullFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.ArgumentNullException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
 
 		_assembler.Mark(outOfMemoryFault);
 		EmitRuntimeObjectAddress(M68kRegister.A0, "System.OutOfMemoryException");
@@ -660,9 +782,43 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x2069); // MOVEA.L 4(A1),A0 descriptor
 		_assembler.EmitWord(0x0004);
 		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
-		EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
-		_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
-		_assembler.EmitWord(0x000C);
+		if (UnwindSiteEntryBytes > 20)
+		{
+			var noCleanup = UniqueLabel("exception-no-cleanup");
+			_assembler.EmitWord(0x2069); // MOVEA.L 20(A1),A0 cleanup thunk
+			_assembler.EmitWord(0x0014);
+			EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
+			_assembler.EmitWord(0x4A80); // TST.L D0
+			_assembler.EmitBranch(M68kCondition.Equal, noCleanup);
+			_assembler.EmitWord(0x4E90); // JSR (A0)
+			_assembler.Mark(noCleanup);
+		}
+		if (UsesExtendedUnwindSites)
+		{
+			var staticFrameBase = UniqueLabel("exception-static-frame-base");
+			var haveFrameBase = UniqueLabel("exception-have-frame-base");
+			EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
+			_assembler.EmitWord(0x2028); // MOVE.L 12(A0),D0 descriptor flags
+			_assembler.EmitWord(0x000C);
+			_assembler.EmitWord(0x0800); // BTST #0,D0 dynamic-frame flag
+			_assembler.EmitWord(0x0000);
+			_assembler.EmitBranch(M68kCondition.Equal, staticFrameBase);
+			EmitLoadExceptionContextRegister(
+				M68kRegister.D0,
+				ExceptionContextBytes + 36); // preserved A5 frame anchor
+			_assembler.EmitBranch(M68kCondition.True, haveFrameBase);
+			_assembler.Mark(staticFrameBase);
+			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
+			_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
+			_assembler.EmitWord(0x000C);
+			_assembler.Mark(haveFrameBase);
+		}
+		else
+		{
+			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
+			_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
+			_assembler.EmitWord(0x000C);
+		}
 		EmitStoreExceptionContextRegister(M68kRegister.D0, ExceptionContextFrameBaseOffset);
 		_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
 		_assembler.EmitWord(0x0008);
@@ -757,7 +913,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0xB291); // CMP.L (A1),D1
 		_assembler.EmitBranch(M68kCondition.Equal, found);
 		_assembler.EmitWord(0x43E9); // LEA next-entry(A1),A1
-		_assembler.EmitWord(UnwindSiteEntryBytes);
+		_assembler.EmitWord(checked((ushort)UnwindSiteEntryBytes));
 		_assembler.EmitWord(0x5380); // SUBQ.L #1,D0
 		_assembler.EmitBranch(M68kCondition.True, loop);
 		_assembler.Mark(found);
@@ -1357,10 +1513,16 @@ internal sealed partial class M68kCodeGenerator
 			("System.DivideByZeroException", 3),
 			("System.OverflowException", 4),
 			("System.Exception", 5),
-			("System.OutOfMemoryException", 6)
+			("System.OutOfMemoryException", 6),
+			("System.InvalidCastException", 7),
+			("System.ArrayTypeMismatchException", 8),
+			("System.ArgumentException", 9),
+			("System.ArgumentOutOfRangeException", 10),
+			("System.ArgumentNullException", 11)
 		};
 
-		foreach (var (typeName, reason) in mappings)
+		foreach (var (typeName, reason) in mappings.Where(mapping =>
+			mapping.Item2 <= 6 || _runtimeTypeDescriptors.Contains(mapping.Item1)))
 		{
 			var next = UniqueLabel("eh_reason_next");
 			EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
@@ -1404,7 +1566,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void PrepareRuntimeTypeDescriptors(IReadOnlyList<CilMethod> methods)
 	{
-		if (_stringLiterals.Count != 0 || _arrayTypes.Count != 0)
+		if (_stringLiterals.Count != 0 || _usesDynamicStrings || _arrayTypes.Count != 0)
 		{
 			RegisterRuntimeTypeDescriptor("System.Object");
 		}
@@ -1504,7 +1666,7 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		foreach (var typeName in new[]
+		var exceptionTypes = new List<string>
 		{
 			"System.Exception",
 			"System.DivideByZeroException",
@@ -1512,7 +1674,16 @@ internal sealed partial class M68kCodeGenerator
 			"System.IndexOutOfRangeException",
 			"System.OverflowException",
 			"System.OutOfMemoryException"
-		})
+		};
+		exceptionTypes.AddRange(new[]
+		{
+			"System.InvalidCastException",
+			"System.ArrayTypeMismatchException",
+			"System.ArgumentException",
+			"System.ArgumentOutOfRangeException",
+			"System.ArgumentNullException"
+		}.Where(_runtimeTypeDescriptors.Contains));
+		foreach (var typeName in exceptionTypes)
 		{
 			_assembler.AlignWord();
 			_assembler.Mark(RuntimeExceptionObjectLabel(typeName));
@@ -1525,6 +1696,9 @@ internal sealed partial class M68kCodeGenerator
 		typeName switch
 		{
 			"System.Object" => null,
+			"System.Delegate" => "System.Object",
+			"System.MulticastDelegate" => "System.Delegate",
+			"System.ValueType" => "System.Object",
 			"System.Exception" => "System.Object",
 			"System.SystemException" => "System.Exception",
 			"System.ArithmeticException" => "System.SystemException",
@@ -1533,15 +1707,23 @@ internal sealed partial class M68kCodeGenerator
 			"System.IndexOutOfRangeException" or
 			"System.OverflowException" => "System.SystemException",
 			"System.OutOfMemoryException" or
-			"System.InvalidOperationException" => "System.SystemException",
+			"System.InvalidOperationException" or
+			"System.InvalidCastException" or
+			"System.ArrayTypeMismatchException" => "System.SystemException",
+			"System.ArgumentException" => "System.Exception",
+			"System.ArgumentOutOfRangeException" => "System.ArgumentException",
+			"System.ArgumentNullException" => "System.ArgumentException",
+			"System.TypeInitializationException" => "System.SystemException",
 			_ => "System.Exception"
 		};
 
 	private string RuntimeMethodDescriptorLabel(CilMethod method) =>
-		$"runtime:method-descriptor:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}";
+		$"runtime:method-descriptor:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}" +
+		ConstructionLabelSuffix(method.Construction);
 
 	private string RuntimeMethodUnwindRestoreLabel(CilMethod method) =>
-		$"runtime:method-unwind-restore:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}";
+		$"runtime:method-unwind-restore:{ModuleLabelPrefix(method.ModuleName)}{MetadataTokens.GetToken(method.Handle):X8}" +
+		ConstructionLabelSuffix(method.Construction);
 
 	private static string RuntimeRootMapLabel(int index) =>
 		$"runtime:root-map:{index}";

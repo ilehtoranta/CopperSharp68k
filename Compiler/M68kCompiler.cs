@@ -5,6 +5,7 @@
 
 using System.Text;
 using CopperSharp.Compiler.Backend;
+using CopperSharp.Compiler.Framework;
 using CopperSharp.Compiler.Metadata;
 using CopperSharp.Compiler.Output;
 
@@ -13,6 +14,32 @@ namespace CopperSharp.Compiler;
 /// <summary>Compiles a closed set of CIL methods into a linked 68k image.</summary>
 public static class M68kCompiler
 {
+	/// <summary>
+	/// Analyzes the reachable framework surface without generating or linking target code.
+	/// </summary>
+	public static M68kFrameworkAnalysisResult AnalyzeFramework(M68kCompilationRequest request)
+	{
+		ArgumentNullException.ThrowIfNull(request);
+		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
+		ValidateRuntimeOptions(request);
+
+		using var module = new CompilationModule(
+			request.AssemblyPath,
+			request.ExternalCallResolvers,
+			GetManagedAssemblyPaths(request));
+		var entry = module.ResolveEntryPoint(request.EntryPoint);
+		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
+				M68kMemoryManagement.ManagedPoolMarkSweepGc
+				? ResolveManagedPoolRuntime(module)
+				: null;
+
+		return FrameworkReachabilityAnalyzer.Analyze(
+			module,
+			entry,
+			module.GetExports(),
+			managedPoolRuntime);
+	}
+
 	/// <summary>Compiles and links one assembly.</summary>
 	public static M68kCompilationResult Compile(M68kCompilationRequest request)
 	{
@@ -20,6 +47,75 @@ public static class M68kCompiler
 		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
 		ValidateRuntimeOptions(request);
 
+		var managedAssemblyPaths = GetManagedAssemblyPaths(request);
+
+		using var module = new CompilationModule(
+			request.AssemblyPath,
+			request.ExternalCallResolvers,
+			managedAssemblyPaths);
+		var entry = module.ResolveEntryPoint(request.EntryPoint);
+		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
+				M68kMemoryManagement.ManagedPoolMarkSweepGc
+				? ResolveManagedPoolRuntime(module)
+				: null;
+		var frameworkAnalysis = FrameworkReachabilityAnalyzer.Analyze(
+			module,
+			entry,
+			module.GetExports(),
+			managedPoolRuntime);
+		ThrowIfFrameworkIncompatible(frameworkAnalysis);
+		M68kStaticAnalyzer.Analyze(module, entry, request);
+		var generated = new M68kCodeGenerator(
+			module,
+			request,
+			managedPoolRuntime).Generate(entry);
+		var frameworkFeatures = frameworkAnalysis.Members
+			.SelectMany(static member => member.RequiredFeatures)
+			.Distinct(StringComparer.Ordinal)
+			.Order(StringComparer.Ordinal)
+			.ToArray();
+
+		return request.OutputFormat switch
+		{
+			M68kOutputFormat.Hunk => LinkHunk(generated, request, frameworkFeatures),
+			M68kOutputFormat.KickstartRom => LinkRom(generated, request, frameworkFeatures),
+			M68kOutputFormat.Assembly => WriteAssembly(generated, request, frameworkFeatures),
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidOutputOptions,
+				$"Unknown output format {request.OutputFormat}.")
+		};
+	}
+
+	private static void ThrowIfFrameworkIncompatible(
+		M68kFrameworkAnalysisResult analysis)
+	{
+		var unsupported = analysis.Members.FirstOrDefault(static member =>
+			member.Status is
+				M68kFrameworkCompatibilityStatus.Deferred or
+				M68kFrameworkCompatibilityStatus.Unsupported);
+		if (unsupported is null)
+		{
+			return;
+		}
+
+		var callSite = unsupported.CallSites.FirstOrDefault();
+		var path = callSite is null
+			? "<unknown>"
+			: string.Join(" -> ", callSite.RootPath.Append(unsupported.Member.DisplayName));
+		var reason = string.IsNullOrWhiteSpace(unsupported.Reason)
+			? string.Empty
+			: $" {unsupported.Reason}";
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.UnsupportedFrameworkMember,
+			$"Reachable .NET framework member '{unsupported.Member.DisplayName}' is " +
+				$"{unsupported.Status.ToString().ToLowerInvariant()}.{reason} " +
+				$"Root path: {path}",
+			callSite?.Caller,
+			callSite?.IlOffset);
+	}
+
+	private static List<string> GetManagedAssemblyPaths(M68kCompilationRequest request)
+	{
 		var managedAssemblyPaths = request.ManagedAssemblyPaths.ToList();
 		var configuredManagedRuntimePath = request.ManagedAssemblyPaths.FirstOrDefault(path =>
 			string.Equals(
@@ -44,30 +140,7 @@ public static class M68kCompiler
 			}
 		}
 
-		using var module = new CompilationModule(
-			request.AssemblyPath,
-			request.ExternalCallResolvers,
-			managedAssemblyPaths);
-		var entry = module.ResolveEntryPoint(request.EntryPoint);
-		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
-				M68kMemoryManagement.ManagedPoolMarkSweepGc
-				? ResolveManagedPoolRuntime(module)
-				: null;
-		M68kStaticAnalyzer.Analyze(module, entry, request);
-		var generated = new M68kCodeGenerator(
-			module,
-			request,
-			managedPoolRuntime).Generate(entry);
-
-		return request.OutputFormat switch
-		{
-			M68kOutputFormat.Hunk => LinkHunk(generated, request),
-			M68kOutputFormat.KickstartRom => LinkRom(generated, request),
-			M68kOutputFormat.Assembly => WriteAssembly(generated, request),
-			_ => throw new M68kCompilationException(
-				M68kDiagnosticIds.InvalidOutputOptions,
-				$"Unknown output format {request.OutputFormat}.")
-		};
+		return managedAssemblyPaths;
 	}
 
 	private static ManagedPoolRuntimeModule ResolveManagedPoolRuntime(CompilationModule module)
@@ -86,7 +159,9 @@ public static class M68kCompiler
 			Method("Dispose"),
 			Method("Mark"),
 			Method("MarkRoots"),
+			Method("MarkRootsExtended"),
 			Method("CollectWithRoots"),
+			Method("CollectWithRootsExtended"),
 			Method("Collect"),
 			Method("Coalesce"),
 			Method("GetStaleBytes"),
@@ -164,7 +239,8 @@ public static class M68kCompiler
 
 	private static M68kCompilationResult WriteAssembly(
 		GeneratedProgram program,
-		M68kCompilationRequest request)
+		M68kCompilationRequest request,
+		IReadOnlyList<string> frameworkFeatures)
 	{
 		var imports = new Dictionary<string, uint>(request.Imports, StringComparer.Ordinal);
 		foreach (var import in program.Assembler.ExternalTargets)
@@ -187,16 +263,24 @@ public static class M68kCompiler
 			entryOffset,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryOffset, symbols, linked.Relocations, loopFootprints),
+			CreateMap(
+				request,
+				entryOffset,
+				symbols,
+				linked.Relocations,
+				loopFootprints,
+				frameworkFeatures),
 			text,
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
-			loopFootprints);
+			loopFootprints,
+			frameworkFeatures);
 	}
 
 	private static M68kCompilationResult LinkHunk(
 		GeneratedProgram program,
-		M68kCompilationRequest request)
+		M68kCompilationRequest request,
+		IReadOnlyList<string> frameworkFeatures)
 	{
 		var linked = program.Assembler.Link(0, request.Imports);
 		var symbols = CreateSymbols(program, linked, 0);
@@ -217,16 +301,24 @@ public static class M68kCompiler
 			entryOffset,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryOffset, symbols, linked.Relocations, loopFootprints),
+			CreateMap(
+				request,
+				entryOffset,
+				symbols,
+				linked.Relocations,
+				loopFootprints,
+				frameworkFeatures),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
-			loopFootprints);
+			loopFootprints,
+			frameworkFeatures);
 	}
 
 	private static M68kCompilationResult LinkRom(
 		GeneratedProgram program,
-		M68kCompilationRequest request)
+		M68kCompilationRequest request,
+		IReadOnlyList<string> frameworkFeatures)
 	{
 		var romBase = KickstartRomWriter.GetBaseAddress(request.Rom);
 		var codeOrigin = checked(romBase + 8);
@@ -245,11 +337,18 @@ public static class M68kCompiler
 			entryPoint,
 			symbols,
 			linked.Relocations,
-			CreateMap(request, entryPoint, symbols, linked.Relocations, loopFootprints),
+			CreateMap(
+				request,
+				entryPoint,
+				symbols,
+				linked.Relocations,
+				loopFootprints,
+				frameworkFeatures),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
-			loopFootprints);
+			loopFootprints,
+			frameworkFeatures);
 	}
 
 	private static IReadOnlyList<M68kSymbol> CreateSymbols(
@@ -322,7 +421,8 @@ public static class M68kCompiler
 		uint entryPoint,
 		IReadOnlyList<M68kSymbol> symbols,
 		IReadOnlyList<M68kRelocation> relocations,
-		IReadOnlyList<M68kLoopFootprint> loopFootprints)
+		IReadOnlyList<M68kLoopFootprint> loopFootprints,
+		IReadOnlyList<string> frameworkFeatures)
 	{
 		var map = new StringBuilder();
 		map.AppendLine($"CPU {request.Cpu}");
@@ -349,6 +449,12 @@ public static class M68kCompiler
 				$"lines={loop.CacheLineCount} " +
 				$"fits256={(loop.FitsIn256ByteInstructionCache ? "yes" : "no")} " +
 				loop.Method);
+		}
+
+		map.AppendLine("FRAMEWORK FEATURES");
+		foreach (var feature in frameworkFeatures)
+		{
+			map.AppendLine(feature);
 		}
 
 		return map.ToString();

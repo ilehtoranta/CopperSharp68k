@@ -15,12 +15,15 @@ internal static class M68kStaticAnalyzer
 		var memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
 		var visited = new HashSet<CilMethod>();
 		var pending = new Queue<CilMethod>();
+		var reachableDispatchLayouts = new Dictionary<CilTypeIdentity, CilTypeLayout>();
+		var usedVirtualDeclarations = new Dictionary<CilMethodIdentity, CilMethod>();
 		pending.Enqueue(entry);
 		foreach (var export in module.GetExports())
 		{
 			pending.Enqueue(export.Method);
 		}
 
+	ProcessPending:
 		while (pending.TryDequeue(out var method))
 		{
 			if (!visited.Add(method) || method.IsImport)
@@ -40,8 +43,33 @@ internal static class M68kStaticAnalyzer
 
 			foreach (var instruction in method.Instructions)
 			{
-				AnalyzeInstruction(module, method, instruction, request, memoryManagement, pending);
+				AnalyzeInstruction(
+					module,
+					method,
+					instruction,
+					request,
+					memoryManagement,
+					pending,
+					reachableDispatchLayouts,
+					usedVirtualDeclarations);
 			}
+		}
+		var queuedClosedVirtual = false;
+		foreach (var layout in reachableDispatchLayouts.Values)
+		{
+			foreach (var declaration in usedVirtualDeclarations.Values)
+			{
+				var implementation = module.TryGetVirtualImplementation(layout, declaration);
+				if (implementation is not null && !visited.Contains(implementation))
+				{
+					pending.Enqueue(implementation);
+					queuedClosedVirtual = true;
+				}
+			}
+		}
+		if (queuedClosedVirtual)
+		{
+			goto ProcessPending;
 		}
 	}
 
@@ -133,7 +161,9 @@ internal static class M68kStaticAnalyzer
 		CilInstruction instruction,
 		M68kCompilationRequest request,
 		M68kMemoryManagement memoryManagement,
-		Queue<CilMethod> pending)
+		Queue<CilMethod> pending,
+		IDictionary<CilTypeIdentity, CilTypeLayout> reachableDispatchLayouts,
+		IDictionary<CilMethodIdentity, CilMethod> usedVirtualDeclarations)
 	{
 		var op = instruction.OpCode;
 		if (op == OpCodes.Newobj || op == OpCodes.Newarr)
@@ -147,6 +177,12 @@ internal static class M68kStaticAnalyzer
 		}
 
 		var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+		if (op == OpCodes.Newobj &&
+			target.Definition is { IsImport: false } constructor)
+		{
+			var layout = module.GetTypeLayout(constructor);
+			reachableDispatchLayouts.TryAdd(layout.Identity, layout);
+		}
 		ValidateCallDispatch(method, instruction, target);
 		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 		{
@@ -158,6 +194,7 @@ internal static class M68kStaticAnalyzer
 		else if (target.Definition is { IsImport: false } definition &&
 			RequiresVirtualDispatch(instruction, definition))
 		{
+			usedVirtualDeclarations.TryAdd(definition.Identity, definition);
 			foreach (var implementation in module.GetVirtualImplementations(definition))
 			{
 				pending.Enqueue(implementation);

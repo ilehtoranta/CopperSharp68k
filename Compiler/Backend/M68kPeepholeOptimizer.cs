@@ -7,21 +7,39 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 {
+	private static readonly ConstantSynthesisTransform[] M68020ConstantSynthesisTransforms =
+	[
+		// MC68020 instruction-cache timings: MOVEQ is added separately (2 cycles),
+		// SWAP costs 2 cycles, and immediate-count ROR costs 8 cycles.
+		new(ConstantSynthesisOperation.Swap, 0, CacheCycles: 2),
+		new(ConstantSynthesisOperation.RotateRight, 1, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 2, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 3, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 4, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 5, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 6, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 7, CacheCycles: 8),
+		new(ConstantSynthesisOperation.RotateRight, 8, CacheCycles: 8)
+	];
+
 	private readonly M68kAssembler _assembler;
 	private readonly M68kAssemblyBuffer _buffer;
 	private readonly M68kCpuTarget _cpu;
 	private readonly M68kClrPolicy _clrPolicy;
+	private readonly IReadOnlyList<M68kLoopLayout> _sizeFirstLoops;
 
 	public M68kPeepholeOptimizer(
 		M68kAssembler assembler,
 		M68kAssemblyBuffer buffer,
 		M68kCpuTarget cpu,
-		M68kClrPolicy clrPolicy)
+		M68kClrPolicy clrPolicy,
+		IReadOnlyList<M68kLoopLayout> sizeFirstLoops)
 	{
 		_assembler = assembler;
 		_buffer = buffer;
 		_cpu = cpu;
 		_clrPolicy = clrPolicy;
+		_sizeFirstLoops = sizeFirstLoops;
 	}
 
 	public bool Changed { get; private set; }
@@ -46,7 +64,11 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryForwardStackStoreReload(dataflow) ||
 				TryReplaceZeroAddressMove() ||
 				TryOptimizeSmallAddressImmediate(dataflow) ||
+				TryNarrowAddressArithmeticImmediate() ||
+				TryReplaceStackImmediateWithPea(dataflow) ||
 				TryOptimizeDataRegisterImmediate(dataflow) ||
+				TrySynthesizeSizeFirstDataRegisterConstant(dataflow) ||
+				TryUseDestructiveQuickImmediate(dataflow) ||
 				TryReplaceCompareZeroWithTest() ||
 				TryUseRegisterCompareForSmallImmediate(dataflow) ||
 				TryRemoveRedundantTest() ||
@@ -73,8 +95,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryForwardMemoryLoadIntoArithmetic(dataflow) ||
 				TryForwardMemoryLoadThroughStackToAddressRegister() ||
 				TryNarrowAddition(dataflow) ||
-				TryNarrowCompareAddressZero() ||
+				TryNarrowCompareAddressImmediate() ||
 				TryRemoveRedundantLogicalImmediate() ||
+				TryUseSingleBitLogicalImmediate(dataflow) ||
+				TryUseMoveQuickAndMask(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryCanonicalizeAddressAdjustments() ||
 				TryRewriteStackPreservation(dataflow) ||
@@ -96,7 +120,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceCompareRegisterZeroWithTest(dataflow) ||
 				TryFoldCopyMoveQuickCompare(dataflow) ||
 				TryFoldMoveQuickIntoCompareImmediate(dataflow) ||
-				TryRemoveRedundantRegisterSpill();
+				TryRemoveRedundantRegisterSpill() ||
+				TryCanonicalizeZeroDisplacementEffectiveAddress();
 			if (!changed)
 			{
 				changed = TryRemoveDeadInstruction(dataflow);
@@ -105,6 +130,163 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 		while (changed);
 	}
+
+	private bool TryCanonicalizeZeroDisplacementEffectiveAddress()
+	{
+		foreach (var instruction in _assembler.GetInstructionStream())
+		{
+			if (!instruction.IsDecoded ||
+				instruction.Length < 4 ||
+				HasInternalLabel(instruction))
+			{
+				continue;
+			}
+
+			var opcode = instruction.Opcode;
+			var sizeCode = (opcode >> 12) & 0x0F;
+			if (sizeCode is 1 or 2 or 3)
+			{
+				// MOVE encodes its source and destination effective addresses in
+				// different bit fields. Source extensions precede destination
+				// extensions, so canonicalize one operand per optimizer iteration.
+				if (((opcode >> 3) & 7) == 5 &&
+					_buffer.ReadWord(instruction.Offset + 2) == 0)
+				{
+					_buffer.WriteWord(
+						instruction.Offset,
+						(ushort)((opcode & 0xFFC7) | 0x0010)); // 0(An) -> (An)
+					_buffer.RemoveBytes(instruction.Offset + 2, 2);
+					return true;
+				}
+
+				if (((opcode >> 6) & 7) == 5 &&
+					_buffer.ReadWord(instruction.Offset + instruction.Length - 2) == 0)
+				{
+					_buffer.WriteWord(
+						instruction.Offset,
+						(ushort)((opcode & 0xFE3F) | 0x0080)); // 0(An) -> (An)
+					_buffer.RemoveBytes(instruction.Offset + instruction.Length - 2, 2);
+					return true;
+				}
+
+				continue;
+			}
+
+			// For every other decoded instruction the effective-address field is
+			// the low six opcode bits. Any opcode-specific extension words precede
+			// the effective-address extension, making its displacement the final
+			// word of the instruction.
+			if (((opcode >> 3) & 7) != 5 ||
+				_buffer.ReadWord(instruction.Offset + instruction.Length - 2) != 0)
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(
+				instruction.Offset,
+				(ushort)((opcode & 0xFFC7) | 0x0010)); // 0(An) -> (An)
+			_buffer.RemoveBytes(instruction.Offset + instruction.Length - 2, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TrySynthesizeSizeFirstDataRegisterConstant(
+		M68kInstructionDataflow dataflow)
+	{
+		foreach (var instruction in dataflow.Instructions)
+		{
+			if ((instruction.Opcode & 0xF1FF) != 0x203C ||
+				instruction.Length != 6 ||
+				HasAddressFixup(instruction) ||
+				IsReferencedLabelAt(instruction.Offset) ||
+				!IsSizeFirstOffset(instruction.Offset) ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				!TrySelectM68020ConstantSynthesis(
+					instruction.ExtensionLong,
+					facts.LiveConditionsAfter,
+					out var candidate))
+			{
+				continue;
+			}
+
+			var destination = instruction.Opcode >> 9 & 7;
+			_buffer.WriteWord(
+				instruction.Offset,
+				(ushort)(0x7000 | (destination << 9) | (byte)candidate.MoveQuickValue));
+			_buffer.WriteWord(
+				instruction.Offset + 2,
+				candidate.EncodeTransform(destination));
+			_buffer.RemoveBytes(instruction.Offset + candidate.EncodedBytes, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool TrySelectM68020ConstantSynthesis(
+		uint value,
+		M68kConditionCodeSet liveConditions,
+		out ConstantSynthesisCandidate selected)
+	{
+		selected = default;
+		var found = false;
+		// The direct MOVE.L immediate is 6 bytes and 6 cache-case cycles. Within
+		// a size-first loop compare bytes first, then cache cycles for equal sizes.
+		var bestBytes = 6;
+		var bestCycles = 6;
+		for (var seed = (int)sbyte.MinValue; seed <= sbyte.MaxValue; seed++)
+		{
+			var moveQuickValue = unchecked((uint)(int)seed);
+			foreach (var transform in M68020ConstantSynthesisTransforms)
+			{
+				var transformed = transform.Operation switch
+				{
+					ConstantSynthesisOperation.Swap =>
+						(moveQuickValue << 16) | (moveQuickValue >> 16),
+					ConstantSynthesisOperation.RotateRight =>
+						RotateRight(moveQuickValue, transform.Count),
+					_ => throw new ArgumentOutOfRangeException()
+				};
+				if (transformed != value)
+				{
+					continue;
+				}
+
+				// MOVE clears C. ROR instead copies its last shifted-out bit to C;
+				// reject that alternative only when the differing carry is live.
+				var differingConditions = transform.Operation == ConstantSynthesisOperation.RotateRight &&
+					((moveQuickValue >> (transform.Count - 1)) & 1) != 0
+						? M68kConditionCodeSet.Carry
+						: M68kConditionCodeSet.None;
+				if ((liveConditions & differingConditions) != 0)
+				{
+					continue;
+				}
+
+				var candidate = new ConstantSynthesisCandidate(
+					unchecked((sbyte)seed),
+					transform,
+					EncodedBytes: 4,
+					CacheCycles: 2 + transform.CacheCycles);
+				if (candidate.EncodedBytes < bestBytes ||
+					candidate.EncodedBytes == bestBytes &&
+					candidate.CacheCycles < bestCycles)
+				{
+					selected = candidate;
+					found = true;
+					bestBytes = candidate.EncodedBytes;
+					bestCycles = candidate.CacheCycles;
+				}
+			}
+		}
+
+		return found;
+	}
+
+	private static uint RotateRight(uint value, int count) =>
+		(value >> count) | (value << (32 - count));
 
 	private bool TryRemoveRedundantAddressRegisterReload(
 		M68kInstructionDataflow dataflow)
@@ -156,25 +338,29 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
+		M68kEmittedInstruction? narrowCandidate = null;
 		for (var index = 0; index < instructions.Count; index++)
 		{
 			var instruction = instructions[index];
 			if ((instruction.Opcode & 0xF1FF) != 0x207C ||
 				instruction.Length != 6 ||
 				HasAddressFixup(instruction) ||
-				IsReferencedLabelAt(instruction.Offset) ||
-				!dataflow.TryGetFacts(instruction.Offset, out var facts))
+				IsReferencedLabelAt(instruction.Offset))
 			{
 				continue;
 			}
 
 			var destination = instruction.Opcode >> 9 & 7;
+			var value = instruction.ExtensionLong;
 			if (destination == 7)
 			{
+				if (IsSignedWord(value))
+				{
+					narrowCandidate ??= instruction;
+				}
 				continue;
 			}
 
-			var value = instruction.ExtensionLong;
 			if (index != 0)
 			{
 				var previous = instructions[index - 1];
@@ -233,39 +419,86 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				return true;
 			}
 
-			var signedValue = unchecked((int)value);
-			if (_cpu != M68kCpuTarget.M68000 ||
-				signedValue is < sbyte.MinValue or > sbyte.MaxValue ||
-				facts.LiveConditionsAfter != M68kConditionCodeSet.None)
+			if (IsSignedWord(value))
 			{
-				continue;
-			}
-
-			for (var scratch = 0; scratch < 8; scratch++)
-			{
-				if ((facts.LiveDataAfter & (1 << scratch)) != 0)
-				{
-					continue;
-				}
-
-				_buffer.WriteWord(
-					instruction.Offset,
-					(ushort)(0x7000 | (scratch << 9) | (byte)signedValue));
-				_buffer.WriteWord(
-					instruction.Offset + 2,
-					(ushort)(0x2040 | (destination << 9) | scratch));
-				_buffer.RemoveBytes(instruction.Offset + 4, 2);
-				return true;
+				narrowCandidate ??= instruction;
 			}
 		}
 
-		return false;
+		if (narrowCandidate is not { } candidate)
+		{
+			return false;
+		}
+
+		_buffer.WriteWord(
+			candidate.Offset,
+			(ushort)(candidate.Opcode | 0x1000)); // MOVEA.L #imm,An -> MOVEA.W
+		_buffer.RemoveBytes(candidate.Offset + 2, 2);
+		return true;
 	}
+
+	private bool IsSizeFirstOffset(int offset) =>
+		_cpu == M68kCpuTarget.M68020 &&
+		_sizeFirstLoops.Any(loop => loop.Blocks.Any(block =>
+			offset >= _buffer.Labels[block.StartLabel] &&
+			offset < _buffer.AnalysisAnchors[block.EndLabel]));
 
 	private bool HasAddressFixup(M68kEmittedInstruction instruction) =>
 		_buffer.Addresses.Any(address =>
 			address.Offset >= instruction.Offset &&
 			address.Offset < instruction.Offset + instruction.Length);
+
+	private static bool IsSignedWord(uint value) =>
+		unchecked((int)value) is >= short.MinValue and <= short.MaxValue;
+
+	private bool TryNarrowAddressArithmeticImmediate()
+	{
+		foreach (var instruction in _assembler.GetInstructionStream())
+		{
+			var opcodeFamily = instruction.Opcode & 0xF1FF;
+			if (opcodeFamily is not 0xD1FC and not 0x91FC ||
+				instruction.Length != 6 ||
+				HasAddressFixup(instruction) ||
+				IsReferencedLabelAt(instruction.Offset) ||
+				!IsSignedWord(instruction.ExtensionLong))
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(
+				instruction.Offset,
+				(ushort)(instruction.Opcode & 0xFEFF)); // ADDA/SUBA.L -> .W
+			_buffer.RemoveBytes(instruction.Offset + 2, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryReplaceStackImmediateWithPea(
+		M68kInstructionDataflow dataflow)
+	{
+		foreach (var instruction in dataflow.Instructions)
+		{
+			if (instruction.Opcode != 0x2F3C ||
+				instruction.Length != 6 ||
+				HasAddressFixup(instruction) ||
+				IsReferencedLabelAt(instruction.Offset) ||
+				!IsSignedWord(instruction.ExtensionLong) ||
+				!IsSizeFirstOffset(instruction.Offset) ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				!facts.ConditionsAreDeadAfter)
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(instruction.Offset, 0x4878); // PEA (xxx).W
+			_buffer.RemoveBytes(instruction.Offset + 2, 2);
+			return true;
+		}
+
+		return false;
+	}
 
 	private bool TryOptimizeDataRegisterImmediate(
 		M68kInstructionDataflow dataflow)
@@ -316,6 +549,17 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				}
 			}
 
+			if (dataflow.GetDataValueBefore(instruction.Offset, destination)
+					.IsExact(out var priorValue) &&
+				(priorValue & 0xFFFF0000u) == (value & 0xFFFF0000u))
+			{
+				_buffer.WriteWord(
+					instruction.Offset,
+					(ushort)(instruction.Opcode | 0x1000)); // MOVE.L #imm,Dn -> MOVE.W
+				_buffer.RemoveBytes(instruction.Offset + 2, 2);
+				return true;
+			}
+
 			var signedValue = unchecked((int)value);
 			int baseValue;
 			int displacementFromBase;
@@ -353,6 +597,58 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 					displacementFromBase,
 					wordSized: true));
 			_buffer.RemoveBytes(instruction.Offset + 4, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryUseDestructiveQuickImmediate(
+		M68kInstructionDataflow dataflow)
+	{
+		foreach (var instruction in dataflow.Instructions)
+		{
+			if (instruction.Length != 6 ||
+				HasAddressFixup(instruction) ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts))
+			{
+				continue;
+			}
+
+			var opcodeFamily = instruction.Opcode & 0xFFF8;
+			var destination = instruction.Opcode & 7;
+			var immediate = unchecked((int)instruction.ExtensionLong);
+			int subtractCount;
+			if (opcodeFamily == 0x0C80 &&
+				immediate is >= 1 and <= 8 &&
+				(facts.LiveDataAfter & (1 << destination)) == 0 &&
+				(facts.LiveConditionsAfter & M68kConditionCodeSet.Extend) == 0)
+			{
+				// CMPI and SUBQ produce identical N/Z/V/C subtraction flags.
+				// SUBQ additionally writes the destination and X, so both must be dead.
+				subtractCount = immediate;
+			}
+			else if (opcodeFamily == 0x0680 &&
+				immediate is >= -8 and <= -1 &&
+				(facts.LiveConditionsAfter &
+					(M68kConditionCodeSet.Carry | M68kConditionCodeSet.Extend)) == 0)
+			{
+				// Adding -n and subtracting n have the same result and N/Z/V flags,
+				// but their carry and extend results differ.
+				subtractCount = -immediate;
+			}
+			else
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(
+				instruction.Offset,
+				EncodeQuickDataRegisterAdjustment(
+					destination,
+					-subtractCount,
+					wordSized: false));
+			_buffer.RemoveBytes(instruction.Offset + 2, 4);
 			return true;
 		}
 
@@ -1308,7 +1604,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				load.Length != 2 ||
 				((load.Opcode >> 12) & 0xF) is not (1 or 2 or 3) ||
 				((load.Opcode >> 3) & 7) != 2 ||
-				((load.Opcode >> 6) & 7) != 0 ||
+				((load.Opcode >> 6) & 7) is var destinationMode &&
+				destinationMode != 0 &&
+				(destinationMode != 1 || (load.Opcode >> 12) != 2) ||
 				IsReferencedLabelAt(lea.Offset) ||
 				IsReferencedLabelAt(load.Offset))
 			{
@@ -3943,20 +4241,21 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryNarrowCompareAddressZero()
+	private bool TryNarrowCompareAddressImmediate()
 	{
 		foreach (var instruction in _assembler.GetInstructionStream())
 		{
 			if ((instruction.Opcode & 0xF1FF) != 0xB1FC ||
 				instruction.Length != 6 ||
-				instruction.ExtensionLong != 0 ||
+				HasAddressFixup(instruction) ||
+				!IsSignedWord(instruction.ExtensionLong) ||
 				IsReferencedLabelAt(instruction.Offset))
 			{
 				continue;
 			}
 
-			// The word immediate is sign-extended, so CMPA.W #0 is the same
-			// comparison as CMPA.L #0 and saves the upper immediate word.
+			// The word immediate is sign-extended before the 32-bit address
+			// comparison, so every signed-word literal has identical flags.
 			_buffer.WriteWord(
 				instruction.Offset,
 				(ushort)(instruction.Opcode & 0xFEFF));
@@ -4044,6 +4343,164 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 		return false;
 	}
+
+	private bool TryUseMoveQuickAndMask(
+		M68kInstructionDataflow dataflow)
+	{
+		foreach (var instruction in dataflow.Instructions)
+		{
+			if ((instruction.Opcode & 0xFFF8) != 0x0280 ||
+				instruction.Length != 6 ||
+				HasAddressFixup(instruction) ||
+				IsReferencedLabelAt(instruction.Offset) ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts))
+			{
+				continue;
+			}
+
+			var signedMask = unchecked((int)instruction.ExtensionLong);
+			if (signedMask == 0 || signedMask is < sbyte.MinValue or > sbyte.MaxValue)
+			{
+				continue;
+			}
+
+			var canUseWordImmediate =
+				(instruction.ExtensionLong & 0xFFFF0000u) == 0xFFFF0000u &&
+				(facts.LiveConditionsAfter &
+					(M68kConditionCodeSet.Negative | M68kConditionCodeSet.Zero)) == 0;
+			var baselineBytes = canUseWordImmediate ? 4 : 6;
+			var baselineCycles = GetLogicalImmediateDataRegisterCycles(canUseWordImmediate);
+			const int candidateBytes = 4;
+			var candidateCycles = GetMoveQuickCycles() + GetLogicalDataRegisterCycles();
+			var generallyProfitable =
+				candidateBytes <= baselineBytes && candidateCycles <= baselineCycles;
+			var cacheSizeProfitable =
+				candidateBytes < baselineBytes && IsSizeFirstOffset(instruction.Offset);
+			if (!generallyProfitable && !cacheSizeProfitable)
+			{
+				continue;
+			}
+
+			var destination = instruction.Opcode & 7;
+			var scratch = -1;
+			for (var priority = 0; priority < 8; priority++)
+			{
+				var candidate = priority switch
+				{
+					0 => 1,
+					1 => 0,
+					_ => priority
+				};
+				if (candidate != destination &&
+					(facts.LiveDataAfter & (1 << candidate)) == 0)
+				{
+					scratch = candidate;
+					break;
+				}
+			}
+
+			if (scratch < 0)
+			{
+				continue;
+			}
+
+			_buffer.WriteWord(
+				instruction.Offset,
+				(ushort)(0x7000 | (scratch << 9) | (byte)signedMask));
+			_buffer.WriteWord(
+				instruction.Offset + 2,
+				(ushort)(0xC080 | (destination << 9) | scratch));
+			_buffer.RemoveBytes(instruction.Offset + 4, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryUseSingleBitLogicalImmediate(
+		M68kInstructionDataflow dataflow)
+	{
+		const M68kConditionCodeSet logicalConditions =
+			M68kConditionCodeSet.Negative |
+			M68kConditionCodeSet.Zero |
+			M68kConditionCodeSet.Overflow |
+			M68kConditionCodeSet.Carry;
+		foreach (var instruction in dataflow.Instructions)
+		{
+			var operation = instruction.Opcode & 0xFFF8;
+			if (operation is not 0x0080 and not 0x0A80 ||
+				instruction.Length != 6 ||
+				HasAddressFixup(instruction) ||
+				IsReferencedLabelAt(instruction.Offset) ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				(facts.LiveConditionsAfter & logicalConditions) != 0)
+			{
+				continue;
+			}
+
+			var immediate = instruction.ExtensionLong;
+			if (immediate == 0 || (immediate & (immediate - 1)) != 0)
+			{
+				continue;
+			}
+
+			var bit = System.Numerics.BitOperations.TrailingZeroCount(immediate);
+			var baselineWordSized = bit < 16;
+			var baselineBytes = baselineWordSized ? 4 : 6;
+			var baselineCycles = GetLogicalImmediateDataRegisterCycles(baselineWordSized);
+			const int candidateBytes = 4;
+			var candidateCycles = GetImmediateBitChangeDataRegisterCycles(bit);
+			var generallyProfitable =
+				candidateBytes <= baselineBytes && candidateCycles <= baselineCycles;
+			var cacheSizeProfitable =
+				candidateBytes < baselineBytes && IsSizeFirstOffset(instruction.Offset);
+			if (!generallyProfitable && !cacheSizeProfitable)
+			{
+				continue;
+			}
+
+			var destination = instruction.Opcode & 7;
+			var bitOpcode = operation == 0x0080
+				? 0x08C0 // ORI.L single bit -> BSET #bit,Dn
+				: 0x0840; // EORI.L single bit -> BCHG #bit,Dn
+			_buffer.WriteWord(
+				instruction.Offset,
+				(ushort)(bitOpcode | destination));
+			_buffer.WriteWord(instruction.Offset + 2, (ushort)bit);
+			_buffer.RemoveBytes(instruction.Offset + 4, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private int GetLogicalImmediateDataRegisterCycles(bool wordSized) => _cpu switch
+	{
+		M68kCpuTarget.M68000 => wordSized ? 8 : 16,
+		M68kCpuTarget.M68020 => wordSized ? 4 : 6,
+		M68kCpuTarget.M68040 => 1,
+		M68kCpuTarget.M68060 => 1,
+		_ => throw new ArgumentOutOfRangeException()
+	};
+
+	private int GetLogicalDataRegisterCycles() => _cpu switch
+	{
+		M68kCpuTarget.M68000 => 4,
+		M68kCpuTarget.M68020 => 2,
+		M68kCpuTarget.M68040 => 1,
+		M68kCpuTarget.M68060 => 1,
+		_ => throw new ArgumentOutOfRangeException()
+	};
+
+	private int GetImmediateBitChangeDataRegisterCycles(int bit) => _cpu switch
+	{
+		// On the MC68000, immediate BCHG/BSET takes two extra cycles for bits 16-31.
+		M68kCpuTarget.M68000 => bit < 16 ? 10 : 12,
+		M68kCpuTarget.M68020 => 4,
+		M68kCpuTarget.M68040 => 1,
+		M68kCpuTarget.M68060 => 1,
+		_ => throw new ArgumentOutOfRangeException()
+	};
 
 	private bool TryRemoveRedundantLogicalImmediate()
 	{
@@ -4480,6 +4937,34 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	{
 		var count = (opcode >> 9) & 7;
 		return count == 0 ? 8 : count;
+	}
+
+	private enum ConstantSynthesisOperation : byte
+	{
+		Swap,
+		RotateRight
+	}
+
+	private readonly record struct ConstantSynthesisTransform(
+		ConstantSynthesisOperation Operation,
+		int Count,
+		int CacheCycles);
+
+	private readonly record struct ConstantSynthesisCandidate(
+		sbyte MoveQuickValue,
+		ConstantSynthesisTransform Transform,
+		int EncodedBytes,
+		int CacheCycles)
+	{
+		internal ushort EncodeTransform(int destination) => Transform.Operation switch
+		{
+			ConstantSynthesisOperation.Swap => (ushort)(0x4840 | destination),
+			ConstantSynthesisOperation.RotateRight => (ushort)(
+				0xE098 |
+				((Transform.Count == 8 ? 0 : Transform.Count) << 9) |
+				destination),
+			_ => throw new ArgumentOutOfRangeException()
+		};
 	}
 
 	private readonly record struct AddressAdjustment(int Register, int Length, int Displacement);

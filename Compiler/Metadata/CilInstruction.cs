@@ -12,7 +12,8 @@ internal sealed record CilInstruction(
 	int Offset,
 	OpCode OpCode,
 	object? Operand,
-	int NextOffset)
+	int NextOffset,
+	int? ConstrainedTypeToken = null)
 {
 	public int Size => NextOffset - Offset;
 }
@@ -25,6 +26,8 @@ internal static class CilInstructionDecoder
 	{
 		var result = new List<CilInstruction>();
 		var offset = 0;
+		int? constrainedTypeToken = null;
+		var constrainedOffset = -1;
 		while (offset < il.Length)
 		{
 			var instructionOffset = offset;
@@ -66,7 +69,48 @@ internal static class CilInstructionDecoder
 					$"Unsupported operand encoding {opCode.OperandType}.")
 			};
 
+			if (opCode == OpCodes.Constrained)
+			{
+				if (constrainedTypeToken is not null)
+				{
+					throw InvalidIl(
+						methodName,
+						instructionOffset,
+						"A constrained. prefix cannot follow another constrained. prefix.");
+				}
+				constrainedTypeToken = (int)operand!;
+				constrainedOffset = instructionOffset;
+				continue;
+			}
+
+			if (constrainedTypeToken is { } typeToken)
+			{
+				if (opCode != OpCodes.Callvirt)
+				{
+					throw InvalidIl(
+						methodName,
+						instructionOffset,
+						$"A constrained. prefix must be followed by callvirt, not '{opCode.Name}'.");
+				}
+				result.Add(new CilInstruction(
+					constrainedOffset,
+					opCode,
+					operand,
+					offset,
+					typeToken));
+				constrainedTypeToken = null;
+				constrainedOffset = -1;
+				continue;
+			}
+
 			result.Add(new CilInstruction(instructionOffset, opCode, operand, offset));
+		}
+		if (constrainedTypeToken is not null)
+		{
+			throw InvalidIl(
+				methodName,
+				constrainedOffset,
+				"A constrained. prefix at the end of a method has no following callvirt.");
 		}
 
 		return result;

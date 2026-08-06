@@ -50,9 +50,15 @@ internal sealed partial class M68kCodeGenerator
 						.Distinct()));
 		}
 
+		_emittingUnwindMethod = method;
+		_emittingAllocatedFunction = allocated;
 		RecordUnwindLayout(method, abi, allocated);
 		EmitAllocatedCalleeSaves(allocated.Frame.CalleeSavedRegisters);
 		EmitAllocateFrame(allocated.Frame.FrameBytes);
+		if (allocated.Function.HasDynamicStackAllocation)
+		{
+			_assembler.EmitWord(0x2A4F); // MOVEA.L A7,A5 fixed-frame anchor
+		}
 		_allocatedSuppressedInstructions.Clear();
 		_allocatedFoldedCopyConstants.Clear();
 		_allocatedExceptionFrameStores.Clear();
@@ -102,8 +108,6 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.RequestLongAlignment(AllocatedBlockLabel(method, header));
 		}
-		_emittingUnwindMethod = method;
-		_emittingAllocatedFunction = allocated;
 		for (var blockIndex = 0; blockIndex < layoutBlocks.Length; blockIndex++)
 		{
 			var block = layoutBlocks[blockIndex];
@@ -322,12 +326,25 @@ internal sealed partial class M68kCodeGenerator
 				copy = copies[0];
 				destinationValue = copy.Definitions[0];
 			}
-			transfers.Add((
-				argument,
-				copy,
-				source,
-				allocated.Allocation.Registers[
-					destinationValue].Register));
+			var destination = allocated.Allocation.Registers[destinationValue];
+			transfers.Add((argument, copy, source, destination.Register));
+			if (destination.IsPair)
+			{
+				var lowSource = source with
+				{
+					Register = source.LowRegister,
+					LowRegister = null,
+					StackOffset = source.IsStack
+						? checked(source.StackOffset + 4)
+						: -1,
+					SlotLongs = 1
+				};
+				transfers.Add((
+					argument,
+					copy,
+					lowSource,
+					(M68kRegister)((int)destination.Register + 1)));
+			}
 			_allocatedSuppressedInstructions.Add(argument.Id);
 			if (copy is not null)
 			{
@@ -545,11 +562,19 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.Copy or
 			M68kMachineOperation.Constant or
 			M68kMachineOperation.Address or
+			M68kMachineOperation.AggregateFieldLoad or
+			M68kMachineOperation.AggregateArrayLoad or
+			M68kMachineOperation.AggregateArrayStore or
+			M68kMachineOperation.AggregateIndirectLoad or
+			M68kMachineOperation.AggregateIndirectStore or
+			M68kMachineOperation.AggregateIndirectCopy or
+			M68kMachineOperation.AggregateIndirectInitialize or
 			M68kMachineOperation.SpillLoad or
 			M68kMachineOperation.SpillStore or
 			M68kMachineOperation.SpillClear or
 			M68kMachineOperation.RootStore or
 			M68kMachineOperation.RootClear or
+			M68kMachineOperation.ByrefOwnerKeepAlive or
 			M68kMachineOperation.OutgoingArgumentPush or
 			M68kMachineOperation.OutgoingArgumentCleanup or
 			M68kMachineOperation.Add or
@@ -565,6 +590,9 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.Shift or
 			M68kMachineOperation.Compare or
 			M68kMachineOperation.Convert or
+			M68kMachineOperation.TypeTest or
+			M68kMachineOperation.TypeInitialize or
+			M68kMachineOperation.FunctionAddress or
 			M68kMachineOperation.Call or
 			M68kMachineOperation.Branch or
 			M68kMachineOperation.ConditionalBranch or
@@ -597,13 +625,16 @@ internal sealed partial class M68kCodeGenerator
 		if (instruction.Operation is
 			M68kMachineOperation.LocalLoad or
 			M68kMachineOperation.ArgumentLoad or
-			M68kMachineOperation.LocalStore)
+			M68kMachineOperation.LocalStore or
+			M68kMachineOperation.ArgumentStore)
 		{
 			if (instruction.ArgumentIndex is not { } frameIndex)
 			{
 				return false;
 			}
-			return instruction.Operation == M68kMachineOperation.ArgumentLoad
+			return instruction.Operation is
+				M68kMachineOperation.ArgumentLoad or
+				M68kMachineOperation.ArgumentStore
 				? allocated.Frame.ArgumentHomeOffsets.ContainsKey(frameIndex)
 				: allocated.Frame.LocalOffsets.ContainsKey(frameIndex);
 		}
@@ -612,16 +643,30 @@ internal sealed partial class M68kCodeGenerator
 			return instruction.ArgumentIndex is { } localIndex &&
 				allocated.Frame.LocalOffsets.ContainsKey(localIndex);
 		}
+		if (instruction.Operation == M68kMachineOperation.DynamicStackAllocate)
+		{
+			return instruction.Uses.Length == 1 &&
+				instruction.Definitions.Length == 1;
+		}
 		if (instruction.Operation == M68kMachineOperation.ArgumentAddress)
 		{
 			return instruction.ArgumentIndex is { } argumentIndex &&
-				allocated.Frame.ArgumentHomeOffsets.ContainsKey(argumentIndex) &&
-				allocated.Function.ArgumentHomes[argumentIndex].Size == 4;
+				allocated.Frame.ArgumentHomeOffsets.ContainsKey(argumentIndex);
 		}
 		if (instruction.Operation == M68kMachineOperation.ObjectAllocate)
 		{
 			return _memoryManagement != M68kMemoryManagement.None &&
 				instruction.SourceInstruction?.OpCode == OpCodes.Newobj;
+		}
+		if (instruction.Operation == M68kMachineOperation.DelegateCreate)
+		{
+			return _memoryManagement != M68kMemoryManagement.None &&
+				instruction.SourceInstruction is { OpCode: var delegateOp, Operand: int token } &&
+				delegateOp == OpCodes.Newobj &&
+				_module.ResolveMethodToken(
+					token,
+					caller,
+					instruction.IlOffset).ImportName == "intrinsic:delegate-ctor";
 		}
 		if (instruction.Operation == M68kMachineOperation.ArrayAllocate)
 		{
@@ -635,6 +680,11 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return instruction.SourceInstruction?.OpCode is { } arrayOp &&
 				(IsArrayAccess(arrayOp) || arrayOp == OpCodes.Ldlen);
+		}
+		if (instruction.Operation is M68kMachineOperation.Box or M68kMachineOperation.Unbox)
+		{
+			return instruction.SourceInstruction?.OpCode is var boxOp &&
+				(boxOp == OpCodes.Box || boxOp == OpCodes.Unbox || boxOp == OpCodes.Unbox_Any);
 		}
 		return instruction.Operation == M68kMachineOperation.Other &&
 			(instruction.SourceInstruction is null ||
@@ -653,7 +703,8 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (instruction.SourceInstruction is not { } source ||
 			(source.OpCode != OpCodes.Call &&
-			 source.OpCode != OpCodes.Callvirt))
+			 source.OpCode != OpCodes.Callvirt &&
+			 source.OpCode != OpCodes.Newobj))
 		{
 			return false;
 		}
@@ -781,16 +832,32 @@ internal sealed partial class M68kCodeGenerator
 					else if (IsIndirectLoad(instruction.SourceInstruction.OpCode))
 					{
 						var address = Location(instruction.Uses[0]).Register;
-						var destination = Location(instruction.Definitions[0]).Register;
+						var destination = Location(instruction.Definitions[0]);
 						EmitAllocatedRequireNonNull(address);
-						EmitAllocatedBaseLoad(
-							address,
-							destination,
-							AllocatedIndirectWidth(instruction.SourceInstruction.OpCode),
-							0);
-						EmitAllocatedNormalize(
-							destination,
-							allocated.Function.Values[instruction.Definitions[0]].Kind);
+						if (destination.IsPair)
+						{
+							EmitAllocatedBaseLoad(
+								address,
+								destination.Register,
+								M68kMachineValueWidth.Long,
+								0);
+							EmitAllocatedBaseLoad(
+								address,
+								(M68kRegister)((int)destination.Register + 1),
+								M68kMachineValueWidth.Long,
+								4);
+						}
+						else
+						{
+							EmitAllocatedBaseLoad(
+								address,
+								destination.Register,
+								AllocatedIndirectWidth(instruction.SourceInstruction.OpCode),
+								0);
+							EmitAllocatedNormalize(
+								destination.Register,
+								allocated.Function.Values[instruction.Definitions[0]].Kind);
+						}
 					}
 					else
 					{
@@ -813,12 +880,23 @@ internal sealed partial class M68kCodeGenerator
 				else if (IsIndirectStore(instruction.SourceInstruction.OpCode))
 				{
 					var address = Location(instruction.Uses[0]).Register;
+					var source = Location(instruction.Uses[1]);
 					EmitAllocatedRequireNonNull(address);
 					EmitAllocatedBaseStore(
-						Location(instruction.Uses[1]).Register,
+						source.Register,
 						address,
-						AllocatedIndirectWidth(instruction.SourceInstruction.OpCode),
+						source.IsPair
+							? M68kMachineValueWidth.Long
+							: AllocatedIndirectWidth(instruction.SourceInstruction.OpCode),
 						0);
+					if (source.IsPair)
+					{
+						EmitAllocatedBaseStore(
+							(M68kRegister)((int)source.Register + 1),
+							address,
+							M68kMachineValueWidth.Long,
+							4);
+					}
 				}
 				else
 				{
@@ -828,6 +906,13 @@ internal sealed partial class M68kCodeGenerator
 						instruction,
 						Location(instruction.Uses[0]).Register);
 				}
+				return;
+
+			case M68kMachineOperation.AggregateFieldLoad:
+				EmitAllocatedAggregateFieldLoad(
+					method,
+					allocated,
+					instruction);
 				return;
 
 			case M68kMachineOperation.LocalLoad:
@@ -852,6 +937,40 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.LocalStore:
+				var storedValue = allocated.Function.Values[instruction.Uses[0]];
+				var localHome = allocated.Function.LocalHomes[
+					instruction.ArgumentIndex!.Value];
+				var storesAggregate = _module.TryGetReferenceFreeStructLayout(
+					method.Locals[localHome.Index],
+					method.ModuleName,
+					out var storedLayout) &&
+					storedLayout.Size > 4;
+				if (storedValue.Kind == CilStackValueKind.AggregateAddress &&
+					storesAggregate)
+				{
+					var source = Location(instruction.Uses[0]).Register;
+					if (source < M68kRegister.A0)
+					{
+						throw new InvalidOperationException(
+							"Aggregate local-store source was not allocated to an address register.");
+					}
+					var destination = AllocatedFrameOffset(
+						allocated,
+						allocated.Frame.LocalOffsets[localHome.Index]);
+					for (var offset = 0; offset < storedLayout.Size; offset += 4)
+					{
+						EmitAllocatedBaseLoad(
+							source,
+							M68kRegister.D0,
+							M68kMachineValueWidth.Long,
+							checked((short)offset));
+						EmitAllocatedFrameStore(
+							M68kRegister.D0,
+							M68kMachineValueWidth.Long,
+							checked(destination + offset));
+					}
+					return;
+				}
 				if (_allocatedExceptionFrameStores.Contains(instruction.Id))
 				{
 					EmitAllocatedFrameCopy(
@@ -875,6 +994,47 @@ internal sealed partial class M68kCodeGenerator
 							instruction.ArgumentIndex!.Value]));
 				return;
 
+			case M68kMachineOperation.ArgumentStore:
+				var storedArgumentIndex = instruction.ArgumentIndex!.Value;
+				var storedArgumentType = TypeForArgument(
+					method,
+					storedArgumentIndex);
+				if (!_module.TryGetReferenceFreeStructLayout(
+						storedArgumentType,
+						method.ModuleName,
+						out var storedArgumentLayout) ||
+					storedArgumentLayout.Size <= 4 ||
+					allocated.Function.Values[instruction.Uses[0]].Kind !=
+						CilStackValueKind.AggregateAddress)
+				{
+					throw new InvalidOperationException(
+						"Aggregate argument store has an invalid source or destination type.");
+				}
+				var argumentSource = Location(instruction.Uses[0]).Register;
+				if (argumentSource < M68kRegister.A0)
+				{
+					throw new InvalidOperationException(
+						"Aggregate argument-store source was not allocated to an address register.");
+				}
+				var argumentDestination = AllocatedFrameOffset(
+					allocated,
+					allocated.Frame.ArgumentHomeOffsets[storedArgumentIndex]);
+				for (var offset = 0;
+					offset < storedArgumentLayout.Size;
+					offset += 4)
+				{
+					EmitAllocatedBaseLoad(
+						argumentSource,
+						M68kRegister.D0,
+						M68kMachineValueWidth.Long,
+						checked((short)offset));
+					EmitAllocatedFrameStore(
+						M68kRegister.D0,
+						M68kMachineValueWidth.Long,
+						checked(argumentDestination + offset));
+				}
+				return;
+
 			case M68kMachineOperation.LocalAddress:
 				EmitAllocatedFrameAddress(
 					Location(instruction.Definitions[0]).Register,
@@ -891,6 +1051,10 @@ internal sealed partial class M68kCodeGenerator
 						allocated,
 						allocated.Frame.ArgumentHomeOffsets[
 							instruction.ArgumentIndex!.Value]));
+				return;
+
+			case M68kMachineOperation.DynamicStackAllocate:
+				EmitAllocatedDynamicStackAllocation(allocated, instruction);
 				return;
 
 			case M68kMachineOperation.ObjectAllocate:
@@ -910,8 +1074,26 @@ internal sealed partial class M68kCodeGenerator
 				}
 				else
 				{
-					EmitAllocatedArrayAccess(allocated, instruction);
+					EmitAllocatedArrayAccess(method, allocated, instruction);
 				}
+				return;
+
+			case M68kMachineOperation.AggregateArrayLoad:
+			case M68kMachineOperation.AggregateArrayStore:
+				EmitAllocatedAggregateArrayAccess(
+					method,
+					allocated,
+					instruction);
+				return;
+
+			case M68kMachineOperation.AggregateIndirectLoad:
+			case M68kMachineOperation.AggregateIndirectStore:
+			case M68kMachineOperation.AggregateIndirectCopy:
+			case M68kMachineOperation.AggregateIndirectInitialize:
+				EmitAllocatedAggregateIndirectOperation(
+					method,
+					allocated,
+					instruction);
 				return;
 
 			case M68kMachineOperation.Constant:
@@ -973,11 +1155,34 @@ internal sealed partial class M68kCodeGenerator
 							instruction.SpillSlotIndex!.Value]));
 				return;
 
+			case M68kMachineOperation.ByrefOwnerKeepAlive:
+				return;
+
 			case M68kMachineOperation.OutgoingArgumentPush:
 			{
 				var location = Location(instruction.Uses[0]);
-				var width = allocated.Function.Values[instruction.Uses[0]].Width;
-				if (width == M68kMachineValueWidth.LongPair)
+				var value = allocated.Function.Values[instruction.Uses[0]];
+				var bytes = instruction.ArgumentIndex!.Value;
+				if ((value.Kind is
+						CilStackValueKind.ManagedPointer or
+						CilStackValueKind.AggregateAddress) &&
+					bytes > 4)
+				{
+					if (location.Register < M68kRegister.A0)
+					{
+						throw new InvalidOperationException(
+							"Aggregate argument source was not allocated to an address register.");
+					}
+					var addressRegister =
+						(int)location.Register - (int)M68kRegister.A0;
+					for (var offset = bytes - 4; offset >= 0; offset -= 4)
+					{
+						_assembler.EmitWord((ushort)(
+							0x2F28 | addressRegister)); // MOVE.L d16(An),-(A7)
+						_assembler.EmitWord(unchecked((ushort)(short)offset));
+					}
+				}
+				else if (value.Width == M68kMachineValueWidth.LongPair)
 				{
 					EmitAllocatedPush((M68kRegister)((int)location.Register + 1));
 					EmitAllocatedPush(location.Register);
@@ -988,7 +1193,7 @@ internal sealed partial class M68kCodeGenerator
 				}
 				_allocatedOutgoingStackBytes = checked(
 					_allocatedOutgoingStackBytes +
-					instruction.ArgumentIndex!.Value);
+					bytes);
 				return;
 			}
 
@@ -1053,7 +1258,14 @@ internal sealed partial class M68kCodeGenerator
 						allocated.Function.Values[instruction.Definitions[0]].Kind);
 					return;
 				}
-				EmitMultiply(allocated.Function.Values[instruction.Definitions[0]].Kind);
+				if (instruction.SourceInstruction?.OpCode == OpCodes.Mul_Ovf_Un)
+				{
+					EmitAllocatedCheckedUnsignedMultiply();
+				}
+				else
+				{
+					EmitMultiply(allocated.Function.Values[instruction.Definitions[0]].Kind);
+				}
 				EmitAllocatedNormalize(
 					M68kRegister.D0,
 					allocated.Function.Values[instruction.Definitions[0]].Kind);
@@ -1122,7 +1334,9 @@ internal sealed partial class M68kCodeGenerator
 				EmitAllocatedConversion(
 					instruction.SourceInstruction!.OpCode,
 					Location(instruction.Uses[0]).Register,
-					Location(instruction.Definitions[0]).Register);
+					allocated.Function.Values[instruction.Uses[0]].Width,
+					Location(instruction.Definitions[0]).Register,
+					allocated.Function.Values[instruction.Definitions[0]].Width);
 				return;
 
 			case M68kMachineOperation.Compare:
@@ -1148,6 +1362,30 @@ internal sealed partial class M68kCodeGenerator
 				{
 					EmitAllocatedCall(method, allocated, instruction);
 				}
+				return;
+
+			case M68kMachineOperation.TypeInitialize:
+				EmitAllocatedTypeInitialization(method, instruction);
+				return;
+
+			case M68kMachineOperation.TypeTest:
+				EmitAllocatedTypeTest(method, allocated, instruction);
+				return;
+
+			case M68kMachineOperation.FunctionAddress:
+				EmitAllocatedFunctionAddress(method, allocated, instruction);
+				return;
+
+			case M68kMachineOperation.DelegateCreate:
+				EmitAllocatedDelegateCreate(method, instruction);
+				return;
+
+			case M68kMachineOperation.Box:
+				EmitAllocatedBox(method, instruction);
+				return;
+
+			case M68kMachineOperation.Unbox:
+				EmitAllocatedUnbox(method, allocated, instruction);
 				return;
 
 			case M68kMachineOperation.Branch:
@@ -1184,7 +1422,45 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Return:
-				if (instruction.Uses.Length != 0)
+				if (abi.ReturnBufferStackOffset is { } returnBufferOffset)
+				{
+					if (!_module.TryGetReferenceFreeStructLayout(
+							method.Signature.ReturnType,
+							method.ModuleName,
+							out var returnLayout) ||
+						returnLayout.Size <= 4 ||
+						instruction.Uses.Length != 1)
+					{
+						throw new InvalidOperationException(
+							$"Multiword return in '{method.DisplayName}' has an invalid ABI shape.");
+					}
+					var source = Location(instruction.Uses[0]).Register;
+					if (source < M68kRegister.A0)
+					{
+						throw new InvalidOperationException(
+							"Multiword return source was not allocated to an address register.");
+					}
+					var destination = source == M68kRegister.A0
+						? M68kRegister.A1
+						: M68kRegister.A0;
+					EmitAllocatedStackLoad(
+						destination,
+						checked(savedBytes + 4 + returnBufferOffset));
+					for (var offset = 0; offset < returnLayout.Size; offset += 4)
+					{
+						EmitAllocatedBaseLoad(
+							source,
+							M68kRegister.D0,
+							M68kMachineValueWidth.Long,
+							checked((short)offset));
+						EmitAllocatedBaseStore(
+							M68kRegister.D0,
+							destination,
+							M68kMachineValueWidth.Long,
+							checked((short)offset));
+					}
+				}
+				else if (instruction.Uses.Length != 0)
 				{
 					var source = Location(instruction.Uses[0]).Register;
 					var destination = IsInternalAddressReturn(
@@ -1268,6 +1544,85 @@ internal sealed partial class M68kCodeGenerator
 			displacement);
 	}
 
+	private void EmitAllocatedAggregateFieldLoad(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var source = instruction.SourceInstruction!;
+		var field = _module.ResolveFieldToken(
+			(int)source.Operand!,
+			method,
+			source.Offset);
+		if (!_module.TryGetReferenceFreeStructLayout(
+				field.Type,
+				field.ModuleName,
+				out var layout) ||
+			layout.Size <= 4)
+		{
+			throw new InvalidOperationException(
+				"Aggregate field load resolved a non-aggregate field.");
+		}
+
+		M68kRegister fieldBase;
+		short fieldDisplacement;
+		if (field.IsStatic)
+		{
+			_staticFields.TryAdd(field.Identity, field);
+			fieldBase = M68kRegister.A1;
+			fieldDisplacement = 0;
+			EmitAllocatedAbsoluteAddress(
+				fieldBase,
+				StaticFieldLabel(field));
+		}
+		else
+		{
+			if (instruction.Uses.Length != 1)
+			{
+				throw new InvalidOperationException(
+					"Aggregate instance field load has no object operand.");
+			}
+			fieldBase = allocated.Allocation.Registers[
+				instruction.Uses[0]].Register;
+			fieldDisplacement = FieldDisplacement(field);
+			EmitAllocatedRequireNonNull(fieldBase);
+		}
+
+		var destination = AllocatedFrameOffset(
+			allocated,
+			allocated.Frame.LocalOffsets[instruction.ArgumentIndex!.Value]);
+		for (var offset = 0; offset < layout.Size; offset += 4)
+		{
+			EmitAllocatedBaseLoad(
+				fieldBase,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				checked((short)(fieldDisplacement + offset)));
+			EmitAllocatedFrameStore(
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				checked(destination + offset));
+		}
+		if (instruction.Definitions.Length == 1)
+		{
+			EmitAllocatedFrameAddress(
+				allocated.Allocation.Registers[
+					instruction.Definitions[0]].Register,
+				destination);
+		}
+	}
+
+	private void EmitAllocatedAbsoluteAddress(
+		M68kRegister destination,
+		string label)
+	{
+		var destinationEa = destination <= M68kRegister.D7
+			? (int)destination << 9
+			: (((int)destination - (int)M68kRegister.A0) << 9) | 0x40;
+		_assembler.EmitWord((ushort)(0x203C | destinationEa));
+		_assembler.EmitAddress(label);
+	}
+
 	private void EmitAllocatedObjectAllocation(
 		CilMethod method,
 		M68kMachineInstruction instruction)
@@ -1276,28 +1631,231 @@ internal sealed partial class M68kCodeGenerator
 			method,
 			instruction.SourceInstruction!,
 			"object construction");
-		var constructor = _module.ResolveMethodToken(
+		var constructorReference = _module.ResolveMethodToken(
 			(int)instruction.SourceInstruction!.Operand!,
 			method,
-			instruction.IlOffset).Definition ??
+			instruction.IlOffset);
+		var constructor = constructorReference.Definition ??
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
 				"Could not resolve allocated object constructor.",
 				method.DisplayName,
 				instruction.IlOffset);
 		var layout = _module.GetTypeLayout(constructor);
-		_usedTypeLayouts.TryAdd(layout.Identity, layout);
+		var descriptorLabel = TypeDescriptorLabel(layout);
+		if (constructor.ConstructedDeclaringType is { } constructedType)
+		{
+			_constructedTypeDescriptors.TryAdd(
+				constructedType.DisplayName,
+				(constructedType, layout));
+			descriptorLabel = ConstructedTypeDescriptorLabel(layout, constructedType);
+		}
+		else
+		{
+			_usedTypeLayouts.TryAdd(layout.Identity, layout);
+		}
 		EmitAllocatedImmediate(layout.Size, M68kRegister.D0);
 		EmitManagedAllocationFromD0(layout.Size);
 		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0
 		_assembler.EmitWord(0x20BC); // MOVE.L #descriptor,(A0)
-		_assembler.EmitAddress(TypeDescriptorLabel(layout));
+		_assembler.EmitAddress(descriptorLabel);
 		EmitAllocatedImmediate(layout.Size, M68kRegister.D1);
 		EmitAllocatedBaseStore(
 			M68kRegister.D1,
 			M68kRegister.A0,
 			M68kMachineValueWidth.Long,
 			4);
+	}
+
+	private void EmitAllocatedFunctionAddress(
+		CilMethod caller,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var source = instruction.SourceInstruction ??
+			throw new InvalidOperationException("Function address has no source instruction.");
+		var target = _module.ResolveMethodToken(
+			(int)source.Operand!,
+			caller,
+			instruction.IlOffset).Definition;
+		if (target is null || target.IsImport)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				"Delegate targets must currently be reachable managed methods.",
+				caller.DisplayName,
+				instruction.IlOffset);
+		}
+		if (source.OpCode == OpCodes.Ldvirtftn)
+		{
+			var receiver = allocated.Allocation.Registers[instruction.Uses.Single()].Register;
+			EmitAllocatedMove(receiver, M68kRegister.A0, M68kMachineValueWidth.Long);
+			EmitAllocatedRequireNonNull(M68kRegister.A0);
+			if (target.DeclaringTypeIsInterface)
+			{
+				var interfaceDefinition = _module.GetInterfaceDefinition(target);
+				_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
+				var slot = _module.GetInterfaceSlot(target);
+				if (slot > short.MaxValue / 4)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedSignature,
+						$"Interface slot {slot} exceeds the indexed method-table displacement range.",
+						target.DisplayName,
+						instruction.IlOffset);
+				}
+				_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2 descriptor
+				_assembler.EmitWord(0x246A); // MOVEA.L interface-map(A2),A2
+				_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeInterfaceMapOffset));
+				_assembler.EmitWord(0x241A); // MOVE.L (A2)+,D2 entry count
+				EmitAddressImmediateToRegister(
+					M68kRegister.A3,
+					InterfaceIdentityLabel(interfaceDefinition));
+				var loop = UniqueLabel("delegate-interface-lookup");
+				var found = UniqueLabel("delegate-interface-found");
+				_assembler.Mark(loop);
+				_assembler.EmitWord(0xB7DA); // CMPA.L (A2)+,A3 identity
+				_assembler.EmitBranch(M68kCondition.Equal, found);
+				_assembler.EmitWord(0x588A); // ADDQ.L #4,A2 skip table
+				_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+				_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+				_assembler.EmitWord(0x4AFC); // ILLEGAL: invalid pairing
+				_assembler.Mark(found);
+				_assembler.EmitWord(0x2452); // MOVEA.L (A2),A2 table
+				if (slot == 0)
+				{
+					_assembler.EmitWord(0x2452); // MOVEA.L (A2),A2 target
+				}
+				else
+				{
+					_assembler.EmitWord(0x246A); // MOVEA.L d16(A2),A2 target
+					_assembler.EmitWord(checked((ushort)(slot * 4)));
+				}
+				EmitAllocatedMove(
+					M68kRegister.A2,
+					allocated.Allocation.Registers[instruction.Definitions.Single()].Register,
+					M68kMachineValueWidth.Long);
+				return;
+			}
+			if (target.IsVirtual && !target.IsFinal && !target.DeclaringTypeIsSealed)
+			{
+				var slot = _module.GetVirtualSlot(target);
+				if (slot > short.MaxValue / 4)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedSignature,
+						$"Virtual slot {slot} exceeds the indexed vtable displacement range.",
+						target.DisplayName,
+						instruction.IlOffset);
+				}
+				_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2 descriptor
+				_assembler.EmitWord(0x246A); // MOVEA.L vtable(A2),A2
+				_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeVirtualTableOffset));
+				if (slot == 0)
+				{
+					_assembler.EmitWord(0x2452); // MOVEA.L (A2),A2 target
+				}
+				else
+				{
+					_assembler.EmitWord(0x246A); // MOVEA.L d16(A2),A2 target
+					_assembler.EmitWord(checked((ushort)(slot * 4)));
+				}
+				EmitAllocatedMove(
+					M68kRegister.A2,
+					allocated.Allocation.Registers[instruction.Definitions.Single()].Register,
+					M68kMachineValueWidth.Long);
+				return;
+			}
+		}
+		EmitAllocatedAddress(
+			MethodLabel(target),
+			allocated.Allocation.Registers[instruction.Definitions.Single()].Register);
+	}
+
+	private void EmitAllocatedDelegateCreate(
+		CilMethod caller,
+		M68kMachineInstruction instruction)
+	{
+		var source = instruction.SourceInstruction ??
+			throw new InvalidOperationException("Delegate construction has no source instruction.");
+		EnsureManagedAllocationAllowed(caller, source, "delegate construction");
+		var reference = _module.ResolveMethodToken(
+			(int)source.Operand!,
+			caller,
+			instruction.IlOffset);
+		var delegateType = reference.ConstructedDeclaringType ??
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				"Delegate construction requires a constructed delegate type.",
+				caller.DisplayName,
+				instruction.IlOffset);
+		RegisterDelegateType(delegateType);
+		EmitAllocatedImmediate(M68kRuntimeAbi.DelegateObjectBytes, M68kRegister.D0);
+		EmitManagedAllocationFromD0(M68kRuntimeAbi.DelegateObjectBytes);
+		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0
+		_assembler.EmitWord(0x20BC); // MOVE.L #descriptor,(A0)
+		_assembler.EmitAddress(DelegateTypeDescriptorLabel(delegateType));
+		EmitAllocatedImmediate(M68kRuntimeAbi.DelegateObjectBytes, M68kRegister.D1);
+		EmitAllocatedBaseStore(
+			M68kRegister.D1,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.ObjectSizeOffset);
+		EmitAllocatedBaseStore(
+			M68kRegister.A2,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.DelegateTargetOffset);
+		EmitAllocatedBaseStore(
+			M68kRegister.A3,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.DelegateThunkOffset);
+		EmitAllocatedImmediate(0, M68kRegister.D1);
+		EmitAllocatedBaseStore(
+			M68kRegister.D1,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.DelegateInvocationListOffset);
+		EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+		var openTarget = UniqueLabel("delegate-open-target");
+		_assembler.EmitBranch(M68kCondition.Equal, openTarget);
+		EmitAllocatedImmediate(
+			unchecked((int)M68kRuntimeAbi.DelegateFlagClosedInstance),
+			M68kRegister.D1);
+		_assembler.Mark(openTarget);
+		EmitAllocatedBaseStore(
+			M68kRegister.D1,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.DelegateFlagsOffset);
+		EmitAllocatedMove(M68kRegister.A0, M68kRegister.D0, M68kMachineValueWidth.Long);
+	}
+
+	private void EmitAllocatedLoadDelegateTypeIdentity(
+		M68kRegister delegateObject,
+		M68kRegister destination)
+	{
+		EmitAllocatedBaseLoad(
+			delegateObject,
+			destination,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.ObjectDescriptorOffset);
+		EmitAllocatedBaseLoad(
+			delegateObject,
+			M68kRegister.D0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.DelegateFlagsOffset);
+		_assembler.EmitWord(0x0280); // ANDI.L #multicast,D0
+		_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+		var done = UniqueLabel("delegate-type-identity-done");
+		_assembler.EmitBranch(M68kCondition.Equal, done);
+		EmitAllocatedBaseLoad(
+			delegateObject,
+			destination,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.DelegateThunkOffset);
+		_assembler.Mark(done);
 	}
 
 	private void EmitAllocatedArrayAllocation(
@@ -1312,37 +1870,65 @@ internal sealed partial class M68kCodeGenerator
 			(int)instruction.SourceInstruction!.Operand!,
 			method,
 			instruction.IlOffset);
-		if (elementType.Size is not (1 or 2 or 4) ||
+		var elementSize = elementType.Size;
+		if (_module.TryGetReferenceFreeStructLayout(
+				elementType,
+				method.ModuleName,
+				out var aggregateLayout) &&
+			aggregateLayout.Size > 4)
+		{
+			elementSize = aggregateLayout.Size;
+		}
+		else if (elementType.Size is not (1 or 2 or 4) ||
 			(!elementType.IsSupportedScalar && !elementType.IsReference))
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
 				$"Arrays of '{elementType.DisplayName}' are not implemented; " +
-				"array elements must occupy one, two, or four bytes.",
+				"array elements must be supported scalars/references or reference-free structs.",
 				method.DisplayName,
 				instruction.IlOffset);
 		}
 		_arrayTypes.TryAdd(elementType.DisplayName, elementType);
+		if (elementType.IsReference)
+		{
+			var elementTarget = _module.ResolveRuntimeTypeIdentity(
+				elementType,
+				method.ModuleName);
+			_arrayElementRuntimeTypes.TryAdd(
+				elementType.DisplayName,
+				elementTarget);
+			_ = RuntimeTypeTestIdentityLabel(elementTarget);
+		}
 		var lengthValid = UniqueLabel("allocated_array_length_valid");
 		EmitAllocatedTest(M68kRegister.D2, M68kMachineValueWidth.Long);
 		_assembler.EmitBranch(M68kCondition.Plus, lengthValid);
 		EmitExceptionRaise(reason: 4, hasException: false);
 		_assembler.Mark(lengthValid);
-		EmitAllocatedMove(
+		var maximumLength = (uint.MaxValue -
+			(uint)M68kRuntimeAbi.ArrayDataOffset) / (uint)elementSize;
+		if (maximumLength < int.MaxValue)
+		{
+			var sizeValid = UniqueLabel("allocated_array_size_valid");
+			_assembler.EmitWord(0x0C82); // CMPI.L #maximum,D2
+			_assembler.EmitLong(maximumLength);
+			_assembler.EmitBranch(M68kCondition.LowerOrSame, sizeValid);
+			EmitExceptionRaise(reason: 4, hasException: false);
+			_assembler.Mark(sizeValid);
+		}
+		EmitAllocatedMultiplyByConstant(
 			M68kRegister.D2,
 			M68kRegister.D0,
-			M68kMachineValueWidth.Long);
-		EmitScaleD0(elementType.Size);
+			elementSize);
 		EmitAllocatedAddImmediate(M68kRegister.D0, 12);
 		EmitManagedAllocationFromD0();
 		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0
 		_assembler.EmitWord(0x20BC); // MOVE.L #descriptor,(A0)
 		_assembler.EmitAddress(ArrayDescriptorLabel(elementType));
-		EmitAllocatedMove(
+		EmitAllocatedMultiplyByConstant(
 			M68kRegister.D2,
 			M68kRegister.D1,
-			M68kMachineValueWidth.Long);
-		EmitScaleD1(elementType.Size);
+			elementSize);
 		EmitAllocatedAddImmediate(M68kRegister.D1, 12);
 		EmitAllocatedBaseStore(
 			M68kRegister.D1,
@@ -1360,15 +1946,204 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineValueWidth.Long);
 	}
 
-	private void EmitAllocatedArrayAccess(
+	private void EmitAllocatedBox(
+		CilMethod caller,
+		M68kMachineInstruction instruction)
+	{
+		var source = instruction.SourceInstruction ??
+			throw new InvalidOperationException("Box operation has no source instruction.");
+		EnsureManagedAllocationAllowed(caller, source, "boxing");
+		var type = _module.ResolveTypeToken(
+			(int)source.Operand!,
+			caller,
+			instruction.IlOffset);
+		var isReferenceFreeStruct = _module.TryGetReferenceFreeStructLayout(
+			type,
+			caller.ModuleName,
+			out var structLayout);
+		if ((!type.IsSupportedScalar || type.IsReference || type.Size is not (1 or 2 or 4 or 8)) &&
+			!isReferenceFreeStruct)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				$"Boxing '{type.DisplayName}' is not implemented; the compact profile currently supports scalar value types up to eight bytes, single-word reference-free structs, and multiword reference-free structs loaded directly from locals.",
+				caller.DisplayName,
+				instruction.IlOffset);
+		}
+		RegisterBoxedType(type);
+		var payloadBytes = isReferenceFreeStruct ? structLayout.Size : type.Size;
+		var objectBytes = checked(8 + Math.Max(4, payloadBytes));
+		EmitAllocatedImmediate(objectBytes, M68kRegister.D0);
+		EmitManagedAllocationFromD0(objectBytes);
+		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0
+		_assembler.EmitWord(0x20BC); // MOVE.L #descriptor,(A0)
+		_assembler.EmitAddress(BoxedTypeDescriptorLabel(type));
+		EmitAllocatedImmediate(objectBytes, M68kRegister.D1);
+		EmitAllocatedBaseStore(
+			M68kRegister.D1,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long,
+			M68kRuntimeAbi.ObjectSizeOffset);
+		if (isReferenceFreeStruct && structLayout.Size > 4)
+		{
+			EmitAllocatedMove(
+				M68kRegister.D2,
+				M68kRegister.A1,
+				M68kMachineValueWidth.Long);
+			for (var offset = 0; offset < structLayout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					M68kRegister.A1,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+				EmitAllocatedBaseStore(
+					M68kRegister.D1,
+					M68kRegister.A0,
+					M68kMachineValueWidth.Long,
+					checked((short)(8 + offset)));
+			}
+		}
+		else
+		{
+			EmitAllocatedBaseStore(
+				M68kRegister.D2,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				8);
+			if (type.Size == 8)
+			{
+				EmitAllocatedBaseStore(
+					M68kRegister.D3,
+					M68kRegister.A0,
+					M68kMachineValueWidth.Long,
+					12);
+			}
+		}
+		EmitAllocatedMove(M68kRegister.A0, M68kRegister.D0, M68kMachineValueWidth.Long);
+	}
+
+	private void EmitAllocatedUnbox(
+		CilMethod caller,
 		M68kAllocatedFunction allocated,
 		M68kMachineInstruction instruction)
 	{
-		var access = GetArrayAccess(instruction.SourceInstruction!.OpCode);
+		var sourceInstruction = instruction.SourceInstruction ??
+			throw new InvalidOperationException("Unbox operation has no source instruction.");
+		var type = _module.ResolveTypeToken(
+			(int)sourceInstruction.Operand!,
+			caller,
+			instruction.IlOffset);
+		var isReferenceFreeStruct = _module.TryGetReferenceFreeStructLayout(
+			type,
+			caller.ModuleName,
+			out var structLayout);
+		if ((!type.IsSupportedScalar || type.IsReference || type.Size is not (1 or 2 or 4 or 8)) &&
+			!isReferenceFreeStruct)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				$"Unboxing '{type.DisplayName}' is not implemented; the compact profile currently supports scalar value types up to eight bytes and reference-free structs.",
+				caller.DisplayName,
+				instruction.IlOffset);
+		}
+		var storesMultiwordLocal = isReferenceFreeStruct &&
+			structLayout.Size > 4 &&
+			sourceInstruction.OpCode == OpCodes.Unbox_Any &&
+			instruction.Definitions.Length == 0 &&
+			instruction.ArgumentIndex is not null;
+		if (isReferenceFreeStruct &&
+			structLayout.Size > 4 &&
+			sourceInstruction.OpCode == OpCodes.Unbox_Any &&
+			!storesMultiwordLocal)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				$"unbox.any for multiword struct '{type.DisplayName}' requires a direct local destination until the general multiword evaluation-stack representation is available.",
+				caller.DisplayName,
+				instruction.IlOffset);
+		}
+		RegisterBoxedType(type);
+		var source = allocated.Allocation.Registers[instruction.Uses.Single()].Register;
+		EmitAllocatedRequireNonNull(source);
+		EmitAllocatedMove(source, M68kRegister.A0, M68kMachineValueWidth.Long);
+		_assembler.EmitWord(0x2210); // MOVE.L (A0),D1 descriptor
+		EmitAddressImmediateToRegister(M68kRegister.A1, BoxedTypeDescriptorLabel(type));
+		_assembler.EmitWord(0xB289); // CMP.L A1,D1
+		var compatible = UniqueLabel("unbox-compatible");
+		_assembler.EmitBranch(M68kCondition.Equal, compatible);
+		RegisterRuntimeTypeDescriptor("System.InvalidCastException");
+		EmitExceptionRaise(reason: 7, hasException: false);
+		_assembler.Mark(compatible);
+		if (storesMultiwordLocal)
+		{
+			var localOffset = AllocatedFrameOffset(
+				allocated,
+				allocated.Frame.LocalOffsets[instruction.ArgumentIndex!.Value]);
+			for (var offset = 0; offset < structLayout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					M68kRegister.A0,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					checked((short)(8 + offset)));
+				EmitAllocatedFrameStore(
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					checked(localOffset + offset));
+			}
+			return;
+		}
+		var destination = allocated.Allocation.Registers[
+			instruction.Definitions.Single()].Register;
+		if (sourceInstruction.OpCode == OpCodes.Unbox)
+		{
+			EmitAllocatedBaseAddress(M68kRegister.A0, destination, 8);
+			return;
+		}
+		EmitAllocatedBaseLoad(
+			M68kRegister.A0,
+			destination,
+			M68kMachineValueWidth.Long,
+			8);
+		if (type.Size == 8)
+		{
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				(M68kRegister)((int)destination + 1),
+				M68kMachineValueWidth.Long,
+				12);
+		}
+		EmitAllocatedNormalize(
+			destination,
+			allocated.Function.Values[instruction.Definitions.Single()].Kind);
+	}
+
+	private void EmitAllocatedArrayAccess(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var source = instruction.SourceInstruction!;
+		var access = source.OpCode is var genericOp &&
+			(genericOp == OpCodes.Ldelem || genericOp == OpCodes.Stelem)
+			? GetGenericArrayAccess(
+				_module.ResolveTypeToken(
+					(int)source.Operand!,
+					method,
+					instruction.IlOffset),
+				genericOp == OpCodes.Stelem)
+			: GetArrayAccess(source.OpCode);
 		var baseRegister = allocated.Allocation.Registers[
 			instruction.Uses[0]].Register;
 		var indexRegister = allocated.Allocation.Registers[
 			instruction.Uses[1]].Register;
+		if (source.OpCode == OpCodes.Stelem_Ref)
+		{
+			EmitAllocatedReferenceArrayStoreCheck(
+				baseRegister,
+				allocated.Allocation.Registers[instruction.Uses[2]].Register);
+		}
 		EmitAllocatedArrayBoundsCheck(baseRegister, indexRegister);
 		if (_request.Cpu == M68kCpuTarget.M68000)
 		{
@@ -1438,6 +2213,381 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.EmitLong(0xFFFF);
 			}
 		}
+	}
+
+	private void EmitAllocatedAggregateArrayAccess(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var type = _module.ResolveTypeToken(
+			(int)instruction.SourceInstruction!.Operand!,
+			method,
+			instruction.IlOffset);
+		if (!_module.TryGetReferenceFreeStructLayout(
+				type,
+				method.ModuleName,
+				out var layout) ||
+			layout.Size <= 4)
+		{
+			throw new InvalidOperationException(
+				"Aggregate array access resolved a non-aggregate element type.");
+		}
+		var array = allocated.Allocation.Registers[instruction.Uses[0]].Register;
+		var index = allocated.Allocation.Registers[instruction.Uses[1]].Register;
+		if (array != M68kRegister.A2 || index != M68kRegister.D2)
+		{
+			throw new InvalidOperationException(
+				"Aggregate array base/index do not satisfy their fixed ABI.");
+		}
+		EmitAllocatedArrayBoundsCheck(array, index);
+		EmitAllocatedMultiplyByConstant(
+			index,
+			M68kRegister.D1,
+			layout.Size);
+		EmitAllocatedIndexedAddress(
+			array,
+			M68kRegister.D1,
+			M68kRegister.A0,
+			elementSize: 1,
+			displacement: (sbyte)M68kRuntimeAbi.ArrayDataOffset);
+
+		if (instruction.Operation == M68kMachineOperation.AggregateArrayStore)
+		{
+			var source = allocated.Allocation.Registers[
+				instruction.Uses[2]].Register;
+			if (source != M68kRegister.A3)
+			{
+				throw new InvalidOperationException(
+					"Aggregate array-store source does not satisfy its fixed ABI.");
+			}
+			for (var offset = 0; offset < layout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A0,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+			}
+			return;
+		}
+
+		var destination = AllocatedFrameOffset(
+			allocated,
+			allocated.Frame.LocalOffsets[instruction.ArgumentIndex!.Value]);
+		for (var offset = 0; offset < layout.Size; offset += 4)
+		{
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				checked((short)offset));
+			EmitAllocatedFrameStore(
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				checked(destination + offset));
+		}
+		if (instruction.Definitions.Length == 1)
+		{
+			EmitAllocatedFrameAddress(
+				allocated.Allocation.Registers[
+					instruction.Definitions[0]].Register,
+				destination);
+		}
+	}
+
+	private void EmitAllocatedAggregateIndirectOperation(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var type = _module.ResolveTypeToken(
+			(int)instruction.SourceInstruction!.Operand!,
+			method,
+			instruction.IlOffset);
+		var hasLayout = instruction.Operation ==
+			M68kMachineOperation.AggregateIndirectInitialize
+				? _module.TryGetIndirectInitializeLayout(
+					type,
+					method.ModuleName,
+					out var layout)
+				: _module.TryGetReferenceFreeStructLayout(
+					type,
+					method.ModuleName,
+					out layout);
+		if (!hasLayout ||
+			layout.Size <= 0 ||
+			(layout.Size & 3) != 0)
+		{
+			throw new InvalidOperationException(
+				"Aggregate indirect operation resolved an invalid layout.");
+		}
+
+		var destination = allocated.Allocation.Registers[
+			instruction.Uses[0]].Register;
+		EmitAllocatedRequireNonNull(destination);
+		if (instruction.Operation ==
+			M68kMachineOperation.AggregateIndirectInitialize)
+		{
+			if (!UseClr)
+			{
+				EmitAllocatedImmediate(0, M68kRegister.D0);
+			}
+			for (var offset = 0; offset < layout.Size; offset += 4)
+			{
+				if (UseClr)
+				{
+					EmitAllocatedBaseClearLong(
+						destination,
+						checked((short)offset));
+				}
+				else
+				{
+					EmitAllocatedBaseStore(
+						M68kRegister.D0,
+						destination,
+						M68kMachineValueWidth.Long,
+						checked((short)offset));
+				}
+			}
+			return;
+		}
+
+		if (instruction.Operation == M68kMachineOperation.AggregateIndirectLoad)
+		{
+			var frameDestination = AllocatedFrameOffset(
+				allocated,
+				allocated.Frame.LocalOffsets[instruction.ArgumentIndex!.Value]);
+			for (var offset = 0; offset < layout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					destination,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+				EmitAllocatedFrameStore(
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked(frameDestination + offset));
+			}
+			if (instruction.Definitions.Length == 1)
+			{
+				EmitAllocatedFrameAddress(
+					allocated.Allocation.Registers[
+						instruction.Definitions[0]].Register,
+					frameDestination);
+			}
+			return;
+		}
+
+		var source = allocated.Allocation.Registers[
+			instruction.Uses[1]].Register;
+		if (instruction.Operation == M68kMachineOperation.AggregateIndirectCopy)
+		{
+			EmitAllocatedRequireNonNull(source);
+			var temporary = AllocatedFrameOffset(
+				allocated,
+				allocated.Frame.LocalOffsets[instruction.ArgumentIndex!.Value]);
+			for (var offset = 0; offset < layout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+				EmitAllocatedFrameStore(
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked(temporary + offset));
+			}
+			for (var offset = 0; offset < layout.Size; offset += 4)
+			{
+				EmitAllocatedFrameLoad(
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked(temporary + offset));
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					destination,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+			}
+			return;
+		}
+
+		for (var offset = 0; offset < layout.Size; offset += 4)
+		{
+			EmitAllocatedBaseLoad(
+				source,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				checked((short)offset));
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				destination,
+				M68kMachineValueWidth.Long,
+				checked((short)offset));
+		}
+	}
+
+	private void EmitAllocatedMultiplyByConstant(
+		M68kRegister source,
+		M68kRegister destination,
+		int factor)
+	{
+		if (source > M68kRegister.D7 ||
+			destination > M68kRegister.D7 ||
+			factor <= 0)
+		{
+			throw new ArgumentOutOfRangeException(nameof(factor));
+		}
+		if (factor == 1)
+		{
+			EmitAllocatedMove(
+				source,
+				destination,
+				M68kMachineValueWidth.Long);
+			return;
+		}
+		EmitAllocatedImmediate(0, destination);
+		var bit = 1;
+		while (bit <= factor / 2)
+		{
+			bit <<= 1;
+		}
+		var started = false;
+		for (; bit != 0; bit >>= 1)
+		{
+			if (started)
+			{
+				EmitAllocatedShiftImmediate(destination, left: true);
+			}
+			if ((factor & bit) == 0)
+			{
+				continue;
+			}
+			_assembler.EmitWord((ushort)(
+				0xD080 |
+				((int)destination << 9) |
+				(int)source)); // ADD.L Dsource,Ddestination
+			started = true;
+		}
+	}
+
+	private int GetAllocatedSpanElementSize(
+		CilMethod caller,
+		CilType element)
+	{
+		if (_module.TryGetReferenceFreeStructLayout(
+				element,
+				caller.ModuleName,
+				out var layout))
+		{
+			return layout.Size;
+		}
+		return element.Size;
+	}
+
+	private void EmitAllocatedSpanElementAddress(
+		M68kRegister baseRegister,
+		M68kRegister indexRegister,
+		M68kRegister destination,
+		int elementSize,
+		M68kRegister scaledIndexScratch)
+	{
+		if (elementSize is 1 or 2 or 4)
+		{
+			if (_request.Cpu == M68kCpuTarget.M68000)
+			{
+				for (var shift = elementSize; shift > 1; shift >>= 1)
+				{
+					EmitAllocatedShiftImmediate(indexRegister, left: true);
+				}
+			}
+			EmitAllocatedIndexedAddress(
+				baseRegister,
+				indexRegister,
+				destination,
+				elementSize,
+				0);
+			return;
+		}
+
+		EmitAllocatedMultiplyByConstant(
+			indexRegister,
+			scaledIndexScratch,
+			elementSize);
+		EmitAllocatedIndexedAddress(
+			baseRegister,
+			scaledIndexScratch,
+			destination,
+			elementSize: 1,
+			displacement: 0);
+	}
+
+	private void EmitAllocatedReferenceArrayStoreCheck(
+		M68kRegister arrayRegister,
+		M68kRegister valueRegister)
+	{
+		var success = UniqueLabel("array-store-type-success");
+		var classLoop = UniqueLabel("array-store-class-loop");
+		var interfaceLoop = UniqueLabel("array-store-interface-loop");
+		var interfaceMap = UniqueLabel("array-store-interface-map");
+		var failure = UniqueLabel("array-store-type-failure");
+
+		EmitAllocatedTest(valueRegister, M68kMachineValueWidth.Long);
+		_assembler.EmitBranch(M68kCondition.Equal, success);
+		_assembler.EmitWord(0x2053); // MOVEA.L (A3),A0 array descriptor
+		if (arrayRegister != M68kRegister.A3)
+		{
+			throw new InvalidOperationException("Reference array base is not constrained to A3.");
+		}
+		if (valueRegister != M68kRegister.A4)
+		{
+			throw new InvalidOperationException("Reference array value is not constrained to A4.");
+		}
+		_assembler.EmitWord(0x2468); // MOVEA.L element-type(A0),A2
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.ArrayElementTypeOffset));
+		_assembler.EmitWord(0x2428); // MOVE.L element-kind(A0),D2
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.ArrayElementKindOffset));
+		_assembler.EmitWord(0x2254); // MOVEA.L (A4),A1 value descriptor
+		_assembler.EmitWord(0x4A82); // TST.L D2
+		_assembler.EmitBranch(M68kCondition.NotEqual, interfaceMap);
+
+		_assembler.Mark(classLoop);
+		_assembler.EmitWord(0xB3CA); // CMPA.L A2,A1
+		_assembler.EmitBranch(M68kCondition.Equal, success);
+		_assembler.EmitWord(0x2269); // MOVEA.L base-type(A1),A1
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeBaseOffset));
+		EmitMoveRegister(M68kRegister.A1, M68kRegister.D1);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.NotEqual, classLoop);
+		_assembler.EmitBranch(M68kCondition.True, failure);
+
+		_assembler.Mark(interfaceMap);
+		_assembler.EmitWord(0x2269); // MOVEA.L interface-map(A1),A1
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeInterfaceMapOffset));
+		EmitMoveRegister(M68kRegister.A1, M68kRegister.D1);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.Equal, failure);
+		_assembler.EmitWord(0x2219); // MOVE.L (A1)+,D1 count
+		_assembler.Mark(interfaceLoop);
+		_assembler.EmitWord(0x2059); // MOVEA.L (A1)+,A0 identity
+		_assembler.EmitWord(0xB1CA); // CMPA.L A2,A0
+		_assembler.EmitBranch(M68kCondition.Equal, success);
+		_assembler.EmitWord(0x5889); // ADDQ.L #4,A1
+		_assembler.EmitWord(0x5381); // SUBQ.L #1,D1
+		_assembler.EmitBranch(M68kCondition.NotEqual, interfaceLoop);
+
+		_assembler.Mark(failure);
+		RegisterRuntimeTypeDescriptor("System.ArrayTypeMismatchException");
+		EmitExceptionRaise(reason: 8, hasException: false);
+		_assembler.Mark(success);
 	}
 
 	private void EmitAllocatedArrayLength(
@@ -1532,15 +2682,44 @@ internal sealed partial class M68kCodeGenerator
 		ValidateType(field.Type, method, "field");
 		var objectRegister =
 			allocated.Allocation.Registers[instruction.Uses[0]].Register;
-		var valueRegister =
-			allocated.Allocation.Registers[instruction.Uses[1]].Register;
 		var displacement = _module.IsTransparentScalarField(field)
 			? (short)0
 			: FieldDisplacement(field);
-		if (!_module.IsTransparentScalarField(field))
+		if (!_module.IsTransparentScalarField(field) &&
+			!IsConstructorReceiver(method, allocated.Function, instruction.Uses[0]))
 		{
 			EmitAllocatedRequireNonNull(objectRegister);
 		}
+		if (_module.TryGetReferenceFreeStructLayout(
+				field.Type,
+				field.ModuleName,
+				out var aggregateLayout) &&
+			aggregateLayout.Size > 4)
+		{
+			var aggregateSource = allocated.Allocation.Registers[
+				instruction.Uses[1]].Register;
+			if (aggregateSource < M68kRegister.A0)
+			{
+				throw new InvalidOperationException(
+					"Aggregate instance-field source is not an address register.");
+			}
+			for (var offset = 0; offset < aggregateLayout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					aggregateSource,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					objectRegister,
+					M68kMachineValueWidth.Long,
+					checked((short)(displacement + offset)));
+			}
+			return;
+		}
+		var valueRegister =
+			allocated.Allocation.Registers[instruction.Uses[1]].Register;
 		if (TryGetAllocatedConstant(
 			allocated.Function,
 			instruction.Uses[1],
@@ -1817,7 +2996,9 @@ internal sealed partial class M68kCodeGenerator
 	private int AllocatedFrameOffset(
 		M68kAllocatedFunction allocated,
 		int offset) =>
-		checked(_allocatedOutgoingStackBytes + offset);
+		allocated.Function.HasDynamicStackAllocation
+			? offset
+			: checked(_allocatedOutgoingStackBytes + offset);
 
 	private void EmitAllocatedFrameHomeInitialization(
 		CilMethod method,
@@ -1828,6 +3009,7 @@ internal sealed partial class M68kCodeGenerator
 		if (method.InitializeLocals)
 		{
 			var clearDisplacements = allocated.Function.LocalHomes.Values
+				.Where(static home => home.Initialize)
 				.OrderBy(static home => home.Index)
 				.SelectMany(home => Enumerable.Range(0, home.Size / 4)
 					.Select(index => AllocatedFrameOffset(
@@ -1859,12 +3041,35 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var home in allocated.Function.ArgumentHomes.Values
 			.OrderBy(static home => home.Index))
 		{
+			var source = abi.Arguments[home.Index];
+			if (home.Size > 4)
+			{
+				if (!source.IsStack || source.SlotLongs * 4 != home.Size)
+				{
+					throw new InvalidOperationException(
+						$"Multiword argument home {home.Index} does not match its incoming stack value.");
+				}
+				EmitAllocatedPush(M68kRegister.D7);
+				for (var offset = 0; offset < home.Size; offset += 4)
+				{
+					EmitAllocatedStackLoad(
+						M68kRegister.D7,
+						checked(savedBytes + 8 + source.StackOffset + offset));
+					EmitAllocatedFrameStore(
+						M68kRegister.D7,
+						M68kMachineValueWidth.Long,
+						checked(AllocatedFrameOffset(
+							allocated,
+							allocated.Frame.ArgumentHomeOffsets[home.Index]) + 4 + offset));
+				}
+				_assembler.EmitWord(0x2E1F); // MOVE.L (A7)+,D7
+				continue;
+			}
 			if (home.Size != 4)
 			{
 				throw new InvalidOperationException(
 					$"Allocated argument home {home.Index} has unsupported size {home.Size}.");
 			}
-			var source = abi.Arguments[home.Index];
 			var register = source.Register ?? M68kRegister.D7;
 			if (source.Register is null)
 			{
@@ -1920,9 +3125,63 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod method,
 		M68kAllocatedFunction allocated)
 	{
+		if (allocated.Function.HasDynamicStackAllocation)
+		{
+			_assembler.EmitWord(0x2E4D); // MOVEA.L A5,A7 discard dynamic allocations
+		}
 		EmitAllocatedCalleeRestores(
 			allocated.Frame.CalleeSavedRegisters,
 			allocated.Frame.FrameBytes);
+	}
+
+	private void EmitAllocatedDynamicStackAllocation(
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var source = allocated.Allocation.Registers[instruction.Uses[0]].Register;
+		var destination = allocated.Allocation.Registers[instruction.Definitions[0]].Register;
+		var overflow = UniqueLabel("dynamic-localloc-overflow");
+		var done = UniqueLabel("dynamic-localloc-done");
+
+		EmitAllocatedMove(source, M68kRegister.D0, M68kMachineValueWidth.Long);
+		_assembler.EmitWord(0x5680); // ADDQ.L #3,D0
+		_assembler.EmitBranch(M68kCondition.CarrySet, overflow);
+		_assembler.EmitWord(0x0280); // ANDI.L #-4,D0
+		_assembler.EmitLong(0xFFFF_FFFC);
+		_assembler.EmitWord(0x220F); // MOVE.L A7,D1
+		_assembler.EmitWord(0x9280); // SUB.L D0,D1
+		_assembler.EmitBranch(M68kCondition.CarrySet, overflow);
+		_assembler.EmitWord(0x2E41); // MOVEA.L D1,A7
+		EmitAllocatedMove(M68kRegister.D1, destination, M68kMachineValueWidth.Long);
+		_assembler.EmitBranch(M68kCondition.True, done);
+		_assembler.Mark(overflow);
+		EmitExceptionRaise(reason: 4, hasException: false);
+		_assembler.Mark(done);
+	}
+
+	private void EmitAllocatedCheckedUnsignedMultiply()
+	{
+		var loop = UniqueLabel("checked-unsigned-multiply-loop");
+		var skipAdd = UniqueLabel("checked-unsigned-multiply-skip-add");
+		var done = UniqueLabel("checked-unsigned-multiply-done");
+		var overflow = UniqueLabel("checked-unsigned-multiply-overflow");
+
+		_assembler.EmitWord(0x7400); // MOVEQ #0,D2 accumulator
+		_assembler.Mark(loop);
+		_assembler.EmitWord(0xE289); // LSR.L #1,D1
+		_assembler.EmitBranch(M68kCondition.CarryClear, skipAdd);
+		_assembler.EmitWord(0xD480); // ADD.L D0,D2
+		_assembler.EmitBranch(M68kCondition.CarrySet, overflow);
+		_assembler.Mark(skipAdd);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.Equal, done);
+		_assembler.EmitWord(0xD080); // ADD.L D0,D0 (shift left)
+		_assembler.EmitBranch(M68kCondition.CarrySet, overflow);
+		_assembler.EmitBranch(M68kCondition.True, loop);
+		_assembler.Mark(overflow);
+		EmitExceptionRaise(reason: 4, hasException: false);
+		_assembler.Mark(done);
+		_assembler.EmitWord(0x2002); // MOVE.L D2,D0
 	}
 
 	private bool TryEmitAllocatedTailCall(
@@ -2034,6 +3293,289 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitAddress(label);
 	}
 
+	private void EmitAllocatedTypeInitialization(
+		CilMethod caller,
+		M68kMachineInstruction instruction)
+	{
+		var source = instruction.SourceInstruction ??
+			throw new InvalidOperationException("Type initialization has no source instruction.");
+		var initializer = _module.GetTriggeredTypeInitializer(caller, source) ??
+			throw new InvalidOperationException("Type initialization trigger has no initializer.");
+		_typeInitializers.TryAdd(initializer.Identity, initializer);
+
+		var stateLabel = TypeInitializationStateLabel(initializer);
+		var doneLabel = UniqueLabel("type-init-done");
+		var failedLabel = UniqueLabel("type-init-failed");
+		var canFail = TypeInitializerCanFail(initializer);
+		_assembler.EmitWord(0x2039); // MOVE.L state,D0
+		_assembler.EmitAddress(stateLabel);
+		_assembler.EmitWord(0x0C80); // CMPI.L #initialized,D0
+		_assembler.EmitLong(2);
+		_assembler.EmitBranch(M68kCondition.Equal, doneLabel);
+		if (canFail)
+		{
+			_assembler.EmitWord(0x0C80); // CMPI.L #failed,D0
+			_assembler.EmitLong(3);
+			_assembler.EmitBranch(M68kCondition.Equal, failedLabel);
+		}
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.NotEqual, doneLabel); // Recursive initialization.
+		_assembler.EmitWord(0x23FC); // MOVE.L #initializing,state
+		_assembler.EmitLong(1);
+		_assembler.EmitAddress(stateLabel);
+		_assembler.EmitBsr(MethodLabel(initializer));
+		RegisterCurrentUnwindSite(
+			exception: true,
+			gc: true,
+			exceptionCleanupLabel: canFail
+				? TypeInitializationFailureThunkLabel(initializer)
+				: null);
+		_assembler.EmitWord(0x23FC); // MOVE.L #initialized,state
+		_assembler.EmitLong(2);
+		_assembler.EmitAddress(stateLabel);
+		if (canFail)
+		{
+			_assembler.EmitBranch(M68kCondition.True, doneLabel);
+			_assembler.Mark(failedLabel);
+			_assembler.EmitWord(0x2079); // MOVEA.L cached-exception,A0
+			_assembler.EmitAddress(TypeInitializationExceptionLabel(initializer));
+			EmitExceptionRaise(reason: 0, hasException: true);
+		}
+		_assembler.Mark(doneLabel);
+		_loadedPlatformBase = null;
+	}
+
+	private void EmitAllocatedTypeTest(
+		CilMethod caller,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var sourceInstruction = instruction.SourceInstruction ??
+			throw new InvalidOperationException("Runtime type test has no source instruction.");
+		var target = _module.ResolveRuntimeTypeToken(
+			(int)sourceInstruction.Operand!,
+			caller,
+			instruction.IlOffset);
+		var targetLabel = RuntimeTypeTestIdentityLabel(target);
+		var success = UniqueLabel("type-test-success");
+		var failure = UniqueLabel("type-test-failure");
+		var done = UniqueLabel("type-test-done");
+
+		var source = allocated.Allocation.Registers[instruction.Uses.Single()].Register;
+		var destination = allocated.Allocation.Registers[
+			instruction.Definitions.Single()].Register;
+		EmitAllocatedMove(source, M68kRegister.A0, M68kMachineValueWidth.Long);
+		EmitAllocatedMove(source, M68kRegister.D0, M68kMachineValueWidth.Long);
+		EmitAllocatedTest(M68kRegister.A0, M68kMachineValueWidth.Long);
+		_assembler.EmitBranch(M68kCondition.Equal, success); // Null casts and tests succeed.
+		_assembler.EmitWord(0x2250); // MOVEA.L (A0),A1 descriptor
+		EmitAddressImmediateToRegister(M68kRegister.A2, targetLabel);
+		if (IsFrameworkDelegateType(target.Type))
+		{
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			_assembler.EmitWord(0x0281); // ANDI.L #multicast,D1
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+			var singlecastDelegate = UniqueLabel("type-test-singlecast-delegate");
+			_assembler.EmitBranch(M68kCondition.Equal, singlecastDelegate);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.A1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateThunkOffset);
+			_assembler.Mark(singlecastDelegate);
+		}
+
+		if (target.IsInterface)
+		{
+			var loop = UniqueLabel("type-test-interface-loop");
+			_assembler.EmitWord(0x2269); // MOVEA.L interface-map(A1),A1
+			_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeInterfaceMapOffset));
+			EmitMoveRegister(M68kRegister.A1, M68kRegister.D1);
+			_assembler.EmitWord(0x4A81); // TST.L D1
+			_assembler.EmitBranch(M68kCondition.Equal, failure);
+			_assembler.EmitWord(0x2219); // MOVE.L (A1)+,D1 entry count
+			_assembler.Mark(loop);
+			_assembler.EmitWord(0x2059); // MOVEA.L (A1)+,A0 interface identity
+			_assembler.EmitWord(0xB1CA); // CMPA.L A2,A0
+			_assembler.EmitBranch(M68kCondition.Equal, success);
+			_assembler.EmitWord(0x5889); // ADDQ.L #4,A1 skip method table
+			_assembler.EmitWord(0x5381); // SUBQ.L #1,D1
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+		}
+		else
+		{
+			var loop = UniqueLabel("type-test-base-loop");
+			_assembler.Mark(loop);
+			_assembler.EmitWord(0xB3CA); // CMPA.L A2,A1
+			_assembler.EmitBranch(M68kCondition.Equal, success);
+			_assembler.EmitWord(0x2269); // MOVEA.L base-type(A1),A1
+			_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeBaseOffset));
+			EmitMoveRegister(M68kRegister.A1, M68kRegister.D1);
+			_assembler.EmitWord(0x4A81); // TST.L D1
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+		}
+
+		_assembler.Mark(failure);
+		if (sourceInstruction.OpCode == OpCodes.Castclass)
+		{
+			RegisterRuntimeTypeDescriptor("System.InvalidCastException");
+			EmitExceptionRaise(reason: 7, hasException: false);
+		}
+		else
+		{
+			EmitAllocatedImmediate(0, M68kRegister.D0);
+		}
+		_assembler.EmitBranch(M68kCondition.True, done);
+		_assembler.Mark(success);
+		_assembler.Mark(done);
+		EmitAllocatedMove(M68kRegister.D0, destination, M68kMachineValueWidth.Long);
+	}
+
+	private void EmitTypeInitializationFailureThunks()
+	{
+		if (!_usesExceptionRuntime)
+		{
+			return;
+		}
+		foreach (var initializer in _typeInitializers.Values
+			.Where(TypeInitializerCanFail)
+			.OrderBy(item => item.ModuleName, StringComparer.Ordinal)
+			.ThenBy(item => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.DeclaringType)))
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(TypeInitializationFailureThunkLabel(initializer));
+			_assembler.EmitWord(0x23FC); // MOVE.L #failed,state
+			_assembler.EmitLong(3);
+			_assembler.EmitAddress(TypeInitializationStateLabel(initializer));
+			RegisterRuntimeTypeDescriptor("System.TypeInitializationException");
+			_assembler.EmitWord(0x23D6); // MOVE.L original-exception,wrapper-inner
+			_assembler.EmitAddress(TypeInitializationWrapperInnerLabel(initializer));
+			_assembler.EmitWord(0x2CBC); // MOVE.L #wrapper,(A6) active exception
+			_assembler.EmitAddress(TypeInitializationWrapperLabel(initializer));
+			_assembler.EmitWord(0x23FC); // MOVE.L #wrapper,cached-exception
+			_assembler.EmitAddress(TypeInitializationWrapperLabel(initializer));
+			_assembler.EmitAddress(TypeInitializationExceptionLabel(initializer));
+			_assembler.EmitWord(0x4E75); // RTS
+		}
+	}
+
+	private void EmitBoxedInterfaceThunks()
+	{
+		foreach (var item in _boxedStructLayouts.OrderBy(item => item.Key, StringComparer.Ordinal))
+		{
+			var type = _boxedTypes[item.Key];
+			var transparent = _module.IsTransparentScalarType(type);
+			foreach (var implementation in GetUsedInterfaceImplementations(item.Value))
+			{
+				foreach (var method in implementation.Methods)
+				{
+					var parameters = method.Signature.ParameterTypes;
+					var adaptsSingleDataArgument = transparent &&
+						parameters is [var parameter] &&
+						parameter.IsSupportedScalar &&
+						!IsBoxedThunkAddressArgument(parameter) &&
+						parameter.Size <= 4;
+					var adaptsSingleAddressArgument = transparent &&
+						parameters is [var addressParameter] &&
+						IsBoxedThunkAddressArgument(addressParameter);
+					var adaptsSingleLongPairArgument = transparent &&
+						parameters is [var longPairParameter] &&
+						longPairParameter.IsSupportedScalar &&
+						longPairParameter.Size == 8;
+					var adaptsTwoRegisterArguments = transparent &&
+						parameters.Length == 2 &&
+						parameters.All(IsBoxedThunkRegisterArgument);
+					if (transparent &&
+						parameters.Length != 0 &&
+						!adaptsSingleDataArgument &&
+						!adaptsSingleAddressArgument &&
+						!adaptsSingleLongPairArgument &&
+						!adaptsTwoRegisterArguments)
+					{
+						throw new M68kCompilationException(
+							M68kDiagnosticIds.UnsupportedSignature,
+							$"Boxed interface method '{method.DisplayName}' requires an argument-adaptation thunk outside the compact profile; transparent scalar boxes currently support one 64-bit scalar or up to two register-sized data/address arguments.",
+							method.DisplayName);
+					}
+
+					_assembler.AlignWord();
+					_assembler.Mark(BoxedInterfaceThunkLabel(type, implementation, method));
+					if (transparent)
+					{
+						var dataArgumentCount = adaptsSingleLongPairArgument
+							? 0
+							: parameters.Count(parameterType =>
+								!IsBoxedThunkAddressArgument(parameterType));
+						var addressArgumentCount = parameters.Length - dataArgumentCount;
+						if (addressArgumentCount == 2)
+						{
+							// With A0 occupied by the interface receiver, the first
+							// address argument uses A1 and the second falls back to D0.
+							// Preserve the latter before D0 becomes the payload receiver.
+							EmitAllocatedMove(
+								M68kRegister.D0,
+								M68kRegister.A2,
+								M68kMachineValueWidth.Long);
+						}
+						if (dataArgumentCount != 0)
+						{
+							// Interface ABI: A0=box, D0=argument. Value-type ABI:
+							// D0=payload address, D1=first scalar argument.
+							EmitAllocatedMove(
+								M68kRegister.D0,
+								M68kRegister.D1,
+								M68kMachineValueWidth.Long);
+						}
+						_assembler.EmitWord(0x41E8); // LEA 8(A0),A0 payload receiver
+						_assembler.EmitWord(8);
+						EmitAllocatedMove(
+							M68kRegister.A0,
+							M68kRegister.D0,
+							M68kMachineValueWidth.Long);
+						if (addressArgumentCount != 0)
+						{
+							// Interface ABI reserves A0 for the box, so its first
+							// address argument arrives in A1. The value-type body
+							// uses D0 for this and therefore expects that argument in A0.
+							EmitAllocatedMove(
+								M68kRegister.A1,
+								M68kRegister.A0,
+								M68kMachineValueWidth.Long);
+						}
+						if (addressArgumentCount == 2)
+						{
+							EmitAllocatedMove(
+								M68kRegister.A2,
+								M68kRegister.A1,
+								M68kMachineValueWidth.Long);
+						}
+					}
+					else
+					{
+						_assembler.EmitWord(0x41E8); // LEA 8(A0),A0 payload receiver
+						_assembler.EmitWord(8);
+					}
+					_assembler.EmitJmp(MethodLabel(method), external: false);
+				}
+			}
+		}
+	}
+
+	private static bool IsBoxedThunkAddressArgument(CilType type) =>
+		type.Kind is
+			CilTypeKind.ManagedReference or
+			CilTypeKind.ManagedPointer or
+			CilTypeKind.UnmanagedPointer or
+			CilTypeKind.FunctionPointer;
+
+	private static bool IsBoxedThunkRegisterArgument(CilType type) =>
+		IsBoxedThunkAddressArgument(type) ||
+		type.IsSupportedScalar && type.Size <= 4;
+
 	private void EmitAllocatedStaticStore(
 		CilMethod method,
 		M68kAllocatedFunction allocated,
@@ -2052,6 +3594,35 @@ internal sealed partial class M68kCodeGenerator
 		}
 		ValidateType(field.Type, method, "field");
 		_staticFields.TryAdd(field.Identity, field);
+		if (_module.TryGetReferenceFreeStructLayout(
+				field.Type,
+				field.ModuleName,
+				out var aggregateLayout) &&
+			aggregateLayout.Size > 4)
+		{
+			if (sourceRegister != M68kRegister.A0)
+			{
+				throw new InvalidOperationException(
+					"Aggregate static-field source is not constrained to A0.");
+			}
+			EmitAllocatedAbsoluteAddress(
+				M68kRegister.A1,
+				StaticFieldLabel(field));
+			for (var offset = 0; offset < aggregateLayout.Size; offset += 4)
+			{
+				EmitAllocatedBaseLoad(
+					sourceRegister,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					checked((short)offset));
+			}
+			return;
+		}
 		if (TryGetAllocatedConstant(
 			allocated.Function,
 			instruction.Uses[0],
@@ -2092,7 +3663,15 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		var definition = target.Definition;
-		if (source.OpCode == OpCodes.Callvirt)
+		if (source.ConstrainedTypeToken is { } constrainedTypeToken)
+		{
+			definition = _module.ResolveConstrainedInterfaceImplementation(
+				caller,
+				constrainedTypeToken,
+				source.Offset,
+				definition);
+		}
+		else if (source.OpCode == OpCodes.Callvirt)
 		{
 			EmitAllocatedRequireNonNull(M68kRegister.A0);
 		}
@@ -2130,7 +3709,7 @@ internal sealed partial class M68kCodeGenerator
 			EmitExternalExceptionStatusCheck(externalCall.Convention);
 			return;
 		}
-		ValidateMethodSignature(definition, isEntry: false);
+		ValidateMethodSignature(definition, isEntry: false, isExport: false);
 		if (definition.IsImport)
 		{
 			_assembler.EmitJsr(definition.ImportName!, external: true);
@@ -2228,6 +3807,1867 @@ internal sealed partial class M68kCodeGenerator
 
 		if (name == "intrinsic:object-ctor")
 		{
+			return;
+		}
+		if (name == "intrinsic:object-reference-equals")
+		{
+			var equal = UniqueLabel("object-reference-equals-equal");
+			var done = UniqueLabel("object-reference-equals-done");
+			EmitAllocatedCompare(
+				Use(0),
+				Use(1),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, equal);
+			EmitAllocatedImmediate(0, Definition());
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(equal);
+			EmitAllocatedImmediate(1, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name is "intrinsic:string-equality" or "intrinsic:string-inequality")
+		{
+			var invert = name == "intrinsic:string-inequality";
+			var left = Use(0);
+			var right = Use(1);
+			var matchingLength = UniqueLabel("string-equality-matching-length");
+			var loop = UniqueLabel("string-equality-loop");
+			var equal = UniqueLabel("string-equality-equal");
+			var notEqual = UniqueLabel("string-equality-not-equal");
+			var done = UniqueLabel("string-equality-done");
+
+			EmitAllocatedCompare(left, right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, equal);
+			EmitAllocatedTest(left, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, notEqual);
+			EmitAllocatedTest(right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, notEqual);
+
+			// Snapshot both reference arguments through data registers before
+			// assigning the fixed pointer temporaries, so swapped A-register
+			// allocations cannot overwrite either input.
+			EmitAllocatedMove(left, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(right, M68kRegister.D1, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.D0, M68kRegister.A2, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.D1, M68kRegister.A3, M68kMachineValueWidth.Long);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, matchingLength);
+			_assembler.EmitBranch(M68kCondition.True, notEqual);
+
+			_assembler.Mark(matchingLength);
+			EmitAllocatedTest(M68kRegister.D2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, equal);
+			EmitAllocatedAddImmediate(M68kRegister.A2, M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedAddImmediate(M68kRegister.A3, M68kRuntimeAbi.StringDataOffset);
+			_assembler.Mark(loop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedCompare(
+				M68kRegister.D1,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word);
+			_assembler.EmitBranch(M68kCondition.NotEqual, notEqual);
+			EmitAllocatedAddImmediate(M68kRegister.A2, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+
+			_assembler.Mark(equal);
+			EmitAllocatedImmediate(invert ? 0 : 1, Definition());
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(notEqual);
+			EmitAllocatedImmediate(invert ? 1 : 0, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name is
+			"intrinsic:string-starts-with-ordinal" or
+			"intrinsic:string-ends-with-ordinal")
+		{
+			var startsWith = name == "intrinsic:string-starts-with-ordinal";
+			var receiverNonNull = UniqueLabel("string-search-receiver-nonnull");
+			var valueNonNull = UniqueLabel("string-search-value-nonnull");
+			var comparisonValid = UniqueLabel("string-search-comparison-valid");
+			var loop = UniqueLabel("string-search-edge-loop");
+			var success = UniqueLabel("string-search-edge-success");
+			var failure = UniqueLabel("string-search-edge-failure");
+			var done = UniqueLabel("string-search-edge-done");
+
+			RegisterRuntimeTypeDescriptor("System.ArgumentNullException");
+			EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, receiverNonNull);
+			EmitExceptionRaise(reason: 1, hasException: false);
+			_assembler.Mark(receiverNonNull);
+			EmitAllocatedTest(M68kRegister.A3, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, valueNonNull);
+			EmitExceptionRaise(reason: 11, hasException: false);
+			_assembler.Mark(valueNonNull);
+			if (instruction.Uses.Length == 3)
+			{
+				RegisterRuntimeTypeDescriptor("System.ArgumentException");
+				EmitCompareImmediateLong(M68kRegister.D3, 4);
+				_assembler.EmitBranch(M68kCondition.Equal, comparisonValid);
+				EmitExceptionRaise(reason: 9, hasException: false);
+				_assembler.Mark(comparisonValid);
+			}
+
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, failure);
+			EmitAllocatedTest(M68kRegister.D1, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, success);
+			if (!startsWith)
+			{
+				EmitAllocatedBinaryInPlace(
+					M68kMachineOperation.Subtract,
+					M68kRegister.D1,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedShiftImmediate(M68kRegister.D2, left: true);
+				EmitAllocatedBinaryInPlace(
+					M68kMachineOperation.Add,
+					M68kRegister.D2,
+					M68kRegister.A2,
+					M68kMachineValueWidth.Long);
+			}
+			EmitAllocatedAddImmediate(M68kRegister.A2, M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedAddImmediate(M68kRegister.A3, M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.D1,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+			_assembler.Mark(loop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedCompare(
+				M68kRegister.D1,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word);
+			_assembler.EmitBranch(M68kCondition.NotEqual, failure);
+			EmitAllocatedAddImmediate(M68kRegister.A2, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+
+			_assembler.Mark(success);
+			EmitAllocatedImmediate(1, Definition());
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(failure);
+			EmitAllocatedImmediate(0, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name is
+			"intrinsic:string-contains-ordinal" or
+			"intrinsic:string-index-of-ordinal")
+		{
+			var contains = name == "intrinsic:string-contains-ordinal";
+			var receiverNonNull = UniqueLabel("string-search-receiver-nonnull");
+			var valueNonNull = UniqueLabel("string-search-value-nonnull");
+			var comparisonValid = UniqueLabel("string-search-comparison-valid");
+			var outer = UniqueLabel("string-search-outer");
+			var inner = UniqueLabel("string-search-inner");
+			var next = UniqueLabel("string-search-next");
+			var found = UniqueLabel("string-search-found");
+			var notFound = UniqueLabel("string-search-not-found");
+			var done = UniqueLabel("string-search-done");
+
+			RegisterRuntimeTypeDescriptor("System.ArgumentNullException");
+			EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, receiverNonNull);
+			EmitExceptionRaise(reason: 1, hasException: false);
+			_assembler.Mark(receiverNonNull);
+			EmitAllocatedTest(M68kRegister.A3, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, valueNonNull);
+			EmitExceptionRaise(reason: 11, hasException: false);
+			_assembler.Mark(valueNonNull);
+			if (instruction.Uses.Length == 3)
+			{
+				RegisterRuntimeTypeDescriptor("System.ArgumentException");
+				EmitCompareImmediateLong(M68kRegister.D3, 4);
+				_assembler.EmitBranch(M68kCondition.Equal, comparisonValid);
+				EmitExceptionRaise(reason: 9, hasException: false);
+				_assembler.Mark(comparisonValid);
+			}
+
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedImmediate(0, M68kRegister.D0);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedTest(M68kRegister.D1, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, found);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, notFound);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Subtract,
+				M68kRegister.D1,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.D2, 1);
+			EmitAllocatedMove(
+				M68kRegister.D2,
+				M68kRegister.D4,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A2, M68kRuntimeAbi.StringDataOffset);
+
+			_assembler.Mark(outer);
+			EmitAllocatedMove(M68kRegister.A2, M68kRegister.A0, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.A3, M68kRegister.A1, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A1, M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			_assembler.Mark(inner);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.D3,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A1,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedCompare(
+				M68kRegister.D1,
+				M68kRegister.D3,
+				M68kMachineValueWidth.Word);
+			_assembler.EmitBranch(M68kCondition.NotEqual, next);
+			EmitAllocatedAddImmediate(M68kRegister.A0, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A1, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, inner);
+			_assembler.EmitBranch(M68kCondition.True, found);
+
+			_assembler.Mark(next);
+			EmitAllocatedAddImmediate(M68kRegister.A2, 2);
+			EmitAllocatedAddImmediate(M68kRegister.D0, 1);
+			_assembler.EmitWord(0x5384); // SUBQ.L #1,D4
+			_assembler.EmitBranch(M68kCondition.NotEqual, outer);
+			_assembler.EmitBranch(M68kCondition.True, notFound);
+
+			_assembler.Mark(found);
+			if (contains)
+			{
+				EmitAllocatedImmediate(1, Definition());
+			}
+			else
+			{
+				EmitAllocatedMove(M68kRegister.D0, Definition(), M68kMachineValueWidth.Long);
+			}
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(notFound);
+			EmitAllocatedImmediate(contains ? 0 : -1, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name == "intrinsic:string-concat-two")
+		{
+			var left = Use(0);
+			var right = Use(1);
+			var leftNonNull = UniqueLabel("string-concat-left-nonnull");
+			var leftNonEmpty = UniqueLabel("string-concat-left-nonempty");
+			var rightNonNull = UniqueLabel("string-concat-right-nonnull");
+			var allocate = UniqueLabel("string-concat-allocate");
+			var lengthValid = UniqueLabel("string-concat-length-valid");
+			var returnLeft = UniqueLabel("string-concat-return-left");
+			var returnRight = UniqueLabel("string-concat-return-right");
+			var returnEmpty = UniqueLabel("string-concat-return-empty");
+			var done = UniqueLabel("string-concat-done");
+
+			_usesRuntimeEmptyString = true;
+			RegisterRuntimeTypeDescriptor("System.Object");
+			RegisterRuntimeTypeDescriptor("System.OutOfMemoryException");
+
+			EmitAllocatedTest(left, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, leftNonNull);
+			EmitAllocatedTest(right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, returnRight);
+			_assembler.EmitBranch(M68kCondition.True, returnEmpty);
+
+			_assembler.Mark(leftNonNull);
+			EmitAllocatedBaseLoad(
+				left,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedTest(M68kRegister.D2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, leftNonEmpty);
+			EmitAllocatedTest(right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, returnRight);
+			_assembler.EmitBranch(M68kCondition.True, returnLeft);
+
+			_assembler.Mark(leftNonEmpty);
+			EmitAllocatedTest(right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, rightNonNull);
+			_assembler.EmitBranch(M68kCondition.True, returnLeft);
+
+			_assembler.Mark(rightNonNull);
+			EmitAllocatedBaseLoad(
+				right,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedTest(M68kRegister.D1, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnLeft);
+			_assembler.EmitBranch(M68kCondition.True, allocate);
+
+			_assembler.Mark(allocate);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D1,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+			var invalidLength = UniqueLabel("string-concat-invalid-length");
+			_assembler.EmitBranch(M68kCondition.OverflowSet, invalidLength);
+			const int maximumLength =
+				(int.MaxValue - (M68kRuntimeAbi.StringDataOffset + 2)) / 2;
+			EmitCompareImmediateLong(M68kRegister.D2, maximumLength);
+			_assembler.EmitBranch(M68kCondition.LowerOrSame, lengthValid);
+			_assembler.Mark(invalidLength);
+			EmitExceptionRaise(reason: 6, hasException: false);
+			_assembler.Mark(lengthValid);
+
+			EnsureManagedAllocationAllowed(
+				caller,
+				instruction.SourceInstruction ??
+					throw new InvalidOperationException("String concatenation has no source instruction."),
+				"string concatenation");
+			EmitAllocatedMultiplyByConstant(
+				M68kRegister.D2,
+				M68kRegister.D0,
+				2);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D0,
+				M68kRuntimeAbi.StringDataOffset + 2);
+			EmitManagedAllocationFromD0();
+			EmitAllocatedMove(M68kRegister.D0, M68kRegister.A0, M68kMachineValueWidth.Long);
+
+			EmitAllocatedAddress("runtime:string-descriptor", M68kRegister.A1);
+			EmitAllocatedBaseStore(
+				M68kRegister.A1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectDescriptorOffset);
+			EmitAllocatedMove(
+				M68kRegister.D2,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D1,
+				M68kRuntimeAbi.StringDataOffset + 2);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectSizeOffset);
+			EmitAllocatedBaseStore(
+				M68kRegister.D2,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+
+			EmitAllocatedMove(M68kRegister.A0, M68kRegister.A4, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A4, M68kRuntimeAbi.StringDataOffset);
+
+			void EmitCopyString(M68kRegister source)
+			{
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long,
+					M68kRuntimeAbi.StringLengthOffset);
+				EmitAllocatedMove(source, M68kRegister.A5, M68kMachineValueWidth.Long);
+				EmitAllocatedAddImmediate(M68kRegister.A5, M68kRuntimeAbi.StringDataOffset);
+				var loop = UniqueLabel("string-concat-copy-loop");
+				_assembler.Mark(loop);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A5,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Word,
+					0);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A4,
+					M68kMachineValueWidth.Word,
+					0);
+				EmitAllocatedAddImmediate(M68kRegister.A5, 2);
+				EmitAllocatedAddImmediate(M68kRegister.A4, 2);
+				_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+				_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+			}
+
+			EmitCopyString(left);
+			EmitCopyString(right);
+			EmitAllocatedImmediate(0, M68kRegister.D0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedMove(M68kRegister.A0, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(returnLeft);
+			EmitAllocatedMove(left, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(returnRight);
+			EmitAllocatedMove(right, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(returnEmpty);
+			EmitAllocatedAddress(RuntimeEmptyStringLabel, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name == "intrinsic:string-substring")
+		{
+			var hasExplicitLength = instruction.Uses.Length == 3;
+			var receiverNonNull = UniqueLabel("string-substring-receiver-nonnull");
+			var invalidRange = UniqueLabel("string-substring-invalid-range");
+			var allocate = UniqueLabel("string-substring-allocate");
+			var copyLoop = UniqueLabel("string-substring-copy-loop");
+			var returnSource = UniqueLabel("string-substring-return-source");
+			var returnEmpty = UniqueLabel("string-substring-return-empty");
+			var done = UniqueLabel("string-substring-done");
+
+			_usesRuntimeEmptyString = true;
+			RegisterRuntimeTypeDescriptor("System.Object");
+			RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+			RegisterRuntimeTypeDescriptor("System.OutOfMemoryException");
+
+			EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, receiverNonNull);
+			EmitExceptionRaise(reason: 1, hasException: false);
+			_assembler.Mark(receiverNonNull);
+
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+
+			if (hasExplicitLength)
+			{
+				// available = source.Length - startIndex; the unsigned compare
+				// rejects a negative length without start + length overflow.
+				EmitAllocatedMove(
+					M68kRegister.D2,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedBinaryInPlace(
+					M68kMachineOperation.Subtract,
+					M68kRegister.D3,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedCompare(
+					M68kRegister.D1,
+					M68kRegister.D4,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+
+				// The two-argument overload returns String.Empty before its
+				// full-range identity fast path.
+				EmitAllocatedTest(M68kRegister.D4, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, returnEmpty);
+				EmitAllocatedTest(M68kRegister.D3, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.NotEqual, allocate);
+				EmitAllocatedCompare(
+					M68kRegister.D4,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, returnSource);
+			}
+			else
+			{
+				EmitAllocatedMove(
+					M68kRegister.D2,
+					M68kRegister.D4,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedBinaryInPlace(
+					M68kMachineOperation.Subtract,
+					M68kRegister.D3,
+					M68kRegister.D4,
+					M68kMachineValueWidth.Long);
+
+				// Substring(0) preserves receiver identity.
+				EmitAllocatedTest(M68kRegister.D3, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, returnSource);
+				EmitAllocatedTest(M68kRegister.D4, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, returnEmpty);
+			}
+			_assembler.EmitBranch(M68kCondition.True, allocate);
+
+			_assembler.Mark(invalidRange);
+			EmitExceptionRaise(reason: 10, hasException: false);
+
+			_assembler.Mark(allocate);
+			EnsureManagedAllocationAllowed(
+				caller,
+				instruction.SourceInstruction ??
+					throw new InvalidOperationException(
+						"String substring has no source instruction."),
+				"string substring");
+			EmitAllocatedMultiplyByConstant(
+				M68kRegister.D4,
+				M68kRegister.D0,
+				2);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D0,
+				M68kRuntimeAbi.StringDataOffset + 2);
+			EmitManagedAllocationFromD0();
+			EmitAllocatedMove(
+				M68kRegister.D0,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long);
+
+			EmitAllocatedAddress("runtime:string-descriptor", M68kRegister.A1);
+			EmitAllocatedBaseStore(
+				M68kRegister.A1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectDescriptorOffset);
+			EmitAllocatedMove(
+				M68kRegister.D4,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D1,
+				M68kRuntimeAbi.StringDataOffset + 2);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectSizeOffset);
+			EmitAllocatedBaseStore(
+				M68kRegister.D4,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+
+			EmitAllocatedMove(
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedMove(
+				M68kRegister.D3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D1,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A3,
+				M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.A0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A4,
+				M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.D4,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+
+			_assembler.Mark(copyLoop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A4, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, copyLoop);
+
+			EmitAllocatedImmediate(0, M68kRegister.D0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedMove(
+				M68kRegister.A0,
+				Definition(),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(returnSource);
+			EmitAllocatedMove(
+				M68kRegister.A2,
+				Definition(),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(returnEmpty);
+			EmitAllocatedAddress(RuntimeEmptyStringLabel, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name == "intrinsic:string-copy-to-char-array")
+		{
+			var receiverNonNull = UniqueLabel("string-copy-receiver-nonnull");
+			var destinationNonNull = UniqueLabel("string-copy-destination-nonnull");
+			var invalidRange = UniqueLabel("string-copy-invalid-range");
+			var copy = UniqueLabel("string-copy-loop-start");
+			var loop = UniqueLabel("string-copy-loop");
+			var complete = UniqueLabel("string-copy-complete");
+
+			RegisterRuntimeTypeDescriptor("System.ArgumentNullException");
+			RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+
+			EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, receiverNonNull);
+			EmitExceptionRaise(reason: 1, hasException: false);
+			_assembler.Mark(receiverNonNull);
+			EmitAllocatedTest(M68kRegister.A3, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, destinationNonNull);
+			EmitExceptionRaise(reason: 11, hasException: false);
+			_assembler.Mark(destinationNonNull);
+
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ArrayLengthOffset);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+			EmitAllocatedCompare(
+				M68kRegister.D1,
+				M68kRegister.D4,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Subtract,
+				M68kRegister.D3,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Subtract,
+				M68kRegister.D4,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D5,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+			EmitAllocatedCompare(
+				M68kRegister.D1,
+				M68kRegister.D5,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+			EmitAllocatedTest(M68kRegister.D5, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, complete);
+			_assembler.EmitBranch(M68kCondition.True, copy);
+
+			_assembler.Mark(invalidRange);
+			EmitExceptionRaise(reason: 10, hasException: false);
+
+			_assembler.Mark(copy);
+			EmitAllocatedMove(
+				M68kRegister.D3,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A2,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A2,
+				M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.D4,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A3,
+				M68kRuntimeAbi.ArrayDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.D5,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+
+			_assembler.Mark(loop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedAddImmediate(M68kRegister.A2, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+			_assembler.Mark(complete);
+			return;
+		}
+		if (name == "intrinsic:string-copy-to-span-char")
+		{
+			var receiverNonNull = UniqueLabel("string-copy-span-receiver-nonnull");
+			var destinationLongEnough = UniqueLabel(
+				"string-copy-span-destination-long-enough");
+			var loop = UniqueLabel("string-copy-span-loop");
+			var complete = UniqueLabel("string-copy-span-complete");
+
+			RegisterRuntimeTypeDescriptor("System.ArgumentException");
+
+			EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, receiverNonNull);
+			EmitExceptionRaise(reason: 1, hasException: false);
+			_assembler.Mark(receiverNonNull);
+
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				4);
+			EmitAllocatedCompare(
+				M68kRegister.D2,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(
+				M68kCondition.CarrySet,
+				destinationLongEnough);
+			_assembler.EmitBranch(
+				M68kCondition.Equal,
+				destinationLongEnough);
+			EmitExceptionRaise(reason: 9, hasException: false);
+			_assembler.Mark(destinationLongEnough);
+
+			EmitAllocatedTest(M68kRegister.D2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, complete);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A2,
+				M68kRuntimeAbi.StringDataOffset);
+
+			_assembler.Mark(loop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedAddImmediate(M68kRegister.A2, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+			_assembler.Mark(complete);
+			return;
+		}
+		if (name == "intrinsic:string-to-char-array")
+		{
+			var charType = target.Signature.ReturnType.ElementType ??
+				throw new InvalidOperationException(
+					"String.ToCharArray intrinsic has no char element type.");
+			var hasExplicitRange = instruction.Uses.Length == 3;
+			var receiverNonNull = UniqueLabel("string-to-char-array-receiver-nonnull");
+			var invalidRange = UniqueLabel("string-to-char-array-invalid-range");
+			var allocate = UniqueLabel("string-to-char-array-allocate");
+			var loop = UniqueLabel("string-to-char-array-copy-loop");
+			var returnEmpty = UniqueLabel("string-to-char-array-return-empty");
+			var done = UniqueLabel("string-to-char-array-done");
+
+			_arrayTypes.TryAdd(charType.DisplayName, charType);
+			_runtimeEmptyCharArrayElementType = charType;
+			RegisterRuntimeTypeDescriptor("System.Object");
+			RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+			RegisterRuntimeTypeDescriptor("System.OutOfMemoryException");
+
+			EmitAllocatedTest(M68kRegister.A2, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, receiverNonNull);
+			EmitExceptionRaise(reason: 1, hasException: false);
+			_assembler.Mark(receiverNonNull);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+
+			if (hasExplicitRange)
+			{
+				EmitAllocatedCompare(
+					M68kRegister.D2,
+					M68kRegister.D3,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+				EmitAllocatedMove(
+					M68kRegister.D2,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedBinaryInPlace(
+					M68kMachineOperation.Subtract,
+					M68kRegister.D3,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedCompare(
+					M68kRegister.D1,
+					M68kRegister.D4,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.CarrySet, invalidRange);
+			}
+			else
+			{
+				EmitAllocatedImmediate(0, M68kRegister.D3);
+				EmitAllocatedMove(
+					M68kRegister.D2,
+					M68kRegister.D4,
+					M68kMachineValueWidth.Long);
+			}
+			EmitAllocatedTest(M68kRegister.D4, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnEmpty);
+			_assembler.EmitBranch(M68kCondition.True, allocate);
+
+			_assembler.Mark(invalidRange);
+			EmitExceptionRaise(reason: 10, hasException: false);
+
+			_assembler.Mark(allocate);
+			EnsureManagedAllocationAllowed(
+				caller,
+				instruction.SourceInstruction ??
+					throw new InvalidOperationException(
+						"String.ToCharArray has no source instruction."),
+				"string to char array");
+			EmitAllocatedMultiplyByConstant(
+				M68kRegister.D4,
+				M68kRegister.D0,
+				2);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D0,
+				M68kRuntimeAbi.ArrayDataOffset);
+			EmitManagedAllocationFromD0();
+			EmitAllocatedMove(
+				M68kRegister.D0,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long);
+
+			EmitAllocatedAddress(ArrayDescriptorLabel(charType), M68kRegister.A1);
+			EmitAllocatedBaseStore(
+				M68kRegister.A1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectDescriptorOffset);
+			EmitAllocatedMove(
+				M68kRegister.D4,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D1,
+				M68kRuntimeAbi.ArrayDataOffset);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectSizeOffset);
+			EmitAllocatedBaseStore(
+				M68kRegister.D4,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ArrayLengthOffset);
+
+			EmitAllocatedMove(
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedMove(
+				M68kRegister.D3,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D1,
+				M68kRegister.A3,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A3,
+				M68kRuntimeAbi.StringDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.A0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(
+				M68kRegister.A4,
+				M68kRuntimeAbi.ArrayDataOffset);
+			EmitAllocatedMove(
+				M68kRegister.D4,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long);
+
+			_assembler.Mark(loop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Word,
+				0);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 2);
+			EmitAllocatedAddImmediate(M68kRegister.A4, 2);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+			EmitAllocatedMove(
+				M68kRegister.A0,
+				Definition(),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(returnEmpty);
+			EmitAllocatedAddress(RuntimeEmptyCharArrayLabel, Definition());
+			_assembler.Mark(done);
+			return;
+		}
+		if (name == "intrinsic:runtime-allocate-string")
+		{
+			EnsureManagedAllocationAllowed(
+				caller,
+				instruction.SourceInstruction ??
+					throw new InvalidOperationException(
+						"Dynamic string allocation has no source instruction."),
+				"string allocation");
+			_usesDynamicStrings = true;
+			RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+			RegisterRuntimeTypeDescriptor("System.OutOfMemoryException");
+
+			var length = Use(0);
+			if (length != M68kRegister.D2)
+			{
+				throw new InvalidOperationException(
+					"Dynamic string length must use the preserved D2 register.");
+			}
+			var lengthValid = UniqueLabel(
+				"allocated_string_length_valid");
+			EmitAllocatedTest(length, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Plus, lengthValid);
+			EmitExceptionRaise(reason: 10, hasException: false);
+			_assembler.Mark(lengthValid);
+
+			const int maximumLength = int.MaxValue - 7;
+			var sizeValid = UniqueLabel("allocated_string_size_valid");
+			EmitCompareImmediateLong(length, maximumLength);
+			_assembler.EmitBranch(M68kCondition.LowerOrSame, sizeValid);
+			EmitExceptionRaise(reason: 6, hasException: false);
+			_assembler.Mark(sizeValid);
+
+			EmitAllocatedMultiplyByConstant(
+				length,
+				M68kRegister.D0,
+				2);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D0,
+				M68kRuntimeAbi.StringDataOffset + 2);
+			EmitManagedAllocationFromD0();
+			EmitAllocatedMove(
+				M68kRegister.D0,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedAddress(
+				"runtime:string-descriptor",
+				M68kRegister.D1);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectDescriptorOffset);
+			EmitAllocatedMove(
+				length,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedAddImmediate(
+				M68kRegister.D1,
+				M68kRuntimeAbi.StringDataOffset + 2);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectSizeOffset);
+			EmitAllocatedBaseStore(
+				length,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.StringLengthOffset);
+			EmitAllocatedMove(
+				M68kRegister.A0,
+				Definition(),
+				M68kMachineValueWidth.Long);
+			return;
+		}
+		if (name == "intrinsic:runtime-set-string-char")
+		{
+			EmitAllocatedMove(
+				M68kRegister.D3,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long);
+			if (_request.Cpu == M68kCpuTarget.M68000)
+			{
+				EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			}
+			EmitAllocatedIndexedStore(
+				M68kRegister.D4,
+				M68kRegister.A2,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Word,
+				_request.Cpu == M68kCpuTarget.M68000 ? 1 : 2,
+				(sbyte)M68kRuntimeAbi.StringDataOffset);
+			return;
+		}
+		if (name == "intrinsic:delegate-combine")
+		{
+			var left = Use(0);
+			var right = Use(1);
+			var returnRight = UniqueLabel("delegate-combine-return-right");
+			var returnLeft = UniqueLabel("delegate-combine-return-left");
+			var done = UniqueLabel("delegate-combine-done");
+
+			EmitAllocatedTest(left, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnRight);
+			EmitAllocatedTest(right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnLeft);
+
+			EmitAllocatedLoadDelegateTypeIdentity(left, M68kRegister.A4);
+			EmitAllocatedLoadDelegateTypeIdentity(right, M68kRegister.A5);
+			EmitAllocatedCompare(
+				M68kRegister.A4,
+				M68kRegister.A5,
+				M68kMachineValueWidth.Long);
+			var matchingTypes = UniqueLabel("delegate-combine-matching-types");
+			_assembler.EmitBranch(M68kCondition.Equal, matchingTypes);
+			RegisterRuntimeTypeDescriptor("System.ArgumentException");
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArgumentException");
+			EmitExceptionRaise(reason: 0, hasException: true);
+			_assembler.Mark(matchingTypes);
+
+			void EmitInvocationCount(M68kRegister source, M68kRegister count)
+			{
+				EmitAllocatedBaseLoad(
+					source,
+					count,
+					M68kMachineValueWidth.Long,
+					M68kRuntimeAbi.DelegateFlagsOffset);
+				EmitAllocatedMove(
+					count,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitWord(0x0280); // ANDI.L #multicast,D0
+				_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+				var multicast = UniqueLabel("delegate-combine-count-multicast");
+				var countDone = UniqueLabel("delegate-combine-count-done");
+				_assembler.EmitBranch(M68kCondition.NotEqual, multicast);
+				EmitAllocatedImmediate(1, count);
+				_assembler.EmitBranch(M68kCondition.True, countDone);
+				_assembler.Mark(multicast);
+				_assembler.EmitWord((ushort)(0x4840 | (int)count)); // SWAP Dn
+				_assembler.EmitWord((ushort)(0x0280 | (int)count)); // ANDI.L #$ffff,Dn
+				_assembler.EmitLong(0x0000FFFF);
+				_assembler.Mark(countDone);
+			}
+
+			EmitInvocationCount(left, M68kRegister.D2);
+			EmitInvocationCount(right, M68kRegister.D3);
+			EmitAllocatedMove(
+				M68kRegister.D2,
+				M68kRegister.D4,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kMachineValueWidth.Long);
+			EmitCompareImmediateLong(
+				M68kRegister.D4,
+				M68kRuntimeAbi.DelegateMaximumInvocationCount);
+			var countValid = UniqueLabel("delegate-combine-count-valid");
+			_assembler.EmitBranch(M68kCondition.LowerOrSame, countValid);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArgumentException");
+			EmitExceptionRaise(reason: 0, hasException: true);
+			_assembler.Mark(countValid);
+
+			EnsureManagedAllocationAllowed(
+				caller,
+				instruction.SourceInstruction ??
+					throw new InvalidOperationException("Delegate combination has no source instruction."),
+				"delegate combination");
+			EmitAllocatedMove(
+				M68kRegister.D4,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedAddImmediate(M68kRegister.D0, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitManagedAllocationFromD0();
+			EmitAllocatedMove(M68kRegister.D0, M68kRegister.A0, M68kMachineValueWidth.Long);
+
+			EmitAllocatedAddress(DelegateMulticastDescriptorTableLabel, M68kRegister.A5);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A5,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A5,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectDescriptorOffset);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D1, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedAddImmediate(M68kRegister.D1, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectSizeOffset);
+			EmitAllocatedImmediate(0, M68kRegister.D1);
+			foreach (var offset in new short[]
+			{
+				M68kRuntimeAbi.DelegateTargetOffset,
+				M68kRuntimeAbi.DelegateInvocationListOffset
+			})
+			{
+				EmitAllocatedBaseStore(
+					M68kRegister.D1,
+					M68kRegister.A0,
+					M68kMachineValueWidth.Long,
+					offset);
+			}
+			EmitAllocatedBaseStore(
+				M68kRegister.A4,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateThunkOffset);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D1, M68kMachineValueWidth.Long);
+			_assembler.EmitWord(0x4841); // SWAP D1: count occupies the upper word
+			_assembler.EmitWord(0x0081); // ORI.L #multicast,D1
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			EmitAllocatedMove(M68kRegister.A0, M68kRegister.A4, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A4, M68kRuntimeAbi.DelegateInvocationTailOffset);
+
+			void EmitAppendInvocationList(
+				M68kRegister source,
+				M68kRegister count)
+			{
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					M68kRuntimeAbi.DelegateFlagsOffset);
+				_assembler.EmitWord(0x0280); // ANDI.L #multicast,D0
+				_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+				var appendSingle = UniqueLabel("delegate-combine-append-single");
+				var appendDone = UniqueLabel("delegate-combine-append-done");
+				_assembler.EmitBranch(M68kCondition.Equal, appendSingle);
+				EmitAllocatedMove(source, M68kRegister.A5, M68kMachineValueWidth.Long);
+				EmitAllocatedAddImmediate(M68kRegister.A5, M68kRuntimeAbi.DelegateInvocationTailOffset);
+				var loop = UniqueLabel("delegate-combine-append-loop");
+				_assembler.Mark(loop);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A5,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A4,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedAddImmediate(M68kRegister.A5, 4);
+				EmitAllocatedAddImmediate(M68kRegister.A4, 4);
+				_assembler.EmitWord((ushort)(0x5380 | (int)count)); // SUBQ.L #1,Dn
+				_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+				_assembler.EmitBranch(M68kCondition.True, appendDone);
+				_assembler.Mark(appendSingle);
+				EmitAllocatedBaseStore(
+					source,
+					M68kRegister.A4,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedAddImmediate(M68kRegister.A4, 4);
+				_assembler.Mark(appendDone);
+			}
+
+			EmitAppendInvocationList(left, M68kRegister.D2);
+			EmitAppendInvocationList(right, M68kRegister.D3);
+			EmitAllocatedMove(M68kRegister.A0, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(returnRight);
+			EmitAllocatedMove(right, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(returnLeft);
+			EmitAllocatedMove(left, Definition(), M68kMachineValueWidth.Long);
+			_assembler.Mark(done);
+			return;
+		}
+		if (name == "intrinsic:delegate-remove")
+		{
+			var sourceDelegate = Use(0);
+			var valueDelegate = Use(1);
+			var returnSource = UniqueLabel("delegate-remove-return-source");
+			var returnNull = UniqueLabel("delegate-remove-return-null");
+			var done = UniqueLabel("delegate-remove-done");
+
+			EmitAllocatedTest(sourceDelegate, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnNull);
+			EmitAllocatedTest(valueDelegate, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnSource);
+			EmitAllocatedLoadDelegateTypeIdentity(sourceDelegate, M68kRegister.A4);
+			EmitAllocatedLoadDelegateTypeIdentity(valueDelegate, M68kRegister.A5);
+			EmitAllocatedCompare(M68kRegister.A4, M68kRegister.A5, M68kMachineValueWidth.Long);
+			var matchingTypes = UniqueLabel("delegate-remove-matching-types");
+			_assembler.EmitBranch(M68kCondition.Equal, matchingTypes);
+			RegisterRuntimeTypeDescriptor("System.ArgumentException");
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArgumentException");
+			EmitExceptionRaise(reason: 0, hasException: true);
+			_assembler.Mark(matchingTypes);
+
+			void EmitInvocationCount(M68kRegister source, M68kRegister count)
+			{
+				EmitAllocatedBaseLoad(
+					source,
+					count,
+					M68kMachineValueWidth.Long,
+					M68kRuntimeAbi.DelegateFlagsOffset);
+				EmitAllocatedMove(count, M68kRegister.D0, M68kMachineValueWidth.Long);
+				_assembler.EmitWord(0x0280); // ANDI.L #multicast,D0
+				_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+				var multicast = UniqueLabel("delegate-remove-count-multicast");
+				var countDone = UniqueLabel("delegate-remove-count-done");
+				_assembler.EmitBranch(M68kCondition.NotEqual, multicast);
+				EmitAllocatedImmediate(1, count);
+				_assembler.EmitBranch(M68kCondition.True, countDone);
+				_assembler.Mark(multicast);
+				_assembler.EmitWord((ushort)(0x4840 | (int)count)); // SWAP Dn
+				_assembler.EmitWord((ushort)(0x0280 | (int)count)); // ANDI.L #$ffff,Dn
+				_assembler.EmitLong(0x0000FFFF);
+				_assembler.Mark(countDone);
+			}
+
+			void EmitSingleDelegateComparison(
+				M68kRegister leftEntry,
+				M68kRegister rightEntry,
+				string mismatch)
+			{
+				foreach (var offset in new short[]
+				{
+					M68kRuntimeAbi.ObjectDescriptorOffset,
+					M68kRuntimeAbi.DelegateTargetOffset,
+					M68kRuntimeAbi.DelegateThunkOffset,
+					M68kRuntimeAbi.DelegateInvocationListOffset,
+					M68kRuntimeAbi.DelegateFlagsOffset
+				})
+				{
+					EmitAllocatedBaseLoad(
+						leftEntry,
+						M68kRegister.D0,
+						M68kMachineValueWidth.Long,
+						offset);
+					EmitAllocatedBaseLoad(
+						rightEntry,
+						M68kRegister.D1,
+						M68kMachineValueWidth.Long,
+						offset);
+					EmitAllocatedCompare(
+						M68kRegister.D0,
+						M68kRegister.D1,
+						M68kMachineValueWidth.Long);
+					_assembler.EmitBranch(M68kCondition.NotEqual, mismatch);
+				}
+			}
+
+			EmitInvocationCount(sourceDelegate, M68kRegister.D2);
+			EmitInvocationCount(valueDelegate, M68kRegister.D3);
+			EmitAllocatedImmediate(1, M68kRegister.D0);
+			EmitAllocatedCompare(M68kRegister.D2, M68kRegister.D0, M68kMachineValueWidth.Long);
+			var sourceIsMulticast = UniqueLabel("delegate-remove-source-multicast");
+			_assembler.EmitBranch(M68kCondition.NotEqual, sourceIsMulticast);
+			EmitAllocatedCompare(M68kRegister.D3, M68kRegister.D0, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.NotEqual, returnSource);
+			EmitSingleDelegateComparison(sourceDelegate, valueDelegate, returnSource);
+			_assembler.EmitBranch(M68kCondition.True, returnNull);
+			_assembler.Mark(sourceIsMulticast);
+			EmitAllocatedMove(M68kRegister.D2, M68kRegister.D6, M68kMachineValueWidth.Long);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Subtract,
+				M68kRegister.D3,
+				M68kRegister.D6,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, returnSource);
+
+			var search = UniqueLabel("delegate-remove-search");
+			var candidateMismatch = UniqueLabel("delegate-remove-candidate-mismatch");
+			var found = UniqueLabel("delegate-remove-found");
+			_assembler.Mark(search);
+			EmitAllocatedMove(sourceDelegate, M68kRegister.A4, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A4, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedMove(M68kRegister.D6, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Long);
+
+			EmitAllocatedImmediate(1, M68kRegister.D0);
+			EmitAllocatedCompare(M68kRegister.D3, M68kRegister.D0, M68kMachineValueWidth.Long);
+			var compareMulticastValue = UniqueLabel("delegate-remove-compare-list");
+			_assembler.EmitBranch(M68kCondition.NotEqual, compareMulticastValue);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A4,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitSingleDelegateComparison(M68kRegister.A0, valueDelegate, candidateMismatch);
+			_assembler.EmitBranch(M68kCondition.True, found);
+
+			_assembler.Mark(compareMulticastValue);
+			EmitAllocatedMove(valueDelegate, M68kRegister.A5, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A5, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedMove(M68kRegister.D3, M68kRegister.D7, M68kMachineValueWidth.Long);
+			var compareLoop = UniqueLabel("delegate-remove-compare-loop");
+			_assembler.Mark(compareLoop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A4,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A5,
+				M68kRegister.A1,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitSingleDelegateComparison(M68kRegister.A0, M68kRegister.A1, candidateMismatch);
+			EmitAllocatedAddImmediate(M68kRegister.A4, 4);
+			EmitAllocatedAddImmediate(M68kRegister.A5, 4);
+			_assembler.EmitWord(0x5387); // SUBQ.L #1,D7
+			_assembler.EmitBranch(M68kCondition.NotEqual, compareLoop);
+			_assembler.EmitBranch(M68kCondition.True, found);
+
+			_assembler.Mark(candidateMismatch);
+			EmitAllocatedTest(M68kRegister.D6, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnSource);
+			_assembler.EmitWord(0x5386); // SUBQ.L #1,D6
+			_assembler.EmitBranch(M68kCondition.True, search);
+
+			_assembler.Mark(found);
+			EmitAllocatedMove(M68kRegister.D2, M68kRegister.D4, M68kMachineValueWidth.Long);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Subtract,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedTest(M68kRegister.D4, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, returnNull);
+			EmitAllocatedImmediate(1, M68kRegister.D0);
+			EmitAllocatedCompare(M68kRegister.D4, M68kRegister.D0, M68kMachineValueWidth.Long);
+			var allocateResult = UniqueLabel("delegate-remove-allocate-result");
+			_assembler.EmitBranch(M68kCondition.NotEqual, allocateResult);
+			EmitAllocatedMove(sourceDelegate, M68kRegister.A4, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A4, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedTest(M68kRegister.D6, M68kMachineValueWidth.Long);
+			var returnRemaining = UniqueLabel("delegate-remove-return-remaining");
+			_assembler.EmitBranch(M68kCondition.NotEqual, returnRemaining);
+			EmitAllocatedMove(M68kRegister.D3, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Long);
+			_assembler.Mark(returnRemaining);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A4,
+				Definition(),
+				M68kMachineValueWidth.Long,
+				0);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(allocateResult);
+			EnsureManagedAllocationAllowed(
+				caller,
+				instruction.SourceInstruction ??
+					throw new InvalidOperationException("Delegate removal has no source instruction."),
+				"delegate removal");
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedAddImmediate(M68kRegister.D0, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitManagedAllocationFromD0();
+			EmitAllocatedMove(M68kRegister.D0, M68kRegister.A0, M68kMachineValueWidth.Long);
+			EmitAllocatedLoadDelegateTypeIdentity(sourceDelegate, M68kRegister.A4);
+			EmitAllocatedAddress(DelegateMulticastDescriptorTableLabel, M68kRegister.A5);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A5,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A5,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectDescriptorOffset);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D1, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D1, left: true);
+			EmitAllocatedAddImmediate(M68kRegister.D1, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.ObjectSizeOffset);
+			EmitAllocatedImmediate(0, M68kRegister.D1);
+			foreach (var offset in new short[]
+			{
+				M68kRuntimeAbi.DelegateTargetOffset,
+				M68kRuntimeAbi.DelegateInvocationListOffset
+			})
+			{
+				EmitAllocatedBaseStore(
+					M68kRegister.D1,
+					M68kRegister.A0,
+					M68kMachineValueWidth.Long,
+					offset);
+			}
+			EmitAllocatedBaseStore(
+				M68kRegister.A4,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateThunkOffset);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D1, M68kMachineValueWidth.Long);
+			_assembler.EmitWord(0x4841); // SWAP D1
+			_assembler.EmitWord(0x0081); // ORI.L #multicast,D1
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+			EmitAllocatedBaseStore(
+				M68kRegister.D1,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			EmitAllocatedMove(sourceDelegate, M68kRegister.A5, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A5, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedMove(M68kRegister.A0, M68kRegister.A4, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A4, M68kRuntimeAbi.DelegateInvocationTailOffset);
+
+			void EmitCopyEntries(M68kRegister count)
+			{
+				EmitAllocatedTest(count, M68kMachineValueWidth.Long);
+				var copyDone = UniqueLabel("delegate-remove-copy-done");
+				_assembler.EmitBranch(M68kCondition.Equal, copyDone);
+				var copyLoop = UniqueLabel("delegate-remove-copy-loop");
+				_assembler.Mark(copyLoop);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A5,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A4,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedAddImmediate(M68kRegister.A5, 4);
+				EmitAllocatedAddImmediate(M68kRegister.A4, 4);
+				_assembler.EmitWord((ushort)(0x5380 | (int)count)); // SUBQ.L #1,Dn
+				_assembler.EmitBranch(M68kCondition.NotEqual, copyLoop);
+				_assembler.Mark(copyDone);
+			}
+
+			EmitAllocatedMove(M68kRegister.D6, M68kRegister.D7, M68kMachineValueWidth.Long);
+			EmitCopyEntries(M68kRegister.D7);
+			EmitAllocatedMove(M68kRegister.D3, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedShiftImmediate(M68kRegister.D0, left: true);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Add,
+				M68kRegister.D0,
+				M68kRegister.A5,
+				M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D7, M68kMachineValueWidth.Long);
+			EmitAllocatedBinaryInPlace(
+				M68kMachineOperation.Subtract,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kMachineValueWidth.Long);
+			EmitCopyEntries(M68kRegister.D7);
+			EmitAllocatedMove(M68kRegister.A0, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(returnSource);
+			EmitAllocatedMove(sourceDelegate, Definition(), M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(returnNull);
+			EmitAllocatedImmediate(0, M68kRegister.D0);
+			EmitAllocatedMove(M68kRegister.D0, Definition(), M68kMachineValueWidth.Long);
+			_assembler.Mark(done);
+			return;
+		}
+		if (name == "intrinsic:delegate-invoke")
+		{
+			var delegateObject = Use(0);
+			EmitAllocatedRequireNonNull(delegateObject);
+			EmitAllocatedBaseLoad(
+				delegateObject,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			EmitAllocatedMove(
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kMachineValueWidth.Long);
+			_assembler.EmitWord(0x0283); // ANDI.L #multicast,D3
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+			var singlecast = UniqueLabel("delegate-invoke-singlecast");
+			var done = UniqueLabel("delegate-invoke-done");
+			_assembler.EmitBranch(M68kCondition.Equal, singlecast);
+
+			// D0/D1/A1 carry the register portion of the delegate arguments.
+			// Every multicast target must observe the original values even though
+			// those registers are caller-saved and may contain an earlier result.
+			EmitAllocatedMove(M68kRegister.D0, M68kRegister.D4, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.D1, M68kRegister.D5, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.A1, M68kRegister.A4, M68kMachineValueWidth.Long);
+			_assembler.EmitWord(0x4842); // SWAP D2: invocation count
+			_assembler.EmitWord(0x0282); // ANDI.L #$ffff,D2
+			_assembler.EmitLong(0x0000FFFF);
+			EmitAllocatedMove(delegateObject, M68kRegister.A3, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A3, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			var loop = UniqueLabel("delegate-invoke-multicast-loop");
+			_assembler.Mark(loop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 4);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.A2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateThunkOffset);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.D3,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			_assembler.EmitWord(0x0283); // ANDI.L #closed-instance,D3
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagClosedInstance);
+			var multicastStatic = UniqueLabel("delegate-invoke-multicast-static");
+			_assembler.EmitBranch(M68kCondition.Equal, multicastStatic);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A0,
+				M68kRegister.A0,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateTargetOffset);
+			_assembler.Mark(multicastStatic);
+			EmitAllocatedMove(M68kRegister.D4, M68kRegister.D0, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.D5, M68kRegister.D1, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(M68kRegister.A4, M68kRegister.A1, M68kMachineValueWidth.Long);
+			_assembler.EmitWord(0x4E92); // JSR (A2)
+			RegisterCurrentUnwindSite(
+				exception: true,
+				gc: _emittingMachineInstruction?.IsSafepoint == true);
+			_loadedPlatformBase = null;
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+			_assembler.EmitBranch(M68kCondition.True, done);
+
+			_assembler.Mark(singlecast);
+			EmitAllocatedBaseLoad(
+				delegateObject,
+				M68kRegister.A1,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateTargetOffset);
+			EmitAllocatedBaseLoad(
+				delegateObject,
+				M68kRegister.A2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateThunkOffset);
+			_assembler.EmitWord(0x0282); // ANDI.L #closed-instance,D2
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagClosedInstance);
+			var directStatic = UniqueLabel("delegate-direct-static");
+			_assembler.EmitBranch(M68kCondition.Equal, directStatic);
+			EmitAllocatedMove(M68kRegister.A1, M68kRegister.A0, M68kMachineValueWidth.Long);
+			_assembler.Mark(directStatic);
+			_assembler.EmitWord(0x4E92); // JSR (A2)
+			RegisterCurrentUnwindSite(
+				exception: true,
+				gc: _emittingMachineInstruction?.IsSafepoint == true);
+			_loadedPlatformBase = null;
+			_assembler.Mark(done);
+			return;
+		}
+		if (name is "intrinsic:delegate-equality" or "intrinsic:delegate-inequality")
+		{
+			var invert = name == "intrinsic:delegate-inequality";
+			var left = Use(0);
+			var right = Use(1);
+			var equal = UniqueLabel("delegate-equality-equal");
+			var unequal = UniqueLabel("delegate-equality-unequal");
+			var done = UniqueLabel("delegate-equality-done");
+			EmitAllocatedCompare(left, right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, equal);
+			EmitAllocatedTest(left, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, unequal);
+			EmitAllocatedTest(right, M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, unequal);
+			foreach (var offset in new short[]
+			{
+				M68kRuntimeAbi.ObjectDescriptorOffset,
+				M68kRuntimeAbi.DelegateFlagsOffset
+			})
+			{
+				EmitAllocatedBaseLoad(
+					left,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					offset);
+				EmitAllocatedBaseLoad(
+					right,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					offset);
+				EmitAllocatedCompare(
+					M68kRegister.D0,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.NotEqual, unequal);
+			}
+			EmitAllocatedBaseLoad(
+				left,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			_assembler.EmitWord(0x0282); // ANDI.L #multicast,D2
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateFlagMulticast);
+			var compareSinglecast = UniqueLabel("delegate-equality-singlecast");
+			_assembler.EmitBranch(M68kCondition.Equal, compareSinglecast);
+
+			EmitAllocatedBaseLoad(
+				left,
+				M68kRegister.D2,
+				M68kMachineValueWidth.Long,
+				M68kRuntimeAbi.DelegateFlagsOffset);
+			_assembler.EmitWord(0x4842); // SWAP D2: invocation count
+			_assembler.EmitWord(0x0282); // ANDI.L #$ffff,D2
+			_assembler.EmitLong(0x0000FFFF);
+			EmitAllocatedMove(left, M68kRegister.A2, M68kMachineValueWidth.Long);
+			EmitAllocatedMove(right, M68kRegister.A3, M68kMachineValueWidth.Long);
+			EmitAllocatedAddImmediate(M68kRegister.A2, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			EmitAllocatedAddImmediate(M68kRegister.A3, M68kRuntimeAbi.DelegateInvocationTailOffset);
+			var compareMulticastLoop = UniqueLabel("delegate-equality-multicast-loop");
+			_assembler.Mark(compareMulticastLoop);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A2,
+				M68kRegister.A4,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedBaseLoad(
+				M68kRegister.A3,
+				M68kRegister.A5,
+				M68kMachineValueWidth.Long,
+				0);
+			foreach (var offset in new short[]
+			{
+				M68kRuntimeAbi.ObjectDescriptorOffset,
+				M68kRuntimeAbi.DelegateTargetOffset,
+				M68kRuntimeAbi.DelegateThunkOffset,
+				M68kRuntimeAbi.DelegateInvocationListOffset,
+				M68kRuntimeAbi.DelegateFlagsOffset
+			})
+			{
+				EmitAllocatedBaseLoad(
+					M68kRegister.A4,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					offset);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A5,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					offset);
+				EmitAllocatedCompare(
+					M68kRegister.D0,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.NotEqual, unequal);
+			}
+			EmitAllocatedAddImmediate(M68kRegister.A2, 4);
+			EmitAllocatedAddImmediate(M68kRegister.A3, 4);
+			_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+			_assembler.EmitBranch(M68kCondition.NotEqual, compareMulticastLoop);
+			_assembler.EmitBranch(M68kCondition.True, equal);
+
+			_assembler.Mark(compareSinglecast);
+			foreach (var offset in new short[]
+			{
+				M68kRuntimeAbi.DelegateTargetOffset,
+				M68kRuntimeAbi.DelegateThunkOffset,
+				M68kRuntimeAbi.DelegateInvocationListOffset
+			})
+			{
+				EmitAllocatedBaseLoad(
+					left,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					offset);
+				EmitAllocatedBaseLoad(
+					right,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					offset);
+				EmitAllocatedCompare(
+					M68kRegister.D0,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.NotEqual, unequal);
+			}
+			_assembler.Mark(equal);
+			EmitAllocatedImmediate(invert ? 0 : 1, M68kRegister.D0);
+			_assembler.EmitBranch(M68kCondition.True, done);
+			_assembler.Mark(unequal);
+			EmitAllocatedImmediate(invert ? 1 : 0, M68kRegister.D0);
+			_assembler.Mark(done);
+			if (instruction.Definitions.Length != 0)
+			{
+				EmitAllocatedMove(
+					M68kRegister.D0,
+					Definition(),
+					M68kMachineValueWidth.Long);
+			}
+			return;
+		}
+		if (name == "intrinsic:runtime-throw-overflow")
+		{
+			EmitExceptionRaise(reason: 4, hasException: false);
 			return;
 		}
 		if (name.StartsWith(
@@ -2437,6 +5877,35 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
+		if (name?.StartsWith(
+				"intrinsic:file-info-block-read-int32:",
+				StringComparison.Ordinal) == true)
+		{
+			var displacement = name! switch
+			{
+				"intrinsic:file-info-block-read-int32:4" => (short)4,
+				"intrinsic:file-info-block-read-int32:124" => (short)124,
+				"intrinsic:file-info-block-read-int32:132" => (short)132,
+				"intrinsic:file-info-block-read-int32:136" => (short)136,
+				"intrinsic:file-info-block-read-int32:140" => (short)140,
+				_ => throw new InvalidOperationException(
+					$"Unsupported FileInfoBlock displacement intrinsic '{name}'.")
+			};
+			var destination = Definition();
+			if (TryFoldAllocatedIntrinsicResultCopy(
+					allocated,
+					instruction,
+					out var foldedDestination))
+			{
+				destination = foldedDestination;
+			}
+			EmitAllocatedBaseLoad(
+				Use(0),
+				destination,
+				M68kMachineValueWidth.Long,
+				displacement);
+			return;
+		}
 		if (name == "intrinsic:aptr-write-uint32")
 		{
 			var baseRegister = Use(0);
@@ -2498,7 +5967,7 @@ internal sealed partial class M68kCodeGenerator
 				0);
 			return;
 		}
-		if (name.StartsWith(
+		if (name!.StartsWith(
 			"intrinsic:nullable-has-value:",
 			StringComparison.Ordinal))
 		{
@@ -2540,7 +6009,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (name.StartsWith(
 			"intrinsic:nullable-get-value:",
-			StringComparison.Ordinal))
+			StringComparison.Ordinal) ||
+			name.StartsWith(
+				"intrinsic:nullable-get-value-or-default-no-argument:",
+				StringComparison.Ordinal))
 		{
 			if (IsCompactNullableIntrinsic(target) &&
 				IsAllocatedPromotedLocalAddress(caller, allocated, instruction))
@@ -2661,7 +6133,7 @@ internal sealed partial class M68kCodeGenerator
 			EmitAllocatedImmediate(0, Definition());
 			return;
 		}
-		if (name == "intrinsic:string-length")
+			if (name == "intrinsic:string-length")
 		{
 			var stringBase = Use(0);
 			EmitAllocatedRequireNonNull(stringBase);
@@ -2670,6 +6142,612 @@ internal sealed partial class M68kCodeGenerator
 				Definition(),
 				M68kMachineValueWidth.Long,
 				8);
+				return;
+			}
+			if (name == "intrinsic:string-char")
+			{
+				var stringBase = Use(0);
+				var index = Use(1);
+				var destination = Definition();
+				EmitAllocatedArrayBoundsCheck(stringBase, index);
+				if (_request.Cpu == M68kCpuTarget.M68000)
+				{
+					EmitAllocatedShiftImmediate(index, left: true);
+				}
+				EmitAllocatedIndexedLoad(
+					stringBase,
+					index,
+					destination,
+					M68kMachineValueWidth.Word,
+					2,
+					checked((sbyte)M68kRuntimeAbi.StringDataOffset));
+				_assembler.EmitWord((ushort)(0x0280 | (int)destination));
+				_assembler.EmitLong(0xFFFF);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-from-array:",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-from-array:",
+					StringComparison.Ordinal))
+			{
+				var array = Use(0);
+				EmitAllocatedStackLoad(M68kRegister.A1, 0);
+				var nonNull = UniqueLabel("allocated_span_array_nonnull");
+				var complete = UniqueLabel("allocated_span_array_complete");
+				EmitAllocatedTest(array, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.NotEqual, nonNull);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 0);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 4);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 8);
+				_assembler.EmitBranch(M68kCondition.True, complete);
+				_assembler.Mark(nonNull);
+				EmitAllocatedMove(array, M68kRegister.D0, M68kMachineValueWidth.Long);
+				EmitAllocatedAddImmediate(M68kRegister.D0, M68kRuntimeAbi.ArrayDataOffset);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseLoad(
+					array,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					8);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedBaseStore(
+					array,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					8);
+				_assembler.Mark(complete);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-from-pointer:",
+					StringComparison.Ordinal))
+			{
+				var pointer = Use(0);
+				var length = Use(1);
+				RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+				var lengthValid = UniqueLabel(
+					"allocated_span_pointer_length_valid");
+				EmitAllocatedTest(length, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Plus, lengthValid);
+				EmitExceptionRaise(reason: 10, hasException: false);
+				_assembler.Mark(lengthValid);
+
+				EmitAllocatedStackLoad(M68kRegister.A1, 0);
+				EmitAllocatedBaseStore(
+					pointer,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseStore(
+					length,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 8);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-from-ref:",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-from-ref:",
+					StringComparison.Ordinal))
+			{
+				var reference = Use(0);
+				var hasOwner = instruction.Uses.Length == 2;
+				if (hasOwner)
+				{
+					EmitAllocatedMove(
+						Use(1),
+						M68kRegister.D0,
+						M68kMachineValueWidth.Long);
+				}
+				EmitAllocatedStackLoad(M68kRegister.A1, 0);
+				EmitAllocatedBaseStore(
+					reference,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedImmediate(1, M68kRegister.D1);
+				EmitAllocatedBaseStore(
+					M68kRegister.D1,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					4);
+				if (hasOwner)
+				{
+					EmitAllocatedBaseStore(
+						M68kRegister.D0,
+						M68kRegister.A1,
+						M68kMachineValueWidth.Long,
+						8);
+				}
+				else
+				{
+					EmitAllocatedBaseClearLong(M68kRegister.A1, 8);
+				}
+				return;
+			}
+			if (name == "intrinsic:readonly-span-from-string")
+			{
+				var source = Use(0);
+				EmitAllocatedStackLoad(M68kRegister.A1, 0);
+				var nonNull = UniqueLabel("allocated_readonly_span_string_nonnull");
+				var complete = UniqueLabel("allocated_readonly_span_string_complete");
+				EmitAllocatedTest(source, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.NotEqual, nonNull);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 0);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 4);
+				EmitAllocatedBaseClearLong(M68kRegister.A1, 8);
+				_assembler.EmitBranch(M68kCondition.True, complete);
+				_assembler.Mark(nonNull);
+				EmitAllocatedMove(
+					source,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedAddImmediate(
+					M68kRegister.D0,
+					M68kRuntimeAbi.StringDataOffset);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Long,
+					M68kRuntimeAbi.StringLengthOffset);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedBaseStore(
+					source,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					8);
+				_assembler.Mark(complete);
+				return;
+			}
+			if (name.StartsWith(
+				"intrinsic:readonly-span-from-span:",
+				StringComparison.Ordinal))
+			{
+				var source = Use(0);
+				EmitAllocatedStackLoad(M68kRegister.A1, 0);
+				for (short offset = 0; offset < 12; offset += 4)
+				{
+					EmitAllocatedBaseLoad(
+						source,
+						M68kRegister.D0,
+						M68kMachineValueWidth.Long,
+						offset);
+					EmitAllocatedBaseStore(
+						M68kRegister.D0,
+						M68kRegister.A1,
+						M68kMachineValueWidth.Long,
+						offset);
+				}
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-slice-",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-slice-",
+					StringComparison.Ordinal))
+			{
+				var span = Use(0);
+				var start = Use(1);
+				var hasExplicitLength = name.Contains(
+					"span-slice-range:",
+					StringComparison.Ordinal);
+				var requestedLength = hasExplicitLength ? Use(2) : M68kRegister.D1;
+				var elementSize = GetAllocatedSpanElementSize(
+					caller,
+					target.Signature.ReturnType.GenericArguments[0]);
+				if (span < M68kRegister.A0 ||
+					start > M68kRegister.D7 ||
+					requestedLength > M68kRegister.D7 ||
+					elementSize <= 0)
+				{
+					throw new InvalidOperationException(
+						"Allocated Span<T> slice has an invalid register or element shape.");
+				}
+
+				EmitAllocatedStackLoad(M68kRegister.A1, 0);
+				EmitAllocatedBaseLoad(
+					span,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long,
+					4);
+				var startValid = UniqueLabel("allocated_span_slice_start_valid");
+				EmitAllocatedCompare(start, M68kRegister.D2, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.CarrySet, startValid);
+				_assembler.EmitBranch(M68kCondition.Equal, startValid);
+				RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+				EmitExceptionRaise(reason: 10, hasException: false);
+				_assembler.Mark(startValid);
+				EmitAllocatedBinaryInPlace(
+					M68kMachineOperation.Subtract,
+					start,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long);
+
+				if (hasExplicitLength)
+				{
+					var lengthValid = UniqueLabel("allocated_span_slice_length_valid");
+					EmitAllocatedCompare(
+						requestedLength,
+						M68kRegister.D2,
+						M68kMachineValueWidth.Long);
+					_assembler.EmitBranch(M68kCondition.CarrySet, lengthValid);
+					_assembler.EmitBranch(M68kCondition.Equal, lengthValid);
+					EmitExceptionRaise(reason: 10, hasException: false);
+					_assembler.Mark(lengthValid);
+					EmitAllocatedMove(
+						requestedLength,
+						M68kRegister.D2,
+						M68kMachineValueWidth.Long);
+				}
+
+				EmitAllocatedBaseLoad(
+					span,
+					M68kRegister.A2,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedSpanElementAddress(
+					M68kRegister.A2,
+					start,
+					M68kRegister.A2,
+					elementSize,
+					M68kRegister.D3);
+				EmitAllocatedBaseStore(
+					M68kRegister.A2,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseStore(
+					M68kRegister.D2,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedBaseLoad(
+					span,
+					M68kRegister.D3,
+					M68kMachineValueWidth.Long,
+					8);
+				EmitAllocatedBaseStore(
+					M68kRegister.D3,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					8);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-length:",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-length:",
+					StringComparison.Ordinal))
+			{
+				EmitAllocatedBaseLoad(
+					Use(0),
+					Definition(),
+					M68kMachineValueWidth.Long,
+					4);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-is-empty:",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-is-empty:",
+					StringComparison.Ordinal))
+			{
+				var materialize = instruction.Definitions.Length != 0;
+				var destination = materialize
+					? Definition()
+					: M68kRegister.D0;
+				EmitAllocatedBaseLoad(
+					Use(0),
+					destination,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedTest(destination, M68kMachineValueWidth.Long);
+				if (materialize)
+				{
+					EmitAllocatedConditionResult(
+						M68kCondition.Equal,
+						destination);
+				}
+				return;
+			}
+			if (name == "intrinsic:readonly-span-sequence-equal:char")
+			{
+				EmitAllocatedStackLoad(M68kRegister.A0, 0);
+				EmitAllocatedStackLoad(M68kRegister.D2, 4);
+				EmitAllocatedStackLoad(M68kRegister.A1, 12);
+				EmitAllocatedStackLoad(M68kRegister.D1, 16);
+
+				var matchingLength = UniqueLabel(
+					"allocated_readonly_span_sequence_equal_matching_length");
+				var loop = UniqueLabel(
+					"allocated_readonly_span_sequence_equal_loop");
+				var equal = UniqueLabel(
+					"allocated_readonly_span_sequence_equal_true");
+				var notEqual = UniqueLabel(
+					"allocated_readonly_span_sequence_equal_false");
+				var complete = UniqueLabel(
+					"allocated_readonly_span_sequence_equal_complete");
+
+				EmitAllocatedCompare(
+					M68kRegister.D1,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, matchingLength);
+				_assembler.EmitBranch(M68kCondition.True, notEqual);
+
+				_assembler.Mark(matchingLength);
+				EmitAllocatedTest(M68kRegister.D2, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, equal);
+				_assembler.Mark(loop);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A0,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Word,
+					0);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A1,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Word,
+					0);
+				EmitAllocatedCompare(
+					M68kRegister.D1,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Word);
+				_assembler.EmitBranch(M68kCondition.NotEqual, notEqual);
+				EmitAllocatedAddImmediate(M68kRegister.A0, 2);
+				EmitAllocatedAddImmediate(M68kRegister.A1, 2);
+				_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+				_assembler.EmitBranch(M68kCondition.NotEqual, loop);
+
+				_assembler.Mark(equal);
+				EmitAllocatedImmediate(1, Definition());
+				_assembler.EmitBranch(M68kCondition.True, complete);
+				_assembler.Mark(notEqual);
+				EmitAllocatedImmediate(0, Definition());
+				_assembler.Mark(complete);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-copy-to:",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-copy-to:",
+					StringComparison.Ordinal))
+			{
+				var source = Use(0);
+				var destination = Use(1);
+				var element = target.ConstructedDeclaringType?.GenericArguments[0] ??
+					target.Signature.ParameterTypes[0].GenericArguments[0];
+				var elementSize = GetAllocatedSpanElementSize(caller, element);
+				if (source < M68kRegister.A0 ||
+					destination < M68kRegister.A0 ||
+					elementSize <= 0)
+				{
+					throw new InvalidOperationException(
+						"Allocated Span<T>.CopyTo has an invalid receiver or element shape.");
+				}
+
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.D2,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedBaseLoad(
+					destination,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long,
+					4);
+				EmitAllocatedBaseLoad(
+					source,
+					M68kRegister.A2,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedBaseLoad(
+					destination,
+					M68kRegister.A1,
+					M68kMachineValueWidth.Long,
+					0);
+
+				var destinationLongEnough = UniqueLabel(
+					"allocated_span_copy_destination_long_enough");
+				EmitAllocatedCompare(
+					M68kRegister.D2,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(
+					M68kCondition.CarrySet,
+					destinationLongEnough);
+				_assembler.EmitBranch(
+					M68kCondition.Equal,
+					destinationLongEnough);
+				RegisterRuntimeTypeDescriptor("System.ArgumentException");
+				EmitExceptionRaise(reason: 9, hasException: false);
+				_assembler.Mark(destinationLongEnough);
+
+				var complete = UniqueLabel("allocated_span_copy_complete");
+				EmitAllocatedTest(M68kRegister.D2, M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.Equal, complete);
+
+				var copyWidth = elementSize switch
+				{
+					1 => M68kMachineValueWidth.Byte,
+					2 => M68kMachineValueWidth.Word,
+					4 => M68kMachineValueWidth.Long,
+					_ => M68kMachineValueWidth.Byte
+				};
+				var stride = elementSize is 1 or 2 or 4 ? elementSize : 1;
+				EmitAllocatedMultiplyByConstant(
+					M68kRegister.D2,
+					M68kRegister.D0,
+					elementSize);
+				if (stride == 1 && elementSize != 1)
+				{
+					EmitAllocatedMove(
+						M68kRegister.D0,
+						M68kRegister.D2,
+						M68kMachineValueWidth.Long);
+				}
+				EmitAllocatedIndexedAddress(
+					M68kRegister.A2,
+					M68kRegister.D0,
+					M68kRegister.A3,
+					elementSize: 1,
+					displacement: 0);
+
+				var forward = UniqueLabel("allocated_span_copy_forward");
+				var forwardLoop = UniqueLabel("allocated_span_copy_forward_loop");
+				var backwardLoop = UniqueLabel("allocated_span_copy_backward_loop");
+				EmitAllocatedMove(
+					M68kRegister.A2,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedMove(
+					M68kRegister.A1,
+					M68kRegister.D3,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedCompare(
+					M68kRegister.D1,
+					M68kRegister.D3,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.CarryClear, forward);
+				EmitAllocatedMove(
+					M68kRegister.A1,
+					M68kRegister.D1,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedMove(
+					M68kRegister.A3,
+					M68kRegister.D3,
+					M68kMachineValueWidth.Long);
+				EmitAllocatedCompare(
+					M68kRegister.D1,
+					M68kRegister.D3,
+					M68kMachineValueWidth.Long);
+				_assembler.EmitBranch(M68kCondition.CarryClear, forward);
+
+				EmitAllocatedIndexedAddress(
+					M68kRegister.A1,
+					M68kRegister.D0,
+					M68kRegister.A1,
+					elementSize: 1,
+					displacement: 0);
+				EmitAllocatedMove(
+					M68kRegister.A3,
+					M68kRegister.A2,
+					M68kMachineValueWidth.Long);
+				_assembler.Mark(backwardLoop);
+				EmitAllocatedAddImmediate(M68kRegister.A2, -stride);
+				EmitAllocatedAddImmediate(M68kRegister.A1, -stride);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A2,
+					M68kRegister.D0,
+					copyWidth,
+					0);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					copyWidth,
+					0);
+				_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+				_assembler.EmitBranch(M68kCondition.NotEqual, backwardLoop);
+				_assembler.EmitBranch(M68kCondition.True, complete);
+
+				_assembler.Mark(forward);
+				_assembler.Mark(forwardLoop);
+				EmitAllocatedBaseLoad(
+					M68kRegister.A2,
+					M68kRegister.D0,
+					copyWidth,
+					0);
+				EmitAllocatedBaseStore(
+					M68kRegister.D0,
+					M68kRegister.A1,
+					copyWidth,
+					0);
+				EmitAllocatedAddImmediate(M68kRegister.A2, stride);
+				EmitAllocatedAddImmediate(M68kRegister.A1, stride);
+				_assembler.EmitWord(0x5382); // SUBQ.L #1,D2
+				_assembler.EmitBranch(M68kCondition.NotEqual, forwardLoop);
+				_assembler.Mark(complete);
+				return;
+			}
+			if (name.StartsWith(
+					"intrinsic:span-get-item:",
+					StringComparison.Ordinal) ||
+				name.StartsWith(
+					"intrinsic:readonly-span-get-item:",
+					StringComparison.Ordinal))
+			{
+				var span = Use(0);
+				var index = Use(1);
+				var destination = Definition();
+				var elementSize = target.Signature.ReturnType.ElementType is { } element
+					? GetAllocatedSpanElementSize(caller, element)
+					: 0;
+				if (span < M68kRegister.A0 || index > M68kRegister.D7 ||
+					destination < M68kRegister.A0 || elementSize <= 0)
+				{
+					throw new InvalidOperationException(
+						"Allocated Span<T> indexer has an invalid register or element shape.");
+				}
+				var indexNonNegative = UniqueLabel("allocated_span_index_nonnegative");
+				var indexValid = UniqueLabel("allocated_span_index_valid");
+				_assembler.EmitWord((ushort)(0x4A80 | (int)index));
+				_assembler.EmitBranch(M68kCondition.Plus, indexNonNegative);
+				EmitExceptionRaise(reason: 2, hasException: false);
+				_assembler.Mark(indexNonNegative);
+				_assembler.EmitWord((ushort)(
+					0xB0A8 |
+					((int)index << 9) |
+					((int)span - (int)M68kRegister.A0)));
+				_assembler.EmitWord(0x0004);
+				_assembler.EmitBranch(M68kCondition.CarrySet, indexValid);
+				EmitExceptionRaise(reason: 2, hasException: false);
+				_assembler.Mark(indexValid);
+				EmitAllocatedBaseLoad(
+					span,
+					destination,
+					M68kMachineValueWidth.Long,
+					0);
+				EmitAllocatedSpanElementAddress(
+					destination,
+					index,
+					destination,
+					elementSize,
+					M68kRegister.D1);
+				return;
+			}
+		if (name.StartsWith(
+			"intrinsic:runtimehelpers-is-reference-or-contains-references:",
+			StringComparison.Ordinal))
+		{
+			EmitAllocatedImmediate(
+				name.EndsWith(":true", StringComparison.Ordinal) ? 1 : 0,
+				Definition());
 			return;
 		}
 		if (name == "intrinsic:file-info-block-file-name")
@@ -3011,6 +7089,54 @@ internal sealed partial class M68kCodeGenerator
 
 	private static bool IsAllocatedIntrinsic(string? name) =>
 		name?.StartsWith(
+			"intrinsic:span-from-array:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-from-pointer:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-from-ref:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-from-",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-length:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-length:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-is-empty:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-is-empty:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-sequence-equal:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-copy-to:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-copy-to:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-slice-",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-slice-",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:span-get-item:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:readonly-span-get-item:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:runtimehelpers-is-reference-or-contains-references:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
 			"intrinsic:amiga-library-base-set:",
 			StringComparison.Ordinal) == true ||
 		name?.StartsWith(
@@ -3023,13 +7149,39 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:nullable-get-value:",
 			StringComparison.Ordinal) == true ||
 		name?.StartsWith(
+			"intrinsic:nullable-get-value-or-default-no-argument:",
+			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
 			"intrinsic:nullable-get-value-or-default:",
 			StringComparison.Ordinal) == true ||
 		name?.StartsWith(
 			"intrinsic:nullable-ctor:",
 			StringComparison.Ordinal) == true ||
+		name?.StartsWith(
+			"intrinsic:file-info-block-read-int32:",
+			StringComparison.Ordinal) == true ||
+
 		name is
+			"intrinsic:runtime-allocate-string" or
+			"intrinsic:runtime-set-string-char" or
+			"intrinsic:string-concat-two" or
+			"intrinsic:string-substring" or
+			"intrinsic:string-copy-to-char-array" or
+			"intrinsic:string-copy-to-span-char" or
+			"intrinsic:string-to-char-array" or
+			"intrinsic:string-starts-with-ordinal" or
+			"intrinsic:string-ends-with-ordinal" or
+			"intrinsic:string-contains-ordinal" or
+			"intrinsic:string-index-of-ordinal" or
 			"intrinsic:object-ctor" or
+			"intrinsic:object-reference-equals" or
+			"intrinsic:string-equality" or
+			"intrinsic:string-inequality" or
+			"intrinsic:delegate-combine" or
+			"intrinsic:delegate-remove" or
+			"intrinsic:delegate-invoke" or
+			"intrinsic:delegate-equality" or
+			"intrinsic:delegate-inequality" or
 			"intrinsic:cstring-from-pointer" or
 			"intrinsic:cstring-to-uint32" or
 			"intrinsic:aptr-from-pointer" or
@@ -3052,6 +7204,7 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:boopsi-do-method" or
 			"intrinsic:boopsi-do-method-stack-varargs" or
 			"intrinsic:aptr-null" or
+			"intrinsic:string-char" or
 			"intrinsic:string-length" or
 			"intrinsic:file-info-block-file-name" or
 			"intrinsic:bptr-address" or
@@ -3059,6 +7212,7 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:aptr-is-null" or
 			"intrinsic:aptr-is-not-null" or
 			"intrinsic:runtime-dispose" or
+			"intrinsic:runtime-throw-overflow" or
 			"intrinsic:runtime-gc-collect" or
 			"intrinsic:runtime-GetGcStaleBytes" or
 			"intrinsic:runtime-GetGcStaleBlocks";
@@ -3499,8 +7653,15 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitAllocatedConversion(
 		OpCode op,
 		M68kRegister source,
-		M68kRegister destination)
+		M68kMachineValueWidth sourceWidth,
+		M68kRegister destination,
+		M68kMachineValueWidth destinationWidth)
 	{
+		if (sourceWidth == M68kMachineValueWidth.LongPair &&
+			destinationWidth != M68kMachineValueWidth.LongPair)
+		{
+			source = (M68kRegister)((int)source + 1);
+		}
 		EmitAllocatedMove(source, destination, M68kMachineValueWidth.Long);
 		if (destination > M68kRegister.D7)
 		{
@@ -3535,7 +7696,8 @@ internal sealed partial class M68kCodeGenerator
 		if (kind is CilStackValueKind.Int32 or
 			CilStackValueKind.Int64 or
 			CilStackValueKind.Reference or
-			CilStackValueKind.ManagedPointer)
+			CilStackValueKind.ManagedPointer or
+			CilStackValueKind.AggregateAddress)
 		{
 			return;
 		}
@@ -3771,6 +7933,15 @@ internal sealed partial class M68kCodeGenerator
 			{
 				return M68kCondition.Equal;
 			}
+			if (target.ImportName?.StartsWith(
+					"intrinsic:span-is-empty:",
+					StringComparison.Ordinal) == true ||
+				target.ImportName?.StartsWith(
+					"intrinsic:readonly-span-is-empty:",
+					StringComparison.Ordinal) == true)
+			{
+				return M68kCondition.Equal;
+			}
 			if (target.ImportName == "intrinsic:aptr-is-not-null" ||
 				target.ImportName?.StartsWith(
 					"intrinsic:nullable-has-value:",
@@ -3873,11 +8044,14 @@ internal sealed partial class M68kCodeGenerator
 			throw new InvalidOperationException(
 				$"{width} frame load cannot target {destination}.");
 		}
+		var frameBaseDelta = UsesAllocatedFrameAnchor
+			? -2
+			: 0;
 		var baseOpcode = width switch
 		{
-			M68kMachineValueWidth.Byte => 0x102F,
-			M68kMachineValueWidth.Word => 0x302F,
-			M68kMachineValueWidth.Long => 0x202F,
+			M68kMachineValueWidth.Byte => 0x102F + frameBaseDelta,
+			M68kMachineValueWidth.Word => 0x302F + frameBaseDelta,
+			M68kMachineValueWidth.Long => 0x202F + frameBaseDelta,
 			_ => throw new InvalidOperationException(
 				"Pair frame loads must be expanded.")
 		};
@@ -3897,7 +8071,7 @@ internal sealed partial class M68kCodeGenerator
 			? destination
 			: M68kRegister.A0;
 		_assembler.EmitWord((ushort)(
-			0x41EF |
+			(UsesAllocatedFrameAnchor ? 0x41ED : 0x41EF) |
 			(((int)addressDestination - (int)M68kRegister.A0) << 9)));
 		_assembler.EmitWord(unchecked((ushort)(short)displacement));
 		if (addressDestination != destination)
@@ -3933,11 +8107,14 @@ internal sealed partial class M68kCodeGenerator
 			throw new InvalidOperationException(
 				$"{width} frame store cannot use {source}.");
 		}
+		var frameBaseDelta = UsesAllocatedFrameAnchor
+			? -0x0400
+			: 0;
 		var baseOpcode = width switch
 		{
-			M68kMachineValueWidth.Byte => 0x1F40,
-			M68kMachineValueWidth.Word => 0x3F40,
-			M68kMachineValueWidth.Long => 0x2F40,
+			M68kMachineValueWidth.Byte => 0x1F40 + frameBaseDelta,
+			M68kMachineValueWidth.Word => 0x3F40 + frameBaseDelta,
+			M68kMachineValueWidth.Long => 0x2F40 + frameBaseDelta,
 			_ => throw new InvalidOperationException(
 				"Pair frame stores must be expanded.")
 		};
@@ -3953,7 +8130,9 @@ internal sealed partial class M68kCodeGenerator
 	{
 		ValidateAllocatedFrameDisplacement(sourceDisplacement);
 		ValidateAllocatedFrameDisplacement(destinationDisplacement);
-		_assembler.EmitWord(0x2F6F); // MOVE.L d16(A7),d16(A7)
+		_assembler.EmitWord((ushort)(UsesAllocatedFrameAnchor
+			? 0x2B6D // MOVE.L d16(A5),d16(A5)
+			: 0x2F6F)); // MOVE.L d16(A7),d16(A7)
 		_assembler.EmitWord(unchecked((ushort)(short)sourceDisplacement));
 		_assembler.EmitWord(unchecked((ushort)(short)destinationDisplacement));
 	}
@@ -3961,9 +8140,14 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitAllocatedFrameClear(int displacement)
 	{
 		ValidateAllocatedFrameDisplacement(displacement);
-		_assembler.EmitWord(0x42AF); // CLR.L d16(A7), safe frame memory
+		_assembler.EmitWord((ushort)(UsesAllocatedFrameAnchor
+			? 0x42AD // CLR.L d16(A5), safe frame memory
+			: 0x42AF)); // CLR.L d16(A7), safe frame memory
 		_assembler.EmitWord(unchecked((ushort)(short)displacement));
 	}
+
+	private bool UsesAllocatedFrameAnchor =>
+		_emittingAllocatedFunction?.Function.HasDynamicStackAllocation == true;
 
 	private static void ValidateAllocatedFrameDisplacement(int displacement)
 	{
@@ -4125,6 +8309,44 @@ internal sealed partial class M68kCodeGenerator
 			return true;
 		}
 		index = default;
+		return false;
+	}
+
+	private static bool IsConstructorReceiver(
+		CilMethod method,
+		M68kMachineFunction function,
+		int value)
+	{
+		if (method.Name != ".ctor" || !method.Signature.Header.IsInstance)
+		{
+			return false;
+		}
+		var visited = new HashSet<int>();
+		while (visited.Add(value))
+		{
+			var definition = function.Blocks
+				.SelectMany(static block => block.Instructions)
+				.SingleOrDefault(instruction =>
+					instruction.Definitions.Contains(value));
+			if (definition is
+				{
+					Operation: M68kMachineOperation.Argument,
+					ArgumentIndex: 0
+				})
+			{
+				return true;
+			}
+			if (definition is
+				{
+					Operation: M68kMachineOperation.Copy,
+					Uses: [var source]
+				})
+			{
+				value = source;
+				continue;
+			}
+			break;
+		}
 		return false;
 	}
 

@@ -27,11 +27,14 @@ The data and address register banks are allocated independently:
 | 32-bit scalar or transparent scalar | D0, then D1 | stack |
 | managed reference, managed pointer, unmanaged pointer, function pointer, `this` | A0, then A1 | stack |
 | 64-bit scalar | D0:D1 when both are free | whole value on stack |
+| reference-free aggregate | none | whole value on stack |
 | shared generic parameter | none | stack |
 
 A shared generic parameter does not consume a register; a later statically
 classified parameter may still use an available register. The high long of a
-64-bit register argument is in D0 and the low long is in D1.
+64-bit register argument is in D0 and the low long is in D1. A reference-free
+aggregate likewise consumes no data or address register, so later scalar and
+reference arguments may continue using their respective banks.
 
 Only overflow arguments are visible on the callee stack. At method entry,
 `(A7)` is the return address, the first overflow argument starts at `4(A7)`,
@@ -53,10 +56,31 @@ alignment requirement.
   `8(A7)`.
 - `Call<T>(T, int, object)` keeps `T` at `4(A7)` while the later known scalar
   and reference still use D0 and A0.
+- `Call(int, Pair, int)` uses D0 for the first scalar, places every `Pair`
+  payload word on the stack in layout order, and uses D1 for the final scalar.
+- `Call(Pair, Pair)` places both complete values on the stack in declaration
+  order; each value's first field is at its lowest argument address.
 
 Register arguments never have shadow stack slots. Unsupported aggregates and
-general value types remain outside this milestone; their eventual ABI
-representation is deferred.
+reference-bearing value types remain outside this milestone. For a supported
+reference-free aggregate, the caller expands a direct local, argument, or stable
+address-backed computed value into stack words in reverse push order, producing
+layout order at the callee.
+The callee copies the incoming value into a stable full-size frame home before
+its body executes. The compiler-private source address used during expansion is
+not part of the ABI and never crosses the call.
+
+Computed `unbox.any` and managed-call result values are copied into uninitialized
+private frame homes. Their machine-IR values are addresses of those homes, not
+addresses of boxed payloads, so collection and calls cannot invalidate them.
+
+A direct managed method returning a reference-free multiword aggregate receives
+a compiler-private hidden return-buffer pointer on the stack. It follows all
+declared stack arguments and does not consume a data or address register lane.
+The caller pushes this pointer before expanding declared stack arguments, the
+callee copies every result word into it, and the caller rematerializes the home
+address after cleanup. Imported and interface-return adapters remain explicit
+future ABI work.
 
 ## Results and register preservation
 
@@ -65,6 +89,7 @@ representation is deferred.
 | 32-bit scalar | D0 |
 | reference or pointer | A0 |
 | 64-bit scalar | high D0, low D1 |
+| reference-free multiword aggregate | caller-provided hidden stack buffer |
 | void | none |
 
 D0, D1, A0, and A1 are volatile. D2-D7 and A2-A6 are callee-saved; generated

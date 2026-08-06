@@ -20,6 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Baselines\net10.0-phase0.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
     <ProjectReference Include="..\Compiler.Tests.MultiModule\CopperSharp.Compiler.Tests.MultiModule.csproj" />
     <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
@@ -27,6 +32,9 @@
     <ProjectReference Include="..\Sdk.Amiga\Examples\IFFInspect\IFFInspect.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\MUITaskList\MUITaskList.csproj" />
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
+    <ProjectReference Include="..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj"
+                      ReferenceOutputAssembly="false"
+                      Condition="Exists('..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj')" />
     <ProjectReference Include="..\..\MedPlayer\Copper68k\Copper68k.csproj"
                       Condition="Exists('..\..\MedPlayer\Copper68k\Copper68k.csproj')" />
     <PackageReference Include="Copper68k"

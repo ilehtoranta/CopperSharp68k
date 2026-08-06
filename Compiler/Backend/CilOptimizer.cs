@@ -212,8 +212,13 @@ internal static class CilOptimizer
 			(int)instruction.Operand!,
 			method,
 			instruction.Offset);
-		if (target.Definition is null || target.Signature.ReturnType.IsVoid)
+		if (target.Definition is null ||
+			target.Signature.ReturnType.IsVoid ||
+			(target.Definition.ExternalCall is not null &&
+			 target.Signature.ParameterTypes.LastOrDefault()?.ElementType is not null))
 		{
+			// Stack-varargs calls need their preceding newarr/stelem sequence intact
+			// so machine-IR lowering can replace it with direct stack staging.
 			return false;
 		}
 

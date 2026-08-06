@@ -19,6 +19,7 @@ public static class M68kDiagnosticIds
 	public const string InvalidMetadata = "C68K0009";
 	public const string StaticAnalysis = "C68K0010";
 	public const string UnsupportedPolymorphism = "C68K0011";
+	public const string UnsupportedFrameworkMember = "C68K0012";
 }
 
 /// <summary>A compiler error tied to metadata and, when available, an IL offset.</summary>

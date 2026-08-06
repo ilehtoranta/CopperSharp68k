@@ -608,6 +608,15 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
+			if ((opcode & 0xFFF8) == 0x4840)
+			{
+				UseData(opcode & 7);
+				DefineData(opcode & 7);
+				WriteMoveConditions();
+				_canRemoveWhenOutputsDead = true;
+				return;
+			}
+
 			if ((opcode & 0xF1FF) == 0x41EF || opcode == 0x4FEF ||
 				(opcode & 0xF1C0) == 0x41C0)
 			{
@@ -1024,7 +1033,19 @@ internal sealed class M68kInstructionDataflow
 				UseData(opcode & 7);
 				DefineData(opcode & 7);
 			}
-			WriteArithmeticConditions();
+			var registerRotateWithoutExtend =
+				(opcode & 0xC0) != 0xC0 && (opcode & 0x18) == 0x18;
+			var memoryRotateWithoutExtend =
+				(opcode & 0xC0) == 0xC0 && ((opcode >> 9) & 3) == 3;
+			if (registerRotateWithoutExtend || memoryRotateWithoutExtend)
+			{
+				// ROR/ROL preserve X; all other shifts and rotates write it.
+				WriteMoveConditions();
+			}
+			else
+			{
+				WriteArithmeticConditions();
+			}
 		}
 
 		private void AddEffectiveAddress(ushort opcode, EffectiveAddressAccess access)

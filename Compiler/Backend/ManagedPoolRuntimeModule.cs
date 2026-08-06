@@ -14,7 +14,9 @@ internal sealed record ManagedPoolRuntimeModule(
 	CilMethod Dispose,
 	CilMethod Mark,
 	CilMethod MarkRoots,
+	CilMethod MarkRootsExtended,
 	CilMethod CollectWithRoots,
+	CilMethod CollectWithRootsExtended,
 	CilMethod Collect,
 	CilMethod Coalesce,
 	CilMethod GetStaleBytes,
@@ -39,12 +41,38 @@ internal sealed record ManagedPoolRuntimeModule(
 			yield return Dispose;
 			yield return Mark;
 			yield return MarkRoots;
+			yield return MarkRootsExtended;
 			yield return CollectWithRoots;
+			yield return CollectWithRootsExtended;
 			yield return Collect;
 			yield return Coalesce;
 			yield return GetStaleBytes;
 			yield return GetStaleBlocks;
 			yield return Shutdown;
+		}
+	}
+
+	public IEnumerable<CilMethod> CoreMethods
+	{
+		get
+		{
+			foreach (var method in Methods)
+			{
+				if (method != MarkRootsExtended &&
+					method != CollectWithRootsExtended)
+				{
+					yield return method;
+				}
+			}
+		}
+	}
+
+	public IEnumerable<CilMethod> ExtendedRootWalkMethods
+	{
+		get
+		{
+			yield return MarkRootsExtended;
+			yield return CollectWithRootsExtended;
 		}
 	}
 

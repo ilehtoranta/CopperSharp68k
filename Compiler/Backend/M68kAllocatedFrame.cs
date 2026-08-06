@@ -51,6 +51,10 @@ internal static class M68kAllocatedFramePlanner
 			{
 				gcHomeOffsets.Add(nextOffset);
 			}
+			foreach (var referenceOffset in home.GcReferenceOffsets ?? [])
+			{
+				gcHomeOffsets.Add(checked(nextOffset + referenceOffset));
+			}
 			nextOffset = checked(nextOffset + home.Size);
 		}
 		foreach (var home in function.ArgumentHomes.Values.OrderBy(static home => home.Index))
@@ -60,6 +64,10 @@ internal static class M68kAllocatedFramePlanner
 			if (home.IsGcReference)
 			{
 				gcHomeOffsets.Add(nextOffset);
+			}
+			foreach (var referenceOffset in home.GcReferenceOffsets ?? [])
+			{
+				gcHomeOffsets.Add(checked(nextOffset + referenceOffset));
 			}
 			nextOffset = checked(nextOffset + home.Size);
 		}
@@ -98,7 +106,16 @@ internal static class M68kAllocatedFramePlanner
 			.Distinct()
 			.Order()
 			.ToArray();
-		if (!function.PreserveCalleeSavedRegisters)
+		if (function.HasDynamicStackAllocation &&
+			!calleeSaved.Contains(M68kRegister.A5))
+		{
+			calleeSaved = calleeSaved
+				.Append(M68kRegister.A5)
+				.Order()
+				.ToArray();
+		}
+		if (!function.PreserveCalleeSavedRegisters &&
+			!function.HasDynamicStackAllocation)
 		{
 			calleeSaved = [];
 		}

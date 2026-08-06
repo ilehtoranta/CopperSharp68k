@@ -6,10 +6,12 @@
 using System.Buffers.Binary;
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
+using CopperSharp.Compiler.Framework;
 
 namespace CopperSharp.Compiler.Metadata;
 
@@ -25,17 +27,24 @@ internal sealed class CompilationModule : IDisposable
 	private readonly FileStream _stream;
 	private readonly PEReader _peReader;
 	private readonly CilSignatureTypeProvider _signatureProvider = new();
-	private readonly Dictionary<MethodDefinitionHandle, CilMethod> _methodCache = new();
+	private readonly Dictionary<(MethodDefinitionHandle Handle, string Construction), CilMethod> _methodCache = new();
+	private readonly Dictionary<(TypeDefinitionHandle Handle, string Construction), CilMethod?> _typeInitializerCache = new();
 	private readonly Dictionary<FieldDefinitionHandle, CilField> _fieldCache = new();
 	private readonly Dictionary<TypeDefinitionHandle, CilTypeLayout> _layoutCache = new();
-	private readonly Dictionary<TypeDefinitionHandle, CilVirtualTable> _virtualTableCache = new();
-	private readonly Dictionary<TypeDefinitionHandle, CilInterfaceDefinition> _interfaceCache = new();
+	private readonly Dictionary<(TypeDefinitionHandle Handle, string Construction), CilTypeLayout>
+		_constructedLayoutCache = new();
+	private readonly Dictionary<(TypeDefinitionHandle Handle, string Construction), CilVirtualTable>
+		_virtualTableCache = new();
+	private readonly Dictionary<(TypeDefinitionHandle Handle, string Construction), CilInterfaceDefinition>
+		_interfaceCache = new();
 	private readonly Dictionary<CilInterfaceImplementationIdentity, CilInterfaceImplementation?> _interfaceImplementationCache = new();
 	private readonly Dictionary<string, bool> _transparentScalarTypeCache = new(StringComparer.Ordinal);
 	private readonly IReadOnlyList<IM68kExternalCallResolver> _externalCallResolvers;
 	private readonly string _assemblyDirectory;
 	private readonly CompilationModule _root;
 	private readonly Dictionary<string, CompilationModule> _modules;
+	private readonly Dictionary<CilMethodIdentity, FrameworkVirtualFallback>
+		_frameworkVirtualFallbacks;
 	private readonly IReadOnlyDictionary<string, string> _managedAssemblyPaths;
 	private string _assemblyName = string.Empty;
 
@@ -61,6 +70,8 @@ internal sealed class CompilationModule : IDisposable
 		_assemblyDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!;
 		_root = root ?? this;
 		_modules = root?._modules ?? new Dictionary<string, CompilationModule>(StringComparer.Ordinal);
+		_frameworkVirtualFallbacks = root?._frameworkVirtualFallbacks ??
+			new Dictionary<CilMethodIdentity, FrameworkVirtualFallback>();
 		_managedAssemblyPaths = root?._managedAssemblyPaths ??
 			new Dictionary<string, string>(StringComparer.Ordinal);
 		try
@@ -278,9 +289,22 @@ internal sealed class CompilationModule : IDisposable
 		return exports;
 	}
 
-	public CilMethod GetMethod(MethodDefinitionHandle handle)
+	public CilMethod GetMethod(MethodDefinitionHandle handle) =>
+		GetConstructedMethod(
+			handle,
+			constructedDeclaringType: null,
+			ImmutableArray<CilType>.Empty);
+
+	private CilMethod GetConstructedMethod(
+		MethodDefinitionHandle handle,
+		CilType? constructedDeclaringType,
+		ImmutableArray<CilType> methodTypeArguments)
 	{
-		if (_methodCache.TryGetValue(handle, out var cached))
+		var construction = CilMethod.FormatConstruction(
+			constructedDeclaringType,
+			methodTypeArguments);
+		var cacheKey = (handle, construction);
+		if (_methodCache.TryGetValue(cacheKey, out var cached))
 		{
 			return cached;
 		}
@@ -289,8 +313,24 @@ internal sealed class CompilationModule : IDisposable
 		var declaringType = Reader.GetTypeDefinition(definition.GetDeclaringType());
 		var typeName = GetTypeName(declaringType);
 		var methodName = Reader.GetString(definition.Name);
-		var displayName = $"{typeName}::{methodName}";
-		var signature = definition.DecodeSignature(_signatureProvider, CilGenericContext.Empty);
+		var displayName = $"{constructedDeclaringType?.DisplayName ?? typeName}::{methodName}" +
+			(methodTypeArguments.Length == 0
+				? string.Empty
+				: $"<{string.Join(",", methodTypeArguments.Select(static type => type.DisplayName))}>");
+		var genericContext = new CilGenericContext(
+			constructedDeclaringType?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+			methodTypeArguments);
+			var signature = definition.DecodeSignature(_signatureProvider, genericContext);
+			var parameterFlags = new ParameterAttributes[signature.ParameterTypes.Length];
+			foreach (var parameterHandle in definition.GetParameters())
+			{
+				var parameter = Reader.GetParameter(parameterHandle);
+				if (parameter.SequenceNumber > 0 &&
+					parameter.SequenceNumber <= parameterFlags.Length)
+				{
+					parameterFlags[parameter.SequenceNumber - 1] = parameter.Attributes;
+				}
+			}
 		var importName = TryGetImportName(definition.GetCustomAttributes());
 		var externalConvention = ResolveExternalCall(new M68kExternalMethod(
 			_assemblyName,
@@ -344,7 +384,7 @@ internal sealed class CompilationModule : IDisposable
 				{
 					locals = Reader
 						.GetStandaloneSignature(body.LocalSignature)
-						.DecodeLocalSignature(_signatureProvider, CilGenericContext.Empty);
+						.DecodeLocalSignature(_signatureProvider, genericContext);
 				}
 
 				instructions = CilInstructionDecoder.Decode(body.GetILBytes(), displayName);
@@ -365,10 +405,13 @@ internal sealed class CompilationModule : IDisposable
 			importName,
 			importAbi,
 			externalCall,
-			_assemblyName,
-			definition.Attributes,
-			declaringType.Attributes);
-		_methodCache.Add(handle, method);
+				_assemblyName,
+				definition.Attributes,
+				declaringType.Attributes,
+				parameterFlags.ToImmutableArray(),
+				constructedDeclaringType,
+				methodTypeArguments);
+		_methodCache.Add(cacheKey, method);
 		return method;
 	}
 
@@ -665,7 +708,9 @@ internal sealed class CompilationModule : IDisposable
 		var handle = MetadataTokens.EntityHandle(token);
 		return handle.Kind switch
 		{
-			HandleKind.FieldDefinition => GetField((FieldDefinitionHandle)handle),
+			HandleKind.FieldDefinition => GetFieldForCaller(
+				(FieldDefinitionHandle)handle,
+				caller),
 			HandleKind.MemberReference => ResolveFieldMemberReference(
 				(MemberReferenceHandle)handle,
 				caller,
@@ -676,6 +721,103 @@ internal sealed class CompilationModule : IDisposable
 				caller.DisplayName,
 				ilOffset)
 		};
+	}
+
+	public CilMethod? GetTriggeredTypeInitializer(
+		CilMethod caller,
+		CilInstruction instruction)
+	{
+		if (instruction.OpCode == System.Reflection.Emit.OpCodes.Ldsfld ||
+			instruction.OpCode == System.Reflection.Emit.OpCodes.Ldsflda ||
+			instruction.OpCode == System.Reflection.Emit.OpCodes.Stsfld)
+		{
+			var field = ResolveFieldToken(
+				(int)instruction.Operand!,
+				caller,
+				instruction.Offset);
+			if (!field.IsStatic)
+			{
+				return null;
+			}
+			var initializer = GetModule(field.ModuleName)
+				.GetTypeInitializerForField(field, caller);
+			return initializer;
+		}
+
+		if (instruction.OpCode != System.Reflection.Emit.OpCodes.Call &&
+			instruction.OpCode != System.Reflection.Emit.OpCodes.Callvirt &&
+			instruction.OpCode != System.Reflection.Emit.OpCodes.Newobj)
+		{
+			return null;
+		}
+
+		var target = ResolveMethodToken(
+			(int)instruction.Operand!,
+			caller,
+			instruction.Offset).Definition;
+		if (target is null || target.IsTypeInitializer)
+		{
+			return null;
+		}
+		var triggersInitialization = instruction.OpCode == System.Reflection.Emit.OpCodes.Newobj ||
+			!target.Signature.Header.IsInstance;
+		return triggersInitialization
+			? GetModule(target.ModuleName).GetTypeInitializerForMethod(target, caller)
+			: null;
+	}
+
+	private CilMethod? GetTypeInitializerForField(CilField field, CilMethod caller) =>
+		GetTypeInitializer(
+			Reader.GetFieldDefinition(field.Handle).GetDeclaringType(),
+			caller,
+			field.ConstructedDeclaringType);
+
+	private CilMethod? GetTypeInitializerForMethod(CilMethod method, CilMethod caller) =>
+		GetTypeInitializer(
+			Reader.GetMethodDefinition(method.Handle).GetDeclaringType(),
+			caller,
+			method.ConstructedDeclaringType);
+
+	private CilMethod? GetTypeInitializer(
+		TypeDefinitionHandle declaringType,
+		CilMethod caller,
+		CilType? constructedDeclaringType)
+	{
+		var row = MetadataTokens.GetRowNumber(declaringType);
+		if (row <= 0 || row > Reader.TypeDefinitions.Count)
+		{
+			// Constructed cross-module references can retain the public contract's
+			// metadata handle while targeting a private shadow method. Such a handle
+			// is not a type definition in this module and cannot own a target cctor.
+			return null;
+		}
+		var cacheKey = (
+			declaringType,
+			constructedDeclaringType?.DisplayName ?? string.Empty);
+		if (!_typeInitializerCache.TryGetValue(cacheKey, out var initializer))
+		{
+			var type = Reader.GetTypeDefinition(declaringType);
+			initializer = null;
+			foreach (var methodHandle in type.GetMethods())
+			{
+				var definition = Reader.GetMethodDefinition(methodHandle);
+				if (Reader.StringComparer.Equals(definition.Name, ".cctor"))
+				{
+					initializer = GetConstructedMethod(
+						methodHandle,
+						constructedDeclaringType,
+						ImmutableArray<CilType>.Empty);
+					break;
+				}
+			}
+			_typeInitializerCache.Add(cacheKey, initializer);
+		}
+		return initializer is not null &&
+			StringComparer.Ordinal.Equals(initializer.ModuleName, caller.ModuleName) &&
+			initializer.DeclaringType == caller.DeclaringType &&
+			StringComparer.Ordinal.Equals(initializer.Construction, caller.Construction)
+			? null
+			: initializer;
 	}
 
 	public ImmutableArray<uint> ReadUInt32FieldRva(
@@ -730,10 +872,12 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var definition = Reader.GetTypeDefinition(handle);
-		var inheritedSize = IsValueTypeDefinition(definition) ? 0 : 8;
+			var isValueType = IsValueTypeDefinition(definition);
+			var inheritedSize = isValueType ? 0 : 8;
 		var inheritedBitmap = 0u;
 		var fieldOffsets = new Dictionary<FieldDefinitionHandle, int>();
-		if (definition.BaseType.Kind == HandleKind.TypeDefinition)
+		if (!definition.BaseType.IsNil &&
+			definition.BaseType.Kind == HandleKind.TypeDefinition)
 		{
 			var baseLayout = GetTypeLayout((TypeDefinitionHandle)definition.BaseType);
 			inheritedSize = baseLayout.Size;
@@ -743,7 +887,6 @@ internal sealed class CompilationModule : IDisposable
 				fieldOffsets.Add(item.Key, item.Value);
 			}
 		}
-
 		var size = inheritedSize;
 		var bitmap = inheritedBitmap;
 		foreach (var fieldHandle in definition.GetFields())
@@ -761,15 +904,26 @@ internal sealed class CompilationModule : IDisposable
 				continue;
 			}
 
-			if (!field.Type.IsSupportedScalar || field.Type.Size > 4)
+			if (TryGetReferenceFreeStructLayout(
+					field.Type,
+					field.ModuleName,
+					out var aggregateLayout) &&
+				aggregateLayout.Size > 4)
+			{
+				fieldOffsets.Add(fieldHandle, size);
+				size = checked(size + aggregateLayout.Size);
+				continue;
+			}
+
+			if ((!field.Type.IsSupportedScalar && !IsTransparentScalarType(field.Type)) || field.Type.Size > 4)
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedSignature,
 					$"Field '{field.DisplayName}' has unsupported type '{field.Type.DisplayName}'.");
 			}
 
-			var fieldIndex = (size - 8) / 4;
-			if (field.Type.IsReference && fieldIndex < 32)
+				var fieldIndex = (size - (isValueType ? 0 : 8)) / 4;
+				if (field.Type.IsReference && fieldIndex is >= 0 and < 32)
 			{
 				bitmap |= 1u << fieldIndex;
 			}
@@ -789,39 +943,123 @@ internal sealed class CompilationModule : IDisposable
 		return layout;
 	}
 
-	public CilTypeLayout GetTypeLayout(CilMethod method) =>
-		GetModule(method.ModuleName).GetTypeLayout(method.DeclaringType);
+	public CilTypeLayout GetTypeLayout(CilMethod method)
+	{
+		var module = GetModule(method.ModuleName);
+		return method.ConstructedDeclaringType is { } constructedType
+			? module.GetConstructedTypeLayout(method.DeclaringType, constructedType)
+			: module.GetTypeLayout(method.DeclaringType);
+	}
 
-	public CilTypeLayout GetTypeLayout(CilField field) =>
-		GetModule(field.ModuleName).GetTypeLayout(field.DeclaringType);
+	public CilTypeLayout GetTypeLayout(CilField field)
+	{
+		var module = GetModule(field.ModuleName);
+		return field.ConstructedDeclaringType is { } constructedType
+			? module.GetConstructedTypeLayout(field.DeclaringType, constructedType)
+			: module.GetTypeLayout(field.DeclaringType);
+	}
 
 	public CilTypeLayout GetTypeLayout(CilTypeLayout owner, TypeDefinitionHandle handle) =>
 		GetModule(owner.ModuleName).GetTypeLayout(handle);
 
 	public CilVirtualTable GetVirtualTable(CilTypeLayout layout) =>
-		GetModule(layout.ModuleName).GetVirtualTable(layout.Handle);
+		GetModule(layout.ModuleName).GetVirtualTable(
+			layout.Handle,
+			layout.ConstructedType);
 
 	public int GetVirtualSlot(CilMethod method) =>
-		GetModule(method.ModuleName).GetVirtualSlot(method.Handle);
+		GetModule(method.ModuleName).GetVirtualSlotCore(method);
 
 	public IReadOnlyList<CilMethod> GetVirtualImplementations(CilMethod declaration) =>
-		GetModule(declaration.ModuleName).GetVirtualImplementations(declaration.Handle);
+		_root._frameworkVirtualFallbacks.ContainsKey(declaration.Identity)
+			? GetFrameworkVirtualImplementations(declaration)
+			: GetModule(declaration.ModuleName).GetVirtualImplementationsCore(declaration);
+
+	public CilMethod? TryGetVirtualImplementation(
+		CilTypeLayout layout,
+		CilMethod declaration)
+	{
+		if (_root._frameworkVirtualFallbacks.ContainsKey(declaration.Identity))
+		{
+			var slot = GetModule(declaration.ModuleName).GetVirtualSlotCore(declaration);
+			var table = GetModule(layout.ModuleName).GetVirtualTable(
+				layout.Handle,
+				layout.ConstructedType);
+			return slot < table.Slots.Length && !table.Slots[slot].IsAbstract
+				? table.Slots[slot]
+				: null;
+		}
+		return GetModule(layout.ModuleName).TryGetVirtualImplementationCore(
+			layout,
+			declaration);
+	}
 
 	public CilInterfaceDefinition GetInterfaceDefinition(CilMethod method) =>
-		GetModule(method.ModuleName).GetInterfaceDefinition(method.DeclaringType);
+		GetModule(method.ModuleName).GetInterfaceDefinition(
+			method.DeclaringType,
+			method.ConstructedDeclaringType);
 
 	public int GetInterfaceSlot(CilMethod method) =>
-		GetModule(method.ModuleName).GetInterfaceSlot(method.Handle);
+		GetModule(method.ModuleName).GetInterfaceSlotCore(method);
 
 	public IReadOnlyList<CilMethod> GetInterfaceImplementations(CilMethod declaration) =>
-		GetModule(declaration.ModuleName).GetInterfaceImplementations(declaration.Handle);
+		GetModule(declaration.ModuleName).GetInterfaceImplementationsCore(declaration);
+
+	public IReadOnlyList<CilMethod> GetInterfaceTableImplementations(CilMethod declaration) =>
+		GetInterfaceDefinition(declaration).Slots
+			.SelectMany(GetInterfaceImplementations)
+			.DistinctBy(static method => method.Identity)
+			.ToArray();
 
 	public CilInterfaceImplementation? TryGetInterfaceImplementation(
 		CilTypeLayout layout,
 		CilInterfaceDefinition interfaceDefinition) =>
 		GetModule(layout.ModuleName).TryGetInterfaceImplementation(
 			layout.Handle,
+			layout.ConstructedType,
 			interfaceDefinition);
+
+	public CilMethod ResolveConstrainedInterfaceImplementation(
+		CilMethod caller,
+		int constrainedTypeToken,
+		int ilOffset,
+		CilMethod declaration)
+	{
+		if (!declaration.DeclaringTypeIsInterface)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedPolymorphism,
+				"Phase 5D constrained dispatch currently supports interface methods on closed value types; constrained object and non-interface virtual methods are not supported yet.",
+				caller.DisplayName,
+				ilOffset);
+		}
+
+		var constrainedType = ResolveTypeToken(
+			constrainedTypeToken,
+			caller,
+			ilOffset);
+		if (!TryGetStructLayout(
+				constrainedType,
+				caller.ModuleName,
+				out var constrainedLayout))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedPolymorphism,
+				$"Constrained receiver '{constrainedType.DisplayName}' is not a compiler-supported closed value type.",
+				caller.DisplayName,
+				ilOffset);
+		}
+		var interfaceDefinition = GetInterfaceDefinition(declaration);
+		var implementation = TryGetInterfaceImplementation(
+			constrainedLayout,
+			interfaceDefinition) ??
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedPolymorphism,
+				$"Constrained receiver '{constrainedType.DisplayName}' does not implement '{interfaceDefinition.DisplayName}'.",
+				caller.DisplayName,
+				ilOffset);
+		return implementation.Methods[GetInterfaceSlot(declaration)];
+	}
 
 	public EntityHandle GetBaseType(CilTypeLayout layout) =>
 		GetModule(layout.ModuleName).GetBaseType(layout.Handle);
@@ -834,17 +1072,48 @@ internal sealed class CompilationModule : IDisposable
 			? this
 			: _root._modules[moduleName];
 
-	private CilVirtualTable GetVirtualTable(TypeDefinitionHandle handle)
+	private CilVirtualTable GetVirtualTable(
+		TypeDefinitionHandle handle,
+		CilType? constructedType = null)
 	{
-		if (_virtualTableCache.TryGetValue(handle, out var cached))
+		var construction = constructedType?.DisplayName ?? string.Empty;
+		var cacheKey = (handle, construction);
+		if (_virtualTableCache.TryGetValue(cacheKey, out var cached))
 		{
 			return cached;
 		}
 
 		var definition = Reader.GetTypeDefinition(handle);
-		var slots = definition.BaseType.Kind == HandleKind.TypeDefinition
-			? GetVirtualTable((TypeDefinitionHandle)definition.BaseType).Slots.ToBuilder()
-			: ImmutableArray.CreateBuilder<CilMethod>();
+		var slots = ImmutableArray.CreateBuilder<CilMethod>();
+		if (!definition.BaseType.IsNil &&
+			definition.BaseType.Kind == HandleKind.TypeDefinition)
+		{
+			slots.AddRange(GetVirtualTable((TypeDefinitionHandle)definition.BaseType).Slots);
+		}
+		else if (!definition.BaseType.IsNil &&
+			definition.BaseType.Kind == HandleKind.TypeSpecification)
+		{
+			var baseType = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)definition.BaseType)
+				.DecodeSignature(
+					_signatureProvider,
+					new CilGenericContext(
+						constructedType?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+						ImmutableArray<CilType>.Empty));
+			if (TryFindConstructedGenericDefinition(baseType, out var baseTarget) &&
+				baseTarget.Handle.Kind == HandleKind.TypeDefinition)
+			{
+				slots.AddRange(GetVirtualTable(
+					(TypeDefinitionHandle)baseTarget.Handle,
+					baseType).Slots);
+			}
+		}
+		else if (ShouldSeedFrameworkObjectSlots(definition))
+		{
+			slots.AddRange(_root._frameworkVirtualFallbacks.Values
+				.OrderBy(static item => item.Binding.Member.DisplayName, StringComparer.Ordinal)
+				.Select(static item => item.Method));
+		}
 		foreach (var methodHandle in definition.GetMethods())
 		{
 			var methodDefinition = Reader.GetMethodDefinition(methodHandle);
@@ -854,7 +1123,10 @@ internal sealed class CompilationModule : IDisposable
 				continue;
 			}
 
-			var method = GetMethod(methodHandle);
+			var method = GetConstructedMethod(
+				methodHandle,
+				constructedType,
+				ImmutableArray<CilType>.Empty);
 			var slot = -1;
 			if (!method.IsNewSlot)
 			{
@@ -879,15 +1151,69 @@ internal sealed class CompilationModule : IDisposable
 			}
 		}
 
-		var table = new CilVirtualTable(GetTypeLayout(handle), slots.ToImmutable());
-		_virtualTableCache.Add(handle, table);
+		var table = new CilVirtualTable(
+			constructedType is null
+				? GetTypeLayout(handle)
+				: GetConstructedTypeLayout(handle, constructedType),
+			slots.ToImmutable());
+		_virtualTableCache.Add(cacheKey, table);
 		return table;
 	}
 
-	private int GetVirtualSlot(MethodDefinitionHandle handle)
+	private bool ShouldSeedFrameworkObjectSlots(TypeDefinition definition)
 	{
-		var method = GetMethod(handle);
-		var table = GetVirtualTable(method.DeclaringType);
+		if (definition.BaseType.IsNil ||
+			definition.BaseType.Kind != HandleKind.TypeReference ||
+			(definition.Attributes & TypeAttributes.Interface) != 0)
+		{
+			return false;
+		}
+		var baseName = GetTypeName(
+			Reader.GetTypeReference((TypeReferenceHandle)definition.BaseType));
+		return baseName is not "System.ValueType" and not "System.Enum";
+	}
+
+	private IReadOnlyList<CilMethod> GetFrameworkVirtualImplementations(
+		CilMethod declaration)
+	{
+		if (_root._frameworkVirtualFallbacks.TryGetValue(
+				declaration.Identity,
+				out var fallback))
+		{
+			return [fallback.Method];
+		}
+		return [];
+	}
+
+	private void RegisterFrameworkVirtualFallback(
+		FrameworkBinding binding,
+		CilMethod method)
+	{
+		if (!method.Signature.Header.IsInstance ||
+			!method.IsVirtual ||
+			method.IsFinal)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidInput,
+				$"Framework virtual fallback '{method.DisplayName}' must be an overridable instance method.");
+		}
+		if (!_root._frameworkVirtualFallbacks.TryAdd(
+				method.Identity,
+				new FrameworkVirtualFallback(binding, method)))
+		{
+			return;
+		}
+		foreach (var module in _root._modules.Values)
+		{
+			module._virtualTableCache.Clear();
+		}
+	}
+
+	private int GetVirtualSlotCore(CilMethod method)
+	{
+		var table = GetVirtualTable(
+			method.DeclaringType,
+			method.ConstructedDeclaringType);
 		for (var index = 0; index < table.Slots.Length; index++)
 		{
 			if (table.Slots[index].Identity == method.Identity)
@@ -902,21 +1228,34 @@ internal sealed class CompilationModule : IDisposable
 			method.DisplayName);
 	}
 
-	private IReadOnlyList<CilMethod> GetVirtualImplementations(MethodDefinitionHandle handle)
+	private IReadOnlyList<CilMethod> GetVirtualImplementationsCore(CilMethod declaration)
 	{
-		var declaration = GetMethod(handle);
-		var slot = GetVirtualSlot(handle);
+		var slot = GetVirtualSlotCore(declaration);
 		var implementations = new Dictionary<CilMethodIdentity, CilMethod>();
 		foreach (var typeHandle in Reader.TypeDefinitions)
 		{
 			var type = Reader.GetTypeDefinition(typeHandle);
-			if ((type.Attributes & (TypeAttributes.Abstract | TypeAttributes.Interface)) != 0 ||
-				!IsDerivedFrom(typeHandle, declaration.DeclaringType))
+			if ((type.Attributes & (TypeAttributes.Abstract | TypeAttributes.Interface)) != 0)
+			{
+				continue;
+			}
+			CilType? constructedType = null;
+			if (type.GetGenericParameters().Count > 0)
+			{
+				if (!TryInferVirtualImplementerConstruction(
+						typeHandle,
+						declaration,
+						out constructedType))
+				{
+					continue;
+				}
+			}
+			else if (!IsDerivedFromDeclaration(typeHandle, declaration))
 			{
 				continue;
 			}
 
-			var table = GetVirtualTable(typeHandle);
+			var table = GetVirtualTable(typeHandle, constructedType);
 			if (slot >= table.Slots.Length || table.Slots[slot].IsAbstract)
 			{
 				continue;
@@ -926,29 +1265,132 @@ internal sealed class CompilationModule : IDisposable
 		return implementations.Values.ToArray();
 	}
 
-	private bool IsDerivedFrom(TypeDefinitionHandle type, TypeDefinitionHandle baseType)
+	private CilMethod? TryGetVirtualImplementationCore(
+		CilTypeLayout layout,
+		CilMethod declaration)
 	{
-		var current = type;
-		while (!current.IsNil)
+		if (!string.Equals(
+				declaration.ModuleName,
+				_assemblyName,
+				StringComparison.Ordinal) ||
+			!IsDerivedFromDeclaration(
+				layout.Handle,
+				layout.ConstructedType,
+				declaration))
 		{
-			if (current == baseType)
-			{
-				return true;
-			}
+			return null;
+		}
 
-			var parent = Reader.GetTypeDefinition(current).BaseType;
-			if (parent.Kind != HandleKind.TypeDefinition)
+		var slot = GetVirtualSlotCore(declaration);
+		var table = GetVirtualTable(layout.Handle, layout.ConstructedType);
+		return slot < table.Slots.Length && !table.Slots[slot].IsAbstract
+			? table.Slots[slot]
+			: null;
+	}
+
+	private bool TryInferVirtualImplementerConstruction(
+		TypeDefinitionHandle typeHandle,
+		CilMethod declaration,
+		out CilType? constructedType)
+	{
+		constructedType = null;
+		if (declaration.ConstructedDeclaringType is not { } closedBase)
+		{
+			return false;
+		}
+
+		var type = Reader.GetTypeDefinition(typeHandle);
+		var parent = type.BaseType;
+		if (parent.Kind != HandleKind.TypeSpecification)
+		{
+			return false;
+		}
+		var pattern = Reader
+			.GetTypeSpecification((TypeSpecificationHandle)parent)
+			.DecodeSignature(_signatureProvider, CilGenericContext.Empty);
+		if (!TryFindConstructedGenericDefinition(pattern, out var target) ||
+			target.Handle != declaration.DeclaringType ||
+			pattern.GenericArguments.Length != closedBase.GenericArguments.Length)
+		{
+			return false;
+		}
+
+		var arguments = new CilType?[type.GetGenericParameters().Count];
+		for (var index = 0; index < pattern.GenericArguments.Length; index++)
+		{
+			var parameter = pattern.GenericArguments[index];
+			if (parameter.Kind != CilTypeKind.GenericParameter ||
+				!parameter.DisplayName.StartsWith('!') ||
+				parameter.DisplayName.StartsWith("!!", StringComparison.Ordinal) ||
+				!int.TryParse(parameter.DisplayName.AsSpan(1), out var parameterIndex) ||
+				(uint)parameterIndex >= (uint)arguments.Length)
 			{
 				return false;
 			}
-			current = (TypeDefinitionHandle)parent;
+			var argument = closedBase.GenericArguments[index];
+			if (arguments[parameterIndex] is { } existing && existing != argument)
+			{
+				return false;
+			}
+			arguments[parameterIndex] = argument;
+		}
+		if (arguments.Any(static argument => argument is null))
+		{
+			return false;
+		}
+
+		var openType = _signatureProvider.GetTypeFromDefinition(
+			Reader,
+			typeHandle,
+			0x12);
+		constructedType = _signatureProvider.GetGenericInstantiation(
+			openType,
+			arguments.Select(static argument => argument!).ToImmutableArray());
+		return true;
+	}
+
+	private bool IsDerivedFromDeclaration(
+		TypeDefinitionHandle type,
+		CilMethod declaration) =>
+		IsDerivedFromDeclaration(type, constructedType: null, declaration);
+
+	private bool IsDerivedFromDeclaration(
+		TypeDefinitionHandle type,
+		CilType? constructedType,
+		CilMethod declaration)
+	{
+		var current = type;
+		var currentConstruction = constructedType;
+		var targetConstruction =
+			declaration.ConstructedDeclaringType?.DisplayName ?? string.Empty;
+		while (!current.IsNil)
+		{
+			if (current == declaration.DeclaringType &&
+				StringComparer.Ordinal.Equals(
+					currentConstruction?.DisplayName ?? string.Empty,
+					targetConstruction))
+			{
+				return true;
+			}
+			if (!TryGetBaseDefinition(
+					current,
+					currentConstruction,
+					out current,
+					out currentConstruction))
+			{
+				break;
+			}
 		}
 		return false;
 	}
 
-	private CilInterfaceDefinition GetInterfaceDefinition(TypeDefinitionHandle handle)
+	private CilInterfaceDefinition GetInterfaceDefinition(
+		TypeDefinitionHandle handle,
+		CilType? constructedType = null)
 	{
-		if (_interfaceCache.TryGetValue(handle, out var cached))
+		var construction = constructedType?.DisplayName ?? string.Empty;
+		var cacheKey = (handle, construction);
+		if (_interfaceCache.TryGetValue(cacheKey, out var cached))
 		{
 			return cached;
 		}
@@ -966,14 +1408,20 @@ internal sealed class CompilationModule : IDisposable
 		foreach (var implementationHandle in type.GetInterfaceImplementations())
 		{
 			var parent = Reader.GetInterfaceImplementation(implementationHandle).Interface;
-			if (parent.Kind != HandleKind.TypeDefinition)
+			if (!TryResolveImplementedInterface(
+					parent,
+					constructedType,
+					out var parentHandle,
+					out var parentConstruction))
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedPolymorphism,
-					$"Interface '{GetTypeName(type)}' inherits an interface outside its managed module.");
+					$"Interface '{constructedType?.DisplayName ?? GetTypeName(type)}' inherits an interface whose exact construction cannot be resolved in its managed module.");
 			}
 
-			foreach (var method in GetInterfaceDefinition((TypeDefinitionHandle)parent).Slots)
+			foreach (var method in GetInterfaceDefinition(
+				parentHandle,
+				parentConstruction).Slots)
 			{
 				if (inherited.Add(method.Identity))
 				{
@@ -984,7 +1432,10 @@ internal sealed class CompilationModule : IDisposable
 
 		foreach (var methodHandle in type.GetMethods())
 		{
-			var method = GetMethod(methodHandle);
+			var method = GetConstructedMethod(
+				methodHandle,
+				constructedType,
+				ImmutableArray<CilType>.Empty);
 			if (!method.Signature.Header.IsInstance || !inherited.Add(method.Identity))
 			{
 				continue;
@@ -993,17 +1444,19 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var definition = new CilInterfaceDefinition(
-			new CilTypeIdentity(_assemblyName, handle),
-			GetTypeName(type),
-			slots.ToImmutable());
-		_interfaceCache.Add(handle, definition);
+			new CilTypeIdentity(_assemblyName, handle, construction),
+			constructedType?.DisplayName ?? GetTypeName(type),
+			slots.ToImmutable(),
+			constructedType);
+		_interfaceCache.Add(cacheKey, definition);
 		return definition;
 	}
 
-	private int GetInterfaceSlot(MethodDefinitionHandle handle)
+	private int GetInterfaceSlotCore(CilMethod method)
 	{
-		var method = GetMethod(handle);
-		var interfaceDefinition = GetInterfaceDefinition(method.DeclaringType);
+		var interfaceDefinition = GetInterfaceDefinition(
+			method.DeclaringType,
+			method.ConstructedDeclaringType);
 		for (var index = 0; index < interfaceDefinition.Slots.Length; index++)
 		{
 			if (interfaceDefinition.Slots[index].Identity == method.Identity)
@@ -1018,11 +1471,12 @@ internal sealed class CompilationModule : IDisposable
 			method.DisplayName);
 	}
 
-	private IReadOnlyList<CilMethod> GetInterfaceImplementations(MethodDefinitionHandle handle)
+	private IReadOnlyList<CilMethod> GetInterfaceImplementationsCore(CilMethod declaration)
 	{
-		var declaration = GetMethod(handle);
-		var interfaceDefinition = GetInterfaceDefinition(declaration.DeclaringType);
-		var slot = GetInterfaceSlot(handle);
+		var interfaceDefinition = GetInterfaceDefinition(
+			declaration.DeclaringType,
+			declaration.ConstructedDeclaringType);
+		var slot = GetInterfaceSlotCore(declaration);
 		var methods = new Dictionary<CilMethodIdentity, CilMethod>();
 		foreach (var typeHandle in Reader.TypeDefinitions)
 		{
@@ -1032,7 +1486,20 @@ internal sealed class CompilationModule : IDisposable
 				continue;
 			}
 
-			var implementation = TryGetInterfaceImplementation(typeHandle, interfaceDefinition);
+			CilType? constructedType = null;
+			if (type.GetGenericParameters().Count > 0 &&
+				!TryInferInterfaceImplementerConstruction(
+					typeHandle,
+					interfaceDefinition,
+					out constructedType))
+			{
+				continue;
+			}
+
+			var implementation = TryGetInterfaceImplementation(
+				typeHandle,
+				constructedType,
+				interfaceDefinition);
 			if (implementation is null)
 			{
 				continue;
@@ -1044,8 +1511,78 @@ internal sealed class CompilationModule : IDisposable
 		return methods.Values.ToArray();
 	}
 
+	private bool TryInferInterfaceImplementerConstruction(
+		TypeDefinitionHandle typeHandle,
+		CilInterfaceDefinition interfaceDefinition,
+		out CilType? constructedType)
+	{
+		constructedType = null;
+		if (interfaceDefinition.ConstructedType is not { } closedInterface)
+		{
+			return false;
+		}
+
+		var type = Reader.GetTypeDefinition(typeHandle);
+		var parameterCount = type.GetGenericParameters().Count;
+		foreach (var implementationHandle in type.GetInterfaceImplementations())
+		{
+			var implemented = Reader.GetInterfaceImplementation(implementationHandle).Interface;
+			if (implemented.Kind != HandleKind.TypeSpecification)
+			{
+				continue;
+			}
+			var pattern = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)implemented)
+				.DecodeSignature(_signatureProvider, CilGenericContext.Empty);
+			if (!TryFindConstructedGenericDefinition(pattern, out var target) ||
+				target.Handle != interfaceDefinition.Identity.Handle ||
+				pattern.GenericArguments.Length != closedInterface.GenericArguments.Length)
+			{
+				continue;
+			}
+
+			var arguments = new CilType?[parameterCount];
+			var valid = true;
+			for (var index = 0; index < pattern.GenericArguments.Length; index++)
+			{
+				var parameter = pattern.GenericArguments[index];
+				if (parameter.Kind != CilTypeKind.GenericParameter ||
+					!parameter.DisplayName.StartsWith('!') ||
+					parameter.DisplayName.StartsWith("!!", StringComparison.Ordinal) ||
+					!int.TryParse(parameter.DisplayName.AsSpan(1), out var parameterIndex) ||
+					(uint)parameterIndex >= (uint)arguments.Length)
+				{
+					valid = false;
+					break;
+				}
+				var argument = closedInterface.GenericArguments[index];
+				if (arguments[parameterIndex] is { } existing && existing != argument)
+				{
+					valid = false;
+					break;
+				}
+				arguments[parameterIndex] = argument;
+			}
+			if (!valid || arguments.Any(static argument => argument is null))
+			{
+				continue;
+			}
+
+			var openType = _signatureProvider.GetTypeFromDefinition(
+				Reader,
+				typeHandle,
+				0x12);
+			constructedType = _signatureProvider.GetGenericInstantiation(
+				openType,
+				arguments.Select(static argument => argument!).ToImmutableArray());
+			return true;
+		}
+		return false;
+	}
+
 	private CilInterfaceImplementation? TryGetInterfaceImplementation(
 		TypeDefinitionHandle typeHandle,
+		CilType? constructedType,
 		CilInterfaceDefinition interfaceDefinition)
 	{
 		if (!string.Equals(interfaceDefinition.Identity.ModuleName, _assemblyName, StringComparison.Ordinal))
@@ -1056,25 +1593,62 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var identity = new CilInterfaceImplementationIdentity(
-			new CilTypeIdentity(_assemblyName, typeHandle),
+			new CilTypeIdentity(
+				_assemblyName,
+				typeHandle,
+				constructedType?.DisplayName ?? string.Empty),
 			interfaceDefinition.Identity);
 		if (_interfaceImplementationCache.TryGetValue(identity, out var cached))
 		{
 			return cached;
 		}
 
-		if (!ImplementsInterface(typeHandle, interfaceDefinition.Identity.Handle))
+		if (!ImplementsInterface(typeHandle, constructedType, interfaceDefinition))
 		{
-			_interfaceImplementationCache.Add(identity, null);
-			return null;
+			if (!TryFindVariantImplementedInterface(
+					typeHandle,
+					constructedType,
+					interfaceDefinition,
+					out var sourceInterface))
+			{
+				_interfaceImplementationCache.Add(identity, null);
+				return null;
+			}
+
+			var sourceImplementation = TryGetInterfaceImplementation(
+				typeHandle,
+				constructedType,
+				sourceInterface) ??
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					$"Variant source interface '{sourceInterface.DisplayName}' has no implementation on '{GetTypeName(Reader.GetTypeDefinition(typeHandle))}'.");
+			if (sourceImplementation.Methods.Length != interfaceDefinition.Slots.Length)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					$"Variant interfaces '{sourceInterface.DisplayName}' and '{interfaceDefinition.DisplayName}' do not have matching method-table shapes.");
+			}
+
+			var variantResult = new CilInterfaceImplementation(
+				sourceImplementation.Type,
+				interfaceDefinition,
+				sourceImplementation.Methods);
+			_interfaceImplementationCache.Add(identity, variantResult);
+			return variantResult;
 		}
 
 		var methods = ImmutableArray.CreateBuilder<CilMethod>(interfaceDefinition.Slots.Length);
 		foreach (var declaration in interfaceDefinition.Slots)
 		{
 			var implementation =
-				TryFindExplicitInterfaceImplementation(typeHandle, declaration) ??
-				TryFindImplicitInterfaceImplementation(typeHandle, declaration) ??
+				TryFindExplicitInterfaceImplementation(
+					typeHandle,
+					constructedType,
+					declaration) ??
+				TryFindImplicitInterfaceImplementation(
+					typeHandle,
+					constructedType,
+					declaration) ??
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedPolymorphism,
 					$"Concrete type '{GetTypeName(Reader.GetTypeDefinition(typeHandle))}' has no compiler-supported implementation for '{declaration.DisplayName}'. Default interface methods are not supported.");
@@ -1082,46 +1656,80 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var result = new CilInterfaceImplementation(
-			GetTypeLayout(typeHandle),
+			constructedType is null
+				? GetTypeLayout(typeHandle)
+				: GetConstructedTypeLayout(typeHandle, constructedType),
 			interfaceDefinition,
 			methods.MoveToImmutable());
 		_interfaceImplementationCache.Add(identity, result);
 		return result;
 	}
 
-	private bool ImplementsInterface(
+	private bool TryFindVariantImplementedInterface(
 		TypeDefinitionHandle typeHandle,
-		TypeDefinitionHandle interfaceHandle)
+		CilType? constructedType,
+		CilInterfaceDefinition target,
+		out CilInterfaceDefinition source)
 	{
 		var current = typeHandle;
+		var currentConstruction = constructedType;
 		while (!current.IsNil)
 		{
 			var type = Reader.GetTypeDefinition(current);
 			foreach (var implementationHandle in type.GetInterfaceImplementations())
 			{
 				var implemented = Reader.GetInterfaceImplementation(implementationHandle).Interface;
-				if (implemented.Kind == HandleKind.TypeDefinition &&
-					InterfaceExtends((TypeDefinitionHandle)implemented, interfaceHandle))
+				if (TryResolveImplementedInterface(
+						implemented,
+						currentConstruction,
+						out var interfaceHandle,
+						out var interfaceConstruction) &&
+					TryFindVariantInterface(
+						interfaceHandle,
+						interfaceConstruction,
+						target,
+						new HashSet<CilTypeIdentity>(),
+						out source))
 				{
 					return true;
 				}
 			}
 
-			if (type.BaseType.Kind != HandleKind.TypeDefinition)
+			if (!TryGetBaseDefinition(
+					current,
+					currentConstruction,
+					out current,
+					out currentConstruction))
 			{
 				break;
 			}
-			current = (TypeDefinitionHandle)type.BaseType;
 		}
+
+		source = null!;
 		return false;
 	}
 
-	private bool InterfaceExtends(
+	private bool TryFindVariantInterface(
 		TypeDefinitionHandle interfaceHandle,
-		TypeDefinitionHandle target)
+		CilType? interfaceConstruction,
+		CilInterfaceDefinition target,
+		HashSet<CilTypeIdentity> visited,
+		out CilInterfaceDefinition source)
 	{
-		if (interfaceHandle == target)
+		var identity = new CilTypeIdentity(
+			_assemblyName,
+			interfaceHandle,
+			interfaceConstruction?.DisplayName ?? string.Empty);
+		if (!visited.Add(identity))
 		{
+			source = null!;
+			return false;
+		}
+
+		var candidate = GetInterfaceDefinition(interfaceHandle, interfaceConstruction);
+		if (IsVariantInterfaceConversion(candidate, target))
+		{
+			source = candidate;
 			return true;
 		}
 
@@ -1129,8 +1737,378 @@ internal sealed class CompilationModule : IDisposable
 		foreach (var implementationHandle in type.GetInterfaceImplementations())
 		{
 			var parent = Reader.GetInterfaceImplementation(implementationHandle).Interface;
-			if (parent.Kind == HandleKind.TypeDefinition &&
-				InterfaceExtends((TypeDefinitionHandle)parent, target))
+			if (TryResolveImplementedInterface(
+					parent,
+					interfaceConstruction,
+					out var parentHandle,
+					out var parentConstruction) &&
+				TryFindVariantInterface(
+					parentHandle,
+					parentConstruction,
+					target,
+					visited,
+					out source))
+			{
+				return true;
+			}
+		}
+
+		source = null!;
+		return false;
+	}
+
+	private bool IsVariantInterfaceConversion(
+		CilInterfaceDefinition source,
+		CilInterfaceDefinition target)
+	{
+		if (!string.Equals(
+				source.Identity.ModuleName,
+				target.Identity.ModuleName,
+				StringComparison.Ordinal) ||
+			source.Identity.Handle != target.Identity.Handle ||
+			source.ConstructedType is not { } sourceType ||
+			target.ConstructedType is not { } targetType ||
+			sourceType.GenericArguments.Length != targetType.GenericArguments.Length)
+		{
+			return false;
+		}
+
+		var parameters = Reader
+			.GetTypeDefinition((TypeDefinitionHandle)source.Identity.Handle)
+			.GetGenericParameters()
+			.Select(Reader.GetGenericParameter)
+			.OrderBy(static parameter => parameter.Index)
+			.ToArray();
+		if (parameters.Length != sourceType.GenericArguments.Length)
+		{
+			return false;
+		}
+
+		for (var index = 0; index < parameters.Length; index++)
+		{
+			var sourceArgument = sourceType.GenericArguments[index];
+			var targetArgument = targetType.GenericArguments[index];
+			var variance = parameters[index].Attributes &
+				GenericParameterAttributes.VarianceMask;
+			switch (variance)
+			{
+				case GenericParameterAttributes.None:
+					if (sourceArgument != targetArgument)
+					{
+						return false;
+					}
+					break;
+				case GenericParameterAttributes.Covariant:
+					if (!sourceArgument.IsReference ||
+						!targetArgument.IsReference ||
+						!HasImplicitReferenceConversion(
+							sourceArgument,
+							targetArgument,
+							new HashSet<(string Source, string Target)>()))
+					{
+						return false;
+					}
+					break;
+				case GenericParameterAttributes.Contravariant:
+					if (!sourceArgument.IsReference ||
+						!targetArgument.IsReference ||
+						!HasImplicitReferenceConversion(
+							targetArgument,
+							sourceArgument,
+							new HashSet<(string Source, string Target)>()))
+					{
+						return false;
+					}
+					break;
+				default:
+					return false;
+			}
+		}
+		return true;
+	}
+
+	private bool HasImplicitReferenceConversion(
+		CilType source,
+		CilType target,
+		HashSet<(string Source, string Target)> visited)
+	{
+		if (source == target)
+		{
+			return true;
+		}
+		if (!source.IsReference || !target.IsReference)
+		{
+			return false;
+		}
+		if (StringComparer.Ordinal.Equals(target.DisplayName, "System.Object"))
+		{
+			return true;
+		}
+		if (!visited.Add((source.DisplayName, target.DisplayName)))
+		{
+			return false;
+		}
+		if (source.ElementType is { } sourceElement &&
+			target.ElementType is { } targetElement)
+		{
+			return sourceElement.IsReference &&
+				targetElement.IsReference &&
+				HasImplicitReferenceConversion(sourceElement, targetElement, visited);
+		}
+		if (!TryResolveLocalTypeDefinition(
+				source,
+				out var sourceHandle,
+				out var sourceConstruction) ||
+			!TryResolveLocalTypeDefinition(
+				target,
+				out var targetHandle,
+				out var targetConstruction))
+		{
+			return false;
+		}
+
+		var targetDefinition = Reader.GetTypeDefinition(targetHandle);
+		if ((targetDefinition.Attributes & TypeAttributes.Interface) != 0)
+		{
+			var targetInterface = GetInterfaceDefinition(
+				targetHandle,
+				targetConstruction);
+			if ((Reader.GetTypeDefinition(sourceHandle).Attributes &
+					TypeAttributes.Interface) != 0)
+			{
+				return InterfaceExtends(
+						sourceHandle,
+						sourceConstruction,
+						targetInterface,
+						new HashSet<CilTypeIdentity>()) ||
+					TryFindVariantInterface(
+						sourceHandle,
+						sourceConstruction,
+						targetInterface,
+						new HashSet<CilTypeIdentity>(),
+						out _);
+			}
+			return ImplementsInterface(
+					sourceHandle,
+					sourceConstruction,
+					targetInterface) ||
+				TryFindVariantImplementedInterface(
+					sourceHandle,
+					sourceConstruction,
+					targetInterface,
+					out _);
+		}
+
+		var targetIdentity = new CilTypeIdentity(
+			_assemblyName,
+			targetHandle,
+			targetConstruction?.DisplayName ?? string.Empty);
+		var current = sourceHandle;
+		var currentConstruction = sourceConstruction;
+		while (!current.IsNil)
+		{
+			if (new CilTypeIdentity(
+					_assemblyName,
+					current,
+					currentConstruction?.DisplayName ?? string.Empty) == targetIdentity)
+			{
+				return true;
+			}
+			if (!TryGetBaseDefinition(
+					current,
+					currentConstruction,
+					out current,
+					out currentConstruction))
+			{
+				break;
+			}
+		}
+		return false;
+	}
+
+	private bool TryResolveLocalTypeDefinition(
+		CilType type,
+		out TypeDefinitionHandle handle,
+		out CilType? construction)
+	{
+		if (!type.GenericArguments.IsDefaultOrEmpty &&
+			TryFindConstructedGenericDefinition(type, out var constructed) &&
+			constructed.Handle.Kind == HandleKind.TypeDefinition)
+		{
+			handle = (TypeDefinitionHandle)constructed.Handle;
+			construction = type;
+			return true;
+		}
+		if (TryFindRuntimeTypeDefinition(type, out var target) &&
+			target.Handle.Kind == HandleKind.TypeDefinition)
+		{
+			handle = (TypeDefinitionHandle)target.Handle;
+			construction = null;
+			return true;
+		}
+
+		handle = default;
+		construction = null;
+		return false;
+	}
+
+	private bool ImplementsInterface(
+		TypeDefinitionHandle typeHandle,
+		CilType? constructedType,
+		CilInterfaceDefinition interfaceDefinition)
+	{
+		var current = typeHandle;
+		var currentConstruction = constructedType;
+		while (!current.IsNil)
+		{
+			var type = Reader.GetTypeDefinition(current);
+			foreach (var implementationHandle in type.GetInterfaceImplementations())
+			{
+				var implemented = Reader.GetInterfaceImplementation(implementationHandle).Interface;
+				if (ImplementedInterfaceMatches(
+						implemented,
+						currentConstruction,
+						interfaceDefinition))
+				{
+					return true;
+				}
+			}
+
+			if (!TryGetBaseDefinition(
+					current,
+					currentConstruction,
+					out current,
+					out currentConstruction))
+			{
+				break;
+			}
+		}
+		return false;
+	}
+
+	private bool TryGetBaseDefinition(
+		TypeDefinitionHandle typeHandle,
+		CilType? constructedType,
+		out TypeDefinitionHandle baseHandle,
+		out CilType? constructedBaseType)
+	{
+		var baseType = Reader.GetTypeDefinition(typeHandle).BaseType;
+		if (baseType.Kind == HandleKind.TypeDefinition)
+		{
+			baseHandle = (TypeDefinitionHandle)baseType;
+			constructedBaseType = null;
+			return true;
+		}
+		if (baseType.Kind == HandleKind.TypeSpecification)
+		{
+			constructedBaseType = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)baseType)
+				.DecodeSignature(
+					_signatureProvider,
+					new CilGenericContext(
+						constructedType?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+						ImmutableArray<CilType>.Empty));
+			if (TryFindConstructedGenericDefinition(
+					constructedBaseType,
+					out var target) &&
+				target.Handle.Kind == HandleKind.TypeDefinition)
+			{
+				baseHandle = (TypeDefinitionHandle)target.Handle;
+				return true;
+			}
+		}
+
+		baseHandle = default;
+		constructedBaseType = null;
+		return false;
+	}
+
+	private bool ImplementedInterfaceMatches(
+		EntityHandle implemented,
+		CilType? constructedType,
+		CilInterfaceDefinition interfaceDefinition)
+	{
+		return TryResolveImplementedInterface(
+				implemented,
+				constructedType,
+				out var interfaceHandle,
+				out var interfaceConstruction) &&
+			InterfaceExtends(
+				interfaceHandle,
+				interfaceConstruction,
+				interfaceDefinition,
+				new HashSet<CilTypeIdentity>());
+	}
+
+	private bool TryResolveImplementedInterface(
+		EntityHandle implemented,
+		CilType? ownerConstruction,
+		out TypeDefinitionHandle interfaceHandle,
+		out CilType? interfaceConstruction)
+	{
+		if (implemented.Kind == HandleKind.TypeDefinition)
+		{
+			interfaceHandle = (TypeDefinitionHandle)implemented;
+			interfaceConstruction = null;
+			return true;
+		}
+		if (implemented.Kind == HandleKind.TypeSpecification)
+		{
+			interfaceConstruction = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)implemented)
+				.DecodeSignature(
+					_signatureProvider,
+					new CilGenericContext(
+						ownerConstruction?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+						ImmutableArray<CilType>.Empty));
+			if (TryFindConstructedGenericDefinition(
+					interfaceConstruction,
+					out var target) &&
+				target.Handle.Kind == HandleKind.TypeDefinition)
+			{
+				interfaceHandle = (TypeDefinitionHandle)target.Handle;
+				return true;
+			}
+		}
+
+		interfaceHandle = default;
+		interfaceConstruction = null;
+		return false;
+	}
+
+	private bool InterfaceExtends(
+		TypeDefinitionHandle interfaceHandle,
+		CilType? interfaceConstruction,
+		CilInterfaceDefinition target,
+		HashSet<CilTypeIdentity> visited)
+	{
+		var identity = new CilTypeIdentity(
+			_assemblyName,
+			interfaceHandle,
+			interfaceConstruction?.DisplayName ?? string.Empty);
+		if (identity == target.Identity)
+		{
+			return true;
+		}
+		if (!visited.Add(identity))
+		{
+			return false;
+		}
+
+		var type = Reader.GetTypeDefinition(interfaceHandle);
+		foreach (var implementationHandle in type.GetInterfaceImplementations())
+		{
+			var parent = Reader.GetInterfaceImplementation(implementationHandle).Interface;
+			if (TryResolveImplementedInterface(
+					parent,
+					interfaceConstruction,
+					out var parentHandle,
+					out var parentConstruction) &&
+				InterfaceExtends(
+					parentHandle,
+					parentConstruction,
+					target,
+					visited))
 			{
 				return true;
 			}
@@ -1140,70 +2118,113 @@ internal sealed class CompilationModule : IDisposable
 
 	private CilMethod? TryFindExplicitInterfaceImplementation(
 		TypeDefinitionHandle typeHandle,
+		CilType? constructedType,
 		CilMethod declaration)
 	{
 		var current = typeHandle;
+		var currentConstruction = constructedType;
 		while (!current.IsNil)
 		{
 			var type = Reader.GetTypeDefinition(current);
 			foreach (var implementationHandle in type.GetMethodImplementations())
 			{
 				var implementation = Reader.GetMethodImplementation(implementationHandle);
-				var implementedDeclaration = TryResolveInterfaceMethodDeclaration(
-					implementation.MethodDeclaration);
-				if (implementedDeclaration?.Identity != declaration.Identity ||
+				if (!ExplicitInterfaceDeclarationMatches(
+						implementation.MethodDeclaration,
+						currentConstruction,
+						declaration) ||
 					implementation.MethodBody.Kind != HandleKind.MethodDefinition)
 				{
 					continue;
 				}
-				return GetMethod((MethodDefinitionHandle)implementation.MethodBody);
+				return GetConstructedMethod(
+					(MethodDefinitionHandle)implementation.MethodBody,
+					currentConstruction,
+					ImmutableArray<CilType>.Empty);
 			}
 
-			if (type.BaseType.Kind != HandleKind.TypeDefinition)
+			if (!TryGetBaseDefinition(
+					current,
+					currentConstruction,
+					out current,
+					out currentConstruction))
 			{
 				break;
 			}
-			current = (TypeDefinitionHandle)type.BaseType;
 		}
 		return null;
 	}
 
-	private CilMethod? TryResolveInterfaceMethodDeclaration(EntityHandle handle)
+	private bool ExplicitInterfaceDeclarationMatches(
+		EntityHandle handle,
+		CilType? implementerConstruction,
+		CilMethod declaration)
 	{
 		if (handle.Kind == HandleKind.MethodDefinition)
 		{
-			return GetMethod((MethodDefinitionHandle)handle);
+			var candidate = GetMethod((MethodDefinitionHandle)handle);
+			return candidate.DeclaringType == declaration.DeclaringType &&
+				candidate.Handle == declaration.Handle;
 		}
 		if (handle.Kind != HandleKind.MemberReference)
 		{
-			return null;
+			return false;
 		}
 
 		var member = Reader.GetMemberReference((MemberReferenceHandle)handle);
-		if (member.Parent.Kind != HandleKind.TypeDefinition)
+		TypeDefinitionHandle interfaceHandle;
+		CilType? interfaceConstruction = null;
+		if (member.Parent.Kind == HandleKind.TypeDefinition)
 		{
-			return null;
+			interfaceHandle = (TypeDefinitionHandle)member.Parent;
 		}
-		var name = Reader.GetString(member.Name);
-		var signature = member.DecodeMethodSignature(_signatureProvider, CilGenericContext.Empty);
-		var type = Reader.GetTypeDefinition((TypeDefinitionHandle)member.Parent);
-		foreach (var methodHandle in type.GetMethods())
+		else if (member.Parent.Kind == HandleKind.TypeSpecification)
 		{
-			var candidate = GetMethod(methodHandle);
-			if (candidate.Name == name &&
-				SignaturesMatch(candidate.Signature, signature))
+			interfaceConstruction = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)member.Parent)
+				.DecodeSignature(
+					_signatureProvider,
+					new CilGenericContext(
+						implementerConstruction?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+						ImmutableArray<CilType>.Empty));
+			if (!TryFindConstructedGenericDefinition(
+					interfaceConstruction,
+					out var interfaceTarget) ||
+				interfaceTarget.Handle.Kind != HandleKind.TypeDefinition)
 			{
-				return candidate;
+				return false;
 			}
+			interfaceHandle = (TypeDefinitionHandle)interfaceTarget.Handle;
 		}
-		return null;
+		else
+		{
+			return false;
+		}
+		if (interfaceHandle != declaration.DeclaringType ||
+			!StringComparer.Ordinal.Equals(
+				interfaceConstruction?.DisplayName ?? string.Empty,
+				declaration.ConstructedDeclaringType?.DisplayName ?? string.Empty))
+		{
+			return false;
+		}
+
+		var name = Reader.GetString(member.Name);
+		var signature = member.DecodeMethodSignature(
+			_signatureProvider,
+			new CilGenericContext(
+				interfaceConstruction?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+				ImmutableArray<CilType>.Empty));
+		return declaration.Name == name &&
+			SignaturesMatch(declaration.Signature, signature);
 	}
 
 	private CilMethod? TryFindImplicitInterfaceImplementation(
 		TypeDefinitionHandle typeHandle,
+		CilType? constructedType,
 		CilMethod declaration)
 	{
 		var current = typeHandle;
+		var currentConstruction = constructedType;
 		while (!current.IsNil)
 		{
 			var type = Reader.GetTypeDefinition(current);
@@ -1216,7 +2237,10 @@ internal sealed class CompilationModule : IDisposable
 					continue;
 				}
 
-				var candidate = GetMethod(methodHandle);
+				var candidate = GetConstructedMethod(
+					methodHandle,
+					currentConstruction,
+					ImmutableArray<CilType>.Empty);
 				if (!candidate.IsAbstract &&
 					candidate.Name == declaration.Name &&
 					SignaturesMatch(candidate.Signature, declaration.Signature))
@@ -1225,11 +2249,14 @@ internal sealed class CompilationModule : IDisposable
 				}
 			}
 
-			if (type.BaseType.Kind != HandleKind.TypeDefinition)
+			if (!TryGetBaseDefinition(
+					current,
+					currentConstruction,
+					out current,
+					out currentConstruction))
 			{
 				break;
 			}
-			current = (TypeDefinitionHandle)type.BaseType;
 		}
 		return null;
 	}
@@ -1286,8 +2313,25 @@ internal sealed class CompilationModule : IDisposable
 		(element.IsSupportedScalar && element.Size == 4 ||
 		 IsTransparentScalarType(element));
 
+	public bool IsValueTypeConstructor(CilMethod method)
+	{
+		if (!string.IsNullOrEmpty(method.ModuleName) &&
+			!string.Equals(method.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(method, 0).IsValueTypeConstructor(method);
+		}
+
+		return method.Name == ".ctor" &&
+			!method.DeclaringType.IsNil &&
+			IsValueTypeDefinition(Reader.GetTypeDefinition(method.DeclaringType));
+	}
+
 	public bool IsSupportedStructType(CilType type)
 	{
+		if (IsSupportedSpanLikeType(type))
+		{
+			return true;
+		}
 		if (type.IsSupportedScalar ||
 			IsTransparentScalarType(type))
 		{
@@ -1312,6 +2356,88 @@ internal sealed class CompilationModule : IDisposable
 		return TryGetReflectionStructSlotLongs(type.DisplayName, out _);
 	}
 
+	public static bool IsSupportedSpanLikeType(CilType type) =>
+		type.Kind == CilTypeKind.ValueType &&
+		(type.DisplayName.StartsWith("System.Span`1<", StringComparison.Ordinal) ||
+		 type.DisplayName.StartsWith(
+			"System.ReadOnlySpan`1<",
+			StringComparison.Ordinal)) &&
+		type.GenericArguments.Length == 1;
+
+		public bool TryGetReferenceFreeStructLayout(
+		CilType type,
+		string preferredModuleName,
+		out CilTypeLayout layout)
+	{
+			layout = null!;
+			if (IsSupportedSpanLikeType(type))
+			{
+				// The language-visible payload is the allocation-free (data, length)
+				// pair. A private third word retains the owning array for precise GC
+				// rooting; it is copied with the value but never exposed as Span state.
+				layout = new CilTypeLayout(
+					default,
+					type.DisplayName,
+					12,
+					1u << 2,
+					new Dictionary<FieldDefinitionHandle, int>(),
+					preferredModuleName,
+					type);
+				return true;
+			}
+			if (IsSupportedNullableType(type))
+		{
+			layout = new CilTypeLayout(
+				default,
+				type.DisplayName,
+				type.NullableElementType is { } element &&
+					IsTransparentScalarType(element)
+						? 4
+						: 8,
+				0,
+				new Dictionary<FieldDefinitionHandle, int>(),
+				preferredModuleName);
+			return true;
+		}
+			if (!TryGetStructLayout(type, preferredModuleName, out layout))
+			{
+				return false;
+			}
+			return layout.ReferenceBitmap == 0;
+		}
+
+		public bool TryGetStructLayout(
+			CilType type,
+			string preferredModuleName,
+			out CilTypeLayout layout)
+		{
+			layout = null!;
+			if (type.Kind != CilTypeKind.ValueType || type.IsSupportedScalar)
+			{
+				return false;
+			}
+
+			var target = ResolveRuntimeTypeIdentity(type, preferredModuleName);
+		if (target.Handle.Kind != HandleKind.TypeDefinition)
+		{
+			return false;
+		}
+
+		layout = GetRuntimeTypeLayout(target);
+			return layout.Size > 0;
+		}
+
+	public bool TryGetIndirectInitializeLayout(
+		CilType type,
+		string preferredModuleName,
+		out CilTypeLayout layout) =>
+		IsSupportedSpanLikeType(type)
+			? TryGetReferenceFreeStructLayout(
+				type,
+				preferredModuleName,
+				out layout)
+			: TryGetStructLayout(type, preferredModuleName, out layout);
+
 	private bool TryGetReflectionStructSlotLongs(string displayName, out int slotLongs)
 	{
 		slotLongs = 0;
@@ -1319,7 +2445,7 @@ internal sealed class CompilationModule : IDisposable
 		{
 			try
 			{
-				var type = Assembly.LoadFrom(path).GetType(displayName, throwOnError: false);
+				var type = Assembly.LoadFrom(path).GetType(displayName.Replace('/', '+'), throwOnError: false);
 				if (type is null ||
 					!type.IsValueType)
 				{
@@ -1357,6 +2483,10 @@ internal sealed class CompilationModule : IDisposable
 
 	public int GetStructSlotLongs(CilType type)
 	{
+		if (IsSupportedSpanLikeType(type))
+		{
+			return 3;
+		}
 		foreach (var handle in Reader.TypeDefinitions)
 		{
 			var definition = Reader.GetTypeDefinition(handle);
@@ -1410,7 +2540,7 @@ internal sealed class CompilationModule : IDisposable
 		{
 			try
 			{
-				var type = Assembly.LoadFrom(path).GetType(displayName, throwOnError: false);
+				var type = Assembly.LoadFrom(path).GetType(displayName.Replace('/', '+'), throwOnError: false);
 				if (type is not null)
 				{
 					var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -1593,11 +2723,13 @@ internal sealed class CompilationModule : IDisposable
 			HandleKind.TypeDefinition => _signatureProvider.GetTypeFromDefinition(
 				Reader,
 				(TypeDefinitionHandle)handle,
-				0x12),
+				IsValueTypeDefinition(Reader.GetTypeDefinition((TypeDefinitionHandle)handle))
+					? (byte)0x11
+					: (byte)0x12),
 			HandleKind.TypeReference => ResolveReferencedType((TypeReferenceHandle)handle),
 			HandleKind.TypeSpecification => _signatureProvider.GetTypeFromSpecification(
 				Reader,
-				CilGenericContext.Empty,
+				caller.GenericContext,
 				(TypeSpecificationHandle)handle,
 				0x12),
 			_ => throw new M68kCompilationException(
@@ -1606,6 +2738,292 @@ internal sealed class CompilationModule : IDisposable
 				caller.DisplayName,
 				ilOffset)
 		};
+	}
+
+	public CilRuntimeTypeTarget ResolveRuntimeTypeToken(
+		int token,
+		CilMethod caller,
+		int ilOffset)
+	{
+		if (!string.IsNullOrEmpty(caller.ModuleName) &&
+			!string.Equals(caller.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(caller, ilOffset)
+				.ResolveRuntimeTypeToken(token, caller, ilOffset);
+		}
+
+		var handle = MetadataTokens.EntityHandle(token);
+		var type = ResolveTypeToken(token, caller, ilOffset);
+		return handle.Kind switch
+		{
+			HandleKind.TypeDefinition => new CilRuntimeTypeTarget(
+				type,
+				_assemblyName,
+				handle,
+				(Reader.GetTypeDefinition((TypeDefinitionHandle)handle).Attributes &
+					TypeAttributes.Interface) != 0,
+				IsArray: false),
+			HandleKind.TypeReference => new CilRuntimeTypeTarget(
+				type,
+				GetReferencedAssemblyName(
+					Reader.GetTypeReference((TypeReferenceHandle)handle).ResolutionScope) ??
+					string.Empty,
+				handle,
+				IsInterface: false,
+				IsArray: false),
+			HandleKind.TypeSpecification when type.ElementType is not null =>
+				new CilRuntimeTypeTarget(
+					type,
+					_assemblyName,
+					handle,
+					IsInterface: false,
+					IsArray: type.Kind == CilTypeKind.ManagedReference &&
+						type.DisplayName.EndsWith("]", StringComparison.Ordinal)),
+			HandleKind.TypeSpecification when IsFrameworkDelegateType(type) =>
+				new CilRuntimeTypeTarget(
+					type,
+					"System.Private.CoreLib",
+					handle,
+					IsInterface: false,
+					IsArray: false),
+			HandleKind.TypeSpecification when type.GenericArguments.Length != 0 &&
+				TryFindConstructedGenericDefinition(type, out var constructedTarget) =>
+				constructedTarget,
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				$"Runtime type identity for '{type.DisplayName}' is not implemented.",
+				caller.DisplayName,
+				ilOffset)
+		};
+	}
+
+	private static bool IsFrameworkDelegateType(CilType type) =>
+		type.DisplayName.StartsWith("System.Func`", StringComparison.Ordinal) ||
+		type.DisplayName.StartsWith("System.Action`", StringComparison.Ordinal) ||
+		StringComparer.Ordinal.Equals(type.DisplayName, "System.Action") ||
+		StringComparer.Ordinal.Equals(type.DisplayName, "System.Delegate") ||
+		StringComparer.Ordinal.Equals(type.DisplayName, "System.MulticastDelegate");
+
+	private bool TryFindConstructedGenericDefinition(
+		CilType constructedType,
+		out CilRuntimeTypeTarget target)
+	{
+		var separator = constructedType.DisplayName.IndexOf('<');
+		var definitionName = separator < 0
+			? constructedType.DisplayName
+			: constructedType.DisplayName[..separator];
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			var signatureName = _signatureProvider
+				.GetTypeFromDefinition(Reader, handle, 0x12)
+				.DisplayName;
+			if (!StringComparer.Ordinal.Equals(signatureName, definitionName))
+			{
+				continue;
+			}
+			target = new CilRuntimeTypeTarget(
+				constructedType,
+				_assemblyName,
+				handle,
+				(definition.Attributes & TypeAttributes.Interface) != 0,
+				IsArray: false,
+				IsConstructedGeneric: true);
+			return true;
+		}
+		target = null!;
+		return false;
+	}
+
+	public CilTypeLayout GetRuntimeTypeLayout(CilRuntimeTypeTarget target)
+	{
+		if (target.Handle.Kind != HandleKind.TypeDefinition)
+		{
+			throw new InvalidOperationException(
+				$"Runtime type '{target.Type.DisplayName}' is not a type definition.");
+		}
+		var module = GetModule(target.ModuleName);
+		return target.IsConstructedGeneric
+			? module.GetConstructedTypeLayout(
+				(TypeDefinitionHandle)target.Handle,
+				target.Type)
+			: module.GetTypeLayout((TypeDefinitionHandle)target.Handle);
+	}
+
+	private CilTypeLayout GetConstructedTypeLayout(
+		TypeDefinitionHandle handle,
+		CilType constructedType)
+	{
+		var key = (handle, constructedType.DisplayName);
+		if (_constructedLayoutCache.TryGetValue(key, out var cached))
+		{
+			return cached;
+		}
+
+		var definition = Reader.GetTypeDefinition(handle);
+		var isValueType = IsValueTypeDefinition(definition);
+		var inheritedSize = isValueType ? 0 : 8;
+		var inheritedBitmap = 0u;
+		var fieldOffsets = new Dictionary<FieldDefinitionHandle, int>();
+		if (definition.BaseType.Kind == HandleKind.TypeDefinition)
+		{
+			var baseLayout = GetTypeLayout((TypeDefinitionHandle)definition.BaseType);
+			inheritedSize = baseLayout.Size;
+			inheritedBitmap = baseLayout.ReferenceBitmap;
+			foreach (var item in baseLayout.FieldOffsets)
+			{
+				fieldOffsets.Add(item.Key, item.Value);
+			}
+		}
+		else if (definition.BaseType.Kind == HandleKind.TypeSpecification)
+		{
+			var baseType = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)definition.BaseType)
+				.DecodeSignature(
+					_signatureProvider,
+					new CilGenericContext(
+						constructedType.GenericArguments,
+						ImmutableArray<CilType>.Empty));
+			if (!TryFindConstructedGenericDefinition(baseType, out var baseTarget) ||
+				baseTarget.Handle.Kind != HandleKind.TypeDefinition)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"Constructed base layout '{baseType.DisplayName}' for '{constructedType.DisplayName}' cannot be resolved to an in-module generic definition.");
+			}
+			var baseLayout = GetConstructedTypeLayout(
+				(TypeDefinitionHandle)baseTarget.Handle,
+				baseType);
+			inheritedSize = baseLayout.Size;
+			inheritedBitmap = baseLayout.ReferenceBitmap;
+			foreach (var item in baseLayout.FieldOffsets)
+			{
+				fieldOffsets.Add(item.Key, item.Value);
+			}
+		}
+
+		var size = inheritedSize;
+		var bitmap = inheritedBitmap;
+		foreach (var fieldHandle in definition.GetFields())
+		{
+			var field = GetField(fieldHandle);
+			if (field.IsStatic)
+			{
+				continue;
+			}
+			var fieldType = SubstituteTypeArguments(
+				field.Type,
+				constructedType.GenericArguments);
+			if (TryGetFixedBufferSize(fieldType, out var fixedBufferSize))
+			{
+				fieldOffsets.Add(fieldHandle, size);
+				size = checked(size + fixedBufferSize);
+				continue;
+			}
+			if (TryGetReferenceFreeStructLayout(
+					fieldType,
+					field.ModuleName,
+					out var aggregateLayout) &&
+				aggregateLayout.Size > 4)
+			{
+				fieldOffsets.Add(fieldHandle, size);
+				size = checked(size + aggregateLayout.Size);
+				continue;
+			}
+			if ((!fieldType.IsSupportedScalar && !IsTransparentScalarType(fieldType)) ||
+				fieldType.Size > 4)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"Constructed field '{constructedType.DisplayName}::{Reader.GetString(Reader.GetFieldDefinition(fieldHandle).Name)}' has unsupported type '{fieldType.DisplayName}'.");
+			}
+
+			var fieldIndex = (size - (isValueType ? 0 : 8)) / 4;
+			if (fieldType.Kind == CilTypeKind.ManagedReference &&
+				fieldIndex is >= 0 and < 32)
+			{
+				bitmap |= 1u << fieldIndex;
+			}
+			fieldOffsets.Add(fieldHandle, size);
+			size += 4;
+		}
+
+		var layout = new CilTypeLayout(
+			handle,
+			constructedType.DisplayName,
+			size,
+			bitmap,
+			fieldOffsets,
+			_assemblyName,
+			constructedType);
+		_constructedLayoutCache.Add(key, layout);
+		return layout;
+	}
+
+	public CilInterfaceDefinition GetRuntimeInterfaceDefinition(
+		CilRuntimeTypeTarget target)
+	{
+		if (!target.IsInterface || target.Handle.Kind != HandleKind.TypeDefinition)
+		{
+			throw new InvalidOperationException(
+				$"Runtime type '{target.Type.DisplayName}' is not a local interface definition.");
+		}
+		return GetModule(target.ModuleName)
+			.GetInterfaceDefinition(
+				(TypeDefinitionHandle)target.Handle,
+				target.IsConstructedGeneric ? target.Type : null);
+	}
+
+	public CilRuntimeTypeTarget ResolveRuntimeTypeIdentity(
+		CilType type,
+		string preferredModuleName)
+	{
+		var preferred = GetModule(preferredModuleName);
+		if (preferred.TryFindRuntimeTypeDefinition(type, out var target))
+		{
+			return target;
+		}
+		foreach (var module in _root._modules.Values)
+		{
+			if (!ReferenceEquals(module, preferred) &&
+				module.TryFindRuntimeTypeDefinition(type, out target))
+			{
+				return target;
+			}
+		}
+		return new CilRuntimeTypeTarget(
+			type,
+			"System.Private.CoreLib",
+			default,
+			IsInterface: false,
+			IsArray: type.ElementType is not null &&
+				type.DisplayName.EndsWith("]", StringComparison.Ordinal));
+	}
+
+	private bool TryFindRuntimeTypeDefinition(
+		CilType type,
+		out CilRuntimeTypeTarget target)
+	{
+		foreach (var handle in Reader.TypeDefinitions)
+		{
+			var definition = Reader.GetTypeDefinition(handle);
+			var signatureName = _signatureProvider
+				.GetTypeFromDefinition(Reader, handle, 0x12)
+				.DisplayName;
+			if (!StringComparer.Ordinal.Equals(signatureName, type.DisplayName))
+			{
+				continue;
+			}
+			target = new CilRuntimeTypeTarget(
+				type,
+				_assemblyName,
+				handle,
+				(definition.Attributes & TypeAttributes.Interface) != 0,
+				IsArray: false);
+			return true;
+		}
+		target = null!;
+		return false;
 	}
 
 	public bool IsUninitializedStorageType(CilType type)
@@ -1663,7 +3081,7 @@ internal sealed class CompilationModule : IDisposable
 		{
 			try
 			{
-				var type = Assembly.LoadFrom(path).GetType(displayName, throwOnError: false);
+				var type = Assembly.LoadFrom(path).GetType(displayName.Replace('/', '+'), throwOnError: false);
 				if (type is null)
 				{
 					continue;
@@ -1723,15 +3141,253 @@ internal sealed class CompilationModule : IDisposable
 		};
 	}
 
+	public CilMethodReferenceIdentity? DescribeMethodToken(
+		int token,
+		CilMethod caller,
+		int ilOffset)
+	{
+		if (!string.IsNullOrEmpty(caller.ModuleName) &&
+			!string.Equals(caller.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(caller, ilOffset).DescribeMethodToken(token, caller, ilOffset);
+		}
+
+		EntityHandle handle;
+		try
+		{
+			handle = MetadataTokens.EntityHandle(token);
+		}
+		catch (ArgumentException exception)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Invalid method metadata token 0x{token:X8}.",
+				caller.DisplayName,
+				ilOffset,
+				exception);
+		}
+
+		return handle.Kind switch
+		{
+			HandleKind.MemberReference => DescribeMemberReference(
+				(MemberReferenceHandle)handle,
+				ImmutableArray<string>.Empty),
+			HandleKind.MethodSpecification => DescribeMethodSpecification(
+				(MethodSpecificationHandle)handle),
+			HandleKind.MethodDefinition => null,
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Token 0x{token:X8} is not a method reference.",
+				caller.DisplayName,
+				ilOffset)
+		};
+	}
+
+	public FrameworkMemberId DescribeFrameworkMethodToken(
+		int token,
+		CilMethod caller,
+		int ilOffset)
+	{
+		if (!string.IsNullOrEmpty(caller.ModuleName) &&
+			!string.Equals(caller.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(caller, ilOffset).DescribeFrameworkMethodToken(
+				token,
+				caller,
+				ilOffset);
+		}
+
+		EntityHandle handle;
+		try
+		{
+			handle = MetadataTokens.EntityHandle(token);
+		}
+		catch (ArgumentException exception)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Invalid method metadata token 0x{token:X8}.",
+				caller.DisplayName,
+				ilOffset,
+				exception);
+		}
+
+		return handle.Kind switch
+		{
+			HandleKind.MethodDefinition => DescribeFrameworkMethodDefinition(
+				(MethodDefinitionHandle)handle,
+				[]),
+			HandleKind.MemberReference => DescribeFrameworkMemberReference(
+				(MemberReferenceHandle)handle,
+				[]),
+			HandleKind.MethodSpecification => DescribeFrameworkMethodSpecification(
+				(MethodSpecificationHandle)handle),
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Token 0x{token:X8} is not a method reference.",
+				caller.DisplayName,
+				ilOffset)
+		};
+	}
+
+	private FrameworkMemberId DescribeFrameworkMethodSpecification(
+		MethodSpecificationHandle handle)
+	{
+		var provider = new FrameworkSignatureTypeProvider(this);
+		var specification = Reader.GetMethodSpecification(handle);
+		var arguments = specification.DecodeSignature(
+			provider,
+			FrameworkGenericContext.Empty);
+		return specification.Method.Kind switch
+		{
+			HandleKind.MethodDefinition => DescribeFrameworkMethodDefinition(
+				(MethodDefinitionHandle)specification.Method,
+				arguments),
+			HandleKind.MemberReference => DescribeFrameworkMemberReference(
+				(MemberReferenceHandle)specification.Method,
+				arguments),
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"A method specification must refer to a method definition or member reference.")
+		};
+	}
+
+	private FrameworkMemberId DescribeFrameworkMethodDefinition(
+		MethodDefinitionHandle handle,
+		IReadOnlyList<FrameworkTypeId> methodTypeArguments)
+	{
+		var provider = new FrameworkSignatureTypeProvider(this);
+		var definition = Reader.GetMethodDefinition(handle);
+		var declaringType = provider.GetTypeFromDefinition(
+			Reader,
+			definition.GetDeclaringType(),
+			0x12);
+		var signature = definition.DecodeSignature(
+			provider,
+			FrameworkGenericContext.Empty);
+		return new FrameworkMemberId(
+			declaringType,
+			Reader.GetString(definition.Name),
+			FrameworkMethodSignatureId.From(signature),
+			methodTypeArguments);
+	}
+
+	private FrameworkMemberId DescribeFrameworkMemberReference(
+		MemberReferenceHandle handle,
+		IReadOnlyList<FrameworkTypeId> methodTypeArguments)
+	{
+		var provider = new FrameworkSignatureTypeProvider(this);
+		var member = Reader.GetMemberReference(handle);
+		var declaringType = member.Parent.Kind switch
+		{
+			HandleKind.TypeDefinition => provider.GetTypeFromDefinition(
+				Reader,
+				(TypeDefinitionHandle)member.Parent,
+				0x12),
+			HandleKind.TypeReference => provider.GetTypeFromReference(
+				Reader,
+				(TypeReferenceHandle)member.Parent,
+				0x12),
+			HandleKind.TypeSpecification => provider.GetTypeFromSpecification(
+				Reader,
+				FrameworkGenericContext.Empty,
+				(TypeSpecificationHandle)member.Parent,
+				0x12),
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"A method member reference must have a type parent.")
+		};
+		var signature = member.DecodeMethodSignature(
+			provider,
+			FrameworkGenericContext.Empty);
+		return new FrameworkMemberId(
+			declaringType,
+			Reader.GetString(member.Name),
+			FrameworkMethodSignatureId.From(signature),
+			methodTypeArguments);
+	}
+
+	private CilMethodReferenceIdentity? DescribeMethodSpecification(
+		MethodSpecificationHandle handle)
+	{
+		var specification = Reader.GetMethodSpecification(handle);
+		if (specification.Method.Kind != HandleKind.MemberReference)
+		{
+			return null;
+		}
+
+		var arguments = specification
+			.DecodeSignature(_signatureProvider, CilGenericContext.Empty)
+			.Select(static argument => argument.DisplayName)
+			.ToImmutableArray();
+		return DescribeMemberReference(
+			(MemberReferenceHandle)specification.Method,
+			arguments);
+	}
+
+	private CilMethodReferenceIdentity? DescribeMemberReference(
+		MemberReferenceHandle handle,
+		ImmutableArray<string> methodTypeArguments)
+	{
+		var member = Reader.GetMemberReference(handle);
+		string assemblyName;
+		string typeName;
+		switch (member.Parent.Kind)
+		{
+			case HandleKind.TypeReference:
+			{
+				var type = Reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+				assemblyName = GetReferencedAssemblyName(type.ResolutionScope);
+				typeName = GetTypeName(type);
+				break;
+			}
+			case HandleKind.TypeSpecification:
+			{
+				var specification = Reader.GetTypeSpecification(
+					(TypeSpecificationHandle)member.Parent);
+				typeName = specification
+					.DecodeSignature(_signatureProvider, CilGenericContext.Empty)
+					.DisplayName;
+				assemblyName = specification.DecodeSignature(
+					new DeclaringAssemblyTypeProvider(this),
+					CilGenericContext.Empty) ?? string.Empty;
+				break;
+			}
+			default:
+				return null;
+		}
+
+		if (string.IsNullOrEmpty(assemblyName))
+		{
+			return null;
+		}
+
+		var signature = member.DecodeMethodSignature(
+			_signatureProvider,
+			CilGenericContext.Empty);
+		return new CilMethodReferenceIdentity(
+			assemblyName,
+			typeName,
+			Reader.GetString(member.Name),
+			!signature.Header.IsInstance,
+			signature.GenericParameterCount,
+			signature.ReturnType.DisplayName,
+			signature.ParameterTypes
+				.Select(static parameter => parameter.DisplayName)
+				.ToImmutableArray(),
+			methodTypeArguments);
+	}
+
 	private MethodReference ResolveMethodDefinition(MethodDefinitionHandle handle)
 	{
 		var method = GetMethod(handle);
 		var declaringType = Reader.GetTypeDefinition(
 			Reader.GetMethodDefinition(handle).GetDeclaringType());
-		return TryResolveIntrinsicReference(
+		return TryResolveRegisteredBinding(
+				handle,
 				GetTypeName(declaringType),
-				method.Name,
-				method.Signature) ??
+				method.Signature,
+				constructedDeclaringType: null) ??
 			MethodReference.ForDefinition(method);
 	}
 
@@ -1741,10 +3397,109 @@ internal sealed class CompilationModule : IDisposable
 		int ilOffset)
 	{
 		var specification = Reader.GetMethodSpecification(handle);
-		var arguments = specification.DecodeSignature(_signatureProvider, CilGenericContext.Empty);
+		var arguments = specification.DecodeSignature(
+			_signatureProvider,
+			caller.GenericContext);
+		if (specification.Method.Kind == HandleKind.MemberReference)
+		{
+			var memberHandle = (MemberReferenceHandle)specification.Method;
+			var member = Reader.GetMemberReference(memberHandle);
+			string typeName;
+			CilType? constructedDeclaringType = null;
+			TypeDefinitionHandle localDeclaringType = default;
+			switch (member.Parent.Kind)
+			{
+				case HandleKind.TypeDefinition:
+					localDeclaringType = (TypeDefinitionHandle)member.Parent;
+					typeName = GetTypeName(Reader.GetTypeDefinition(localDeclaringType));
+					if (caller.DeclaringType == localDeclaringType)
+					{
+						constructedDeclaringType = caller.ConstructedDeclaringType;
+					}
+					break;
+				case HandleKind.TypeReference:
+					typeName = GetTypeName(Reader.GetTypeReference(
+						(TypeReferenceHandle)member.Parent));
+					break;
+				case HandleKind.TypeSpecification:
+					constructedDeclaringType = Reader
+						.GetTypeSpecification((TypeSpecificationHandle)member.Parent)
+						.DecodeSignature(_signatureProvider, caller.GenericContext);
+					typeName = constructedDeclaringType.DisplayName;
+					if (TryFindConstructedGenericDefinition(
+							constructedDeclaringType,
+							out var constructedTarget) &&
+						constructedTarget.Handle.Kind == HandleKind.TypeDefinition)
+					{
+						localDeclaringType = (TypeDefinitionHandle)constructedTarget.Handle;
+					}
+					break;
+				default:
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.InvalidMetadata,
+						"A generic method member reference must have a type parent.",
+						caller.DisplayName,
+						ilOffset);
+			}
+			var memberSignature = member.DecodeMethodSignature(
+				_signatureProvider,
+				new CilGenericContext(
+					constructedDeclaringType?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+					arguments));
+
+			var exactMember = DescribeFrameworkMethodSpecification(handle);
+			if (TryResolveRegisteredBinding(
+					exactMember,
+					typeName,
+					memberSignature,
+					constructedDeclaringType,
+					arguments) is { } registered)
+			{
+				return registered;
+			}
+
+			if (!localDeclaringType.IsNil)
+			{
+				var definition = Reader.GetTypeDefinition(localDeclaringType);
+				var name = Reader.GetString(member.Name);
+				var context = new CilGenericContext(
+					constructedDeclaringType?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+					arguments);
+				foreach (var specializedMethodHandle in definition.GetMethods())
+				{
+					var methodDefinition = Reader.GetMethodDefinition(specializedMethodHandle);
+					if (!Reader.StringComparer.Equals(methodDefinition.Name, name))
+					{
+						continue;
+					}
+					var specializedSignature = methodDefinition.DecodeSignature(
+						_signatureProvider,
+						context);
+					if (!SignaturesMatch(specializedSignature, memberSignature))
+					{
+						continue;
+					}
+					return MethodReference.ForDefinition(
+						GetConstructedMethod(
+							specializedMethodHandle,
+							constructedDeclaringType,
+							arguments),
+						constructedDeclaringType);
+				}
+			}
+		}
+
 		foreach (var argument in arguments)
 		{
-			if (argument.IsFloatingPoint || !argument.IsSupportedScalar || argument.Size > 4)
+			var usesSingleSlotStructRepresentation =
+				TryGetReferenceFreeStructLayout(
+					argument,
+					caller.ModuleName,
+					out var argumentLayout) &&
+				argumentLayout.Size <= 4;
+			if (argument.IsFloatingPoint ||
+				(!argument.IsSupportedScalar && !usesSingleSlotStructRepresentation) ||
+				(argument.IsSupportedScalar && argument.Size > 4))
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedSignature,
@@ -1764,13 +3519,11 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var methodHandle = (MethodDefinitionHandle)specification.Method;
-		var method = GetMethod(methodHandle);
-		var instantiatedSignature = Reader
-			.GetMethodDefinition(methodHandle)
-			.DecodeSignature(
-				_signatureProvider,
-				new CilGenericContext(ImmutableArray<CilType>.Empty, arguments));
-		return new MethodReference(method, method.ImportName, instantiatedSignature);
+		var method = GetConstructedMethod(
+			methodHandle,
+			constructedDeclaringType: null,
+			arguments);
+		return MethodReference.ForDefinition(method);
 	}
 
 	public void Dispose()
@@ -2013,17 +3766,22 @@ internal sealed class CompilationModule : IDisposable
 	{
 		var member = Reader.GetMemberReference(handle);
 		var name = Reader.GetString(member.Name);
-		var signature = member.DecodeMethodSignature(_signatureProvider, CilGenericContext.Empty);
+		var signature = member.DecodeMethodSignature(
+			_signatureProvider,
+			caller.GenericContext);
 
 		if (member.Parent.Kind == HandleKind.TypeDefinition)
 		{
 			var type = Reader.GetTypeDefinition((TypeDefinitionHandle)member.Parent);
 			var typeName = GetTypeName(type);
-			if (TryResolveIntrinsicReference(typeName, name, signature) is { } intrinsic)
+			if (TryResolveRegisteredBinding(
+					handle,
+					typeName,
+					signature,
+				constructedDeclaringType: null) is { } registered)
 			{
-				return intrinsic;
+				return registered;
 			}
-
 			foreach (var methodHandle in type.GetMethods())
 			{
 				var candidate = GetMethod(methodHandle);
@@ -2039,32 +3797,29 @@ internal sealed class CompilationModule : IDisposable
 		{
 			var parent = Reader.GetTypeReference((TypeReferenceHandle)member.Parent);
 			var typeName = GetTypeName(parent);
-			if (TryResolveIntrinsicReference(typeName, name, signature) is { } intrinsic)
+			if (StringComparer.Ordinal.Equals(typeName, "System.Object") &&
+				StringComparer.Ordinal.Equals(name, "Equals") &&
+				signature.Header.IsInstance &&
+				StringComparer.Ordinal.Equals(signature.ReturnType.DisplayName, "bool") &&
+				signature.ParameterTypes.Length == 1 &&
+				StringComparer.Ordinal.Equals(
+					signature.ParameterTypes[0].DisplayName,
+					"object") &&
+				HasProvableDelegateReceiver(caller, ilOffset))
 			{
-				return intrinsic;
+				var exactMember = DescribeFrameworkMemberReference(handle, []);
+				var binding = FrameworkBindingRegistry
+					.BindProvenDelegateObjectEquals(exactMember);
+				return MethodReference.ForBinding(binding, signature);
 			}
-
-			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
-				name.StartsWith("Dispose", StringComparison.Ordinal) &&
-				signature.ParameterTypes.Length == 1)
+			if (TryResolveRegisteredBinding(
+					handle,
+					typeName,
+					signature,
+				constructedDeclaringType: null) is { } registered)
 			{
-				return MethodReference.ForIntrinsic("intrinsic:runtime-dispose", signature);
+				return registered;
 			}
-
-			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
-				name == "Collect" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:runtime-gc-collect", signature);
-			}
-
-			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
-				name is "GetGcStaleBytes" or "GetGcStaleBlocks" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic($"intrinsic:runtime-{name}", signature);
-			}
-
 			var displayName = $"{typeName}::{name}";
 			var assemblyName = GetReferencedAssemblyName(parent.ResolutionScope);
 			var externalMethod = LoadExternalMethod(
@@ -2143,19 +3898,43 @@ internal sealed class CompilationModule : IDisposable
 		{
 			var parentType = Reader
 				.GetTypeSpecification((TypeSpecificationHandle)member.Parent)
-				.DecodeSignature(_signatureProvider, CilGenericContext.Empty);
-			if (TryResolveNullableIntrinsicReference(parentType, name, signature) is { } nullableIntrinsic)
+				.DecodeSignature(_signatureProvider, caller.GenericContext);
+			var constructedSignature = member.DecodeMethodSignature(
+				_signatureProvider,
+				new CilGenericContext(
+					parentType.GenericArguments,
+					caller.GenericContext.MethodArguments));
+			if (TryResolveRegisteredBinding(
+					handle,
+					parentType.DisplayName,
+					constructedSignature,
+				parentType) is { } registered)
 			{
-				return nullableIntrinsic;
+				return registered;
 			}
-		}
-
-		if (name == "FromAddress" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
-			signature.ReturnType.IsReference)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:address-to-ref", signature);
+			if (parentType.GenericArguments.Length != 0 &&
+				TryFindConstructedGenericDefinition(parentType, out var constructedTarget))
+			{
+				var definition = Reader.GetTypeDefinition(
+					(TypeDefinitionHandle)constructedTarget.Handle);
+				foreach (var methodHandle in definition.GetMethods())
+				{
+					var candidate = GetMethod(methodHandle);
+					if (candidate.Name == name &&
+						ConstructedSignaturesMatch(
+							candidate.Signature,
+							constructedSignature,
+							parentType.GenericArguments))
+					{
+						return MethodReference.ForDefinition(
+							GetConstructedMethod(
+								methodHandle,
+								parentType,
+								ImmutableArray<CilType>.Empty),
+							parentType);
+					}
+				}
+			}
 		}
 
 		throw new M68kCompilationException(
@@ -2164,6 +3943,367 @@ internal sealed class CompilationModule : IDisposable
 			caller.DisplayName,
 			ilOffset);
 	}
+
+	private static bool HasProvableDelegateReceiver(CilMethod caller, int callOffset)
+	{
+		var callIndex = -1;
+		for (var index = 0; index < caller.Instructions.Count; index++)
+		{
+			if (caller.Instructions[index].Offset == callOffset)
+			{
+				callIndex = index;
+				break;
+			}
+		}
+
+		if (callIndex < 0)
+		{
+			return false;
+		}
+
+		CilInstruction? argumentProducer = null;
+		CilInstruction? receiverProducer = null;
+		var receiverIndex = -1;
+		for (var index = callIndex - 1; index >= 0; index--)
+		{
+			var instruction = caller.Instructions[index];
+			if (instruction.OpCode == OpCodes.Nop)
+			{
+				continue;
+			}
+
+			if (argumentProducer is null)
+			{
+				argumentProducer = instruction;
+				continue;
+			}
+
+			receiverProducer = instruction;
+			receiverIndex = index;
+			break;
+		}
+
+		if (argumentProducer is null || receiverProducer is null ||
+			HasControlFlowEntryIntoDelegateEqualsSuffix(
+				caller,
+				receiverIndex,
+				callIndex) ||
+			!IsSimpleObjectValueProducer(caller, argumentProducer) ||
+			!TryGetDirectLoadedType(caller, receiverProducer, out var receiverType))
+		{
+			return false;
+		}
+
+		return IsFrameworkDelegateType(receiverType);
+	}
+
+	private static bool HasControlFlowEntryIntoDelegateEqualsSuffix(
+		CilMethod caller,
+		int receiverIndex,
+		int callIndex)
+	{
+		var unsafeEntryOffsets = caller.Instructions
+			.Skip(receiverIndex + 1)
+			.Take(callIndex - receiverIndex)
+			.Select(static instruction => instruction.Offset)
+			.ToHashSet();
+
+		foreach (var instruction in caller.Instructions)
+		{
+			if (instruction.Operand is int target &&
+				instruction.OpCode.FlowControl is
+					FlowControl.Branch or FlowControl.Cond_Branch &&
+				unsafeEntryOffsets.Contains(target))
+			{
+				return true;
+			}
+			if (instruction.Operand is int[] targets &&
+				targets.Any(unsafeEntryOffsets.Contains))
+			{
+				return true;
+			}
+		}
+
+		return caller.ExceptionRegions.Any(region =>
+			unsafeEntryOffsets.Contains(region.HandlerOffset) ||
+			(region.FilterOffset >= 0 &&
+				unsafeEntryOffsets.Contains(region.FilterOffset)));
+	}
+
+	private static bool IsSimpleObjectValueProducer(
+		CilMethod caller,
+		CilInstruction instruction) =>
+		instruction.OpCode == OpCodes.Ldnull ||
+		TryGetDirectLoadedType(caller, instruction, out _);
+
+	private static bool TryGetDirectLoadedType(
+		CilMethod caller,
+		CilInstruction instruction,
+		out CilType type)
+	{
+		if (TryGetDirectLocalIndex(instruction, out var localIndex) &&
+			(uint)localIndex < (uint)caller.Locals.Length)
+		{
+			type = caller.Locals[localIndex];
+			return true;
+		}
+
+		if (TryGetDirectArgumentIndex(instruction, out var argumentIndex))
+		{
+			if (caller.Signature.Header.IsInstance)
+			{
+				if (argumentIndex == 0)
+				{
+					type = default!;
+					return false;
+				}
+				argumentIndex--;
+			}
+
+			if ((uint)argumentIndex < (uint)caller.Signature.ParameterTypes.Length)
+			{
+				type = caller.Signature.ParameterTypes[argumentIndex];
+				return true;
+			}
+		}
+
+		type = default!;
+		return false;
+	}
+
+	private static bool TryGetDirectLocalIndex(
+		CilInstruction instruction,
+		out int index)
+	{
+		var op = instruction.OpCode;
+		if (op.Value >= OpCodes.Ldloc_0.Value && op.Value <= OpCodes.Ldloc_3.Value)
+		{
+			index = op.Value - OpCodes.Ldloc_0.Value;
+			return true;
+		}
+		if (op == OpCodes.Ldloc || op == OpCodes.Ldloc_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+
+		index = default;
+		return false;
+	}
+
+	private static bool TryGetDirectArgumentIndex(
+		CilInstruction instruction,
+		out int index)
+	{
+		var op = instruction.OpCode;
+		if (op.Value >= OpCodes.Ldarg_0.Value && op.Value <= OpCodes.Ldarg_3.Value)
+		{
+			index = op.Value - OpCodes.Ldarg_0.Value;
+			return true;
+		}
+		if (op == OpCodes.Ldarg || op == OpCodes.Ldarg_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+
+		index = default;
+		return false;
+	}
+
+	private static bool ConstructedSignaturesMatch(
+		MethodSignature<CilType> definition,
+		MethodSignature<CilType> reference,
+		ImmutableArray<CilType> typeArguments)
+	{
+		if (definition.Header.IsInstance != reference.Header.IsInstance ||
+			definition.ParameterTypes.Length != reference.ParameterTypes.Length)
+		{
+			return false;
+		}
+		if (SubstituteTypeArguments(definition.ReturnType, typeArguments) != reference.ReturnType)
+		{
+			return false;
+		}
+		for (var index = 0; index < definition.ParameterTypes.Length; index++)
+		{
+			if (SubstituteTypeArguments(definition.ParameterTypes[index], typeArguments) !=
+				reference.ParameterTypes[index])
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static CilType SubstituteTypeArguments(
+		CilType type,
+		ImmutableArray<CilType> typeArguments)
+	{
+		if (type.Kind == CilTypeKind.GenericParameter &&
+			type.DisplayName.StartsWith('!') &&
+			!type.DisplayName.StartsWith("!!", StringComparison.Ordinal) &&
+			int.TryParse(type.DisplayName.AsSpan(1), out var index) &&
+			index >= 0 && index < typeArguments.Length)
+		{
+			var substituted = typeArguments[index];
+			return type.IsReadOnly && !substituted.IsReadOnly
+				? substituted with { IsReadOnly = true }
+				: substituted;
+		}
+
+		var elementType = type.ElementType is null
+			? null
+			: SubstituteTypeArguments(type.ElementType, typeArguments);
+		var genericArguments = type.GenericArguments.IsDefaultOrEmpty
+			? type.GenericArguments
+			: type.GenericArguments
+				.Select(argument => SubstituteTypeArguments(argument, typeArguments))
+				.ToImmutableArray();
+		if (ReferenceEquals(elementType, type.ElementType) &&
+			(genericArguments.IsDefaultOrEmpty || genericArguments == type.GenericArguments))
+		{
+			return type;
+		}
+
+		string displayName;
+		if (!genericArguments.IsDefaultOrEmpty)
+		{
+			var separator = type.DisplayName.IndexOf('<');
+			var definitionName = separator < 0
+				? type.DisplayName
+				: type.DisplayName[..separator];
+			displayName =
+				$"{definitionName}<{string.Join(",", genericArguments.Select(static argument => argument.DisplayName))}>";
+		}
+		else if (elementType is not null && type.ElementType is not null &&
+			type.DisplayName.StartsWith(type.ElementType.DisplayName, StringComparison.Ordinal))
+		{
+			displayName = elementType.DisplayName +
+				type.DisplayName[type.ElementType.DisplayName.Length..];
+		}
+		else
+		{
+			displayName = type.DisplayName;
+		}
+
+		return type with
+		{
+			DisplayName = displayName,
+			ElementType = elementType,
+			GenericArguments = genericArguments
+		};
+	}
+
+	private MethodReference? TryResolveRegisteredBinding(
+		MethodDefinitionHandle handle,
+		string typeName,
+		MethodSignature<CilType> signature,
+		CilType? constructedDeclaringType)
+	{
+		var member = DescribeFrameworkMethodDefinition(handle, []);
+		return TryResolveRegisteredBinding(
+			member,
+			typeName,
+			signature,
+			constructedDeclaringType);
+	}
+
+	private MethodReference? TryResolveRegisteredBinding(
+		MemberReferenceHandle handle,
+		string typeName,
+		MethodSignature<CilType> signature,
+		CilType? constructedDeclaringType)
+	{
+		var member = DescribeFrameworkMemberReference(handle, []);
+		return TryResolveRegisteredBinding(
+			member,
+			typeName,
+			signature,
+			constructedDeclaringType);
+	}
+
+	private MethodReference? TryResolveRegisteredBinding(
+		FrameworkMemberId member,
+		string typeName,
+		MethodSignature<CilType> signature,
+		CilType? constructedDeclaringType,
+		IReadOnlyList<CilType>? methodTypeArguments = null)
+	{
+		var binding = FrameworkBindingRegistry.TryBind(
+			member,
+			new FrameworkBindingContext(
+				typeName,
+				signature,
+				constructedDeclaringType,
+				constructedDeclaringType is not null &&
+					IsSupportedNullableType(constructedDeclaringType),
+				methodTypeArguments,
+				methodTypeArguments?
+					.Select(TypeContainsManagedReferences)
+					.ToArray()));
+		if (binding is null)
+		{
+			return null;
+		}
+		if (binding.Kind == FrameworkBindingKind.ShadowMethod)
+		{
+			var shadowTarget = binding.ShadowMethod ??
+				throw new InvalidOperationException(
+					$"Shadow binding '{binding.Member.DisplayName}' has no managed target.");
+			var shadowMethod = TryResolveManagedMethod(
+				shadowTarget.AssemblyName,
+				shadowTarget.TypeName,
+				shadowTarget.MethodName,
+				signature) ??
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidInput,
+					$"Shadow binding target '{binding.Target}' could not be resolved from the managed runtime.");
+			if (binding.PreservesVirtualDispatch)
+			{
+				RegisterFrameworkVirtualFallback(binding, shadowMethod);
+			}
+			return MethodReference.ForShadowBinding(binding, shadowMethod, signature);
+		}
+		var boundSignature = binding.Target is
+			"intrinsic:delegate-ctor" or "intrinsic:delegate-invoke" &&
+			constructedDeclaringType is { GenericArguments.Length: > 0 } delegateType
+				? SubstituteTypeArguments(signature, delegateType.GenericArguments)
+				: signature;
+		return MethodReference.ForBinding(
+			binding,
+			boundSignature,
+			constructedDeclaringType);
+	}
+
+	private bool? TypeContainsManagedReferences(CilType type)
+	{
+		if (type.Kind == CilTypeKind.ManagedReference)
+		{
+			return true;
+		}
+		if (type.IsSupportedScalar &&
+			type.Kind is not
+				CilTypeKind.ManagedPointer and not CilTypeKind.GenericParameter)
+		{
+			return false;
+		}
+		return TryGetStructLayout(type, _assemblyName, out var layout)
+			? layout.ReferenceBitmap != 0
+			: null;
+	}
+
+	private static MethodSignature<CilType> SubstituteTypeArguments(
+		MethodSignature<CilType> signature,
+		ImmutableArray<CilType> typeArguments) =>
+		new(
+			signature.Header,
+			SubstituteTypeArguments(signature.ReturnType, typeArguments),
+			signature.RequiredParameterCount,
+			signature.GenericParameterCount,
+			signature.ParameterTypes
+				.Select(parameter => SubstituteTypeArguments(parameter, typeArguments))
+				.ToImmutableArray());
 
 	private CilMethod? TryResolveManagedMethod(
 		string assemblyName,
@@ -2235,281 +4375,6 @@ internal sealed class CompilationModule : IDisposable
 			: null;
 	}
 
-	private static MethodReference? TryResolveIntrinsicReference(
-		string typeName,
-		string name,
-		MethodSignature<CilType> signature)
-	{
-		if (name == "FromAddress" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
-			signature.ReturnType.IsReference)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:address-to-ref", signature);
-		}
-
-		if ((typeName == "System.Object" || typeName == "System.Exception") &&
-			name == ".ctor" &&
-			signature.ParameterTypes.Length == 0)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:object-ctor", signature);
-		}
-
-		if (typeName == "System.Runtime.CompilerServices.RuntimeHelpers" &&
-			name == "InitializeArray" &&
-			signature.ParameterTypes.Length == 2)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:initialize-array", signature);
-		}
-
-		if (typeName == "System.String" && name == "get_Length" &&
-			signature.ParameterTypes.Length == 0)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:string-length", signature);
-		}
-
-		if (typeName == "Amiga.CString")
-		{
-			if ((name == "FromLiteral" || name == "op_Implicit") &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "string")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:cstring-from-literal", signature);
-			}
-
-			if ((name == "FromPointer" || name == "op_Implicit") &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "uint")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:cstring-from-pointer", signature);
-			}
-
-			if ((name == "ToUInt32" || name == "op_Implicit") &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "Amiga.CString")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:cstring-to-uint32", signature);
-			}
-		}
-
-		if (typeName == "Amiga.FileInfoBlock" &&
-			name is "FileName" or "Comment" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].DisplayName == "uint")
-		{
-			return MethodReference.ForIntrinsic("intrinsic:file-info-block-file-name", signature);
-		}
-
-		if (typeName is
-			"Amiga.APTR" or
-			"Amiga.BPTR" or
-			"Amiga.STRPTR" or
-			"Amiga.CONST_STRPTR" or
-			"Amiga.IFFHandle" or
-			"CopperSharp.Compiler.M68kAddress")
-		{
-			if (name == "get_Null" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-null", signature);
-			}
-
-			if ((name is "FromPointer" or "FromRaw" or "FromUInt32" or "op_Implicit") &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "uint")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-from-pointer", signature);
-			}
-
-			if (typeName == "Amiga.APTR" &&
-				name == "ExportAddress" &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "string")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-export-address", signature);
-			}
-
-			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
-				name == "ReadUInt32" &&
-				signature.ParameterTypes.Length == 2 &&
-				signature.ParameterTypes[0].DisplayName == typeName &&
-				signature.ParameterTypes[1].DisplayName == "int")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-read-uint32", signature);
-			}
-
-			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
-				name == "WriteUInt32" &&
-				signature.ParameterTypes.Length == 3 &&
-				signature.ParameterTypes[0].DisplayName == typeName &&
-				signature.ParameterTypes[1].DisplayName == "int" &&
-				signature.ParameterTypes[2].DisplayName == "uint")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-write-uint32", signature);
-			}
-
-			if ((name == "ToUInt32" || name == "op_Implicit") &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == typeName)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-to-uint32", signature);
-			}
-
-			if (name == "get_Raw" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-raw", signature);
-			}
-
-			if (name == "get_IsNull" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-is-null", signature);
-			}
-
-			if (name == "get_IsNotNull" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-is-not-null", signature);
-			}
-
-
-			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
-				(name == "get_Address" || name == "ToAddress") &&
-				signature.ParameterTypes.Length <= 1)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-to-uint32", signature);
-			}
-
-			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
-				name == "FromAddress" &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "Amiga.APTR")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-from-pointer", signature);
-			}
-
-			if (typeName == "Amiga.CONST_STRPTR" &&
-				name == "op_Implicit" &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "Amiga.STRPTR")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:aptr-from-pointer", signature);
-			}
-
-			if (typeName == "Amiga.BPTR" &&
-				(name == "get_Address" || name == "ToAddress") &&
-				signature.ParameterTypes.Length <= 1)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:bptr-address", signature);
-			}
-
-			if (typeName == "Amiga.BPTR" &&
-				name == "FromAddress" &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "Amiga.APTR")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:bptr-from-address", signature);
-			}
-
-			if (typeName == "Amiga.IFFHandle" &&
-				name == "get_Stream" &&
-				signature.ParameterTypes.Length == 0)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:iff-handle-stream", signature);
-			}
-
-			if (typeName == "Amiga.IFFHandle" &&
-				name == "SetStream" &&
-				signature.ParameterTypes.Length == 1 &&
-				signature.ParameterTypes[0].DisplayName == "Amiga.BPTR")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:iff-handle-set-stream", signature);
-			}
-		}
-
-		if (typeName == "Amiga.AmigaVarArg" &&
-			name == "op_Implicit" &&
-			signature.ParameterTypes.Length == 1)
-		{
-			if (signature.ParameterTypes[0].DisplayName == "string")
-			{
-				return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-literal", signature);
-			}
-
-			if (signature.ParameterTypes[0].Size == 4 ||
-				signature.ParameterTypes[0].Kind == CilTypeKind.ValueType)
-			{
-				return MethodReference.ForIntrinsic("intrinsic:amiga-vararg-from-value", signature);
-			}
-		}
-
-		if (typeName == "Amiga.Hook" &&
-			name == "AddressOf" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].DisplayName == "Amiga.Hook&")
-		{
-			return MethodReference.ForIntrinsic("intrinsic:hook-address-of", signature);
-		}
-
-		if (name == "AddressOf" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].Kind == CilTypeKind.ManagedPointer &&
-			signature.ReturnType.DisplayName == "Amiga.APTR")
-		{
-			return MethodReference.ForIntrinsic("intrinsic:address-of-ref", signature);
-		}
-
-		if (name == "Cast" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].Kind == CilTypeKind.ManagedPointer &&
-			signature.ReturnType.Kind == CilTypeKind.ManagedPointer)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:ref-cast", signature);
-		}
-
-		if ((typeName == "Amiga.BOOPSI+Message" || typeName == "Message") &&
-			name == "AddressOf" &&
-			signature.ParameterTypes.Length == 1 &&
-			(signature.ParameterTypes[0].DisplayName == "Amiga.BOOPSI+Message&" ||
-			 signature.ParameterTypes[0].DisplayName == "Message&"))
-		{
-			return MethodReference.ForIntrinsic("intrinsic:boopsi-message-address-of", signature);
-		}
-
-		if (typeName == "Amiga.BOOPSI" &&
-			name == "InstanceData" &&
-			signature.ParameterTypes.Length == 2 &&
-			signature.ParameterTypes[0].DisplayName == "Amiga.APTR" &&
-			signature.ParameterTypes[1].DisplayName == "Amiga.APTR" &&
-			signature.ReturnType.DisplayName == "Amiga.APTR")
-		{
-			return MethodReference.ForIntrinsic("intrinsic:boopsi-instance-data", signature);
-		}
-
-		if (typeName == "Amiga.BOOPSI" &&
-			name == "DoMethod" &&
-			signature.ParameterTypes.Length == 2 &&
-			signature.ParameterTypes[1].DisplayName == "uint[]" &&
-			signature.ParameterTypes[1].ElementType?.DisplayName == "uint")
-		{
-			return MethodReference.ForIntrinsic("intrinsic:boopsi-do-method-stack-varargs", signature);
-		}
-
-		if (typeName == "Amiga.BOOPSI" &&
-			name == "DoMethod" &&
-			signature.ParameterTypes.Length is >= 2 and <= 8)
-		{
-			return MethodReference.ForIntrinsic("intrinsic:boopsi-do-method", signature);
-		}
-
-		if (TryGetAmigaLibraryBaseIntrinsic(typeName, name, signature) is { } amigaLibraryBase)
-		{
-			return MethodReference.ForIntrinsic(amigaLibraryBase, signature);
-		}
-
-		return null;
-	}
 
 	private static string? TryGetExternalImportName(
 		IReadOnlyList<M68kMetadataAttribute> attributes)
@@ -2590,81 +4455,6 @@ internal sealed class CompilationModule : IDisposable
 		return new CilRegisterAbi(parameterRegisters, returnRegister ?? M68kRegister.D0);
 	}
 
-	private MethodReference? TryResolveNullableIntrinsicReference(
-		CilType nullableType,
-		string name,
-		MethodSignature<CilType> signature)
-	{
-		if (!IsSupportedNullableType(nullableType) ||
-			nullableType.NullableElementType is not { } element)
-		{
-			return null;
-		}
-
-		if (name == ".ctor" &&
-			signature.ParameterTypes.Length == 1)
-		{
-			return MethodReference.ForIntrinsic(
-				$"intrinsic:nullable-ctor:{element.DisplayName}",
-				signature);
-		}
-
-		if (name == "get_HasValue" &&
-			signature.ParameterTypes.Length == 0)
-		{
-			return MethodReference.ForIntrinsic(
-				$"intrinsic:nullable-has-value:{element.DisplayName}",
-				signature);
-		}
-
-		if (name is "get_Value" or "GetValueOrDefault" &&
-			signature.ParameterTypes.Length == 0)
-		{
-			return MethodReference.ForIntrinsic(
-				$"intrinsic:nullable-get-value:{element.DisplayName}",
-				signature);
-		}
-
-		if (name == "GetValueOrDefault" &&
-			signature.ParameterTypes.Length == 1)
-		{
-			return MethodReference.ForIntrinsic(
-				$"intrinsic:nullable-get-value-or-default:{element.DisplayName}",
-				signature);
-		}
-
-		return null;
-	}
-
-	private static string? TryGetAmigaLibraryBaseIntrinsic(
-		string typeName,
-		string name,
-		MethodSignature<CilType> signature)
-	{
-		const string prefix = "Amiga.";
-		if (!typeName.StartsWith(prefix, StringComparison.Ordinal) ||
-			typeName == "Amiga.Exec")
-		{
-			return null;
-		}
-
-		var libraryTypeName = typeName[prefix.Length..];
-		var propertyName = $"{libraryTypeName}LibraryBase";
-		if (name == $"set_{propertyName}" &&
-			signature.ParameterTypes.Length == 1 &&
-			signature.ParameterTypes[0].DisplayName is "uint" or "Amiga.APTR")
-		{
-			return $"intrinsic:amiga-library-base-set:{libraryTypeName}";
-		}
-
-		if (name == $"get_{propertyName}" &&
-			signature.ParameterTypes.Length == 0)
-		{
-			return $"intrinsic:amiga-library-base-get:{libraryTypeName}";
-		}
-
-		return null;
-	}
 
 	private CilField GetField(FieldDefinitionHandle handle)
 	{
@@ -2688,12 +4478,78 @@ internal sealed class CompilationModule : IDisposable
 		return field;
 	}
 
+	private CilField GetFieldForCaller(
+		FieldDefinitionHandle handle,
+		CilMethod caller)
+	{
+		var field = GetField(handle);
+		if (caller.ConstructedDeclaringType is not { } constructedType ||
+			field.DeclaringType != caller.DeclaringType)
+		{
+			return field;
+		}
+
+		var specializedType = SubstituteTypeArguments(
+			field.Type,
+			constructedType.GenericArguments);
+		return field with
+		{
+			DisplayName =
+				$"{constructedType.DisplayName}::{Reader.GetString(Reader.GetFieldDefinition(handle).Name)}",
+			Type = specializedType,
+			ConstructedDeclaringType = constructedType
+		};
+	}
+
 	private CilField ResolveFieldMemberReference(
 		MemberReferenceHandle handle,
 		CilMethod caller,
 		int ilOffset)
 	{
 		var member = Reader.GetMemberReference(handle);
+		if (member.Parent.Kind == HandleKind.TypeSpecification)
+		{
+			var parentType = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)member.Parent)
+				.DecodeSignature(_signatureProvider, caller.GenericContext);
+			if (parentType.GenericArguments.Length != 0 &&
+				TryFindConstructedGenericDefinition(parentType, out var constructedTarget))
+			{
+				var targetModule = GetModule(constructedTarget.ModuleName);
+				var definition = targetModule.Reader.GetTypeDefinition(
+					(TypeDefinitionHandle)constructedTarget.Handle);
+				var constructedName = Reader.GetString(member.Name);
+				var constructedFieldType = member.DecodeFieldSignature(
+					_signatureProvider,
+					new CilGenericContext(parentType.GenericArguments, []));
+				foreach (var fieldHandle in definition.GetFields())
+				{
+					var field = targetModule.GetField(fieldHandle);
+					var specializedType = SubstituteTypeArguments(
+						field.Type,
+						parentType.GenericArguments);
+					if (!field.DisplayName.EndsWith($"::{constructedName}", StringComparison.Ordinal) ||
+						!StringComparer.Ordinal.Equals(
+							specializedType.DisplayName,
+							constructedFieldType.DisplayName))
+					{
+						continue;
+					}
+					return field with
+					{
+						DisplayName =
+							$"{parentType.DisplayName}::{constructedName}",
+						Type = specializedType,
+						ConstructedDeclaringType = parentType
+					};
+				}
+			}
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Could not resolve constructed field '{parentType.DisplayName}::{Reader.GetString(member.Name)}' with type '{member.DecodeFieldSignature(_signatureProvider, new CilGenericContext(parentType.GenericArguments, [])).DisplayName}'.",
+				caller.DisplayName,
+				ilOffset);
+		}
 		if (member.Parent.Kind != HandleKind.TypeDefinition)
 		{
 			if (member.Parent.Kind == HandleKind.TypeReference)
@@ -2842,6 +4698,8 @@ internal sealed class CompilationModule : IDisposable
 			"System.UInt16" => new(CilTypeKind.UnsignedInteger, 2, "ushort"),
 			"System.Int32" => new(CilTypeKind.SignedInteger, 4, "int"),
 			"System.UInt32" => new(CilTypeKind.UnsignedInteger, 4, "uint"),
+			"System.Int64" => new(CilTypeKind.SignedInteger, 8, "long"),
+			"System.UInt64" => new(CilTypeKind.UnsignedInteger, 8, "ulong"),
 			"System.IntPtr" => new(CilTypeKind.NativeInteger, 4, "nint"),
 			"System.UIntPtr" => new(CilTypeKind.NativeInteger, 4, "nuint"),
 			"System.Single" => new(CilTypeKind.FloatingPoint, 4, "float"),
@@ -3152,6 +5010,205 @@ internal sealed class CompilationModule : IDisposable
 			return string.IsNullOrEmpty(typeNamespace) ? name : $"{typeNamespace}.{name}";
 		}
 	}
+
+	private sealed class FrameworkSignatureTypeProvider(
+		CompilationModule module) :
+		ISignatureTypeProvider<FrameworkTypeId, FrameworkGenericContext>
+	{
+		public FrameworkTypeId GetArrayType(FrameworkTypeId elementType, ArrayShape shape) =>
+			FrameworkTypeId.Array(elementType, shape);
+
+		public FrameworkTypeId GetByReferenceType(FrameworkTypeId elementType) =>
+			FrameworkTypeId.ByReference(elementType);
+
+		public FrameworkTypeId GetFunctionPointerType(
+			MethodSignature<FrameworkTypeId> signature) =>
+			FrameworkTypeId.FunctionPointer(FrameworkMethodSignatureId.From(signature));
+
+		public FrameworkTypeId GetGenericInstantiation(
+			FrameworkTypeId genericType,
+			ImmutableArray<FrameworkTypeId> typeArguments) =>
+			FrameworkTypeId.GenericInstantiation(genericType, typeArguments);
+
+		public FrameworkTypeId GetGenericMethodParameter(
+			FrameworkGenericContext genericContext,
+			int index) =>
+			index >= 0 && index < genericContext.MethodArguments.Length
+				? genericContext.MethodArguments[index]
+				: FrameworkTypeId.GenericMethodParameter(index);
+
+		public FrameworkTypeId GetGenericTypeParameter(
+			FrameworkGenericContext genericContext,
+			int index) =>
+			index >= 0 && index < genericContext.TypeArguments.Length
+				? genericContext.TypeArguments[index]
+				: FrameworkTypeId.GenericTypeParameter(index);
+
+		public FrameworkTypeId GetModifiedType(
+			FrameworkTypeId modifier,
+			FrameworkTypeId unmodifiedType,
+			bool isRequired) =>
+			FrameworkTypeId.Modified(modifier, unmodifiedType, isRequired);
+
+		public FrameworkTypeId GetPinnedType(FrameworkTypeId elementType) => elementType;
+
+		public FrameworkTypeId GetPointerType(FrameworkTypeId elementType) =>
+			FrameworkTypeId.Pointer(elementType);
+
+		public FrameworkTypeId GetPrimitiveType(PrimitiveTypeCode typeCode) =>
+			FrameworkTypeId.Primitive(typeCode switch
+			{
+				PrimitiveTypeCode.Void => "System.Void",
+				PrimitiveTypeCode.Boolean => "System.Boolean",
+				PrimitiveTypeCode.Char => "System.Char",
+				PrimitiveTypeCode.SByte => "System.SByte",
+				PrimitiveTypeCode.Byte => "System.Byte",
+				PrimitiveTypeCode.Int16 => "System.Int16",
+				PrimitiveTypeCode.UInt16 => "System.UInt16",
+				PrimitiveTypeCode.Int32 => "System.Int32",
+				PrimitiveTypeCode.UInt32 => "System.UInt32",
+				PrimitiveTypeCode.Int64 => "System.Int64",
+				PrimitiveTypeCode.UInt64 => "System.UInt64",
+				PrimitiveTypeCode.IntPtr => "System.IntPtr",
+				PrimitiveTypeCode.UIntPtr => "System.UIntPtr",
+				PrimitiveTypeCode.Single => "System.Single",
+				PrimitiveTypeCode.Double => "System.Double",
+				PrimitiveTypeCode.Object => "System.Object",
+				PrimitiveTypeCode.String => "System.String",
+				PrimitiveTypeCode.TypedReference => "System.TypedReference",
+				_ => throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"Primitive signature type '{typeCode}' is not supported.")
+			});
+
+		public FrameworkTypeId GetSZArrayType(FrameworkTypeId elementType) =>
+			FrameworkTypeId.SzArray(elementType);
+
+		public FrameworkTypeId GetTypeFromDefinition(
+			MetadataReader reader,
+			TypeDefinitionHandle handle,
+			byte rawTypeKind)
+		{
+			var definition = reader.GetTypeDefinition(handle);
+			var declaringHandle = definition.GetDeclaringType();
+			var declaringType = declaringHandle.IsNil
+				? null
+				: GetTypeFromDefinition(reader, declaringHandle, rawTypeKind);
+			return FrameworkTypeId.Named(
+				module._assemblyName,
+				MetadataTypeName(
+					reader,
+					definition.Namespace,
+					definition.Name,
+					declaringType is not null),
+				declaringType);
+		}
+
+		public FrameworkTypeId GetTypeFromReference(
+			MetadataReader reader,
+			TypeReferenceHandle handle,
+			byte rawTypeKind)
+		{
+			var reference = reader.GetTypeReference(handle);
+			var declaringType = reference.ResolutionScope.Kind == HandleKind.TypeReference
+				? GetTypeFromReference(
+					reader,
+					(TypeReferenceHandle)reference.ResolutionScope,
+					rawTypeKind)
+				: null;
+			var assemblyName = declaringType?.AssemblyName ??
+				module.GetReferencedAssemblyName(reference.ResolutionScope);
+			if (string.IsNullOrEmpty(assemblyName))
+			{
+				assemblyName = module._assemblyName;
+			}
+			return FrameworkTypeId.Named(
+				assemblyName,
+				MetadataTypeName(
+					reader,
+					reference.Namespace,
+					reference.Name,
+					declaringType is not null),
+				declaringType);
+		}
+
+		public FrameworkTypeId GetTypeFromSpecification(
+			MetadataReader reader,
+			FrameworkGenericContext genericContext,
+			TypeSpecificationHandle handle,
+			byte rawTypeKind) => reader
+			.GetTypeSpecification(handle)
+			.DecodeSignature(this, genericContext);
+
+		private static string MetadataTypeName(
+			MetadataReader reader,
+			StringHandle namespaceHandle,
+			StringHandle nameHandle,
+			bool isNested)
+		{
+			var name = reader.GetString(nameHandle);
+			if (isNested)
+			{
+				return name;
+			}
+			var typeNamespace = reader.GetString(namespaceHandle);
+			return string.IsNullOrEmpty(typeNamespace)
+				? name
+				: $"{typeNamespace}.{name}";
+		}
+	}
+
+	private sealed class DeclaringAssemblyTypeProvider(
+		CompilationModule module) :
+		ISignatureTypeProvider<string?, CilGenericContext>
+	{
+		public string? GetArrayType(string? elementType, ArrayShape shape) => elementType;
+
+		public string? GetByReferenceType(string? elementType) => elementType;
+
+		public string? GetFunctionPointerType(MethodSignature<string?> signature) => null;
+
+		public string? GetGenericInstantiation(
+			string? genericType,
+			ImmutableArray<string?> typeArguments) => genericType;
+
+		public string? GetGenericMethodParameter(CilGenericContext genericContext, int index) => null;
+
+		public string? GetGenericTypeParameter(CilGenericContext genericContext, int index) => null;
+
+		public string? GetModifiedType(string? modifier, string? unmodifiedType, bool isRequired) =>
+			unmodifiedType;
+
+		public string? GetPinnedType(string? elementType) => elementType;
+
+		public string? GetPointerType(string? elementType) => elementType;
+
+		public string? GetPrimitiveType(PrimitiveTypeCode typeCode) => null;
+
+		public string? GetSZArrayType(string? elementType) => elementType;
+
+		public string? GetTypeFromDefinition(
+			MetadataReader reader,
+			TypeDefinitionHandle handle,
+			byte rawTypeKind) => module._assemblyName;
+
+		public string? GetTypeFromReference(
+			MetadataReader reader,
+			TypeReferenceHandle handle,
+			byte rawTypeKind)
+		{
+			var reference = reader.GetTypeReference(handle);
+			return module.GetReferencedAssemblyName(reference.ResolutionScope);
+		}
+
+		public string? GetTypeFromSpecification(
+			MetadataReader reader,
+			CilGenericContext genericContext,
+			TypeSpecificationHandle handle,
+			byte rawTypeKind) => reader
+			.GetTypeSpecification(handle)
+			.DecodeSignature(this, genericContext);
+	}
 }
 
 internal sealed record CilMethod(
@@ -3169,13 +5226,41 @@ internal sealed record CilMethod(
 	CilExternalCall? ExternalCall,
 	string ModuleName = "",
 	MethodAttributes Attributes = 0,
-	TypeAttributes DeclaringTypeAttributes = 0)
+	TypeAttributes DeclaringTypeAttributes = 0,
+	ImmutableArray<ParameterAttributes> ParameterFlags = default,
+	CilType? ConstructedDeclaringType = null,
+	ImmutableArray<CilType> MethodTypeArguments = default)
 {
-	public CilMethodIdentity Identity => new(ModuleName, Handle);
+	public string Construction => FormatConstruction(
+		ConstructedDeclaringType,
+		MethodTypeArguments.IsDefault
+			? ImmutableArray<CilType>.Empty
+			: MethodTypeArguments);
+
+	public CilMethodIdentity Identity => new(ModuleName, Handle, Construction);
+
+	public CilGenericContext GenericContext => new(
+		ConstructedDeclaringType?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+		MethodTypeArguments.IsDefault
+			? ImmutableArray<CilType>.Empty
+			: MethodTypeArguments);
+
+	public static string FormatConstruction(
+		CilType? constructedDeclaringType,
+		ImmutableArray<CilType> methodTypeArguments) =>
+		constructedDeclaringType is null && methodTypeArguments.Length == 0
+			? string.Empty
+			: $"type={constructedDeclaringType?.DisplayName ?? string.Empty};method=" +
+				string.Join(",", methodTypeArguments.Select(static type => type.DisplayName));
 
 	public bool IsImport => ImportName is not null || ExternalCall is not null;
 
 	public bool IsAbstract => (Attributes & MethodAttributes.Abstract) != 0;
+
+	public bool IsTypeInitializer =>
+		Name == ".cctor" &&
+		(Attributes & (MethodAttributes.Static | MethodAttributes.SpecialName)) ==
+			(MethodAttributes.Static | MethodAttributes.SpecialName);
 
 	public bool IsVirtual => (Attributes & MethodAttributes.Virtual) != 0;
 
@@ -3218,9 +5303,13 @@ internal sealed record CilField(
 	CilType Type,
 	bool IsStatic,
 	int? ExternalOffset = null,
-	string ModuleName = "")
+	string ModuleName = "",
+	CilType? ConstructedDeclaringType = null)
 {
-	public CilFieldIdentity Identity => new(ModuleName, Handle);
+	public CilFieldIdentity Identity => new(
+		ModuleName,
+		Handle,
+		ConstructedDeclaringType?.DisplayName ?? string.Empty);
 }
 
 internal sealed record CilTypeLayout(
@@ -3229,10 +5318,22 @@ internal sealed record CilTypeLayout(
 	int Size,
 	uint ReferenceBitmap,
 	IReadOnlyDictionary<FieldDefinitionHandle, int> FieldOffsets,
-	string ModuleName = "")
+	string ModuleName = "",
+	CilType? ConstructedType = null)
 {
-	public CilTypeIdentity Identity => new(ModuleName, Handle);
+	public CilTypeIdentity Identity => new(
+		ModuleName,
+		Handle,
+		ConstructedType?.DisplayName ?? string.Empty);
 }
+
+internal sealed record CilRuntimeTypeTarget(
+	CilType Type,
+	string ModuleName,
+	EntityHandle Handle,
+	bool IsInterface,
+	bool IsArray,
+	bool IsConstructedGeneric = false);
 
 internal sealed record CilVirtualTable(
 	CilTypeLayout Type,
@@ -3241,7 +5342,8 @@ internal sealed record CilVirtualTable(
 internal sealed record CilInterfaceDefinition(
 	CilTypeIdentity Identity,
 	string DisplayName,
-	ImmutableArray<CilMethod> Slots);
+	ImmutableArray<CilMethod> Slots,
+	CilType? ConstructedType = null);
 
 internal sealed record CilInterfaceImplementation(
 	CilTypeLayout Type,
@@ -3254,15 +5356,18 @@ internal readonly record struct CilInterfaceImplementationIdentity(
 
 internal readonly record struct CilMethodIdentity(
 	string ModuleName,
-	MethodDefinitionHandle Handle);
+	MethodDefinitionHandle Handle,
+	string Construction = "");
 
 internal readonly record struct CilFieldIdentity(
 	string ModuleName,
-	FieldDefinitionHandle Handle);
+	FieldDefinitionHandle Handle,
+	string Construction = "");
 
 internal readonly record struct CilTypeIdentity(
 	string ModuleName,
-	TypeDefinitionHandle Handle);
+	TypeDefinitionHandle Handle,
+	string Construction = "");
 
 internal readonly record struct CilUserStringIdentity(
 	string ModuleName,
@@ -3282,19 +5387,70 @@ internal sealed record CilExternalCall(
 	M68kExternalCallConvention Convention,
 	CilRegisterAbi Abi);
 
+internal sealed record FrameworkVirtualFallback(
+	FrameworkBinding Binding,
+	CilMethod Method);
+
 internal sealed record MethodReference(
 	CilMethod? Definition,
 	string? ImportName,
-	MethodSignature<CilType> Signature)
+	MethodSignature<CilType> Signature,
+	FrameworkBinding? FrameworkBinding = null,
+	CilType? ConstructedDeclaringType = null)
 {
-	public static MethodReference ForDefinition(CilMethod method) =>
-		new(method, method.ImportName, method.Signature);
+	public static MethodReference ForDefinition(
+		CilMethod method,
+		CilType? constructedDeclaringType = null) =>
+		new(
+			method,
+			method.ImportName,
+			method.Signature,
+			ConstructedDeclaringType: constructedDeclaringType);
 
 	public static MethodReference ForIntrinsic(
 		string name,
 		MethodSignature<CilType> signature) =>
 		new(null, name, signature);
 
+	public static MethodReference ForBinding(
+		FrameworkBinding binding,
+		MethodSignature<CilType> signature,
+		CilType? constructedDeclaringType = null) =>
+		new(
+			null,
+			binding.Target,
+			signature,
+			binding,
+			constructedDeclaringType);
+
+	public static MethodReference ForShadowBinding(
+		FrameworkBinding binding,
+		CilMethod shadowMethod,
+		MethodSignature<CilType> publicSignature) =>
+		new(shadowMethod, shadowMethod.ImportName, publicSignature, binding);
+
 	public int ParameterCount =>
 		Signature.ParameterTypes.Length + (Signature.Header.IsInstance ? 1 : 0);
+}
+
+internal sealed record CilMethodReferenceIdentity(
+	string AssemblyName,
+	string TypeName,
+	string Name,
+	bool IsStatic,
+	int GenericArity,
+	string ReturnType,
+	ImmutableArray<string> ParameterTypes,
+	ImmutableArray<string> MethodTypeArguments)
+{
+	public string Key => string.Join(
+		'\u001f',
+		AssemblyName,
+		TypeName,
+		Name,
+		IsStatic,
+		GenericArity,
+		ReturnType,
+		string.Join('\u001e', ParameterTypes),
+		string.Join('\u001e', MethodTypeArguments));
 }

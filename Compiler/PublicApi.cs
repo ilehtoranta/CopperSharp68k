@@ -502,7 +502,8 @@ public sealed class M68kCompilationResult
 			allocationStatistics,
 		IReadOnlyList<Backend.M68kTerminalDeadStoreStatistics>
 			terminalDeadStoreStatistics,
-		IReadOnlyList<M68kLoopFootprint> loopFootprints)
+		IReadOnlyList<M68kLoopFootprint> loopFootprints,
+		IReadOnlyList<string> frameworkFeatures)
 	{
 		Image = image;
 		Code = code;
@@ -514,6 +515,7 @@ public sealed class M68kCompilationResult
 		AllocationStatistics = allocationStatistics;
 		TerminalDeadStoreStatistics = terminalDeadStoreStatistics;
 		LoopFootprints = loopFootprints;
+		FrameworkFeatures = frameworkFeatures;
 	}
 
 	public byte[] Image { get; }
@@ -537,6 +539,9 @@ public sealed class M68kCompilationResult
 	/// Cache lines use the MC68020/MC68030 256-byte, four-byte-line model.
 	/// </summary>
 	public IReadOnlyList<M68kLoopFootprint> LoopFootprints { get; }
+
+	/// <summary>Independently linked framework/runtime capabilities.</summary>
+	public IReadOnlyList<string> FrameworkFeatures { get; }
 
 	internal IReadOnlyList<Backend.M68kMethodAllocationStatistics>
 		AllocationStatistics { get; }

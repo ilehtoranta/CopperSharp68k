@@ -31,7 +31,8 @@ internal sealed record CilType(
 	int Size,
 	string DisplayName,
 	CilType? ElementType = null,
-	ImmutableArray<CilType> GenericArguments = default)
+	ImmutableArray<CilType> GenericArguments = default,
+	bool IsReadOnly = false)
 {
 	public bool IsVoid => Kind == CilTypeKind.Void;
 
@@ -77,7 +78,12 @@ internal sealed class CilSignatureTypeProvider :
 		new(CilTypeKind.ManagedReference, 4, $"{elementType.DisplayName}[{new string(',', Math.Max(0, shape.Rank - 1))}]", elementType);
 
 	public CilType GetByReferenceType(CilType elementType) =>
-		new(CilTypeKind.ManagedPointer, 4, $"{elementType.DisplayName}&", elementType);
+		new(
+			CilTypeKind.ManagedPointer,
+			4,
+			$"{elementType.DisplayName}&",
+			elementType,
+			IsReadOnly: elementType.IsReadOnly);
 
 	public CilType GetFunctionPointerType(MethodSignature<CilType> signature) =>
 		new(CilTypeKind.FunctionPointer, 4, "method*");
@@ -106,7 +112,10 @@ internal sealed class CilSignatureTypeProvider :
 			: new(CilTypeKind.GenericParameter, 4, $"!{index}");
 
 	public CilType GetModifiedType(CilType modifier, CilType unmodifiedType, bool isRequired) =>
-		unmodifiedType;
+		isRequired && modifier.DisplayName ==
+			"System.Runtime.CompilerServices.IsReadOnlyAttribute"
+				? unmodifiedType with { IsReadOnly = true }
+				: unmodifiedType;
 
 	public CilType GetPinnedType(CilType elementType) => elementType;
 

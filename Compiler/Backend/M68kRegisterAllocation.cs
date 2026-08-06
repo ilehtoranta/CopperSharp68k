@@ -586,8 +586,17 @@ internal static class M68kRegisterAllocatorPipeline
 {
 	private const int MaximumAllocationIterations = 16;
 
-	public static M68kAllocatedFunction Run(M68kMachineFunction function)
+	public static M68kAllocatedFunction Run(
+		M68kMachineFunction function,
+		bool allowUntrackedManagedByrefs = false,
+		bool allowCallerBorrowedByrefs = false,
+		bool rejectManagedByrefReturn = false)
 	{
+		M68kByrefOwnerRooting.Insert(
+			function,
+			allowUntrackedManagedByrefs,
+			allowCallerBorrowedByrefs,
+			rejectManagedByrefReturn);
 		M68kCriticalEdgeSplitter.SplitPhiEdges(function);
 		var originalValueCount = function.Values.Count;
 		var allSlots = new Dictionary<int, M68kSpillSlot>();

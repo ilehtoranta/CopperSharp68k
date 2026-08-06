@@ -4,7 +4,10 @@
  */
 
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using CopperSharp.Compiler;
+using CopperSharp.Targets.Amiga;
 
 return Run(args);
 
@@ -19,8 +22,10 @@ static int Run(string[] args)
 	try
 	{
 		var input = args[0];
-		var output = GetRequired(args, "--output");
+		var frameworkReport = GetOptional(args, "--framework-report");
+		var output = frameworkReport is null ? GetRequired(args, "--output") : null;
 		var entry = GetRequired(args, "--entry");
+		var platform = ParsePlatform(GetOptional(args, "--platform") ?? "generic");
 		var cpu = ParseCpu(GetOptional(args, "--cpu") ?? "68000");
 		var floatingPoint = ParseFloatingPoint(GetOptional(args, "--fpu") ?? "disabled");
 		var clrPolicy = ParseClrPolicy(GetOptional(args, "--clr") ?? "auto");
@@ -39,7 +44,7 @@ static int Run(string[] args)
 		var stack = ParseUInt(GetOptional(args, "--stack") ?? "0x80000");
 		var imports = ParseImports(args);
 
-		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		var request = new M68kCompilationRequest
 		{
 			AssemblyPath = input,
 			EntryPoint = entry,
@@ -56,15 +61,50 @@ static int Run(string[] args)
 				BaseAddress = romBase,
 				InitialStackPointer = stack
 			}
-		});
+		};
 
-		var directory = Path.GetDirectoryName(Path.GetFullPath(output));
+		if (frameworkReport is not null)
+		{
+			var analysis = platform == CompilerPlatform.Amiga
+				? AmigaM68kCompiler.AnalyzeFramework(request)
+				: M68kCompiler.AnalyzeFramework(request);
+			var options = new JsonSerializerOptions
+			{
+				WriteIndented = true,
+				Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+			};
+			var json = JsonSerializer.Serialize(analysis, options);
+			if (frameworkReport == "-")
+			{
+				Console.WriteLine(json);
+			}
+			else
+			{
+				var reportDirectory = Path.GetDirectoryName(Path.GetFullPath(frameworkReport));
+				if (!string.IsNullOrEmpty(reportDirectory))
+				{
+					Directory.CreateDirectory(reportDirectory);
+				}
+
+				File.WriteAllText(frameworkReport, json);
+				Console.WriteLine(
+					$"Wrote framework compatibility report for {analysis.Members.Count} reachable members to '{frameworkReport}'.");
+			}
+
+			return analysis.IsCompatible ? 0 : 1;
+		}
+
+		var result = platform == CompilerPlatform.Amiga
+			? AmigaM68kCompiler.Compile(request)
+			: M68kCompiler.Compile(request);
+
+		var directory = Path.GetDirectoryName(Path.GetFullPath(output!));
 		if (!string.IsNullOrEmpty(directory))
 		{
 			Directory.CreateDirectory(directory);
 		}
 
-		File.WriteAllBytes(output, result.Image);
+		File.WriteAllBytes(output!, result.Image);
 		File.WriteAllText(output + ".map", result.Map);
 		Console.WriteLine(
 			$"Wrote {result.Image.Length} bytes for {cpu} to '{output}' (entry ${result.EntryPoint:X8}).");
@@ -108,6 +148,14 @@ static string? GetOptional(string[] args, string name)
 
 	return null;
 }
+
+static CompilerPlatform ParsePlatform(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"generic" or "none" => CompilerPlatform.Generic,
+		"amiga" => CompilerPlatform.Amiga,
+		_ => throw new ArgumentException($"Unknown platform '{value}'.")
+	};
 
 static M68kCpuTarget ParseCpu(string value) =>
 	value.ToLowerInvariant() switch
@@ -206,6 +254,8 @@ static void PrintUsage()
 	Console.WriteLine(
 		"""
 		copper68kc <assembly.dll> --entry Namespace.Type::Method --output <file>
+		copper68kc <assembly.dll> --entry Namespace.Type::Method --framework-report <file|->
+		  [--platform generic|amiga]
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
 		  [--clr auto|always]
 		  [--exceptions full|yolo] [--format hunk|rom|asm]
@@ -213,4 +263,10 @@ static void PrintUsage()
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]
 		""");
+}
+
+enum CompilerPlatform
+{
+	Generic,
+	Amiga
 }

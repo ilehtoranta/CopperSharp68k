@@ -25,21 +25,33 @@ internal enum M68kMachineOperation
 	Constant,
 	Load,
 	Store,
+	AggregateFieldLoad,
 	LocalLoad,
 	ArgumentLoad,
 	LocalStore,
+	ArgumentStore,
 	LocalAddress,
 	ArgumentAddress,
+	DynamicStackAllocate,
 	ObjectAllocate,
 	ArrayAllocate,
 	ArrayLoad,
 	ArrayStore,
 	ArrayAddress,
+	AggregateArrayLoad,
+	AggregateArrayStore,
+	AggregateIndirectLoad,
+	AggregateIndirectStore,
+	AggregateIndirectCopy,
+	AggregateIndirectInitialize,
+	Box,
+	Unbox,
 	SpillLoad,
 	SpillStore,
 	SpillClear,
 	RootStore,
 	RootClear,
+	ByrefOwnerKeepAlive,
 	OutgoingArgumentPush,
 	OutgoingArgumentCleanup,
 	Address,
@@ -56,6 +68,10 @@ internal enum M68kMachineOperation
 	Shift,
 	Compare,
 	Convert,
+	TypeTest,
+	TypeInitialize,
+	FunctionAddress,
+	DelegateCreate,
 	Call,
 	Branch,
 	ConditionalBranch,
@@ -154,7 +170,17 @@ internal sealed record M68kMachineValue(
 internal sealed record M68kFrameHome(
 	int Index,
 	int Size,
-	bool IsGcReference);
+	bool IsGcReference,
+	bool Initialize = true,
+	IReadOnlyList<int>? GcReferenceOffsets = null)
+{
+	public bool HasGcReferences =>
+		IsGcReference || GcReferenceOffsets is { Count: > 0 };
+}
+
+internal readonly record struct M68kManagedByrefType(
+	CilType ReferentType,
+	bool IsReadOnly);
 
 internal sealed record M68kMachinePhi(
 	int Definition,
@@ -190,6 +216,7 @@ internal sealed record M68kMachineInstruction(
 	M68kRegister? StackVarargsRegister = null,
 	int? Immediate = null,
 	bool AllowCopyCoalescing = true,
+	bool TransportsManagedByrefOwner = false,
 	M68kMachineBranchCondition? BranchCondition = null)
 {
 	public static M68kMachineInstruction Create(
@@ -210,6 +237,7 @@ internal sealed record M68kMachineInstruction(
 		M68kRegister? stackVarargsRegister = null,
 		int? immediate = null,
 		bool allowCopyCoalescing = true,
+		bool transportsManagedByrefOwner = false,
 		M68kMachineBranchCondition? branchCondition = null) =>
 		new(
 			id,
@@ -229,6 +257,7 @@ internal sealed record M68kMachineInstruction(
 			stackVarargsRegister,
 			immediate,
 			allowCopyCoalescing,
+			transportsManagedByrefOwner,
 			branchCondition);
 }
 
@@ -274,15 +303,21 @@ internal sealed class M68kMachineFunction
 
 	public Dictionary<int, M68kMachineValue> Values { get; } = new();
 
+	public Dictionary<int, M68kManagedByrefType> ManagedByrefTypes { get; } = new();
+
 	public List<M68kMachineBlock> Blocks { get; } = new();
 
 	public M68kRegisterSet ReservedRegisters { get; set; }
 
 	public bool PreserveCalleeSavedRegisters { get; set; } = true;
 
+	public bool HasDynamicStackAllocation { get; set; }
+
 	public bool HasExceptionHandlers { get; set; }
 
 	public HashSet<int> GcSpillSlots { get; } = new();
+
+
 
 	public Dictionary<int, M68kFrameHome> LocalHomes { get; } = new();
 
@@ -327,6 +362,7 @@ internal sealed class M68kMachineFunction
 		M68kRegister? stackVarargsRegister = null,
 		int? immediate = null,
 		bool allowCopyCoalescing = true,
+		bool transportsManagedByrefOwner = false,
 		M68kMachineBranchCondition? branchCondition = null) =>
 		M68kMachineInstruction.Create(
 			_nextInstructionId++,
@@ -346,6 +382,7 @@ internal sealed class M68kMachineFunction
 			stackVarargsRegister,
 			immediate,
 			allowCopyCoalescing,
+			transportsManagedByrefOwner,
 			branchCondition);
 }
 
@@ -501,6 +538,19 @@ internal static class M68kMachineIrVerifier
 		M68kMachineFunction function,
 		M68kMachineInstruction instruction)
 	{
+		if (instruction.TransportsManagedByrefOwner &&
+			(instruction.Operation != M68kMachineOperation.Call ||
+			 instruction.Uses.Length is < 1 or > 2 ||
+			 function.Values[instruction.Uses[0]].Kind !=
+				CilStackValueKind.ManagedPointer ||
+			 instruction.Uses.Length == 2 &&
+				!function.Values[instruction.Uses[1]].IsGcReference))
+		{
+			throw Invalid(
+				function,
+				$"Managed-byref owner transport {instruction.Id} has an invalid shape.");
+		}
+
 		switch (instruction.Operation)
 		{
 			case M68kMachineOperation.Argument:
@@ -527,7 +577,47 @@ internal static class M68kMachineIrVerifier
 				}
 				break;
 
+			case M68kMachineOperation.AggregateFieldLoad:
+				if (instruction.ArgumentIndex is null ||
+					instruction.Uses.Length > 1 ||
+					instruction.Definitions.Length > 1 ||
+					instruction.MemoryEffect !=
+						(M68kMachineMemoryEffect.Read |
+						 M68kMachineMemoryEffect.Write))
+				{
+					throw Invalid(
+						function,
+						$"Aggregate field load {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.AggregateArrayLoad:
+				if (instruction.ArgumentIndex is null ||
+					instruction.Uses.Length != 2 ||
+					instruction.Definitions.Length > 1 ||
+					instruction.MemoryEffect !=
+						(M68kMachineMemoryEffect.Read |
+						 M68kMachineMemoryEffect.Write))
+				{
+					throw Invalid(
+						function,
+						$"Aggregate array load {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.AggregateArrayStore:
+				if (instruction.Uses.Length != 3 ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Write)
+				{
+					throw Invalid(
+						function,
+						$"Aggregate array store {instruction.Id} has an invalid shape.");
+				}
+				break;
+
 			case M68kMachineOperation.LocalStore:
+			case M68kMachineOperation.ArgumentStore:
 				if (instruction.ArgumentIndex is null ||
 					instruction.Uses.Length != 1 ||
 					instruction.Definitions.Length != 0 ||
@@ -535,7 +625,7 @@ internal static class M68kMachineIrVerifier
 				{
 					throw Invalid(
 						function,
-						$"Local store {instruction.Id} has an invalid shape.");
+						$"Frame store {instruction.Id} has an invalid shape.");
 				}
 				break;
 
@@ -548,6 +638,16 @@ internal static class M68kMachineIrVerifier
 					throw Invalid(
 						function,
 						$"Frame address {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.DynamicStackAllocate:
+				if (instruction.Uses.Length != 1 ||
+					instruction.Definitions.Length != 1)
+				{
+					throw Invalid(
+						function,
+						$"Dynamic stack allocation {instruction.Id} has an invalid shape.");
 				}
 				break;
 
@@ -600,8 +700,31 @@ internal static class M68kMachineIrVerifier
 				}
 				break;
 
+			case M68kMachineOperation.ByrefOwnerKeepAlive:
+				if (instruction.Uses.Length == 0 ||
+					instruction.Uses.Any(value =>
+						!function.Values[value].IsGcReference) ||
+					instruction.Definitions.Length != 0 ||
+					instruction.ArgumentIndex is not null ||
+					instruction.SpillSlotIndex is not null ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.None ||
+					instruction.IsSafepoint)
+				{
+					throw Invalid(
+						function,
+						$"Byref owner keepalive {instruction.Id} has an invalid shape.");
+				}
+				break;
+
 			case M68kMachineOperation.OutgoingArgumentPush:
-				if (instruction.ArgumentIndex is not 4 and not 8 ||
+				var outgoingBytes = instruction.ArgumentIndex ?? 0;
+				var pushesAggregate = instruction.Uses.Length == 1 &&
+					function.Values[instruction.Uses[0]].Kind is
+						CilStackValueKind.ManagedPointer or
+						CilStackValueKind.AggregateAddress;
+				if (outgoingBytes <= 0 ||
+					(outgoingBytes & 3) != 0 ||
+					(!pushesAggregate && outgoingBytes is not 4 and not 8) ||
 					instruction.Uses.Length != 1 ||
 					instruction.Definitions.Length != 0 ||
 					instruction.MemoryEffect != M68kMachineMemoryEffect.Write)
@@ -620,6 +743,75 @@ internal static class M68kMachineIrVerifier
 					throw Invalid(
 						function,
 						$"Outgoing argument cleanup {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.Unbox when instruction.ArgumentIndex is not null:
+				if (instruction.SourceInstruction?.OpCode !=
+						System.Reflection.Emit.OpCodes.Unbox_Any ||
+					instruction.Uses.Length != 1 ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect !=
+						(M68kMachineMemoryEffect.Read |
+						 M68kMachineMemoryEffect.Write))
+				{
+					throw Invalid(
+						function,
+						$"Multiword unbox-to-local {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.AggregateIndirectLoad:
+				if (instruction.ArgumentIndex is null ||
+					instruction.Uses.Length != 1 ||
+					instruction.Definitions.Length > 1 ||
+					instruction.MemoryEffect !=
+						(M68kMachineMemoryEffect.Read |
+						 M68kMachineMemoryEffect.Write))
+				{
+					throw Invalid(
+						function,
+						$"Aggregate indirect load {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.AggregateIndirectCopy:
+				if (instruction.ArgumentIndex is null ||
+					instruction.Uses.Length != 2 ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect !=
+						(M68kMachineMemoryEffect.Read |
+						 M68kMachineMemoryEffect.Write))
+				{
+					throw Invalid(
+						function,
+						$"Aggregate indirect copy {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.AggregateIndirectStore:
+				if (instruction.ArgumentIndex is not null ||
+					instruction.Uses.Length != 2 ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect !=
+						(M68kMachineMemoryEffect.Read |
+						 M68kMachineMemoryEffect.Write))
+				{
+					throw Invalid(
+						function,
+						$"Aggregate indirect store {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.AggregateIndirectInitialize:
+				if (instruction.ArgumentIndex is not null ||
+					instruction.Uses.Length != 1 ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Write)
+				{
+					throw Invalid(
+						function,
+						$"Aggregate indirect initialize {instruction.Id} has an invalid shape.");
 				}
 				break;
 

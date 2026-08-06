@@ -21,8 +21,16 @@ internal enum CilStackValueKind
 	Float32,
 	Float64,
 	Reference,
-	ManagedPointer
+	ManagedPointer,
+	// Logical reference-free aggregate value represented by the address of stable
+	// storage. The analyzer tracks its exact CilType separately so unrelated
+	// value types cannot merge merely because they share this storage shape.
+	AggregateAddress
 }
+
+internal readonly record struct CilAggregateStackType(
+	string ModuleName,
+	CilType Type);
 
 internal static class CilStackAnalyzer
 {
@@ -161,27 +169,41 @@ internal static class CilStackAnalyzer
 
 		var instructions = method.Instructions.ToDictionary(item => item.Offset);
 		var states = new Dictionary<int, ImmutableArray<CilStackValueKind>>();
-		var work = new Queue<(int Offset, ImmutableArray<CilStackValueKind> Stack)>();
-		work.Enqueue((method.Instructions[0].Offset, ImmutableArray<CilStackValueKind>.Empty));
+		var aggregateStates = new Dictionary<int, ImmutableArray<CilAggregateStackType?>>();
+		var work = new Queue<(
+			int Offset,
+			ImmutableArray<CilStackValueKind> Stack,
+			ImmutableArray<CilAggregateStackType?> AggregateTypes)>();
+		work.Enqueue((
+			method.Instructions[0].Offset,
+			ImmutableArray<CilStackValueKind>.Empty,
+			ImmutableArray<CilAggregateStackType?>.Empty));
 		foreach (var region in method.ExceptionRegions)
 		{
+			var handlerStack = region.IsCatch
+				? ImmutableArray.Create(CilStackValueKind.Reference)
+				: ImmutableArray<CilStackValueKind>.Empty;
 			work.Enqueue((
 				region.HandlerOffset,
-				region.IsCatch
-					? ImmutableArray.Create(CilStackValueKind.Reference)
-					: ImmutableArray<CilStackValueKind>.Empty));
+				handlerStack,
+				ImmutableArray.CreateRange<CilAggregateStackType?>(
+					Enumerable.Repeat<CilAggregateStackType?>(null, handlerStack.Length))));
 		}
 
 		while (work.Count != 0)
 		{
-			var (offset, stack) = work.Dequeue();
+			var (offset, stack, aggregateTypes) = work.Dequeue();
 			if (states.TryGetValue(offset, out var priorStack))
 			{
-				if (!priorStack.SequenceEqual(stack))
+				var priorAggregateTypes = aggregateStates[offset];
+				if (!priorStack.SequenceEqual(stack) ||
+					!priorAggregateTypes.SequenceEqual(aggregateTypes))
 				{
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.InvalidEvaluationStack,
-						$"Control-flow merge has incompatible evaluation-stack types: prior [{string.Join(",", priorStack)}], incoming [{string.Join(",", stack)}].",
+						$"Control-flow merge has incompatible evaluation-stack types: " +
+						$"prior [{FormatTypedStack(priorStack, priorAggregateTypes)}], " +
+						$"incoming [{FormatTypedStack(stack, aggregateTypes)}].",
 						method.DisplayName,
 						offset);
 				}
@@ -199,7 +221,15 @@ internal static class CilStackAnalyzer
 			}
 
 			states.Add(offset, stack);
+			aggregateStates.Add(offset, aggregateTypes);
 			var nextStack = ApplyStackEffect(method, module, instruction, stack);
+			var nextAggregateTypes = ApplyAggregateTypeEffect(
+				method,
+				module,
+				instruction,
+				stack,
+				aggregateTypes,
+				nextStack);
 			if (instruction.OpCode == OpCodes.Throw ||
 				instruction.OpCode == OpCodes.Rethrow ||
 				instruction.OpCode == OpCodes.Endfinally)
@@ -213,7 +243,8 @@ internal static class CilStackAnalyzer
 				{
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.InvalidEvaluationStack,
-						$"Return leaves {nextStack.Length} values on the evaluation stack.",
+						$"Return leaves {nextStack.Length} values on the evaluation stack " +
+						$"({string.Join(", ", nextStack)}).",
 						method.DisplayName,
 						instruction.Offset);
 				}
@@ -223,14 +254,20 @@ internal static class CilStackAnalyzer
 
 			if (IsUnconditionalBranch(instruction.OpCode))
 			{
-				EnqueueBranchTarget(work, instruction, nextStack);
+				EnqueueBranchTarget(work, instruction, nextStack, nextAggregateTypes);
 				continue;
 			}
 
 			if (IsConditionalBranch(instruction.OpCode))
 			{
-				EnqueueBranchTarget(work, instruction, nextStack);
-				EnqueueFallthrough(work, instructions, instruction, nextStack, method);
+				EnqueueBranchTarget(work, instruction, nextStack, nextAggregateTypes);
+				EnqueueFallthrough(
+					work,
+					instructions,
+					instruction,
+					nextStack,
+					nextAggregateTypes,
+					method);
 				continue;
 			}
 
@@ -238,14 +275,26 @@ internal static class CilStackAnalyzer
 			{
 				foreach (var target in (int[])instruction.Operand!)
 				{
-					work.Enqueue((target, nextStack));
+					work.Enqueue((target, nextStack, nextAggregateTypes));
 				}
 
-				EnqueueFallthrough(work, instructions, instruction, nextStack, method);
+				EnqueueFallthrough(
+					work,
+					instructions,
+					instruction,
+					nextStack,
+					nextAggregateTypes,
+					method);
 				continue;
 			}
 
-			EnqueueFallthrough(work, instructions, instruction, nextStack, method);
+			EnqueueFallthrough(
+				work,
+				instructions,
+				instruction,
+				nextStack,
+				nextAggregateTypes,
+				method);
 		}
 
 		return states;
@@ -260,6 +309,18 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Ldc_I8)
 		{
 			return 2;
+		}
+
+		if (op == OpCodes.Ldftn)
+		{
+			module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+			return 1;
+		}
+
+		if (op == OpCodes.Ldvirtftn)
+		{
+			module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+			return 0;
 		}
 
 		if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
@@ -280,6 +341,22 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Initobj)
 		{
 			return -1;
+		}
+		if (op == OpCodes.Ldobj)
+		{
+			var type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return SlotCount(type) - 1;
+		}
+		if (op == OpCodes.Stobj || op == OpCodes.Cpobj)
+		{
+			module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return -2;
 		}
 
 		if (TryGetArgumentIndex(instruction, out var argumentIndex))
@@ -474,6 +551,7 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Ldelem_U4 ||
 		op == OpCodes.Ldelem_I ||
 		op == OpCodes.Ldelem_Ref ||
+		op == OpCodes.Ldelem ||
 		op == OpCodes.Ldelema;
 
 	private static bool IsArrayStore(OpCode op) =>
@@ -492,6 +570,8 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Ldind_I4 ||
 		op == OpCodes.Ldind_U4 ||
 		op == OpCodes.Ldind_I ||
+		op == OpCodes.Ldind_I8 ||
+		op == OpCodes.Ldind_R4 ||
 		op == OpCodes.Ldind_Ref;
 
 	private static bool IsIndirectStore(OpCode op) =>
@@ -499,6 +579,8 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Stind_I2 ||
 		op == OpCodes.Stind_I4 ||
 		op == OpCodes.Stind_I ||
+		op == OpCodes.Stind_I8 ||
+		op == OpCodes.Stind_R4 ||
 		op == OpCodes.Stind_Ref;
 
 	private static bool IsConversion(OpCode op) =>
@@ -522,6 +604,16 @@ internal static class CilStackAnalyzer
 		CilInstruction instruction,
 		ImmutableArray<CilStackValueKind> stack) =>
 		work.Enqueue(((int)instruction.Operand!, stack));
+
+	private static void EnqueueBranchTarget(
+		Queue<(
+			int Offset,
+			ImmutableArray<CilStackValueKind> Stack,
+			ImmutableArray<CilAggregateStackType?> AggregateTypes)> work,
+		CilInstruction instruction,
+		ImmutableArray<CilStackValueKind> stack,
+		ImmutableArray<CilAggregateStackType?> aggregateTypes) =>
+		work.Enqueue(((int)instruction.Operand!, stack, aggregateTypes));
 
 	private static void EnqueueFallthrough(
 		Queue<(int Offset, int Depth)> work,
@@ -559,6 +651,29 @@ internal static class CilStackAnalyzer
 		}
 
 		work.Enqueue((instruction.NextOffset, stack));
+	}
+
+	private static void EnqueueFallthrough(
+		Queue<(
+			int Offset,
+			ImmutableArray<CilStackValueKind> Stack,
+			ImmutableArray<CilAggregateStackType?> AggregateTypes)> work,
+		IReadOnlyDictionary<int, CilInstruction> instructions,
+		CilInstruction instruction,
+		ImmutableArray<CilStackValueKind> stack,
+		ImmutableArray<CilAggregateStackType?> aggregateTypes,
+		CilMethod method)
+	{
+		if (!instructions.ContainsKey(instruction.NextOffset))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"Reachable control flow falls past the end of the method.",
+				method.DisplayName,
+				instruction.Offset);
+		}
+
+		work.Enqueue((instruction.NextOffset, stack, aggregateTypes));
 	}
 
 	private static M68kCompilationException Unsupported(
@@ -613,6 +728,18 @@ internal static class CilStackAnalyzer
 			return Push(stack, CilStackValueKind.Int32);
 		}
 
+		if (op == OpCodes.Ldftn)
+		{
+			module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+			return Push(stack, CilStackValueKind.Int32);
+		}
+
+		if (op == OpCodes.Ldvirtftn)
+		{
+			module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+			return Push(Pop(method, instruction, stack, 1), CilStackValueKind.Int32);
+		}
+
 		if (TryGetArgumentIndex(instruction, out var argumentIndex))
 		{
 			return PushValue(stack, StackKindForParameter(module, method, argumentIndex));
@@ -620,7 +747,9 @@ internal static class CilStackAnalyzer
 
 		if (TryGetLoadLocalIndex(instruction, out var loadLocal))
 		{
-			return PushValue(stack, StackKindForType(method.Locals[loadLocal]));
+			return PushValue(
+				stack,
+				StackKindForType(module, method.Locals[loadLocal], method.ModuleName));
 		}
 
 		if (TryGetLoadLocalAddressIndex(instruction, out var loadLocalAddress))
@@ -660,7 +789,11 @@ internal static class CilStackAnalyzer
 
 		if (op == OpCodes.Pop)
 		{
-			return Pop(method, instruction, stack, 1);
+			var popSlots = stack.Length != 0 && stack[^1] is
+				CilStackValueKind.Int64 or CilStackValueKind.Float64
+					? 2
+					: 1;
+			return Pop(method, instruction, stack, popSlots);
 		}
 
 		if (op == OpCodes.Ceq || op == OpCodes.Cgt || op == OpCodes.Cgt_Un ||
@@ -682,6 +815,7 @@ internal static class CilStackAnalyzer
 
 		if (op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.And ||
 			op == OpCodes.Or || op == OpCodes.Xor || op == OpCodes.Mul ||
+			op == OpCodes.Mul_Ovf || op == OpCodes.Mul_Ovf_Un ||
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
 			op == OpCodes.Rem_Un || op == OpCodes.Shl || op == OpCodes.Shr ||
 			op == OpCodes.Shr_Un)
@@ -750,7 +884,6 @@ internal static class CilStackAnalyzer
 
 			return result;
 		}
-
 		if (op == OpCodes.Rethrow || op == OpCodes.Endfinally)
 		{
 			return ImmutableArray<CilStackValueKind>.Empty;
@@ -778,21 +911,72 @@ internal static class CilStackAnalyzer
 			var result = Pop(method, instruction, stack, count);
 			if (op == OpCodes.Newobj)
 			{
+				if (IsSpanValueConstructor(target.ImportName) &&
+					target.ConstructedDeclaringType is { } spanType)
+				{
+					return PushValue(
+						result,
+						StackKindForType(module, spanType, method.ModuleName));
+				}
 				return Push(result, CilStackValueKind.Reference);
 			}
 			return target.Signature.ReturnType.IsVoid
 				? result
-				: PushValue(result, StackKindForType(target.Signature.ReturnType));
+				: PushValue(
+					result,
+					StackKindForType(
+						module,
+						target.Signature.ReturnType,
+						target.Definition?.ModuleName ?? method.ModuleName));
 		}
 
 		if (op == OpCodes.Initobj)
 		{
 			return Pop(method, instruction, stack, 1);
 		}
+		if (op == OpCodes.Ldobj)
+		{
+			var type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return PushValue(
+				Pop(method, instruction, stack, 1),
+				StackKindForType(module, type, method.ModuleName));
+		}
+		if (op == OpCodes.Stobj || op == OpCodes.Cpobj)
+		{
+			module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return Pop(method, instruction, stack, 2);
+		}
 
 		if (op == OpCodes.Newarr)
 		{
 			return Push(Pop(method, instruction, stack, 1), CilStackValueKind.Reference);
+		}
+
+		if (op == OpCodes.Isinst || op == OpCodes.Castclass)
+		{
+			module.ResolveRuntimeTypeToken((int)instruction.Operand!, method, instruction.Offset);
+			return Push(Pop(method, instruction, stack, 1), CilStackValueKind.Reference);
+		}
+
+		if (op == OpCodes.Box)
+		{
+			var type = module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset);
+			return Push(Pop(method, instruction, stack, SlotCount(type)), CilStackValueKind.Reference);
+		}
+
+		if (op == OpCodes.Unbox || op == OpCodes.Unbox_Any)
+		{
+			var type = module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset);
+			var result = Pop(method, instruction, stack, 1);
+			return op == OpCodes.Unbox
+				? Push(result, CilStackValueKind.ManagedPointer)
+				: PushValue(result, StackKindForType(module, type, method.ModuleName));
 		}
 
 		if (op == OpCodes.Ldlen)
@@ -803,7 +987,17 @@ internal static class CilStackAnalyzer
 		if (IsArrayLoad(op))
 		{
 			var result = Pop(method, instruction, stack, 2);
-			return Push(result, op == OpCodes.Ldelema
+			return op == OpCodes.Ldelem
+				? PushValue(
+					result,
+					StackKindForType(
+						module,
+						module.ResolveTypeToken(
+							(int)instruction.Operand!,
+							method,
+							instruction.Offset),
+						method.ModuleName))
+				: Push(result, op == OpCodes.Ldelema
 				? CilStackValueKind.ManagedPointer
 				: op == OpCodes.Ldelem_Ref
 					? CilStackValueKind.Reference
@@ -825,9 +1019,13 @@ internal static class CilStackAnalyzer
 
 		if (IsIndirectLoad(op))
 		{
-			return Push(Pop(method, instruction, stack, 1),
+			return PushValue(Pop(method, instruction, stack, 1),
 				op == OpCodes.Ldind_Ref
 					? CilStackValueKind.Reference
+					: op == OpCodes.Ldind_R4
+						? CilStackValueKind.Float32
+					: op == OpCodes.Ldind_I8
+						? CilStackValueKind.Int64
 					: op == OpCodes.Ldind_I1
 						? CilStackValueKind.SignedByte
 						: op == OpCodes.Ldind_U1
@@ -841,7 +1039,11 @@ internal static class CilStackAnalyzer
 
 		if (IsIndirectStore(op))
 		{
-			return Pop(method, instruction, stack, 2);
+			return Pop(
+				method,
+				instruction,
+				stack,
+				op == OpCodes.Stind_I8 ? 3 : 2);
 		}
 
 		if (op == OpCodes.Ldfld || op == OpCodes.Ldflda ||
@@ -851,7 +1053,9 @@ internal static class CilStackAnalyzer
 			var field = module.ResolveFieldToken((int)instruction.Operand!, method, instruction.Offset);
 			if (op == OpCodes.Ldsfld)
 			{
-				return PushValue(stack, StackKindForType(field.Type));
+				return PushValue(
+					stack,
+					StackKindForType(module, field.Type, field.ModuleName));
 			}
 			if (op == OpCodes.Ldsflda)
 			{
@@ -863,7 +1067,9 @@ internal static class CilStackAnalyzer
 			}
 			if (op == OpCodes.Ldfld)
 			{
-				return PushValue(Pop(method, instruction, stack, 1), StackKindForType(field.Type));
+				return PushValue(
+					Pop(method, instruction, stack, 1),
+					StackKindForType(module, field.Type, field.ModuleName));
 			}
 			if (op == OpCodes.Ldflda)
 			{
@@ -877,12 +1083,216 @@ internal static class CilStackAnalyzer
 			return Pop(method, instruction, stack, SlotCount(method.Signature.ReturnType));
 		}
 
+		if (op == OpCodes.Localloc)
+		{
+			return Push(
+				Pop(method, instruction, stack, 1),
+				CilStackValueKind.ManagedPointer);
+		}
+
 		if (IsConversion(op))
 		{
-			return Push(Pop(method, instruction, stack, 1), StackKindForConversion(op));
+			var inputSlots = stack.Length != 0 && stack[^1] is
+				CilStackValueKind.Int64 or CilStackValueKind.Float64
+					? 2
+					: 1;
+			return Push(
+				Pop(method, instruction, stack, inputSlots),
+				StackKindForConversion(op));
 		}
 
 		throw Unsupported(method, instruction, $"typed stack effect for opcode '{op.Name}'");
+	}
+
+	private static ImmutableArray<CilAggregateStackType?> ApplyAggregateTypeEffect(
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction instruction,
+		ImmutableArray<CilStackValueKind> currentStack,
+		ImmutableArray<CilAggregateStackType?> currentAggregateTypes,
+		ImmutableArray<CilStackValueKind> nextStack)
+	{
+		if (currentStack.Length != currentAggregateTypes.Length)
+		{
+			throw new InvalidOperationException(
+				"Aggregate type state must stay aligned with evaluation-stack kinds.");
+		}
+
+		if (instruction.OpCode == OpCodes.Dup)
+		{
+			EnsureDepth(method, instruction, currentStack, 1);
+			return currentAggregateTypes.Add(currentAggregateTypes[^1]);
+		}
+
+		if (instruction.OpCode == OpCodes.Stobj)
+		{
+			var type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			if (StackKindForType(module, type, method.ModuleName) ==
+					CilStackValueKind.AggregateAddress)
+			{
+				EnsureDepth(method, instruction, currentStack, 2);
+				var expected = new CilAggregateStackType(method.ModuleName, type);
+				if (currentStack[^1] != CilStackValueKind.AggregateAddress ||
+					currentAggregateTypes[^1] != expected)
+				{
+					throw Unsupported(
+						method,
+						instruction,
+						$"stobj source does not match '{type.DisplayName}'");
+				}
+			}
+		}
+
+		var popCount = GetPopSlotCount(method, module, instruction, currentStack);
+		EnsureDepth(method, instruction, currentStack, popCount);
+		var result = currentAggregateTypes.RemoveRange(
+			currentAggregateTypes.Length - popCount,
+			popCount);
+		var pushCount = nextStack.Length - result.Length;
+		if (pushCount < 0)
+		{
+			throw new InvalidOperationException(
+				"Typed stack effect removed more aggregate type entries than stack kinds.");
+		}
+
+		if (pushCount != 0)
+		{
+			result = result.AddRange(
+				Enumerable.Repeat<CilAggregateStackType?>(null, pushCount));
+		}
+
+		if (pushCount == 1 &&
+			nextStack[^1] == CilStackValueKind.AggregateAddress)
+		{
+			if (!TryGetPushedAggregateType(
+				method,
+				module,
+				instruction,
+				out var aggregateType))
+			{
+				throw Unsupported(
+					method,
+					instruction,
+					"aggregate value without an exact value-type identity");
+			}
+
+			result = result.SetItem(result.Length - 1, aggregateType);
+		}
+
+		return result;
+	}
+
+	private static bool TryGetPushedAggregateType(
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction instruction,
+		out CilAggregateStackType aggregateType)
+	{
+		CilType? type = null;
+		var moduleName = method.ModuleName;
+		if (TryGetArgumentIndex(instruction, out var argumentIndex))
+		{
+			type = TypeForParameter(method, argumentIndex);
+		}
+		else if (TryGetLoadLocalIndex(instruction, out var localIndex))
+		{
+			type = method.Locals[localIndex];
+		}
+		else if (instruction.OpCode == OpCodes.Call ||
+			instruction.OpCode == OpCodes.Callvirt)
+		{
+			var target = module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			type = target.Signature.ReturnType;
+			moduleName = target.Definition?.ModuleName ?? method.ModuleName;
+		}
+		else if (instruction.OpCode == OpCodes.Newobj)
+		{
+			var target = module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			if (IsSpanValueConstructor(target.ImportName))
+			{
+				type = target.ConstructedDeclaringType;
+			}
+		}
+		else if (instruction.OpCode == OpCodes.Unbox_Any)
+		{
+			type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+		}
+		else if (instruction.OpCode == OpCodes.Ldfld ||
+			instruction.OpCode == OpCodes.Ldsfld)
+		{
+			var field = module.ResolveFieldToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			type = field.Type;
+			moduleName = field.ModuleName;
+		}
+		else if (instruction.OpCode == OpCodes.Ldelem)
+		{
+			type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+		}
+		else if (instruction.OpCode == OpCodes.Ldobj)
+		{
+			type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+		}
+
+		if (type is not null &&
+			StackKindForType(module, type, moduleName) ==
+				CilStackValueKind.AggregateAddress)
+		{
+			aggregateType = new CilAggregateStackType(moduleName, type);
+			return true;
+		}
+
+		aggregateType = default;
+		return false;
+	}
+
+	private static bool IsSpanByrefConstructor(string? importName) =>
+		importName?.StartsWith(
+			"intrinsic:span-from-ref:",
+			StringComparison.Ordinal) == true ||
+		importName?.StartsWith(
+			"intrinsic:readonly-span-from-ref:",
+			StringComparison.Ordinal) == true;
+
+	private static bool IsSpanValueConstructor(string? importName) =>
+		IsSpanByrefConstructor(importName) ||
+		importName?.StartsWith(
+			"intrinsic:span-from-pointer:",
+			StringComparison.Ordinal) == true;
+
+	private static string FormatTypedStack(
+		ImmutableArray<CilStackValueKind> stack,
+		ImmutableArray<CilAggregateStackType?> aggregateTypes)
+	{
+		var entries = new string[stack.Length];
+		for (var index = 0; index < stack.Length; index++)
+		{
+			entries[index] = aggregateTypes[index] is { } aggregateType
+				? $"{stack[index]}<{aggregateType.ModuleName}:{aggregateType.Type.DisplayName}>"
+				: stack[index].ToString();
+		}
+
+		return string.Join(",", entries);
 	}
 
 	internal static int GetPopSlotCount(
@@ -912,6 +1322,29 @@ internal static class CilStackAnalyzer
 		{
 			return 1;
 		}
+		if (op == OpCodes.Ldobj)
+		{
+			module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return 1;
+		}
+		if (op == OpCodes.Stobj || op == OpCodes.Cpobj)
+		{
+			module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return 2;
+		}
+		if (op == OpCodes.Box)
+		{
+			return SlotCount(module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset));
+		}
 		if (TryGetArgumentIndex(instruction, out _) ||
 			TryGetLoadLocalIndex(instruction, out _) ||
 			TryGetLoadLocalAddressIndex(instruction, out _) ||
@@ -937,6 +1370,16 @@ internal static class CilStackAnalyzer
 		{
 			return 1;
 		}
+		if (op == OpCodes.Pop &&
+			currentStack.Length != 0 &&
+			currentStack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
+		{
+			return 2;
+		}
+		if (op == OpCodes.Stind_I8)
+		{
+			return 3;
+		}
 		if (op == OpCodes.Rethrow || op == OpCodes.Endfinally)
 		{
 			return 0;
@@ -944,6 +1387,12 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Leave || op == OpCodes.Leave_S)
 		{
 			return currentStack.Length;
+		}
+		if (IsConversion(op) &&
+			currentStack.Length != 0 &&
+			currentStack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
+		{
+			return 2;
 		}
 		if ((op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.Mul ||
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
@@ -1053,7 +1502,7 @@ internal static class CilStackAnalyzer
 		var parameter = method.Signature.ParameterTypes[index];
 		return module.IsTransparentScalarType(parameter)
 			? CilStackValueKind.ManagedPointer
-			: StackKindForType(parameter);
+			: StackKindForType(module, parameter, method.ModuleName);
 	}
 
 	private static CilType TypeForParameter(CilMethod method, int index)
@@ -1169,6 +1618,17 @@ internal static class CilStackAnalyzer
 			CilTypeKind.ManagedPointer => CilStackValueKind.ManagedPointer,
 			_ => CilStackValueKind.Int32
 		};
+
+	private static CilStackValueKind StackKindForType(
+		CompilationModule module,
+		CilType type,
+		string moduleName) =>
+		!type.IsSupportedScalar &&
+		!module.IsTransparentScalarType(type) &&
+		module.TryGetStructLayout(type, moduleName, out var layout) &&
+		layout.Size > 4
+			? CilStackValueKind.AggregateAddress
+			: StackKindForType(type);
 
 	private static int SlotCount(CilType type) =>
 		type.IsVoid ? 0 : type.Size == 8 && type.IsSupportedScalar ? 2 : 1;

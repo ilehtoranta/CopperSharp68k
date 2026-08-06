@@ -38,6 +38,9 @@ internal sealed partial class M68kCodeGenerator
 			.Where(static field => field.IsStatic && field.Type.IsReference)
 			.OrderBy(static field =>
 				System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(field.Handle))
+			.ThenBy(
+				static field => field.ConstructedDeclaringType?.DisplayName,
+				StringComparer.Ordinal)
 			.ToArray();
 		_assembler.EmitLong((uint)staticRoots.Length);
 		foreach (var field in staticRoots)
@@ -255,19 +258,31 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeMarkRootsLabel);
 		EmitRootWalkArguments();
+		if (UsesExtendedUnwindSites)
+		{
+			EmitPushRegister(M68kRegister.A5);
+		}
 		EmitPushRegister(M68kRegister.A1);
 		EmitPushRegister(M68kRegister.A0);
-		_assembler.EmitBsr(MethodLabel(runtime.MarkRoots));
-		EmitDiscardStackArguments(2);
+		_assembler.EmitBsr(MethodLabel(
+			UsesExtendedUnwindSites ? runtime.MarkRootsExtended : runtime.MarkRoots));
+		EmitDiscardStackArguments(UsesExtendedUnwindSites ? 3 : 2);
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeCollectWithRootsLabel);
 		EmitRootWalkArguments();
+		if (UsesExtendedUnwindSites)
+		{
+			EmitPushRegister(M68kRegister.A5);
+		}
 		EmitPushRegister(M68kRegister.A1);
 		EmitPushRegister(M68kRegister.A0);
-		_assembler.EmitBsr(MethodLabel(runtime.CollectWithRoots));
-		EmitDiscardStackArguments(2);
+		_assembler.EmitBsr(MethodLabel(
+			UsesExtendedUnwindSites
+				? runtime.CollectWithRootsExtended
+				: runtime.CollectWithRoots));
+		EmitDiscardStackArguments(UsesExtendedUnwindSites ? 3 : 2);
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
@@ -276,6 +291,10 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeCollectWithRootsLabel);
 		EmitRootWalkArguments();
+		if (UsesExtendedUnwindSites)
+		{
+			_assembler.EmitWord(0x244D); // MOVEA.L A5,A2 current frame anchor
+		}
 		_assembler.EmitJsr(M68kRuntimeImports.GcCollect, external: true);
 		_assembler.EmitWord(0x4E75); // RTS
 	}

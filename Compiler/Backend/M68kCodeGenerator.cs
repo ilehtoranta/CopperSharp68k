@@ -16,10 +16,20 @@ internal sealed partial class M68kCodeGenerator
 	private readonly M68kCompilationRequest _request;
 	private readonly M68kAssembler _assembler = new();
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _usedTypeLayouts = new();
+	private readonly Dictionary<string, (CilType Type, CilTypeLayout Layout)>
+		_constructedTypeDescriptors = new(StringComparer.Ordinal);
 	private readonly Dictionary<CilFieldIdentity, CilField> _staticFields = new();
 	private readonly Dictionary<CilUserStringIdentity, string> _stringLiterals = new();
 	private readonly Dictionary<CilUserStringIdentity, string> _cStringLiterals = new();
+	private bool _usesDynamicStrings;
+	private bool _usesRuntimeEmptyString;
+	private CilType? _runtimeEmptyCharArrayElementType;
 	private readonly Dictionary<string, CilType> _arrayTypes = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, CilRuntimeTypeTarget> _arrayElementRuntimeTypes =
+		new(StringComparer.Ordinal);
+	private readonly Dictionary<string, CilType> _boxedTypes = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, CilTypeLayout> _boxedStructLayouts = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, CilType> _delegateTypes = new(StringComparer.Ordinal);
 	private readonly Dictionary<CilTypeIdentity, CilInterfaceDefinition> _usedInterfaces = new();
 	private readonly Dictionary<string, GeneratedPlatformBase> _usedPlatformBases = new(StringComparer.Ordinal);
 	private readonly M68kMemoryManagement _memoryManagement;
@@ -39,7 +49,9 @@ internal sealed partial class M68kCodeGenerator
 	private readonly List<M68kLoopLayout> _loopLayouts = new();
 	private readonly HashSet<CilMethodIdentity> _rootOnlyMethods = new();
 	private readonly HashSet<CilMethodIdentity> _terminatingEntryMethods = new();
+	private readonly HashSet<CilMethodIdentity> _callerBorrowedByrefMethods = new();
 	private readonly HashSet<CilFieldIdentity> _escapedStaticFields = new();
+	private readonly Dictionary<CilMethodIdentity, CilMethod> _typeInitializers = new();
 
 	private enum InlineCandidateKind
 	{
@@ -73,7 +85,8 @@ internal sealed partial class M68kCodeGenerator
 
 	private sealed record InternalCallAbi(
 		ImmutableArray<InternalArgumentLocation> Arguments,
-		int StackBytes)
+		int StackBytes,
+		int? ReturnBufferStackOffset = null)
 	{
 		public bool IsRegisterOnly => StackBytes == 0;
 
@@ -119,9 +132,20 @@ internal sealed partial class M68kCodeGenerator
 				_staticFields.TryAdd(field.Identity, field);
 			}
 		}
-		ValidateMethodSignature(entry, isEntry: true);
+		ValidateMethodSignature(entry, isEntry: true, isExport: false);
 		var exports = _module.GetExports();
 		var methods = PruneAlwaysInlinedMethods(DiscoverReachableMethods(entry, exports), entry, exports);
+		var exportedMethods = exports
+			.Select(static export => export.Method.Identity)
+			.ToHashSet();
+		foreach (var method in methods)
+		{
+			if (method.Identity != entry.Identity &&
+				!exportedMethods.Contains(method.Identity))
+			{
+				_callerBorrowedByrefMethods.Add(method.Identity);
+			}
+		}
 		PreRegisterPlatformBases(methods);
 		EnsureManagedPoolExecBase();
 		var initializesPlatformBase = _usedPlatformBases.Values.Any(RequiresPlatformBaseInitialization);
@@ -184,10 +208,39 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitExportAdapter(export, initializesPlatformBase);
 		}
+		EmitTypeInitializationFailureThunks();
+		EmitBoxedInterfaceThunks();
+		if (_usesExceptionRuntime &&
+			!M68kCompiler.IsManagedRuntime(_request) &&
+			!_assembler.ReferencesTargetPrefix("__c68k_exception_"))
+		{
+			// Method-level analysis is conservative. If final reachable code emitted
+			// no exception-runtime entry reference, the runtime and metadata are dead.
+			_usesExceptionRuntime = false;
+		}
 		EmitExceptionRuntime();
+		if (!_usesExceptionRuntime &&
+			_assembler.ReferencesTarget(RuntimeInitialStackLabel))
+		{
+			// The entry adapter may have conservatively published A7 before final
+			// reachability proved the exception runtime dead. Retain only its private
+			// storage target; no runtime code or exception metadata is emitted.
+			_assembler.Mark(RuntimeInitialStackLabel);
+			_assembler.EmitLong(0);
+		}
 		EmitManagedPoolRuntime();
 		VerifyAllocatedPrePeepholeOutput();
-		_assembler.OptimizeForCpu(_request.Cpu, _request.ClrPolicy);
+		_assembler.ApplyRequestedAlignments();
+		var sizeFirstLoops = _request.Cpu == M68kCpuTarget.M68020
+			? M68kLoopFootprintAnalysis.SelectSizeFirstLayouts(
+				_loopLayouts,
+				_assembler.Labels,
+				_assembler.AnalysisAnchors)
+			: Array.Empty<M68kLoopLayout>();
+		_assembler.OptimizeForCpu(
+			_request.Cpu,
+			_request.ClrPolicy,
+			sizeFirstLoops);
 		_assembler.ApplyRequestedAlignments();
 		_assembler.MarkDataStart();
 		EmitData(methods);
@@ -259,7 +312,14 @@ internal sealed partial class M68kCodeGenerator
 	{
 		var result = new List<CilMethod>();
 		var visited = new HashSet<CilMethodIdentity>();
+		var exportedMethods = exports
+			.Select(static export => export.Method.Identity)
+			.ToHashSet();
 		var queue = new Queue<CilMethod>();
+		var reachableDispatchLayouts =
+			new Dictionary<CilTypeIdentity, CilTypeLayout>();
+		var usedVirtualDeclarations =
+			new Dictionary<CilMethodIdentity, CilMethod>();
 		queue.Enqueue(entry);
 		foreach (var export in exports)
 		{
@@ -267,12 +327,15 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (_managedPoolRuntime is not null)
 		{
-			foreach (var method in _managedPoolRuntime.Methods)
+			foreach (var method in _managedPoolRuntime.CoreMethods)
 			{
 				queue.Enqueue(method);
 			}
 		}
 
+		var requiresExtendedRootWalk = false;
+		var extendedRootWalkQueued = false;
+	ProcessQueue:
 		while (queue.Count != 0)
 		{
 			var method = queue.Dequeue();
@@ -281,15 +344,64 @@ internal sealed partial class M68kCodeGenerator
 				continue;
 			}
 
-			ValidateMethodSignature(method, isEntry: method == entry);
+			ValidateMethodSignature(
+				method,
+				isEntry: method == entry,
+				isExport: exportedMethods.Contains(method.Identity));
 			if (method.IsImport)
 			{
 				continue;
 			}
 
 			result.Add(method);
+			if (ContainsDynamicLocalloc(method))
+			{
+				requiresExtendedRootWalk = true;
+			}
 			foreach (var instruction in method.Instructions)
 			{
+				if (_module.GetTriggeredTypeInitializer(method, instruction) is { } initializer)
+				{
+					queue.Enqueue(initializer);
+				}
+				if (instruction.OpCode == OpCodes.Ldftn ||
+					instruction.OpCode == OpCodes.Ldvirtftn)
+				{
+					var delegateTarget = _module.ResolveMethodToken(
+						(int)instruction.Operand!,
+						method,
+						instruction.Offset);
+					if (instruction.OpCode == OpCodes.Ldvirtftn &&
+						delegateTarget.Definition is
+							{ IsImport: false, DeclaringTypeIsInterface: true } interfaceTarget)
+					{
+						var interfaceDefinition = _module.GetInterfaceDefinition(interfaceTarget);
+						_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
+						foreach (var implementation in _module.GetInterfaceTableImplementations(interfaceTarget))
+						{
+							queue.Enqueue(implementation);
+						}
+					}
+					else if (instruction.OpCode == OpCodes.Ldvirtftn &&
+						delegateTarget.Definition is { IsImport: false } virtualTarget &&
+						virtualTarget.IsVirtual &&
+						!virtualTarget.IsFinal &&
+						!virtualTarget.DeclaringTypeIsSealed)
+					{
+						usedVirtualDeclarations.TryAdd(
+							virtualTarget.Identity,
+							virtualTarget);
+						foreach (var implementation in _module.GetVirtualImplementations(virtualTarget))
+						{
+							queue.Enqueue(implementation);
+						}
+					}
+					else if (delegateTarget.Definition is { IsImport: false } targetDefinition)
+					{
+						queue.Enqueue(targetDefinition);
+					}
+					continue;
+				}
 				if (instruction.OpCode != OpCodes.Call &&
 					instruction.OpCode != OpCodes.Callvirt &&
 					instruction.OpCode != OpCodes.Newobj)
@@ -301,11 +413,17 @@ internal sealed partial class M68kCodeGenerator
 					(int)instruction.Operand!,
 					method,
 					instruction.Offset);
+				if (instruction.OpCode == OpCodes.Newobj &&
+					target.Definition is { IsImport: false } constructor)
+				{
+					var layout = _module.GetTypeLayout(constructor);
+					reachableDispatchLayouts.TryAdd(layout.Identity, layout);
+				}
 				if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 				{
 					var interfaceDefinition = _module.GetInterfaceDefinition(interfaceMethod);
 					_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
-					foreach (var implementation in _module.GetInterfaceImplementations(interfaceMethod))
+					foreach (var implementation in _module.GetInterfaceTableImplementations(interfaceMethod))
 					{
 						queue.Enqueue(implementation);
 					}
@@ -313,6 +431,7 @@ internal sealed partial class M68kCodeGenerator
 				else if (target.Definition is { IsImport: false } definition &&
 					RequiresVirtualDispatch(instruction, definition))
 				{
+					usedVirtualDeclarations.TryAdd(definition.Identity, definition);
 					foreach (var implementation in _module.GetVirtualImplementations(definition))
 					{
 						queue.Enqueue(implementation);
@@ -324,8 +443,72 @@ internal sealed partial class M68kCodeGenerator
 				}
 			}
 		}
+		var queuedClosedDispatchMethod = false;
+		foreach (var layout in reachableDispatchLayouts.Values)
+		{
+			foreach (var interfaceDefinition in _usedInterfaces.Values)
+			{
+				var implementation = _module.TryGetInterfaceImplementation(
+					layout,
+					interfaceDefinition);
+				if (implementation is null)
+				{
+					continue;
+				}
+				foreach (var implementationMethod in implementation.Methods)
+				{
+					if (visited.Contains(implementationMethod.Identity))
+					{
+						continue;
+					}
+					queue.Enqueue(implementationMethod);
+					queuedClosedDispatchMethod = true;
+				}
+			}
+			foreach (var declaration in usedVirtualDeclarations.Values)
+			{
+				var implementation = _module.TryGetVirtualImplementation(
+					layout,
+					declaration);
+				if (implementation is null ||
+					visited.Contains(implementation.Identity))
+				{
+					continue;
+				}
+				queue.Enqueue(implementation);
+				queuedClosedDispatchMethod = true;
+			}
+		}
+		if (queuedClosedDispatchMethod)
+		{
+			goto ProcessQueue;
+		}
+		if (requiresExtendedRootWalk &&
+			!extendedRootWalkQueued &&
+			_managedPoolRuntime is not null)
+		{
+			extendedRootWalkQueued = true;
+			foreach (var method in _managedPoolRuntime.ExtendedRootWalkMethods)
+			{
+				queue.Enqueue(method);
+			}
+			goto ProcessQueue;
+		}
 
 		return result;
+
+		bool ContainsDynamicLocalloc(CilMethod method)
+		{
+			if (!method.Instructions.Any(static instruction =>
+				instruction.OpCode == OpCodes.Localloc))
+			{
+				return false;
+			}
+			return CilMachineIrBuilder.Build(
+				method,
+				_module,
+				_request.Cpu).HasDynamicStackAllocation;
+		}
 	}
 
 	private void PreRegisterPlatformBases(IEnumerable<CilMethod> methods)
@@ -381,7 +564,7 @@ internal sealed partial class M68kCodeGenerator
 				if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 				{
 					referencedByNonInlinedCall.UnionWith(
-						_module.GetInterfaceImplementations(interfaceMethod)
+						_module.GetInterfaceTableImplementations(interfaceMethod)
 							.Select(implementation => implementation.Identity));
 					continue;
 				}
@@ -422,7 +605,10 @@ internal sealed partial class M68kCodeGenerator
 		!method.IsFinal &&
 		!method.DeclaringTypeIsSealed;
 
-	private void ValidateMethodSignature(CilMethod method, bool isEntry)
+	private void ValidateMethodSignature(
+		CilMethod method,
+		bool isEntry,
+		bool isExport)
 	{
 		if (isEntry && method.Signature.Header.IsInstance)
 		{
@@ -448,10 +634,26 @@ internal sealed partial class M68kCodeGenerator
 			method.Signature.ReturnType.IsNullable &&
 				(method.IsImport || method.ExternalCall is not null)
 				? "nullable platform return type"
-				: "return type");
+				: "return type",
+			admitsSpanReturn:
+				!isEntry &&
+				!isExport &&
+				!method.IsImport &&
+				method.ExternalCall is null &&
+				!method.IsVirtual &&
+				!method.DeclaringTypeIsInterface);
 		foreach (var parameter in method.Signature.ParameterTypes)
 		{
-			ValidateType(parameter, method, "parameter");
+			ValidateType(
+				parameter,
+				method,
+				"parameter",
+				admitsSpanParameter:
+					!isEntry &&
+					!isExport &&
+					!method.IsImport &&
+					!method.IsVirtual &&
+					!method.DeclaringTypeIsInterface);
 		}
 
 		foreach (var local in method.Locals)
@@ -460,7 +662,12 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
-	private void ValidateType(CilType type, CilMethod method, string role)
+	private void ValidateType(
+		CilType type,
+		CilMethod method,
+		string role,
+		bool admitsSpanParameter = false,
+		bool admitsSpanReturn = false)
 	{
 		if (type.IsVoid)
 		{
@@ -488,6 +695,18 @@ internal sealed partial class M68kCodeGenerator
 		{
 			if ((role == "local" || role == "nullable platform return type") &&
 				_module.IsSupportedNullableType(type))
+			{
+				return;
+			}
+
+			throw UnsupportedType(type, method, role);
+		}
+
+		if (CompilationModule.IsSupportedSpanLikeType(type))
+		{
+			if (role == "local" ||
+				role == "parameter" && admitsSpanParameter ||
+				role == "return type" && admitsSpanReturn)
 			{
 				return;
 			}
@@ -544,7 +763,15 @@ internal sealed partial class M68kCodeGenerator
 			_module,
 			_terminatingEntryMethods.Contains(method.Identity),
 			_escapedStaticFields);
-		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(machineFunction);
+		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(
+			machineFunction,
+			!M68kCompiler.IsManagedRuntime(_request) ||
+			(_managedPoolRuntime is { Initialize: var runtimeEntry } &&
+			 method.ModuleName == runtimeEntry.ModuleName &&
+			 method.DeclaringType == runtimeEntry.DeclaringType),
+			_callerBorrowedByrefMethods.Contains(method.Identity),
+			method.Signature.ReturnType.Kind == CilTypeKind.ManagedPointer &&
+			!CilManagedByrefSummary.TryGetBorrowedParameterReturn(method, out _));
 		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(method, _module);
 		var branchTargets = GetBranchTargets(method.Instructions);
 		var reachableOffsets = reachableStackStates.Keys.ToHashSet();
@@ -4767,6 +4994,12 @@ internal sealed partial class M68kCodeGenerator
 		var target = _module.ResolveMethodToken((int)instruction.Operand!, caller, instruction.Offset);
 		if (target.Definition is null)
 		{
+			if (target.ImportName == "intrinsic:runtime-throw-overflow")
+			{
+				EmitExceptionRaise(reason: 4, hasException: false);
+				return;
+			}
+
 			if (target.ImportName == "intrinsic:object-ctor")
 			{
 				EmitDiscardStackArguments(target.ParameterCount);
@@ -4789,6 +5022,17 @@ internal sealed partial class M68kCodeGenerator
 				"intrinsic:amiga-vararg-from-literal")
 			{
 				EmitCStringFromLiteral(caller, instruction, target.ImportName);
+				return;
+			}
+
+			if (target.ImportName?.StartsWith(
+				"intrinsic:runtimehelpers-is-reference-or-contains-references:",
+				StringComparison.Ordinal) == true)
+			{
+				EmitPushConstant(
+					target.ImportName.EndsWith(":true", StringComparison.Ordinal)
+						? 1
+						: 0);
 				return;
 			}
 
@@ -4951,7 +5195,10 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
-			if (target.ImportName?.StartsWith("intrinsic:nullable-get-value:", StringComparison.Ordinal) == true)
+			if (target.ImportName?.StartsWith("intrinsic:nullable-get-value:", StringComparison.Ordinal) == true ||
+				target.ImportName?.StartsWith(
+					"intrinsic:nullable-get-value-or-default-no-argument:",
+					StringComparison.Ordinal) == true)
 			{
 				EmitNullableGetValue(pushResult);
 				return;
@@ -5037,7 +5284,7 @@ internal sealed partial class M68kCodeGenerator
 				instruction.Offset);
 		}
 
-		ValidateMethodSignature(target.Definition, isEntry: false);
+		ValidateMethodSignature(target.Definition, isEntry: false, isExport: false);
 		if (instruction.OpCode == OpCodes.Callvirt &&
 			target.Definition.Signature.Header.IsInstance)
 		{
@@ -5168,8 +5415,8 @@ internal sealed partial class M68kCodeGenerator
 		EmitStoreRegisterToFrame(M68kRegister.A2, saveOffset);
 		EmitPrepareInternalCall(declaration, internalAbi);
 		_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2 descriptor
-		_assembler.EmitWord(0x246A); // MOVEA.L 12(A2),A2 vtable
-		_assembler.EmitWord(0x000C);
+		_assembler.EmitWord(0x246A); // MOVEA.L descriptor-vtable(A2),A2
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeVirtualTableOffset));
 		if (slot == 0)
 		{
 			_assembler.EmitWord(0x2452); // MOVEA.L (A2),A2 target
@@ -5211,8 +5458,8 @@ internal sealed partial class M68kCodeGenerator
 		EmitStoreRegisterToFrame(M68kRegister.A3, checked((short)(saveOffset + 8)));
 		EmitPrepareInternalCall(declaration, internalAbi);
 		_assembler.EmitWord(0x2450); // MOVEA.L (A0),A2 descriptor
-		_assembler.EmitWord(0x246A); // MOVEA.L 16(A2),A2 interface map
-		_assembler.EmitWord(0x0010);
+		_assembler.EmitWord(0x246A); // MOVEA.L descriptor-interface-map(A2),A2
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.TypeInterfaceMapOffset));
 		_assembler.EmitWord(0x241A); // MOVE.L (A2)+,D2 entry count
 		EmitAddressImmediateToRegister(
 			M68kRegister.A3,
@@ -5444,10 +5691,13 @@ internal sealed partial class M68kCodeGenerator
 		EmitPushD0();
 	}
 
-	private void EmitManagedCollectWithRoots()
+	private void EmitManagedCollectWithRoots(int additionalStackBytes = 0)
 	{
 		_assembler.EmitBsr(RuntimeCollectWithRootsLabel);
-		RegisterCurrentUnwindSite(exception: false, gc: true);
+		RegisterCurrentUnwindSite(
+			exception: false,
+			gc: true,
+			additionalStackBytes: additionalStackBytes);
 	}
 
 	private bool IsReferenceParameter(CilMethod method, int index)
@@ -5892,7 +6142,7 @@ internal sealed partial class M68kCodeGenerator
 			return false;
 		}
 
-		ValidateMethodSignature(callee, isEntry: false);
+		ValidateMethodSignature(callee, isEntry: false, isExport: false);
 		EmitLoadRegistersFromEvaluationStack(registerAbi);
 		EmitRestoreCalleeSavedRegisters();
 		EmitReleaseStackBytes(checked((registerAbi.Count * 4) + CurrentFrameLayout.FrameBytes));
@@ -5910,7 +6160,7 @@ internal sealed partial class M68kCodeGenerator
 			return false;
 		}
 
-		ValidateMethodSignature(callee, isEntry: false);
+		ValidateMethodSignature(callee, isEntry: false, isExport: false);
 		EmitRestoreCalleeSavedRegisters();
 		EmitExternalCallArguments(callee, externalCall);
 		EmitEnsurePlatformBase(externalCall.Convention, callee);
@@ -5964,6 +6214,16 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitSaveCalleeSavedRegisters()
 	{
+		if (ShouldUseMovemForFrameCalleeSaves(
+			_request.Cpu,
+			CurrentFrameLayout.CalleeSavedRegisters.Length))
+		{
+			EmitStoreRegistersToFrame(
+				CurrentFrameLayout.CalleeSavedRegisters.AsSpan(),
+				CurrentFrameLayout.CalleeSaveOffsets[0]);
+			return;
+		}
+
 		for (var index = 0; index < CurrentFrameLayout.CalleeSavedRegisters.Length; index++)
 		{
 			EmitStoreRegisterToFrame(
@@ -5974,12 +6234,34 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitRestoreCalleeSavedRegisters()
 	{
+		if (ShouldUseMovemForFrameCalleeSaves(
+			_request.Cpu,
+			CurrentFrameLayout.CalleeSavedRegisters.Length))
+		{
+			EmitLoadRegistersFromFrame(
+				CurrentFrameLayout.CalleeSavedRegisters.AsSpan(),
+				CurrentFrameLayout.CalleeSaveOffsets[0]);
+			return;
+		}
+
 		for (var index = 0; index < CurrentFrameLayout.CalleeSavedRegisters.Length; index++)
 		{
 			EmitLoadRegisterFromStack(
 				CurrentFrameLayout.CalleeSavedRegisters[index],
 				CurrentFrameLayout.CalleeSaveOffsets[index]);
 		}
+	}
+
+	internal static bool ShouldUseMovemForFrameCalleeSaves(
+		M68kCpuTarget cpu,
+		int registerCount)
+	{
+		// On a 68000, frame-resident MOVEM is already cycle-neutral or faster at
+		// two registers and becomes increasingly better as the register count grows.
+		// On 68020+, cached individual MOVE.L instructions are faster; keep the
+		// speed-first path there. Prologues and epilogues are outside natural loops,
+		// so loop-size profitability does not apply to these frame saves.
+		return cpu == M68kCpuTarget.M68000 && registerCount >= 2;
 	}
 
 	private void EmitLoadRegisterFromStack(M68kRegister register, int offset)
@@ -6284,6 +6566,35 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
+	private void EmitLoadRegistersFromFrame(ReadOnlySpan<M68kRegister> registers, short displacement)
+	{
+		if (registers.Length < 2)
+		{
+			foreach (var register in registers)
+			{
+				EmitLoadRegisterFromStack(register, displacement);
+				displacement = checked((short)(displacement + 4));
+			}
+			return;
+		}
+
+		foreach (var register in registers)
+		{
+			InvalidatePlatformBaseIfWritingRegister(register);
+		}
+
+		if (displacement == 0)
+		{
+			_assembler.EmitWord(0x4CD7); // MOVEM.L (A7),regs
+			_assembler.EmitWord(EncodeMovemRegisterMask(registers));
+			return;
+		}
+
+		_assembler.EmitWord(0x4CEF); // MOVEM.L d16(A7),regs
+		_assembler.EmitWord(EncodeMovemRegisterMask(registers));
+		_assembler.EmitWord(unchecked((ushort)displacement));
+	}
+
 	private void EmitStoreByteToFrame(M68kRegister register, short displacement)
 	{
 		if (register > M68kRegister.D7)
@@ -6435,10 +6746,20 @@ internal sealed partial class M68kCodeGenerator
 			var parameter = method.Signature.ParameterTypes[parameterIndex];
 			var argumentIndex = parameterIndex + (method.Signature.Header.IsInstance ? 1 : 0);
 			var slotLongs = ArgumentSlotLongs(method, argumentIndex);
+			var isMultiwordStruct = _module.TryGetReferenceFreeStructLayout(
+				parameter,
+				method.ModuleName,
+				out var structLayout) &&
+				structLayout.Size > 4;
 			M68kRegister? register = null;
 			M68kRegister? lowRegister = null;
 
-			if (Is64BitScalar(parameter) && nextData == 0)
+			if (isMultiwordStruct)
+			{
+				// Aggregates are passed as whole values on the stack. The caller's
+				// temporary address is an IR detail and never crosses the call ABI.
+			}
+			else if (Is64BitScalar(parameter) && nextData == 0)
 			{
 				register = M68kRegister.D0;
 				lowRegister = M68kRegister.D1;
@@ -6471,7 +6792,21 @@ internal sealed partial class M68kCodeGenerator
 				parameter.Kind == CilTypeKind.ManagedReference));
 		}
 
-		return new InternalCallAbi(arguments.MoveToImmutable(), stackOffset);
+		int? returnBufferStackOffset = null;
+		if (_module.TryGetReferenceFreeStructLayout(
+				method.Signature.ReturnType,
+				method.ModuleName,
+				out var returnLayout) &&
+			returnLayout.Size > 4)
+		{
+			returnBufferStackOffset = stackOffset;
+			stackOffset = checked(stackOffset + 4);
+		}
+
+		return new InternalCallAbi(
+			arguments.MoveToImmutable(),
+			stackOffset,
+			returnBufferStackOffset);
 	}
 
 	private static bool IsInternalAddressArgument(CilType type) =>
@@ -6593,13 +6928,24 @@ internal sealed partial class M68kCodeGenerator
 		var constructorAbi = GetInternalCallAbi(constructor);
 
 		var layout = _module.GetTypeLayout(constructor);
-		_usedTypeLayouts.TryAdd(layout.Identity, layout);
+		var descriptorLabel = TypeDescriptorLabel(layout);
+		if (constructor.ConstructedDeclaringType is { } constructedType)
+		{
+			_constructedTypeDescriptors.TryAdd(
+				constructedType.DisplayName,
+				(constructedType, layout));
+			descriptorLabel = ConstructedTypeDescriptorLabel(layout, constructedType);
+		}
+		else
+		{
+			_usedTypeLayouts.TryAdd(layout.Identity, layout);
+		}
 		EmitPushConstant(layout.Size);
 		EmitManagedAllocation();
 
 		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0
 		_assembler.EmitWord(0x20BC); // MOVE.L #descriptor,(A0)
-		_assembler.EmitAddress(TypeDescriptorLabel(layout));
+		_assembler.EmitAddress(descriptorLabel);
 		if (layout.Size <= sbyte.MaxValue)
 		{
 			_assembler.EmitWord((ushort)(0x7200 | (byte)layout.Size)); // MOVEQ #size,D1
@@ -6888,13 +7234,13 @@ internal sealed partial class M68kCodeGenerator
 		var sizeWasClobbered = false;
 		if (strategy == M68kGcSweepStrategy.EveryAllocation)
 		{
-			EmitManagedCollectWithRoots();
+			EmitManagedCollectWithRoots(preserveInD2 ? 4 : 0);
 			_loadedPlatformBase = null;
 			sizeWasClobbered = true;
 		}
 		else if (strategy == M68kGcSweepStrategy.TelemetryTriggered)
 		{
-			EmitTelemetryTriggeredCollection();
+			EmitTelemetryTriggeredCollection(preserveInD2 ? 4 : 0);
 			sizeWasClobbered = true;
 		}
 
@@ -6909,7 +7255,7 @@ internal sealed partial class M68kCodeGenerator
 			var done = UniqueLabel("gc_alloc_call_done");
 			_assembler.EmitWord(0x4A80); // TST.L D0
 			_assembler.EmitBranch(M68kCondition.NotEqual, done);
-			EmitManagedCollectWithRoots();
+			EmitManagedCollectWithRoots(preserveInD2 ? 4 : 0);
 			_loadedPlatformBase = null;
 			RestoreAllocationSize();
 			_assembler.EmitBsr(RuntimeAllocLabel);
@@ -6924,7 +7270,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitRequireAllocationSucceeded();
 	}
 
-	private void EmitTelemetryTriggeredCollection()
+	private void EmitTelemetryTriggeredCollection(int additionalStackBytes = 0)
 	{
 		var checkBlocks = UniqueLabel("gc_telemetry_check_blocks");
 		var collect = UniqueLabel("gc_telemetry_collect");
@@ -6943,7 +7289,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0xB280); // CMP.L D0,D1
 		_assembler.EmitBranch(M68kCondition.CarrySet, done);
 		_assembler.Mark(collect);
-		EmitManagedCollectWithRoots();
+		EmitManagedCollectWithRoots(additionalStackBytes);
 		_loadedPlatformBase = null;
 		_assembler.Mark(done);
 	}
@@ -6990,9 +7336,18 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitIndirectLoad(OpCode op)
 	{
-		var access = GetIndirectAccess(op);
 		_assembler.EmitWord(0x205F); // MOVEA.L (A7)+,A0
 		EmitNormalizeIndirectPointer();
+		if (op == OpCodes.Ldind_I8)
+		{
+			EmitLoadD0FromA0Displacement(4, signExtend: false, 12);
+			_assembler.EmitWord(0x2228); // MOVE.L 16(A0),D1
+			_assembler.EmitWord(16);
+			EmitPushRegister(M68kRegister.D0);
+			EmitPushRegister(M68kRegister.D1);
+			return;
+		}
+		var access = GetIndirectAccess(op);
 		EmitLoadD0FromA0Displacement(access.Size, access.SignExtend, 12);
 		if (access.Size == 1)
 		{
@@ -7006,6 +7361,17 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitIndirectStore(OpCode op)
 	{
+		if (op == OpCodes.Stind_I8)
+		{
+			EmitPopStackValue(M68kRegister.D1, CurrentStackKind());
+			EmitPopStackValue(M68kRegister.D0, CurrentStackKind(1));
+			_assembler.EmitWord(0x205F); // MOVEA.L (A7)+,A0
+			EmitNormalizeIndirectPointer();
+			EmitStoreD0ToA0Displacement(4, 12);
+			_assembler.EmitWord(0x2141); // MOVE.L D1,16(A0)
+			_assembler.EmitWord(16);
+			return;
+		}
 		var size = GetIndirectAccess(op).Size;
 		EmitPopStackValue(M68kRegister.D0, CurrentStackKind());
 		_assembler.EmitWord(0x205F); // MOVEA.L (A7)+,A0
@@ -7163,7 +7529,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var layout = _module.GetTypeLayout(field);
-		_usedTypeLayouts.TryAdd(layout.Identity, layout);
+		if (field.ConstructedDeclaringType is null)
+		{
+			_usedTypeLayouts.TryAdd(layout.Identity, layout);
+		}
 		return checked((short)layout.FieldOffsets[field.Handle]);
 	}
 
@@ -7205,9 +7574,9 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitExceptionMetadata(IReadOnlyList<CilMethod> methods)
 	{
-		if (_unwindSites.Count == 0 &&
-			!_usesExceptionRuntime &&
-			!M68kCompiler.IsManagedRuntime(_request))
+		if (!_usesExceptionRuntime &&
+			!M68kCompiler.IsManagedRuntime(_request) &&
+			!_assembler.ReferencesTarget(MethodTableLabel))
 		{
 			return;
 		}
@@ -7238,6 +7607,17 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.EmitAddress(RuntimeRootMapLabel(index));
 			}
+			if (UnwindSiteEntryBytes > 20)
+			{
+				if (site.ExceptionCleanupLabel is null)
+				{
+					_assembler.EmitLong(0);
+				}
+				else
+				{
+					_assembler.EmitAddress(site.ExceptionCleanupLabel);
+				}
+			}
 		}
 
 		for (var index = 0; index < _unwindSites.Count; index++)
@@ -7262,6 +7642,13 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitLong((uint)layout.FrameBytes);
 			_assembler.EmitLong((uint)(layout.CalleeSavedRegisters.Length * 4));
 			_assembler.EmitAddress(RuntimeMethodUnwindRestoreLabel(layout.Method));
+			if (UsesExtendedUnwindSites)
+			{
+				_assembler.EmitLong(layout.HasDynamicStackAllocation ? 1u : 0u);
+				_assembler.EmitLong(layout.SavedFrameAnchorOffset is { } anchorOffset
+					? checked((uint)anchorOffset + 1)
+					: 0u);
+			}
 
 			_assembler.Mark(RuntimeMethodUnwindRestoreLabel(layout.Method));
 			_assembler.EmitWord(0x2041); // MOVEA.L D1,A0 exception context
@@ -7334,9 +7721,40 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		foreach (var layout in _usedTypeLayouts.Values
+		foreach (var initializer in _typeInitializers.Values
+			.OrderBy(item => item.ModuleName, StringComparer.Ordinal)
+			.ThenBy(item => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.DeclaringType)))
+		{
+			_assembler.Mark(TypeInitializationStateLabel(initializer));
+			_assembler.EmitLong(0);
+			if (TypeInitializerCanFail(initializer))
+			{
+				_assembler.Mark(TypeInitializationExceptionLabel(initializer));
+				_assembler.EmitLong(0);
+				_assembler.Mark(TypeInitializationWrapperLabel(initializer));
+				_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.TypeInitializationException"));
+				_assembler.EmitLong(12);
+				_assembler.Mark(TypeInitializationWrapperInnerLabel(initializer));
+				_assembler.EmitLong(0);
+			}
+		}
+
+		var dispatchLayouts = _usedTypeLayouts.Values
+			.Concat(_constructedTypeDescriptors.Values.Select(static item => item.Layout))
+			.DistinctBy(static layout => layout.Identity)
 			.OrderBy(layout => layout.ModuleName, StringComparer.Ordinal)
-			.ThenBy(layout => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle)))
+			.ThenBy(layout => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle))
+			.ThenBy(layout => layout.Identity.Construction, StringComparer.Ordinal)
+			.ToArray();
+		var constructedLayoutIdentities = _constructedTypeDescriptors.Values
+			.Select(static item => item.Layout.Identity)
+			.ToHashSet();
+
+		foreach (var layout in _usedTypeLayouts.Values
+			.Where(layout => !constructedLayoutIdentities.Contains(layout.Identity))
+			.OrderBy(layout => layout.ModuleName, StringComparer.Ordinal)
+			.ThenBy(layout => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle))
+			.ThenBy(layout => layout.Identity.Construction, StringComparer.Ordinal))
 		{
 			var virtualTable = _module.GetVirtualTable(layout);
 			var interfaceImplementations = GetUsedInterfaceImplementations(layout);
@@ -7362,12 +7780,38 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
+		foreach (var item in _constructedTypeDescriptors.Values
+			.OrderBy(item => item.Type.DisplayName, StringComparer.Ordinal))
+		{
+			var layout = item.Layout;
+			var virtualTable = _module.GetVirtualTable(layout);
+			var interfaceImplementations = GetUsedInterfaceImplementations(layout);
+			_assembler.Mark(ConstructedTypeDescriptorLabel(layout, item.Type));
+			_assembler.EmitLong((uint)layout.Size);
+			_assembler.EmitLong(layout.ReferenceBitmap);
+			EmitTypeDescriptorBase(layout);
+			if (virtualTable.Slots.Length == 0)
+			{
+				_assembler.EmitLong(0);
+			}
+			else
+			{
+				_assembler.EmitAddress(VirtualTableLabel(layout));
+			}
+			if (interfaceImplementations.Count == 0)
+			{
+				_assembler.EmitLong(0);
+			}
+			else
+			{
+				_assembler.EmitAddress(InterfaceMapLabel(layout));
+			}
+		}
+
 		var compiledMethods = methods
 			.Select(method => method.Identity)
 			.ToHashSet();
-		foreach (var layout in _usedTypeLayouts.Values
-			.OrderBy(layout => layout.ModuleName, StringComparer.Ordinal)
-			.ThenBy(layout => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle)))
+		foreach (var layout in dispatchLayouts)
 		{
 			var virtualTable = _module.GetVirtualTable(layout);
 			if (virtualTable.Slots.Length == 0)
@@ -7391,15 +7835,14 @@ internal sealed partial class M68kCodeGenerator
 
 		foreach (var interfaceDefinition in _usedInterfaces.Values
 			.OrderBy(item => item.Identity.ModuleName, StringComparer.Ordinal)
-			.ThenBy(item => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.Identity.Handle)))
+			.ThenBy(item => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.Identity.Handle))
+			.ThenBy(item => item.Identity.Construction, StringComparer.Ordinal))
 		{
 			_assembler.Mark(InterfaceIdentityLabel(interfaceDefinition));
 			_assembler.EmitLong(0);
 		}
 
-		foreach (var layout in _usedTypeLayouts.Values
-			.OrderBy(layout => layout.ModuleName, StringComparer.Ordinal)
-			.ThenBy(layout => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle)))
+		foreach (var layout in dispatchLayouts)
 		{
 			var implementations = GetUsedInterfaceImplementations(layout);
 			if (implementations.Count == 0)
@@ -7432,7 +7875,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		if (_stringLiterals.Count != 0)
+		if (_stringLiterals.Count != 0 || _usesDynamicStrings || _usesRuntimeEmptyString)
 		{
 			_assembler.Mark("runtime:string-descriptor");
 			_assembler.EmitLong(0); // Variable-size object.
@@ -7457,6 +7900,25 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.EmitWord(character);
 			}
 			_assembler.EmitWord(0);
+		}
+
+		if (_usesRuntimeEmptyString)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeEmptyStringLabel);
+			_assembler.EmitAddress("runtime:string-descriptor");
+			_assembler.EmitLong(M68kRuntimeAbi.StringDataOffset + 2);
+			_assembler.EmitLong(0);
+			_assembler.EmitWord(0);
+		}
+
+		if (_runtimeEmptyCharArrayElementType is { } emptyCharArrayElement)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeEmptyCharArrayLabel);
+			_assembler.EmitAddress(ArrayDescriptorLabel(emptyCharArrayElement));
+			_assembler.EmitLong((uint)M68kRuntimeAbi.ArrayDataOffset);
+			_assembler.EmitLong(0);
 		}
 
 		foreach (var item in _cStringLiterals
@@ -7487,6 +7949,104 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.Object"));
 			_assembler.EmitLong(0);
 			_assembler.EmitLong(0);
+			if (type.IsReference &&
+				_arrayElementRuntimeTypes.TryGetValue(type.DisplayName, out var elementTarget))
+			{
+				_assembler.EmitAddress(RuntimeTypeTestIdentityLabel(elementTarget));
+				_assembler.EmitLong(elementTarget.IsInterface
+					? M68kRuntimeAbi.ArrayElementKindInterface
+					: M68kRuntimeAbi.ArrayElementKindClass);
+			}
+		}
+
+		foreach (var type in _boxedTypes.Values.OrderBy(item => item.DisplayName, StringComparer.Ordinal))
+		{
+			var boxedInterfaces = _boxedStructLayouts.TryGetValue(
+				type.DisplayName,
+				out var boxedLayout)
+				? GetUsedInterfaceImplementations(boxedLayout)
+				: [];
+			_assembler.AlignWord();
+			_assembler.Mark(BoxedTypeDescriptorLabel(type));
+			var boxedPayloadBytes = _boxedStructLayouts.TryGetValue(
+				type.DisplayName,
+				out var boxedStructLayout)
+					? boxedStructLayout.Size
+					: type.Size;
+			_assembler.EmitLong(checked((uint)(8 + Math.Max(4, boxedPayloadBytes))));
+			_assembler.EmitLong(0);
+			_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.ValueType"));
+			_assembler.EmitLong(0);
+			if (boxedInterfaces.Count == 0)
+			{
+				_assembler.EmitLong(0);
+			}
+			else
+			{
+				_assembler.EmitAddress(BoxedInterfaceMapLabel(type));
+			}
+		}
+
+		foreach (var item in _boxedStructLayouts.OrderBy(item => item.Key, StringComparer.Ordinal))
+		{
+			var type = _boxedTypes[item.Key];
+			var implementations = GetUsedInterfaceImplementations(item.Value);
+			if (implementations.Count == 0)
+			{
+				continue;
+			}
+
+			_assembler.Mark(BoxedInterfaceMapLabel(type));
+			_assembler.EmitLong((uint)implementations.Count);
+			foreach (var implementation in implementations)
+			{
+				_assembler.EmitAddress(InterfaceIdentityLabel(implementation.Interface));
+				_assembler.EmitAddress(BoxedInterfaceMethodTableLabel(type, implementation));
+			}
+			foreach (var implementation in implementations)
+			{
+				_assembler.Mark(BoxedInterfaceMethodTableLabel(type, implementation));
+				foreach (var method in implementation.Methods)
+				{
+					_assembler.EmitAddress(BoxedInterfaceThunkLabel(type, implementation, method));
+				}
+			}
+		}
+
+		foreach (var type in _delegateTypes.Values.OrderBy(item => item.DisplayName, StringComparer.Ordinal))
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(DelegateTypeDescriptorLabel(type));
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateObjectBytes);
+			_assembler.EmitLong(M68kRuntimeAbi.DelegateReferenceBitmap);
+			_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.MulticastDelegate"));
+			_assembler.EmitLong(0);
+			_assembler.EmitLong(0);
+		}
+		if (_delegateTypes.Count != 0)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(DelegateMulticastDescriptorTableLabel);
+			_assembler.EmitLong(0);
+			_assembler.EmitLong(0);
+			for (var count = 2; count <= M68kRuntimeAbi.DelegateMaximumInvocationCount; count++)
+			{
+				_assembler.EmitAddress(DelegateMulticastDescriptorLabel(count));
+			}
+			for (var count = 2; count <= M68kRuntimeAbi.DelegateMaximumInvocationCount; count++)
+			{
+				_assembler.AlignWord();
+				_assembler.Mark(DelegateMulticastDescriptorLabel(count));
+				_assembler.EmitLong(checked((uint)(
+					M68kRuntimeAbi.DelegateInvocationTailOffset + count * 4)));
+				var bitmap = count == M68kRuntimeAbi.DelegateMaximumInvocationCount
+					? 0xFFFF_FFF0u
+					: checked(((1u << count) - 1u) << 4);
+				_assembler.EmitLong(bitmap);
+				_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.MulticastDelegate"));
+				_assembler.EmitLong(0);
+				_assembler.EmitLong(0);
+			}
 		}
 
 		EmitRuntimeTypeDescriptorData();
@@ -7968,11 +8528,13 @@ internal sealed partial class M68kCodeGenerator
 		op == OpCodes.Ldelem_I ||
 		op == OpCodes.Ldelem_Ref ||
 		op == OpCodes.Ldelema ||
+		op == OpCodes.Ldelem ||
 		op == OpCodes.Stelem_I1 ||
 		op == OpCodes.Stelem_I2 ||
 		op == OpCodes.Stelem_I4 ||
 		op == OpCodes.Stelem_I ||
-		op == OpCodes.Stelem_Ref;
+		op == OpCodes.Stelem_Ref ||
+		op == OpCodes.Stelem;
 
 	private static bool IsIndirectLoad(OpCode op) =>
 		op == OpCodes.Ldind_I1 ||
@@ -7982,6 +8544,8 @@ internal sealed partial class M68kCodeGenerator
 		op == OpCodes.Ldind_I4 ||
 		op == OpCodes.Ldind_U4 ||
 		op == OpCodes.Ldind_I ||
+		op == OpCodes.Ldind_I8 ||
+		op == OpCodes.Ldind_R4 ||
 		op == OpCodes.Ldind_Ref;
 
 	private static bool IsIndirectStore(OpCode op) =>
@@ -7989,6 +8553,8 @@ internal sealed partial class M68kCodeGenerator
 		op == OpCodes.Stind_I2 ||
 		op == OpCodes.Stind_I4 ||
 		op == OpCodes.Stind_I ||
+		op == OpCodes.Stind_I8 ||
+		op == OpCodes.Stind_R4 ||
 		op == OpCodes.Stind_Ref;
 
 	private static MemoryAccess GetArrayAccess(OpCode op) =>
@@ -8011,6 +8577,19 @@ internal sealed partial class M68kCodeGenerator
 			_ => throw new InvalidOperationException($"Unsupported array access opcode '{op.Name}'.")
 		};
 
+	private MemoryAccess GetGenericArrayAccess(CilType type, bool isStore)
+	{
+		var size = _module.IsTransparentScalarType(type) ? 4 : type.Size;
+		if (size is not (1 or 2 or 4))
+		{
+			throw new InvalidOperationException(
+				$"Unsupported generic array element type '{type.DisplayName}'.");
+		}
+		return new MemoryAccess(
+			size,
+			SignExtend: !isStore && type.Kind == CilTypeKind.SignedInteger,
+			IsStore: isStore);
+	}
 	private static MemoryAccess GetIndirectAccess(OpCode op) =>
 		op.Value switch
 		{
@@ -8021,12 +8600,16 @@ internal sealed partial class M68kCodeGenerator
 			var value when value == OpCodes.Ldind_I4.Value ||
 				value == OpCodes.Ldind_U4.Value ||
 				value == OpCodes.Ldind_I.Value ||
+				value == OpCodes.Ldind_R4.Value ||
 				value == OpCodes.Ldind_Ref.Value => new(4, SignExtend: false, IsStore: false),
+			var value when value == OpCodes.Ldind_I8.Value => new(8, SignExtend: false, IsStore: false),
 			var value when value == OpCodes.Stind_I1.Value => new(1, SignExtend: false, IsStore: true),
 			var value when value == OpCodes.Stind_I2.Value => new(2, SignExtend: false, IsStore: true),
 			var value when value == OpCodes.Stind_I4.Value ||
 				value == OpCodes.Stind_I.Value ||
+				value == OpCodes.Stind_R4.Value ||
 				value == OpCodes.Stind_Ref.Value => new(4, SignExtend: false, IsStore: true),
+			var value when value == OpCodes.Stind_I8.Value => new(8, SignExtend: false, IsStore: true),
 			_ => throw new InvalidOperationException($"Unsupported indirect access opcode '{op.Name}'.")
 		};
 
@@ -8616,7 +9199,8 @@ internal sealed partial class M68kCodeGenerator
 
 
 	private string MethodLabel(CilMethod method) =>
-		$"method:{ModuleLabelPrefix(method.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle):X8}";
+		$"method:{ModuleLabelPrefix(method.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle):X8}" +
+		ConstructionLabelSuffix(method.Construction);
 
 	private string MethodEndLabel(CilMethod method) =>
 		$"{MethodLabel(method)}:end";
@@ -8640,7 +9224,8 @@ internal sealed partial class M68kCodeGenerator
 		$"type:{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(handle):X8}";
 
 	private string TypeDescriptorLabel(CilTypeLayout layout) =>
-		$"type:{ModuleLabelPrefix(layout.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle):X8}";
+		$"type:{ModuleLabelPrefix(layout.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(layout.Handle):X8}" +
+		ConstructionLabelSuffix(layout.ConstructedType?.DisplayName ?? string.Empty);
 
 	private string VirtualTableLabel(CilTypeLayout layout) =>
 		$"{TypeDescriptorLabel(layout)}:vtable";
@@ -8658,19 +9243,156 @@ internal sealed partial class M68kCodeGenerator
 			.ThenBy(implementation =>
 				System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(
 					implementation.Interface.Identity.Handle))
+			.ThenBy(
+				implementation => implementation.Interface.Identity.Construction,
+				StringComparer.Ordinal)
 			.ToArray();
 
 	private string InterfaceIdentityLabel(CilInterfaceDefinition interfaceDefinition) =>
-		$"interface:{ModuleLabelPrefix(interfaceDefinition.Identity.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(interfaceDefinition.Identity.Handle):X8}";
+		$"interface:{ModuleLabelPrefix(interfaceDefinition.Identity.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(interfaceDefinition.Identity.Handle):X8}" +
+		ConstructionLabelSuffix(interfaceDefinition.Identity.Construction);
 
 	private string InterfaceMapLabel(CilTypeLayout layout) =>
 		$"{TypeDescriptorLabel(layout)}:interfaces";
 
 	private string InterfaceMethodTableLabel(CilInterfaceImplementation implementation) =>
-		$"{InterfaceMapLabel(implementation.Type)}:{ModuleLabelPrefix(implementation.Interface.Identity.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(implementation.Interface.Identity.Handle):X8}";
+		$"{InterfaceMapLabel(implementation.Type)}:{ModuleLabelPrefix(implementation.Interface.Identity.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(implementation.Interface.Identity.Handle):X8}" +
+		ConstructionLabelSuffix(implementation.Interface.Identity.Construction);
 
 	private string StaticFieldLabel(CilField field) =>
-		$"static:{ModuleLabelPrefix(field.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(field.Handle):X8}";
+		$"static:{ModuleLabelPrefix(field.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(field.Handle):X8}" +
+		(field.ConstructedDeclaringType is { } constructedType
+			? $":constructed:{constructedType.DisplayName}"
+			: string.Empty);
+
+	private string TypeInitializationStateLabel(CilMethod initializer) =>
+		$"type-init:{ModuleLabelPrefix(initializer.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(initializer.DeclaringType):X8}" +
+		$"{ConstructionLabelSuffix(initializer.Construction)}:state";
+
+	private string TypeInitializationExceptionLabel(CilMethod initializer) =>
+		$"type-init:{ModuleLabelPrefix(initializer.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(initializer.DeclaringType):X8}" +
+		$"{ConstructionLabelSuffix(initializer.Construction)}:exception";
+
+	private string TypeInitializationFailureThunkLabel(CilMethod initializer) =>
+		$"type-init:{ModuleLabelPrefix(initializer.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(initializer.DeclaringType):X8}" +
+		$"{ConstructionLabelSuffix(initializer.Construction)}:failure";
+
+	private string TypeInitializationWrapperLabel(CilMethod initializer) =>
+		$"type-init:{ModuleLabelPrefix(initializer.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(initializer.DeclaringType):X8}" +
+		$"{ConstructionLabelSuffix(initializer.Construction)}:wrapper";
+
+	private static string ConstructionLabelSuffix(string construction) =>
+		construction.Length == 0
+			? string.Empty
+			: $":constructed:{construction}";
+
+	private string TypeInitializationWrapperInnerLabel(CilMethod initializer) =>
+		$"{TypeInitializationWrapperLabel(initializer)}:inner";
+
+	private bool TypeInitializerCanFail(CilMethod initializer) =>
+		_usesExceptionRuntime && MethodMayRaiseException(initializer);
+
+	private string RuntimeTypeTestIdentityLabel(CilRuntimeTypeTarget target)
+	{
+		if (!target.Type.IsReference)
+		{
+			RegisterBoxedType(target.Type);
+			return BoxedTypeDescriptorLabel(target.Type);
+		}
+		if (target.IsArray)
+		{
+			var elementType = target.Type.ElementType ??
+				throw new InvalidOperationException("Array runtime type has no element type.");
+			_arrayTypes.TryAdd(elementType.DisplayName, elementType);
+			_arrayElementRuntimeTypes.TryAdd(
+				elementType.DisplayName,
+				_module.ResolveRuntimeTypeIdentity(elementType, target.ModuleName));
+			return ArrayDescriptorLabel(elementType);
+		}
+		if (IsFrameworkDelegateType(target.Type))
+		{
+			RegisterDelegateType(target.Type);
+			return DelegateTypeDescriptorLabel(target.Type);
+		}
+		if (target.IsInterface)
+		{
+			var interfaceDefinition = _module.GetRuntimeInterfaceDefinition(target);
+			_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
+			return InterfaceIdentityLabel(interfaceDefinition);
+		}
+		if (target.IsConstructedGeneric)
+		{
+			var layout = _module.GetRuntimeTypeLayout(target);
+			_usedTypeLayouts.TryAdd(layout.Identity, layout);
+			_constructedTypeDescriptors.TryAdd(
+				target.Type.DisplayName,
+				(target.Type, layout));
+			return ConstructedTypeDescriptorLabel(layout, target.Type);
+		}
+		if (target.Handle.Kind == HandleKind.TypeDefinition)
+		{
+			var layout = _module.GetRuntimeTypeLayout(target);
+			_usedTypeLayouts.TryAdd(layout.Identity, layout);
+			return TypeDescriptorLabel(layout);
+		}
+		RegisterRuntimeTypeDescriptor(target.Type.DisplayName);
+		return RuntimeTypeDescriptorLabel(target.Type.DisplayName);
+	}
+
+	private void RegisterBoxedType(CilType type)
+	{
+		_boxedTypes.TryAdd(type.DisplayName, type);
+		if (_module.TryGetReferenceFreeStructLayout(
+				type,
+				_module.AssemblyName,
+				out var layout))
+		{
+			_boxedStructLayouts.TryAdd(type.DisplayName, layout);
+		}
+		RegisterRuntimeTypeDescriptor("System.ValueType");
+	}
+
+	private static string BoxedTypeDescriptorLabel(CilType type) =>
+		$"boxed:{type.DisplayName}";
+
+	private static string BoxedInterfaceMapLabel(CilType type) =>
+		$"{BoxedTypeDescriptorLabel(type)}:interfaces";
+
+	private string BoxedInterfaceMethodTableLabel(
+		CilType type,
+		CilInterfaceImplementation implementation) =>
+		$"{BoxedInterfaceMapLabel(type)}:{ModuleLabelPrefix(implementation.Interface.Identity.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(implementation.Interface.Identity.Handle):X8}";
+
+	private string BoxedInterfaceThunkLabel(
+		CilType type,
+		CilInterfaceImplementation implementation,
+		CilMethod method) =>
+		$"{BoxedInterfaceMethodTableLabel(type, implementation)}:unbox:{ModuleLabelPrefix(method.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle):X8}";
+
+	private void RegisterDelegateType(CilType type)
+	{
+		_delegateTypes.TryAdd(type.DisplayName, type);
+		RegisterRuntimeTypeDescriptor("System.MulticastDelegate");
+	}
+
+	private static bool IsFrameworkDelegateType(CilType type) =>
+		type.DisplayName.StartsWith("System.Func`", StringComparison.Ordinal) ||
+		type.DisplayName.StartsWith("System.Action`", StringComparison.Ordinal) ||
+		StringComparer.Ordinal.Equals(type.DisplayName, "System.Action");
+
+	private static string DelegateTypeDescriptorLabel(CilType type) =>
+		$"delegate:{type.DisplayName}";
+
+	private const string DelegateMulticastDescriptorTableLabel =
+		"delegate:multicast-descriptor-table";
+
+	private static string DelegateMulticastDescriptorLabel(int count) =>
+		$"delegate:multicast:{count}";
+
+	private string ConstructedTypeDescriptorLabel(CilTypeLayout layout, CilType type) =>
+		StringComparer.Ordinal.Equals(layout.ConstructedType?.DisplayName, type.DisplayName)
+			? TypeDescriptorLabel(layout)
+			: $"{TypeDescriptorLabel(layout)}:constructed:{type.DisplayName}";
 
 	private string ModuleLabelPrefix(string moduleName) =>
 		string.IsNullOrEmpty(moduleName) || string.Equals(moduleName, _module.AssemblyName, StringComparison.Ordinal)
@@ -8679,6 +9401,9 @@ internal sealed partial class M68kCodeGenerator
 
 	private string StringLabel(CilUserStringIdentity identity) =>
 		$"string:{ModuleLabelPrefix(identity.ModuleName)}{identity.Token:X8}";
+
+	private const string RuntimeEmptyStringLabel = "runtime:string-empty";
+	private const string RuntimeEmptyCharArrayLabel = "runtime:char-array-empty";
 
 	private string CStringLabel(CilUserStringIdentity identity) =>
 		$"cstring:{ModuleLabelPrefix(identity.ModuleName)}{identity.Token:X8}";

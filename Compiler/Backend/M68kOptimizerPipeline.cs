@@ -20,12 +20,18 @@ internal sealed class M68kOptimizerPipeline
 		M68kAssembler assembler,
 		M68kAssemblyBuffer buffer,
 		M68kCpuTarget cpu,
-		M68kClrPolicy clrPolicy)
+		M68kClrPolicy clrPolicy,
+		IReadOnlyList<M68kLoopLayout>? sizeFirstLoops = null)
 	{
 		_passes = new IM68kOptimizerPass[]
 		{
 			new M68kConditionCodeOptimizer(assembler, buffer),
-			new M68kPeepholeOptimizer(assembler, buffer, cpu, clrPolicy)
+			new M68kPeepholeOptimizer(
+				assembler,
+				buffer,
+				cpu,
+				clrPolicy,
+				sizeFirstLoops ?? Array.Empty<M68kLoopLayout>())
 		};
 	}
 

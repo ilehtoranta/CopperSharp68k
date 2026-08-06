@@ -111,6 +111,62 @@ payload + 8  array length, for arrays and strings
 payload + 12 first array/string element
 ```
 
+Reference-free value-type arrays store exact-size elements inline from
+`payload + 12`; no element is boxed and no per-element descriptor is emitted.
+The array descriptor has a zero reference bitmap, so the collector skips the
+payload. Reference arrays retain four-byte elements and the array-special
+descriptor bitmap that traces each element. The compiler validates
+`12 + length * elementSize` before allocation and records the resulting total
+object size at `payload + 4`.
+
+Reference-free indirect value-type operations use exact compile-time layouts.
+`ldobj` snapshots the complete payload into a compiler-owned frame home;
+`stobj` copies every word from a stable aggregate value; `initobj` clears every
+word; and `cpobj` stages through a private frame home before writing the
+destination, preserving value semantics even when source and destination
+overlap. These transfers are inline, allocate no managed memory, and are not
+safepoints.
+
+Reference-bearing value types are initially admitted only in exact local and
+argument frame homes. Their layout bitmap is payload-relative, and the frame
+planner emits one ordinary root-map offset for each reference word. Non-reference
+words remain unreported. Exact `initobj` and field access use the home address
+directly; whole-value copies, calls, returns, arrays, and boxing remain gated.
+This adds no object wrapper, runtime helper, or conservative stack scan.
+
+Managed byrefs remain one 32-bit native address, with compiler-only provenance.
+Frame and static byrefs need no heap owner. A directly produced object-field,
+array-element, or boxed-payload byref records its owning managed reference; when
+the byref is live across a safepoint, a zero-code-size post-safepoint keepalive
+extends that owner's ordinary SSA lifetime through collection. The existing root planner
+therefore stores the exact owner payload address in a precise root slot. It
+never passes an interior address to `ManagedPool.Mark`, which requires the exact
+payload base immediately following its 16-byte block header.
+
+Internal managed byref parameters borrow the dynamic caller chain. Since every
+ancestor frame remains available to the root-map walker, frame referents remain
+allocated and direct interior owners remain rooted in the originating caller.
+This composes through forwarding calls without widening the native ABI. Image
+entries and exports do not receive borrowed provenance; byref returns and heap
+escapes normally remain gated because they can outlive the caller chain. The
+exact static `return ref parameter` shape is summarized as an identity and the
+caller reuses its original byref provenance after the call, adding no ABI word.
+Other return origins and incompatible owner merges are rejected until an
+explicit owner can be transported. Same-owner phis canonicalize equivalent GC
+reference copies but choose an actually dominating value for the root
+	keepalive. Exceptional call edges retain the caller root when normal-path
+	cleanup is skipped. A pre-allocation escape validator rejects a managed byref
+	when it is the value stored into an object field, static, array element, or
+	indirect location. It does not reject storing an ordinary value through a
+	managed byref, nor ref-local SSA rebinding. The
+	compiler separately tracks exact referent identity and readonly state for
+	managed-pointer SSA values. This metadata has no runtime representation; it is
+	used to reject incompatible merges, mismatched tokened indirect access, and
+	writes through readonly refs before allocation. The
+	compiler's own resolved `ManagedPool` type is a
+trusted low-level boundary for raw `M68kAddress` construction, selected by exact
+module/type identity rather than names.
+
 The compiler-generated managed pointer is always the payload address, not the
 header address.
 
@@ -127,6 +183,13 @@ TypeDescriptor:
 
 Each vtable entry is a 32-bit code pointer. Derived class tables retain base
 slot numbering and replace entries for overrides in place.
+
+Framework-declared virtual slots are registered lazily from an exact public
+binding. A private shadow implementation supplies the canonical fallback, and
+each exact reachable allocated layout replaces the entry when it has a user
+override. Registration invalidates cached tables before code generation, so
+call-site slot selection and emitted tables always agree. Unused framework
+virtual contracts add no descriptor or vtable data.
 
 The interface map uses a compact linear representation:
 

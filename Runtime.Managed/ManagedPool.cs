@@ -261,6 +261,92 @@ public static class ManagedPool
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void MarkRootsExtended(
+		uint cursorAddress,
+		uint resumePc,
+		M68kAddress methodTable,
+		M68kAddress staticRoots,
+		uint frameAnchor)
+	{
+		var methodTableAddress = M68kAddress.ToUInt32(methodTable);
+		var cursor = cursorAddress;
+		var currentPc = resumePc;
+		var currentFrameAnchor = frameAnchor;
+		while (cursor != 0)
+		{
+			var siteCount = M68kAddress.ReadUInt32(methodTable, 0);
+			var siteAddress = methodTableAddress + 4;
+			while (siteCount != 0 &&
+				M68kAddress.ReadUInt32(M68kAddress.FromUInt32(siteAddress), 0) != currentPc)
+			{
+				siteAddress += 24;
+				siteCount--;
+			}
+			if (siteCount == 0)
+			{
+				break;
+			}
+
+			var site = M68kAddress.FromUInt32(siteAddress);
+			var descriptorAddress = M68kAddress.ReadUInt32(site, 4);
+			var descriptor = M68kAddress.FromUInt32(descriptorAddress);
+			var descriptorFlags = M68kAddress.ReadUInt32(descriptor, 12);
+			var frameBase = (descriptorFlags & 1) != 0
+				? currentFrameAnchor
+				: cursor + M68kAddress.ReadUInt32(site, 12);
+			var rootMapAddress = M68kAddress.ReadUInt32(site, 16);
+			var rootCount = rootMapAddress == 0
+				? 0
+				: M68kAddress.ReadUInt32(M68kAddress.FromUInt32(rootMapAddress), 0);
+			var rootOffsets = rootMapAddress + 4;
+			while (rootCount != 0)
+			{
+				var offset = M68kAddress.ReadUInt32(
+					M68kAddress.FromUInt32(rootOffsets),
+					0);
+				Mark(M68kAddress.ReadUInt32(
+					M68kAddress.FromUInt32(unchecked(frameBase + offset)),
+					0));
+				rootOffsets += 4;
+				rootCount--;
+			}
+
+			var savedFrameAnchorOffset = M68kAddress.ReadUInt32(descriptor, 16);
+			if (savedFrameAnchorOffset != 0)
+			{
+				currentFrameAnchor = M68kAddress.ReadUInt32(
+					M68kAddress.FromUInt32(
+						frameBase + savedFrameAnchorOffset - 1),
+					0);
+			}
+			cursor = frameBase +
+				M68kAddress.ReadUInt32(descriptor, 0) +
+				M68kAddress.ReadUInt32(descriptor, 4);
+			currentPc = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(cursor), 0);
+		}
+
+		MarkStaticRoots(staticRoots);
+	}
+
+	private static void MarkStaticRoots(M68kAddress staticRoots)
+	{
+		var staticRootsAddress = M68kAddress.ToUInt32(staticRoots);
+		var staticRootCount = M68kAddress.ReadUInt32(staticRoots, 0);
+		var rootAddress = staticRootsAddress + 4;
+		while (staticRootCount != 0)
+		{
+			var slotAddress = M68kAddress.ReadUInt32(
+				M68kAddress.FromUInt32(rootAddress),
+				0);
+			Mark(M68kAddress.ReadUInt32(
+				M68kAddress.FromUInt32(slotAddress),
+				0));
+			rootAddress += 4;
+			staticRootCount--;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static void CollectWithRoots(
 		uint cursorAddress,
 		uint resumePc,
@@ -268,6 +354,18 @@ public static class ManagedPool
 		M68kAddress staticRoots)
 	{
 		MarkRoots(cursorAddress, resumePc, methodTable, staticRoots);
+		Collect();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectWithRootsExtended(
+		uint cursorAddress,
+		uint resumePc,
+		M68kAddress methodTable,
+		M68kAddress staticRoots,
+		uint frameAnchor)
+	{
+		MarkRootsExtended(cursorAddress, resumePc, methodTable, staticRoots, frameAnchor);
 		Collect();
 	}
 

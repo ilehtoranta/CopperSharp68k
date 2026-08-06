@@ -32,4 +32,9 @@
           PackagePath="buildTransitive\CopperSharp.Compiler.targets" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Framework\net10.0-10.0.9.json"
+                      LogicalName="CopperSharp.Compiler.Framework.net10.0-10.0.9.json" />
+  </ItemGroup>
+
 </Project>

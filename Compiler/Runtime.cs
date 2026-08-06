@@ -9,6 +9,29 @@ namespace CopperSharp.Compiler;
 public static class M68kRuntime
 {
 	/// <summary>
+	/// Raises the target runtime's canonical overflow exception. On the host it
+	/// throws <see cref="OverflowException"/> directly so shadow methods remain
+	/// unit-testable.
+	/// </summary>
+	public static void ThrowOverflowException() => throw new OverflowException();
+
+	/// <summary>
+	/// Allocates a target-runtime string with the requested UTF-16 code-unit
+	/// length. This primitive is meaningful only after compiler lowering.
+	/// </summary>
+	public static string AllocateString(int length) =>
+		throw new PlatformNotSupportedException(
+			"M68kRuntime.AllocateString is a CopperSharp compiler primitive.");
+
+	/// <summary>
+	/// Writes one UTF-16 code unit into a string under construction. This is a
+	/// trusted private-runtime primitive; public managed strings remain immutable.
+	/// </summary>
+	public static void SetStringChar(string value, int index, char character) =>
+		throw new PlatformNotSupportedException(
+			"M68kRuntime.SetStringChar is a CopperSharp compiler primitive.");
+
+	/// <summary>
 	/// Releases the managed allocation stored in a four-byte reference slot and
 	/// clears that slot. The v1 compiler does not call this automatically.
 	/// </summary>

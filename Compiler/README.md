@@ -66,8 +66,19 @@ branch relaxation and linking. Each natural-loop report includes its header IL
 offset and linked address, emitted instruction bytes, physical span, four-byte
 instruction-cache lines touched, and whether those lines fit without index
 conflicts in the 256-byte MC68020/MC68030 instruction-cache model. The same
-information is written under the `LOOPS` section of the map output. Reporting is
-observational and does not align or otherwise change generated code.
+information is written under the `LOOPS` section of the map output. For
+MC68020 output, natural-loop headers are aligned to four-byte boundaries with
+padding outside the reported loop range, while other CPU profiles retain their
+existing alignment policy. Block layout also keeps transitive
+exception/throw-only chains out of hot fallthrough paths. Loops initially
+measured within 32 bytes of the 256-byte cache limit additionally use a
+size-first MC68020 profitability mode. This permits `PEA (xxx).W` to replace a
+larger immediate stack push when flags are dead. Exact, relocation-free
+signed-word immediates are narrowed globally for `MOVEA`, `CMPA`, `ADDA`, and
+`SUBA`; data-register immediate moves are also narrowed when value analysis
+proves that retaining the destination's upper word is equivalent. Remaining
+zero-displacement effective addresses are canonicalized from `0(An)` to
+`(An)` after higher-level peephole rewrites have reached a fixed point.
 
 ## Command line
 

@@ -76,13 +76,14 @@ internal sealed class M68kAssembler
 		new(0xFFF8, 0x4880, static opcode => "ext.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x48C0, static opcode => "ext.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x49C0, static opcode => "extb.l\td" + (opcode & 7)),
+		new(0xFFF8, 0x4840, static opcode => "swap\td" + (opcode & 7)),
 		new(0xFFF8, 0x4280, static opcode => "clr.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4850, static opcode => "pea\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4E90, static opcode => "jsr\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4ED0, static opcode => "jmp\t(a" + (opcode & 7) + ")"),
 		new(0xF100, 0x7000, static opcode =>
 			"moveq\t#" + unchecked((sbyte)(opcode & 0xFF)) + ",d" + ((opcode >> 9) & 7)),
-		new(0xF1C0, 0xD1C0, static opcode =>
+		new(0xF1F8, 0xD1C0, static opcode =>
 			"adda.l\td" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0x91C8, static opcode =>
 			"suba.l\ta" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
@@ -139,6 +140,10 @@ internal sealed class M68kAssembler
 			"adda.w\t#" + value + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1FF, 0xD1FC, 4, static (opcode, value) =>
 			"adda.l\t#" + value + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1FF, 0x90FC, 2, static (opcode, value) =>
+			"suba.w\t#" + unchecked((short)(ushort)value) + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1FF, 0x91FC, 4, static (opcode, value) =>
+			"suba.l\t#$" + value.ToString("X8") + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1FF, 0xB0FC, 2, static (opcode, value) =>
 			"cmpa.w\t#" + unchecked((short)(ushort)value) + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1FF, 0xB1FC, 4, static (opcode, value) =>
@@ -157,6 +162,16 @@ internal sealed class M68kAssembler
 			.Select(static fixup => fixup.Target)
 			.Distinct(StringComparer.Ordinal)
 			.ToArray();
+
+	public bool ReferencesTargetPrefix(string prefix) =>
+		_branches.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal)) ||
+		_addresses.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal)) ||
+		_pcRelative.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal));
+
+	public bool ReferencesTarget(string target) =>
+		_branches.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target)) ||
+		_addresses.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target)) ||
+		_pcRelative.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target));
 
 	public void Mark(string label)
 	{
@@ -361,18 +376,29 @@ internal sealed class M68kAssembler
 		}
 	}
 
+	internal IReadOnlyDictionary<string, int> Labels => _buffer.Labels;
+
+	internal IReadOnlyDictionary<string, int> AnalysisAnchors =>
+		_buffer.AnalysisAnchors;
+
 	public void OptimizeForM68000() => OptimizeForCpu(M68kCpuTarget.M68000);
 
 	public void OptimizeForCpu(
 		M68kCpuTarget cpu,
-		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto) =>
-		new M68kOptimizerPipeline(this, _buffer, cpu, clrPolicy).Run();
+		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto,
+		IReadOnlyList<M68kLoopLayout>? sizeFirstLoops = null) =>
+		new M68kOptimizerPipeline(
+			this,
+			_buffer,
+			cpu,
+			clrPolicy,
+			sizeFirstLoops).Run();
 
 	internal void RelaxBranches()
 	{
 		// Each shortening shifts every later label and fixup, so keep iterating
 		// until no branch or local jump can enable another relaxation.
-		while (TryRelaxShortBranch() || TryRelaxLocalAbsoluteJump())
+		while (TryRelaxShortBranch() || TryRelaxLocalAbsoluteControlTransfer())
 		{
 		}
 	}
@@ -387,7 +413,7 @@ internal sealed class M68kAssembler
 		while (true)
 		{
 			if (TryRelaxShortBranch() ||
-				TryRelaxLocalAbsoluteJump() ||
+				TryRelaxLocalAbsoluteControlTransfer() ||
 				TryRemoveBranchToNextInstruction() ||
 				TryRelaxLocalAbsoluteLoad())
 			{
@@ -404,6 +430,14 @@ internal sealed class M68kAssembler
 		{
 			var branch = _branches[index];
 			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			if ((opcode & 0xF000) != 0x6000 ||
+				(opcode & 0xFF00) == 0x6100)
+			{
+				// BSR has the observable side effect of pushing a return address,
+				// even when its target is the immediately following instruction.
+				// DBcc fixups are not ordinary branches either.
+				continue;
+			}
 			var length = IsWordBranchOpcode(opcode) ? 4 : 2;
 			if (!_labels.TryGetValue(branch.Target, out var targetOffset) ||
 				targetOffset != branch.OpcodeOffset + length)
@@ -429,7 +463,7 @@ internal sealed class M68kAssembler
 				opcodeOffset < 0 ||
 				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
 				!_labels.TryGetValue(address.Target, out var targetOffset) ||
-				!TryGetPcRelativeLoadOpcode(
+				!TryGetPcRelativeAddressingOpcode(
 					_buffer.ReadWord(opcodeOffset),
 					out var pcRelativeOpcode))
 			{
@@ -438,9 +472,9 @@ internal sealed class M68kAssembler
 
 			// The absolute long form is six bytes.  After removing its final
 			// word, labels after the instruction move two bytes closer.
-			var relaxedTargetOffset = targetOffset >= opcodeOffset + 6
-				? targetOffset - 2
-				: targetOffset;
+			var relaxedTargetOffset = GetTargetOffsetAfterTwoByteRelaxation(
+				targetOffset,
+				opcodeOffset + 6);
 			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
 			if (displacement < short.MinValue || displacement > short.MaxValue)
 			{
@@ -456,7 +490,7 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
-	private static bool TryGetPcRelativeLoadOpcode(
+	private static bool TryGetPcRelativeAddressingOpcode(
 		ushort opcode,
 		out ushort pcRelativeOpcode)
 	{
@@ -467,6 +501,12 @@ internal sealed class M68kAssembler
 		}
 
 		if ((opcode & 0xF1FF) == 0x2079)
+		{
+			pcRelativeOpcode = (ushort)((opcode & 0xFFC0) | 0x003A);
+			return true;
+		}
+
+		if ((opcode & 0xF1FF) == 0x41F9)
 		{
 			pcRelativeOpcode = (ushort)((opcode & 0xFFC0) | 0x003A);
 			return true;
@@ -489,14 +529,15 @@ internal sealed class M68kAssembler
 			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
 			if (!branch.CanRelaxToShort ||
 				!IsWordBranchOpcode(opcode) ||
-				!_labels.TryGetValue(branch.Target, out var targetOffset))
+				!_labels.TryGetValue(branch.Target, out var targetOffset) ||
+				GetAlignmentRegion(branch.OpcodeOffset) != GetAlignmentRegion(targetOffset))
 			{
 				continue;
 			}
 
-			var relaxedTargetOffset = targetOffset >= branch.OpcodeOffset + 4
-				? targetOffset - 2
-				: targetOffset;
+			var relaxedTargetOffset = GetTargetOffsetAfterTwoByteRelaxation(
+				targetOffset,
+				branch.OpcodeOffset + 4);
 			var displacement = relaxedTargetOffset - (branch.OpcodeOffset + 2);
 			if (displacement is < sbyte.MinValue or > sbyte.MaxValue || displacement == 0)
 			{
@@ -512,31 +553,39 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
-	private bool TryRelaxLocalAbsoluteJump()
+	private int GetAlignmentRegion(int offset) =>
+		_longAlignmentLabels.Count(label => _labels[label] <= offset);
+
+	private bool TryRelaxLocalAbsoluteControlTransfer()
 	{
 		for (var index = 0; index < _addresses.Count; index++)
 		{
 			var address = _addresses[index];
 			var opcodeOffset = address.Offset - 2;
+			var opcode = opcodeOffset < 0
+				? (ushort)0
+				: _buffer.ReadWord(opcodeOffset);
 			if (address.External ||
 				opcodeOffset < 0 ||
 				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
-				_buffer.ReadWord(opcodeOffset) != 0x4EF9 ||
+				opcode is not 0x4EF9 and not 0x4EB9 ||
 				!_labels.TryGetValue(address.Target, out var targetOffset) ||
 				(targetOffset > opcodeOffset && targetOffset < opcodeOffset + 6))
 			{
 				continue;
 			}
 
-			var relaxedTargetOffset = targetOffset >= opcodeOffset + 6
-				? targetOffset - 2
-				: targetOffset;
+			var relaxedTargetOffset = GetTargetOffsetAfterTwoByteRelaxation(
+				targetOffset,
+				opcodeOffset + 6);
 			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
 			if (displacement < short.MinValue || displacement > short.MaxValue)
 			{
 				continue;
 			}
-			_buffer.WriteWord(opcodeOffset, 0x6000); // JMP -> BRA.W
+			_buffer.WriteWord(
+				opcodeOffset,
+				opcode == 0x4EB9 ? 0x6100 : 0x6000); // JSR/JMP -> BSR.W/BRA.W
 			_buffer.WriteWord(opcodeOffset + 2, 0);
 			_addresses.RemoveAt(index);
 			_buffer.RemoveBytes(opcodeOffset + 4, 2);
@@ -545,6 +594,26 @@ internal sealed class M68kAssembler
 		}
 
 		return false;
+	}
+
+	private int GetTargetOffsetAfterTwoByteRelaxation(
+		int targetOffset,
+		int instructionEndOffset)
+	{
+		if (targetOffset < instructionEndOffset)
+		{
+			return targetOffset;
+		}
+
+		// Removing two bytes before an aligned loop header makes that header
+		// misaligned. Re-applying its padding absorbs the size reduction, so a
+		// forward target at or beyond the first such header does not move.
+		var alignmentAbsorbsReduction = _longAlignmentLabels.Any(label =>
+		{
+			var labelOffset = _labels[label];
+			return labelOffset >= instructionEndOffset && labelOffset <= targetOffset;
+		});
+		return alignmentAbsorbsReduction ? targetOffset : targetOffset - 2;
 	}
 
 	private static bool IsWordBranchOpcode(ushort opcode) =>
@@ -960,7 +1029,7 @@ internal sealed class M68kAssembler
 		return true;
 	}
 
-	private static bool TryRenderControlFlow(
+	private bool TryRenderControlFlow(
 		in InstructionRenderContext context,
 		out RenderedInstruction instruction)
 	{
@@ -998,6 +1067,12 @@ internal sealed class M68kAssembler
 		if (context.Opcode == 0x4EF9 && context.Addresses.TryGetValue(context.Offset + 2, out var jump))
 		{
 			instruction = new($"jmp\t{AssemblySymbol(DisplayLabel(jump.Target, context.DisplayLabels))}", 6);
+			return true;
+		}
+
+		if (context.Opcode == 0x4878 && TryReadWord(context.Offset + 2, out var absoluteWord))
+		{
+			instruction = new($"pea\t${absoluteWord:X4}.w", 4);
 			return true;
 		}
 
@@ -1464,6 +1539,7 @@ internal sealed class M68kAssembler
 			0xE080 => "asr.l",
 			0xE088 => "lsr.l",
 			0xE188 => "lsl.l",
+			0xE098 => "ror.l",
 			_ => null
 		};
 		if (mnemonic is not null)

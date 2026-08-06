@@ -307,6 +307,25 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 
 public static class AmigaM68kCompiler
 {
+	/// <summary>
+	/// Analyzes reachable framework members using the Amiga platform resolver
+	/// without generating target code.
+	/// </summary>
+	public static M68kFrameworkAnalysisResult AnalyzeFramework(
+		M68kCompilationRequest request,
+		AmigaCompilationOptions? options = null)
+	{
+		ArgumentNullException.ThrowIfNull(request);
+		var resolvedOptions = options ?? new AmigaCompilationOptions();
+		return M68kCompiler.AnalyzeFramework(request with
+		{
+			ExternalCallResolvers =
+			[
+				new AmigaExternalCallResolver(resolvedOptions)
+			]
+		});
+	}
+
 	public static M68kCompilationResult Compile(
 		M68kCompilationRequest request,
 		AmigaCompilationOptions? options = null)

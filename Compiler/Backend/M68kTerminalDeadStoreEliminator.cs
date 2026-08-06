@@ -471,6 +471,7 @@ internal static class M68kTerminalDeadStoreEliminator
 			M68kMachineOperation.LocalLoad or
 			M68kMachineOperation.ArgumentLoad or
 			M68kMachineOperation.LocalStore or
+			M68kMachineOperation.ArgumentStore or
 			M68kMachineOperation.LocalAddress or
 			M68kMachineOperation.ArgumentAddress or
 			M68kMachineOperation.SpillLoad or

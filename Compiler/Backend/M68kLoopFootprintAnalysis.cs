@@ -22,6 +22,7 @@ internal sealed record M68kLoopLayout(
 internal static class M68kLoopFootprintAnalysis
 {
 	private const int InstructionCacheBytes = 256;
+	private const int SizeFirstDistanceBytes = 32;
 	private const int InstructionCacheLineBytes = 4;
 	private const int InstructionCacheLines =
 		InstructionCacheBytes / InstructionCacheLineBytes;
@@ -126,5 +127,23 @@ internal static class M68kLoopFootprintAnalysis
 			.OrderBy(static loop => loop.HeaderAddress)
 			.ThenBy(static loop => loop.Method, StringComparer.Ordinal)
 			.ToArray();
+	}
+
+	internal static IReadOnlyList<M68kLoopLayout> SelectSizeFirstLayouts(
+		IReadOnlyList<M68kLoopLayout> layouts,
+		IReadOnlyDictionary<string, int> labels,
+		IReadOnlyDictionary<string, int> analysisAnchors)
+	{
+		return layouts.Where(layout =>
+		{
+			var footprint = Measure(
+				new[] { layout },
+				labels,
+				analysisAnchors,
+				origin: 0).SingleOrDefault();
+			return footprint is not null &&
+				Math.Abs(footprint.InstructionBytes - InstructionCacheBytes) <=
+				SizeFirstDistanceBytes;
+		}).ToArray();
 	}
 }
