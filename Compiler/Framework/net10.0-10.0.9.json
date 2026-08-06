@@ -1,0 +1,1483 @@
+{
+  "schemaVersion": 1,
+  "targetFramework": "net10.0",
+  "referencePack": "Microsoft.NETCore.App.Ref",
+  "referencePackVersion": "10.0.9",
+  "assemblies": [
+    "Microsoft.CSharp",
+    "Microsoft.VisualBasic.Core",
+    "Microsoft.VisualBasic",
+    "Microsoft.Win32.Primitives",
+    "Microsoft.Win32.Registry",
+    "mscorlib",
+    "netstandard",
+    "System.AppContext",
+    "System.Buffers",
+    "System.Collections.Concurrent",
+    "System.Collections",
+    "System.Collections.Immutable",
+    "System.Collections.NonGeneric",
+    "System.Collections.Specialized",
+    "System.ComponentModel.Annotations",
+    "System.ComponentModel.DataAnnotations",
+    "System.ComponentModel",
+    "System.ComponentModel.EventBasedAsync",
+    "System.ComponentModel.Primitives",
+    "System.ComponentModel.TypeConverter",
+    "System.Configuration",
+    "System.Console",
+    "System.Core",
+    "System.Data.Common",
+    "System.Data.DataSetExtensions",
+    "System.Data",
+    "System.Diagnostics.Contracts",
+    "System.Diagnostics.Debug",
+    "System.Diagnostics.DiagnosticSource",
+    "System.Diagnostics.FileVersionInfo",
+    "System.Diagnostics.Process",
+    "System.Diagnostics.StackTrace",
+    "System.Diagnostics.TextWriterTraceListener",
+    "System.Diagnostics.Tools",
+    "System.Diagnostics.TraceSource",
+    "System.Diagnostics.Tracing",
+    "System",
+    "System.Drawing",
+    "System.Drawing.Primitives",
+    "System.Dynamic.Runtime",
+    "System.Formats.Asn1",
+    "System.Formats.Tar",
+    "System.Globalization.Calendars",
+    "System.Globalization",
+    "System.Globalization.Extensions",
+    "System.IO.Compression.Brotli",
+    "System.IO.Compression",
+    "System.IO.Compression.FileSystem",
+    "System.IO.Compression.ZipFile",
+    "System.IO",
+    "System.IO.FileSystem.AccessControl",
+    "System.IO.FileSystem",
+    "System.IO.FileSystem.DriveInfo",
+    "System.IO.FileSystem.Primitives",
+    "System.IO.FileSystem.Watcher",
+    "System.IO.IsolatedStorage",
+    "System.IO.MemoryMappedFiles",
+    "System.IO.Pipelines",
+    "System.IO.Pipes.AccessControl",
+    "System.IO.Pipes",
+    "System.IO.UnmanagedMemoryStream",
+    "System.Linq.AsyncEnumerable",
+    "System.Linq",
+    "System.Linq.Expressions",
+    "System.Linq.Parallel",
+    "System.Linq.Queryable",
+    "System.Memory",
+    "System.Net",
+    "System.Net.Http",
+    "System.Net.Http.Json",
+    "System.Net.HttpListener",
+    "System.Net.Mail",
+    "System.Net.NameResolution",
+    "System.Net.NetworkInformation",
+    "System.Net.Ping",
+    "System.Net.Primitives",
+    "System.Net.Quic",
+    "System.Net.Requests",
+    "System.Net.Security",
+    "System.Net.ServerSentEvents",
+    "System.Net.ServicePoint",
+    "System.Net.Sockets",
+    "System.Net.WebClient",
+    "System.Net.WebHeaderCollection",
+    "System.Net.WebProxy",
+    "System.Net.WebSockets.Client",
+    "System.Net.WebSockets",
+    "System.Numerics",
+    "System.Numerics.Vectors",
+    "System.ObjectModel",
+    "System.Reflection.DispatchProxy",
+    "System.Reflection",
+    "System.Reflection.Emit",
+    "System.Reflection.Emit.ILGeneration",
+    "System.Reflection.Emit.Lightweight",
+    "System.Reflection.Extensions",
+    "System.Reflection.Metadata",
+    "System.Reflection.Primitives",
+    "System.Reflection.TypeExtensions",
+    "System.Resources.Reader",
+    "System.Resources.ResourceManager",
+    "System.Resources.Writer",
+    "System.Runtime.CompilerServices.Unsafe",
+    "System.Runtime.CompilerServices.VisualC",
+    "System.Runtime",
+    "System.Runtime.Extensions",
+    "System.Runtime.Handles",
+    "System.Runtime.InteropServices",
+    "System.Runtime.InteropServices.JavaScript",
+    "System.Runtime.InteropServices.RuntimeInformation",
+    "System.Runtime.Intrinsics",
+    "System.Runtime.Loader",
+    "System.Runtime.Numerics",
+    "System.Runtime.Serialization",
+    "System.Runtime.Serialization.Formatters",
+    "System.Runtime.Serialization.Json",
+    "System.Runtime.Serialization.Primitives",
+    "System.Runtime.Serialization.Xml",
+    "System.Security.AccessControl",
+    "System.Security.Claims",
+    "System.Security.Cryptography.Algorithms",
+    "System.Security.Cryptography.Cng",
+    "System.Security.Cryptography.Csp",
+    "System.Security.Cryptography",
+    "System.Security.Cryptography.Encoding",
+    "System.Security.Cryptography.OpenSsl",
+    "System.Security.Cryptography.Primitives",
+    "System.Security.Cryptography.X509Certificates",
+    "System.Security",
+    "System.Security.Principal",
+    "System.Security.Principal.Windows",
+    "System.Security.SecureString",
+    "System.ServiceModel.Web",
+    "System.ServiceProcess",
+    "System.Text.Encoding.CodePages",
+    "System.Text.Encoding",
+    "System.Text.Encoding.Extensions",
+    "System.Text.Encodings.Web",
+    "System.Text.Json",
+    "System.Text.RegularExpressions",
+    "System.Threading.AccessControl",
+    "System.Threading.Channels",
+    "System.Threading",
+    "System.Threading.Overlapped",
+    "System.Threading.Tasks.Dataflow",
+    "System.Threading.Tasks",
+    "System.Threading.Tasks.Extensions",
+    "System.Threading.Tasks.Parallel",
+    "System.Threading.Thread",
+    "System.Threading.ThreadPool",
+    "System.Threading.Timer",
+    "System.Transactions",
+    "System.Transactions.Local",
+    "System.ValueTuple",
+    "System.Web",
+    "System.Web.HttpUtility",
+    "System.Windows",
+    "System.Xml",
+    "System.Xml.Linq",
+    "System.Xml.ReaderWriter",
+    "System.Xml.Serialization",
+    "System.Xml.XDocument",
+    "System.Xml.XmlDocument",
+    "System.Xml.XmlSerializer",
+    "System.Xml.XPath",
+    "System.Xml.XPath.XDocument",
+    "WindowsBase"
+  ],
+  "bindings": [
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.Object",
+	  "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "void",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:object-ctor",
+	  "effects": [],
+	  "features": []
+	},
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.Object",
+	  "member": "Equals",
+	  "isStatic": true,
+	  "genericArity": 0,
+	  "parameterCount": 2,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"object",
+		"object"
+	  ],
+	  "status": "Implemented",
+	  "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowObject::EqualsObjects",
+	  "effects": [
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"managed-objects"
+	  ]
+	},
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.Object",
+	  "member": "ReferenceEquals",
+	  "isStatic": true,
+	  "genericArity": 0,
+	  "parameterCount": 2,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"object",
+		"object"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:object-reference-equals",
+	  "effects": [],
+	  "features": [
+		"managed-objects"
+	  ]
+	},
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.Object",
+	  "member": "Equals",
+	  "isStatic": false,
+	  "genericArity": 0,
+	  "parameterCount": 1,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"object"
+	  ],
+	  "status": "Implemented",
+	  "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowObject::Equals",
+	  "effects": [
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"managed-objects"
+	  ]
+	},
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Exception",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "void",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:object-ctor",
+      "effects": [],
+      "features": []
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Runtime.CompilerServices.RuntimeHelpers",
+      "member": "IsReferenceOrContainsReferences",
+      "isStatic": true,
+      "genericArity": 1,
+      "parameterCount": 0,
+      "returnType": "bool",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:runtimehelpers-is-reference-or-contains-references:*",
+      "effects": [],
+      "features": []
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Runtime.CompilerServices.RuntimeHelpers",
+      "member": "InitializeArray",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "void",
+      "parameterTypes": [
+        "System.Array",
+        "System.RuntimeFieldHandle"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:initialize-array",
+      "effects": [
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "managed-arrays"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+	  "member": "Concat",
+	  "isStatic": true,
+	  "genericArity": 0,
+	  "parameterCount": 2,
+	  "returnType": "string",
+	  "parameterTypes": [
+		"string",
+		"string"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:string-concat-two",
+	  "effects": [
+		"MayAllocate",
+		"MayThrow",
+		"MayCollect",
+		"ReadsManagedMemory",
+		"WritesManagedMemory"
+	  ],
+	  "features": [
+		"managed-strings"
+	  ]
+	},
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "Substring",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "string",
+      "parameterTypes": ["int"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-substring",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "ReadsManagedMemory",
+        "WritesManagedMemory"
+      ],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "Substring",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "string",
+      "parameterTypes": ["int", "int"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-substring",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "ReadsManagedMemory",
+        "WritesManagedMemory"
+      ],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "CopyTo",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 4,
+      "returnType": "void",
+      "parameterTypes": ["int", "char[]", "int", "int"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-copy-to-char-array",
+      "effects": ["MayThrow", "ReadsManagedMemory", "WritesManagedMemory"],
+      "features": ["managed-strings", "managed-arrays"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "CopyTo",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": ["System.Span`1<char>"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-copy-to-span-char",
+      "effects": ["MayThrow", "ReadsManagedMemory", "WritesManagedMemory"],
+      "features": ["managed-strings", "spans"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "ToCharArray",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "char[]",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-to-char-array",
+      "effects": ["MayAllocate", "MayThrow", "MayCollect", "ReadsManagedMemory", "WritesManagedMemory"],
+      "features": ["managed-strings", "managed-arrays"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "ToCharArray",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "char[]",
+      "parameterTypes": ["int", "int"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-to-char-array",
+      "effects": ["MayAllocate", "MayThrow", "MayCollect", "ReadsManagedMemory", "WritesManagedMemory"],
+      "features": ["managed-strings", "managed-arrays"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "StartsWith",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "bool",
+      "parameterTypes": ["string", "System.StringComparison"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-starts-with-ordinal",
+      "effects": ["MayThrow", "ReadsManagedMemory"],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "EndsWith",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "bool",
+      "parameterTypes": ["string", "System.StringComparison"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-ends-with-ordinal",
+      "effects": ["MayThrow", "ReadsManagedMemory"],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "Contains",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "bool",
+      "parameterTypes": ["string"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-contains-ordinal",
+      "effects": ["MayThrow", "ReadsManagedMemory"],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "Contains",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "bool",
+      "parameterTypes": ["string", "System.StringComparison"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-contains-ordinal",
+      "effects": ["MayThrow", "ReadsManagedMemory"],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "IndexOf",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "int",
+      "parameterTypes": ["string", "System.StringComparison"],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-index-of-ordinal",
+      "effects": ["MayThrow", "ReadsManagedMemory"],
+      "features": ["managed-strings"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+	  "member": "get_Chars",
+	  "isStatic": false,
+	  "genericArity": 0,
+	  "parameterCount": 1,
+	  "returnType": "char",
+	  "parameterTypes": [
+		"int"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:string-char",
+	  "effects": [
+		"MayThrow",
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"managed-strings"
+	  ]
+	},
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "get_Length",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "int",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:string-length",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-strings"
+      ]
+    },
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.String",
+	  "member": "Equals",
+	  "isStatic": true,
+	  "genericArity": 0,
+	  "parameterCount": 2,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"string",
+		"string"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:string-equality",
+	  "effects": [
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"managed-strings"
+	  ]
+	},
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.String",
+	  "member": "op_Equality",
+	  "isStatic": true,
+	  "genericArity": 0,
+	  "parameterCount": 2,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"string",
+		"string"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:string-equality",
+	  "effects": [
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"managed-strings"
+	  ]
+	},
+	{
+	  "assembly": "System.Runtime",
+	  "type": "System.String",
+	  "member": "op_Inequality",
+	  "isStatic": true,
+	  "genericArity": 0,
+	  "parameterCount": 2,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"string",
+		"string"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:string-inequality",
+	  "effects": [
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"managed-strings"
+	  ]
+	},
+    {
+      "assembly": "System.Runtime",
+      "type": "System.String",
+      "member": "op_Implicit",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.ReadOnlySpan`1<char>",
+      "parameterTypes": [
+        "string"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-from-string",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-strings",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Memory",
+      "type": "System.MemoryExtensions",
+      "member": "AsSpan",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.ReadOnlySpan`1<char>",
+      "parameterTypes": [
+        "string"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-from-string",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-strings",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Memory",
+      "type": "System.MemoryExtensions",
+      "member": "SequenceEqual",
+      "isStatic": true,
+      "genericArity": 1,
+      "parameterCount": 2,
+      "returnType": "bool",
+      "parameterTypes": [
+        "System.ReadOnlySpan`1<!!0>",
+        "System.ReadOnlySpan`1<!!0>"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-sequence-equal:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Int32",
+      "member": "ToString",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "string",
+      "parameterTypes": [],
+      "status": "Implemented",
+      "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowInt32::ToString",
+      "effects": ["MayAllocate", "MayThrow", "MayCollect", "WritesManagedMemory"],
+      "features": ["integer-formatting", "managed-strings", "numerics"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.UInt32",
+      "member": "ToString",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "string",
+      "parameterTypes": [],
+      "status": "Implemented",
+      "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowUInt32::ToString",
+      "effects": ["MayAllocate", "MayThrow", "MayCollect", "WritesManagedMemory"],
+      "features": ["integer-formatting", "managed-strings", "numerics"]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Object",
+      "member": "Equals",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "bool",
+      "parameterTypes": [
+        "object"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-equality",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "delegates"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Object",
+      "member": "GetHashCode",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "int",
+      "parameterTypes": [],
+      "status": "Implemented",
+      "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowObject::GetHashCode",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-objects"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Math",
+      "member": "Abs",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "int",
+      "parameterTypes": [
+        "int"
+      ],
+      "status": "Implemented",
+      "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowMath::Abs",
+      "effects": [
+        "MayThrow"
+      ],
+      "features": [
+        "managed-exceptions",
+        "numerics"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.BitConverter",
+      "member": "GetBytes",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "byte[]",
+      "parameterTypes": [
+        "int"
+      ],
+      "status": "Implemented",
+      "target": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowBitConverter::GetBytes",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "binary-primitives",
+        "managed-arrays"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Delegate",
+	  "member": "Equals",
+	  "isStatic": false,
+	  "genericArity": 0,
+	  "parameterCount": 1,
+	  "returnType": "bool",
+	  "parameterTypes": [
+		"object"
+	  ],
+	  "status": "Intrinsic",
+	  "target": "intrinsic:delegate-equality",
+	  "effects": [
+		"ReadsManagedMemory"
+	  ],
+	  "features": [
+		"delegates"
+	  ]
+	},
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Delegate",
+      "member": "op_Equality",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "bool",
+      "parameterTypes": [
+        "System.Delegate",
+        "System.Delegate"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-equality",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "delegates"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Delegate",
+      "member": "Combine",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "System.Delegate",
+      "parameterTypes": [
+        "System.Delegate",
+        "System.Delegate"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-combine",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "ReadsManagedMemory",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "delegates",
+        "managed-gc"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Delegate",
+      "member": "op_Inequality",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "bool",
+      "parameterTypes": [
+        "System.Delegate",
+        "System.Delegate"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-inequality",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "delegates"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Delegate",
+      "member": "Remove",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "System.Delegate",
+      "parameterTypes": [
+        "System.Delegate",
+        "System.Delegate"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-remove",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "ReadsManagedMemory",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "delegates",
+        "managed-gc"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Func`2<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "void",
+      "parameterTypes": [
+        "object",
+        "nint"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-ctor",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "delegates",
+        "managed-gc"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Func`1<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "void",
+      "parameterTypes": [
+        "object",
+        "nint"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-ctor",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "delegates",
+        "managed-gc"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Func`1<int>",
+      "member": "Invoke",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "!0",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-invoke",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "delegates"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Func`2<int,int>",
+      "member": "Invoke",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "!1",
+      "parameterTypes": [
+        "!0"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-invoke",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "delegates"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Action`1<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "void",
+      "parameterTypes": [
+        "object",
+        "nint"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-ctor",
+      "effects": [
+        "MayAllocate",
+        "MayThrow",
+        "MayCollect",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "delegates",
+        "managed-gc"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Action`1<int>",
+      "member": "Invoke",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": [
+        "!0"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:delegate-invoke",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "delegates"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Nullable<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": [
+        "!0"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:nullable-ctor:*",
+      "effects": [],
+      "features": [
+        "nullable-values"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Nullable<*>",
+      "member": "get_HasValue",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "bool",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:nullable-has-value:*",
+      "effects": [],
+      "features": [
+        "nullable-values"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Nullable<*>",
+      "member": "get_Value",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "!0",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:nullable-get-value:*",
+      "effects": [
+        "MayThrow"
+      ],
+      "features": [
+        "nullable-values"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Nullable<*>",
+      "member": "GetValueOrDefault",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "!0",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:nullable-get-value-or-default-no-argument:*",
+      "effects": [],
+      "features": [
+        "nullable-values"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Nullable<*>",
+      "member": "GetValueOrDefault",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "!0",
+      "parameterTypes": [
+        "!0"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:nullable-get-value-or-default:*",
+      "effects": [],
+      "features": [
+        "nullable-values"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "void",
+      "parameterTypes": [
+        "void*",
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-from-pointer:*",
+      "effects": [
+        "MayThrow"
+      ],
+      "features": [
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": [
+        "!0&"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-from-ref:*",
+      "effects": [],
+      "features": [
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "op_Implicit",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.Span`1<!0>",
+      "parameterTypes": [
+        "!0[]"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-from-array:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "get_Length",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "int",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-length:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "get_Item",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "!0&",
+      "parameterTypes": [
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-get-item:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "get_IsEmpty",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "bool",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-is-empty:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "Slice",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.Span`1<!0>",
+      "parameterTypes": [
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-slice-start:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "Slice",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "System.Span`1<!0>",
+      "parameterTypes": [
+        "int",
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-slice-range:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "CopyTo",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": [
+        "System.Span`1<!0>"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:span-copy-to:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": ".ctor",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": [
+        "!0&"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-from-ref:*",
+      "effects": [],
+      "features": [
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "op_Implicit",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.ReadOnlySpan`1<!0>",
+      "parameterTypes": [
+        "!0[]"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-from-array:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.Span`1<*>",
+      "member": "op_Implicit",
+      "isStatic": true,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.ReadOnlySpan`1<!0>",
+      "parameterTypes": [
+        "System.Span`1<!0>"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-from-span:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "get_Length",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "int",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-length:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "get_IsEmpty",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 0,
+      "returnType": "bool",
+      "parameterTypes": [],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-is-empty:*",
+      "effects": [
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "get_Item",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "!0&",
+      "parameterTypes": [
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-get-item:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "Slice",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "System.ReadOnlySpan`1<!0>",
+      "parameterTypes": [
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-slice-start:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "Slice",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 2,
+      "returnType": "System.ReadOnlySpan`1<!0>",
+      "parameterTypes": [
+        "int",
+        "int"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-slice-range:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory"
+      ],
+      "features": [
+        "managed-arrays",
+        "spans"
+      ]
+    },
+    {
+      "assembly": "System.Runtime",
+      "type": "System.ReadOnlySpan`1<*>",
+      "member": "CopyTo",
+      "isStatic": false,
+      "genericArity": 0,
+      "parameterCount": 1,
+      "returnType": "void",
+      "parameterTypes": [
+        "System.Span`1<!0>"
+      ],
+      "status": "Intrinsic",
+      "target": "intrinsic:readonly-span-copy-to:*",
+      "effects": [
+        "MayThrow",
+        "ReadsManagedMemory",
+        "WritesManagedMemory"
+      ],
+      "features": [
+        "spans"
+      ]
+    }
+  ],
+  "deferredTypePrefixes": [
+    "System.Reflection.Emit.",
+    "System.Runtime.Loader.AssemblyLoadContext",
+    "System.Runtime.InteropServices.ComTypes."
+  ]
+}
