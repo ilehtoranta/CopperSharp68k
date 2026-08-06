@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Text;
 using CopperSharp.Compiler;
+using CopperSharp.Targets.Amiga;
 
 const int AdfSize = 901_120;
 const int BootBlockSize = 1_024;
@@ -13,23 +14,55 @@ const uint SuccessValue = 0x4353_4850; // "CSHP"
 const string SuccessMarker = "COPPERSHARP68K_BOOT_OK";
 const string FailureMarker = "COPPERSHARP68K_BOOT_FAIL";
 
-if (args.Length != 3)
+if (args.Length < 3)
 {
-    Console.Error.WriteLine("Usage: CopperSharp.Compiler.BootAdf <assembly> <entry> <output.adf>");
+    Console.Error.WriteLine(
+        "Usage: CopperSharp.Compiler.BootAdf <assembly> <entry> <output.adf> " +
+        "[--managed-amiga] [--cpu m68000|m68040] [--fpu disabled|m68040] [--success-value hex]");
     return 2;
 }
 
-var result = M68kCompiler.Compile(new M68kCompilationRequest
+var options = args.Skip(3).ToArray();
+var managedAmiga = options.Contains("--managed-amiga", StringComparer.Ordinal);
+string? Option(string name)
+{
+    var index = Array.IndexOf(options, name);
+    return index >= 0 && index + 1 < options.Length ? options[index + 1] : null;
+}
+
+var cpu = Option("--cpu")?.ToLowerInvariant() switch
+{
+    null or "m68000" => M68kCpuTarget.M68000,
+    "m68040" => M68kCpuTarget.M68040,
+    var value => throw new ArgumentException($"Unsupported CPU '{value}'.")
+};
+var floatingPoint = Option("--fpu")?.ToLowerInvariant() switch
+{
+    null or "disabled" => M68kFloatingPointMode.Disabled,
+    "m68040" => M68kFloatingPointMode.M68040,
+    var value => throw new ArgumentException($"Unsupported FPU '{value}'.")
+};
+var successValueText = Option("--success-value");
+var successValue = successValueText is null
+    ? SuccessValue
+    : Convert.ToUInt32(successValueText.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? successValueText[2..] : successValueText, 16);
+var request = new M68kCompilationRequest
 {
     AssemblyPath = Path.GetFullPath(args[0]),
     EntryPoint = args[1],
-    Cpu = M68kCpuTarget.M68000,
+    Cpu = cpu,
+    FloatingPoint = floatingPoint,
     OutputFormat = M68kOutputFormat.Hunk,
-    RuntimeProfile = M68kRuntimeProfile.Freestanding,
-    ExceptionMode = M68kExceptionMode.Yolo
-});
+    RuntimeProfile = managedAmiga ? M68kRuntimeProfile.Application : M68kRuntimeProfile.Freestanding,
+    ExceptionMode = M68kExceptionMode.Yolo,
+    MemoryManagement = managedAmiga
+        ? M68kMemoryManagement.ManagedPoolMarkSweepGc
+        : M68kMemoryManagement.None,
+    Heap = managedAmiga ? new M68kHeapOptions { Size = 0x0000_2000 } : new M68kHeapOptions()
+};
+var result = managedAmiga ? AmigaM68kCompiler.Compile(request) : M68kCompiler.Compile(request);
 
-var wrapper = BuildWrapper(result.EntryPoint);
+var wrapper = BuildWrapper(result.EntryPoint, successValue);
 var codeAddress = checked(LoadAddress + (uint)wrapper.Length);
 var code = (byte[])result.Code.Clone();
 foreach (var relocation in result.Relocations)
@@ -88,7 +121,7 @@ static void BuildBootBlock(Span<byte> block, int transferLength)
     BinaryPrimitives.WriteUInt32BigEndian(block[4..], ~sum);
 }
 
-static byte[] BuildWrapper(uint entryOffset)
+static byte[] BuildWrapper(uint entryOffset, uint successValue)
 {
     var bytes = new List<byte>();
     var labels = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -110,7 +143,7 @@ static byte[] BuildWrapper(uint entryOffset)
     Word(0x2C5F);                                      // move.l (sp)+,a6
     Word(0x225F);                                      // move.l (sp)+,a1
     Word(0x23C0); Long(StatusAddress);                  // expose returned d0 to headless runners
-    Word(0x0C80); Long(SuccessValue);                  // cmpi.l #SuccessValue,d0
+    Word(0x0C80); Long(successValue);                  // cmpi.l #expected,d0
     Branch(0x6700, "success");                        // beq.w success
     Word(0x33FC); Word(0x0F00); Long(0x00DF_F180);     // red failure screen
     LeaPc("failureMarker");

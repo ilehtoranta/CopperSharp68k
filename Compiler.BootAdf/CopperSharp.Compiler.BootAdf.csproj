@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
+    <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
+    <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
   </ItemGroup>
 
 </Project>
