@@ -3,8 +3,11 @@
 - SPDX-License-Identifier: MIT
  */
 
+using System.Runtime.InteropServices;
+
 namespace Amiga;
 
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct MinNode
 {
 	public const uint Size = 8;
@@ -13,6 +16,7 @@ public struct MinNode
 	public APTR Predecessor;
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct Node
 {
 	public const uint Size = 14;
