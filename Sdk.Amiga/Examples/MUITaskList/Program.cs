@@ -128,9 +128,9 @@ public static class Program
 			Tag.Done);
 
 		var window = MUIMaster.MUI_NewObject(
-			Window.Name,
-			Window.Title, "MUI Task List",
-			Window.RootObject, group,
+			Amiga.MUI.Window.Name,
+			Amiga.MUI.Window.Title, "MUI Task List",
+			Amiga.MUI.Window.RootObject, group,
 			Tag.Done);
 
 		ref var appClassHeader = ref CustomClassHeader.FromAddress(APTR.FromPointer(appClass));
@@ -172,7 +172,7 @@ public static class Program
 			TaskListApplication.Method.Refresh,
 			list);
 
-		BOOPSI.DoMethod(window, Method.Set, Window.Open, 1);
+		BOOPSI.DoMethod(window, Method.Set, Amiga.MUI.Window.Open, 1);
 		var result = BOOPSI.DoMethod(app, Application.Method.Run);
 		MUIMaster.MUI_DisposeObject(app);
 		MUIMaster.MUI_DeleteCustomClass(appClass);
@@ -186,7 +186,7 @@ public static class Program
 		BOOPSI.DoMethod(
 			window,
 			Notify.Method,
-			Window.CloseRequest,
+			Amiga.MUI.Window.CloseRequest,
 			(uint)Value.EveryTime,
 			app,
 			2,

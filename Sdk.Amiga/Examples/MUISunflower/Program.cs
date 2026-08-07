@@ -25,9 +25,9 @@ public static class Program
 			Tag.Done);
 
 		var window = new WindowObject(MUIMaster.MUI_NewObject(
-			Window.Name,
-			Window.Title, title,
-			Window.RootObject, group,
+			Amiga.MUI.Window.Name,
+			Amiga.MUI.Window.Title, title,
+			Amiga.MUI.Window.RootObject, group,
 			Tag.Done));
 
 		var app = new ApplicationObject(MUIMaster.MUI_NewObject(
