@@ -23,10 +23,13 @@ public static class Exec
 		Local = 1u << 8,
 		TwentyFourBitDma = 1u << 9,
 		Kick = 1u << 10,
+		Swap = 1u << 11,
+		ThirtyOneBit = 1u << 12,
 		Clear = 1u << 16,
 		Largest = 1u << 17,
 		Reverse = 1u << 18,
 		Total = 1u << 19,
+		SemaphoreProtected = 1u << 20,
 		NoExpunge = 1u << 31,
 	}
 
