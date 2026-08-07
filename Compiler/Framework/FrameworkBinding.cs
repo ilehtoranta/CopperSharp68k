@@ -413,6 +413,9 @@ internal readonly record struct FrameworkFeature(string Name)
 
 	public static FrameworkFeature ManagedArrays { get; } = new("managed-arrays");
 
+	public static FrameworkFeature ManagedCollections { get; } =
+		new("managed-collections");
+
 	public static FrameworkFeature ManagedGc { get; } = new("managed-gc");
 
 	public static FrameworkFeature NativeMemory { get; } = new("native-memory");
@@ -425,6 +428,9 @@ internal readonly record struct FrameworkFeature(string Name)
 
 	public static FrameworkFeature IntegerFormatting { get; } =
 		new("integer-formatting");
+
+	public static FrameworkFeature StringInterpolation { get; } =
+		new("string-interpolation");
 
 	public static FrameworkFeature BinaryPrimitives { get; } = new("binary-primitives");
 

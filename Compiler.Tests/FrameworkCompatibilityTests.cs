@@ -6,6 +6,7 @@
 using System.Reflection;
 using System.Text.Json;
 using CopperSharp.Compiler.Framework;
+using CopperSharp.Targets.Amiga;
 
 namespace CopperSharp.Compiler.Tests;
 
@@ -635,6 +636,69 @@ public sealed class FrameworkCompatibilityTests
 	}
 
 	[Fact]
+	public void IntegerFormatStringsUsePublicContractsAndPrivateShadows()
+	{
+		var analysis = Analyze("IntegerFormatStringEntry");
+		var formatters = analysis.Members
+			.Where(member => member.Member.Name == "ToString" &&
+				member.Member.TypeName is "System.Int32" or "System.UInt32")
+			.ToArray();
+		Assert.Equal(2, formatters.Length);
+		Assert.All(formatters, formatter =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, formatter.Status);
+			Assert.Contains("Shadow", formatter.Binding, StringComparison.Ordinal);
+			Assert.Equal(
+				["MayAllocate", "MayThrow", "MayCollect", "ReadsManagedMemory", "WritesManagedMemory"],
+				formatter.Effects);
+			Assert.Equal(
+				["integer-formatting", "managed-exceptions", "managed-strings", "numerics"],
+				formatter.RequiredFeatures);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void InterpolatedIntegersUseThePublicNet10HandlerContract()
+	{
+		var analysis = Analyze("InterpolatedIntegerEntry");
+		Assert.True(
+			analysis.IsCompatible,
+			string.Join(
+				Environment.NewLine,
+				analysis.Members.Select(member =>
+					$"{member.Member.TypeName}::{member.Member.Name} => " +
+					$"{member.Status} {member.Binding} {member.Reason}")));
+		var handlerMembers = analysis.Members
+			.Where(member => member.Member.TypeName ==
+				"System.Runtime.CompilerServices.DefaultInterpolatedStringHandler")
+			.ToArray();
+		Assert.Equal(5, handlerMembers.Length);
+		Assert.All(handlerMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDefaultInterpolatedStringHandler::",
+				member.Binding,
+				StringComparison.Ordinal);
+			Assert.Contains("string-interpolation", member.RequiredFeatures);
+		});
+		Assert.Equal(
+			2,
+			analysis.ManagedAllocationSites.Count(site =>
+				site is { Kind: "array", AllocatedType: "char[]" }));
+		Assert.Single(
+			analysis.ManagedAllocationSites,
+			site => site is { Kind: "string", AllocatedType: "string" });
+
+		var unrelated = Analyze("IntegerToStringEntry");
+		Assert.DoesNotContain(
+			unrelated.Members,
+			member => member.Member.TypeName ==
+				"System.Runtime.CompilerServices.DefaultInterpolatedStringHandler");
+	}
+
+	[Fact]
 	public void ToCharArrayOverloadsShareOneReportedAllocatingIntrinsic()
 	{
 		var analysis = Analyze("StringToCharArrayEntry");
@@ -1200,6 +1264,130 @@ public sealed class FrameworkCompatibilityTests
 			"delegates",
 			analysis.Members.SelectMany(member => member.RequiredFeatures));
 		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void SealedDisposableUsesExplicitClosedWorldFrameworkBinding()
+	{
+		var analysis = Analyze("SealedDisposableUsingEntry");
+		var dispose = Assert.Single(
+			analysis.Members,
+			member => member.Member is { TypeName: "System.IDisposable", Name: "Dispose" });
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, dispose.Status);
+		Assert.Equal("managed:closed-world-sealed-interface-dispatch", dispose.Binding);
+		Assert.Contains("managed-objects", dispose.RequiredFeatures);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void AmigaSdkRetainedOwnerUsesSameDisposableBinding()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(Request("CStringStorageEntry"));
+		var dispose = Assert.Single(
+			analysis.Members,
+			member => member.Member is { TypeName: "System.IDisposable", Name: "Dispose" });
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, dispose.Status);
+		Assert.Equal("managed:closed-world-sealed-interface-dispatch", dispose.Binding);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void ListCoreMembersUseGenericPayForPlayShadows()
+	{
+		var analysis = Analyze("ListInt32Entry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(5, members.Length);
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowList`1::",
+				member.Binding,
+				StringComparison.Ordinal);
+			Assert.Contains("managed-collections", member.RequiredFeatures);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+		});
+		Assert.Contains(
+			analysis.ManagedAllocationSites,
+			site => site is { Kind: "object" } &&
+				site.AllocatedType.StartsWith(
+					"System.Collections.Generic.List`1<int>",
+					StringComparison.Ordinal));
+		Assert.Contains(
+			analysis.ManagedAllocationSites,
+			site => site is { Kind: "array", AllocatedType: "int[]" });
+		Assert.True(analysis.IsCompatible);
+
+		var unrelated = Analyze("IntegerToStringEntry");
+		Assert.DoesNotContain(
+			unrelated.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1",
+				StringComparison.Ordinal));
+		var unrelatedAssembly = M68kCompiler.Compile(Request("IntegerToStringEntry") with
+		{
+			OutputFormat = M68kOutputFormat.Assembly,
+			Imports = new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = 0x0000_2800
+			}
+		});
+		Assert.DoesNotContain("ShadowList", unrelatedAssembly.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void UnimplementedListMemberRemainsExplicitlyDeferred()
+	{
+		var analysis = Analyze("UnsupportedListRemoveEntry");
+		var remove = Assert.Single(
+			analysis.Members,
+			member => member.Member is
+			{
+				Name: "Remove"
+			} && member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1",
+				StringComparison.Ordinal));
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, remove.Status);
+		Assert.Contains(
+			"could not resolve an exact implementation",
+			remove.Reason ?? string.Empty,
+			StringComparison.OrdinalIgnoreCase);
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.Name == "Add" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Implemented);
+		Assert.DoesNotContain(
+			analysis.Members,
+			member => member.Member.Name != "Remove" &&
+				member.Reason?.Contains(
+					"could not resolve an exact implementation",
+					StringComparison.OrdinalIgnoreCase) == true);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void ListOfReferenceFreeStructRemainsExplicitlyDeferred()
+	{
+		var analysis = Analyze("UnsupportedListStructEntry");
+		var constructor = Assert.Single(
+			analysis.Members,
+			member => member.Member is
+			{
+				Name: ".ctor"
+			} && member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1",
+				StringComparison.Ordinal));
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, constructor.Status);
+		Assert.Contains(
+			"could not resolve an exact implementation",
+			constructor.Reason ?? string.Empty,
+			StringComparison.OrdinalIgnoreCase);
+		Assert.False(analysis.IsCompatible);
 	}
 
 	private static void AssertIntrinsic(

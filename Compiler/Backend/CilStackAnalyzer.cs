@@ -559,7 +559,10 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Stelem_I1 ||
 		op == OpCodes.Stelem_I2 ||
 		op == OpCodes.Stelem_I4 ||
+		op == OpCodes.Stelem_I8 ||
 		op == OpCodes.Stelem_I ||
+		op == OpCodes.Stelem_R4 ||
+		op == OpCodes.Stelem_R8 ||
 		op == OpCodes.Stelem_Ref;
 
 	private static bool IsIndirectLoad(OpCode op) =>
@@ -1014,7 +1017,16 @@ internal static class CilStackAnalyzer
 
 		if (IsArrayStore(op))
 		{
-			return Pop(method, instruction, stack, 3);
+			var valueSlots = op == OpCodes.Stelem
+				? SlotCount(module.ResolveTypeToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset))
+				: op is var arrayStore &&
+					(arrayStore == OpCodes.Stelem_I8 || arrayStore == OpCodes.Stelem_R8)
+						? 2
+						: 1;
+			return Pop(method, instruction, stack, 2 + valueSlots);
 		}
 
 		if (IsIndirectLoad(op))
@@ -1379,6 +1391,18 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Stind_I8)
 		{
 			return 3;
+		}
+		if (IsArrayStore(op))
+		{
+			var valueSlots = op == OpCodes.Stelem
+				? SlotCount(module.ResolveTypeToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset))
+				: op == OpCodes.Stelem_I8 || op == OpCodes.Stelem_R8
+					? 2
+					: 1;
+			return 2 + valueSlots;
 		}
 		if (op == OpCodes.Rethrow || op == OpCodes.Endfinally)
 		{

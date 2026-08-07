@@ -714,6 +714,15 @@ internal sealed partial class M68kCodeGenerator
 			throw UnsupportedType(type, method, role);
 		}
 
+		if (CompilationModule.IsDefaultInterpolatedStringHandler(type))
+		{
+			if (role == "local")
+			{
+				return;
+			}
+			throw UnsupportedType(type, method, role);
+		}
+
 		if ((!type.IsSupportedScalar || type.Size > 4) &&
 			!Is64BitScalar(type) &&
 			!_module.IsTransparentScalarType(type) &&
@@ -4999,6 +5008,12 @@ internal sealed partial class M68kCodeGenerator
 				EmitExceptionRaise(reason: 4, hasException: false);
 				return;
 			}
+			if (target.ImportName == "intrinsic:runtime-throw-argument-out-of-range")
+			{
+				RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+				EmitExceptionRaise(reason: 10, hasException: false);
+				return;
+			}
 
 			if (target.ImportName == "intrinsic:object-ctor")
 			{
@@ -7134,12 +7149,12 @@ internal sealed partial class M68kCodeGenerator
 			(int)instruction.Operand!,
 			method,
 			instruction.Offset);
-		if (elementType.Size is not (1 or 2 or 4) ||
+		if (elementType.Size is not (1 or 2 or 4 or 8) ||
 			(!elementType.IsSupportedScalar && !elementType.IsReference))
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
-				$"Arrays of '{elementType.DisplayName}' are not implemented; array elements must occupy one, two, or four bytes.",
+				$"Arrays of '{elementType.DisplayName}' are not implemented; array elements must occupy one, two, four, or eight bytes.",
 				method.DisplayName,
 				instruction.Offset);
 		}
@@ -8580,7 +8595,7 @@ internal sealed partial class M68kCodeGenerator
 	private MemoryAccess GetGenericArrayAccess(CilType type, bool isStore)
 	{
 		var size = _module.IsTransparentScalarType(type) ? 4 : type.Size;
-		if (size is not (1 or 2 or 4))
+		if (size is not (1 or 2 or 4 or 8))
 		{
 			throw new InvalidOperationException(
 				$"Unsupported generic array element type '{type.DisplayName}'.");

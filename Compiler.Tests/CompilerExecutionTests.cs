@@ -5361,21 +5361,53 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void ParameterlessIntegerFormattingFixtureMatchesHostNet10() =>
+	public void IntegerFormattingFixturesMatchHostNet10() =>
 		Assert.Multiple(
 			() => Assert.Equal(42, CompilerFixtures.IntegerToStringEntry()),
-			() => Assert.Equal(42, CompilerFixtures.IntegerToStringBoundaryEntry()));
+			() => Assert.Equal(42, CompilerFixtures.IntegerToStringBoundaryEntry()),
+			() => Assert.Equal(42, CompilerFixtures.IntegerFormatStringEntry()),
+			() => Assert.Equal(42, CompilerFixtures.IntegerFormatStringExceptionEntry()));
+
+	[Fact]
+	public void InterpolatedIntegerFixtureMatchesHostNet10() =>
+		Assert.Equal(42, CompilerFixtures.InterpolatedIntegerEntry());
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
-	public void ParameterlessIntegerFormattingUsesInvariantDecimalShadowRuntime(
+	public void InterpolatedIntegersExecuteWithForcedCollection(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint =
+				"CopperSharp.Compiler.Tests.CompilerFixtures::InterpolatedIntegerEntry",
+			Cpu = target,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_3000
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void IntegerFormattingUsesInvariantAllocationExactShadowRuntime(
 		M68kCpuTarget target,
 		M68kCpuModel model)
 	{
 		foreach (var entry in new[]
 		{
 			"IntegerToStringEntry",
-			"IntegerToStringBoundaryEntry"
+			"IntegerToStringBoundaryEntry",
+			"IntegerFormatStringEntry",
+			"IntegerFormatStringExceptionEntry"
 		})
 		{
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
@@ -5476,6 +5508,8 @@ public sealed class CompilerExecutionTests
 	[InlineData("StringCopyToEntry", 3180, 2450, 1908L)]
 	[InlineData("StringCopyToSpanEntry", 2408, 1814, 1528L)]
 	[InlineData("IntegerToStringEntry", 5468, 4138, 44388L)]
+	[InlineData("IntegerFormatStringEntry", 10532, 8036, 44432L)]
+	[InlineData("InterpolatedIntegerEntry", 10384, 7732, 34756L)]
 	[InlineData("StringToCharArrayAllocatedEntry", 2272, 1680, 1180L)]
 	[InlineData("StringEnumerationEntry", 1596, 1156, 2558L)]
 	[InlineData("StringOrdinalSearchEntry", 2776, 2380, 10378L)]
@@ -5490,8 +5524,10 @@ public sealed class CompilerExecutionTests
 			$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}");
 		var bus = CreateHunkBus(result);
 		var heap = 0x0000_4000u;
+		var allocationCalls = 0;
 		bus.RegisterGateway(0x0000_2800, state =>
 		{
+			allocationCalls++;
 			var size = state.D[0];
 			state.D[0] = heap;
 			heap += (size + 3) & ~3u;
@@ -5511,11 +5547,25 @@ public sealed class CompilerExecutionTests
 			result.Code.Length <= codeBudget,
 			$"{entry} code grew from {codeBudget} to {result.Code.Length} bytes.");
 		Assert.Equal(
-			entry == "IntegerToStringEntry" ? 10 : 2,
+			entry switch
+			{
+				"IntegerToStringEntry" => 10,
+				"IntegerFormatStringEntry" => 18,
+				"InterpolatedIntegerEntry" => 15,
+				_ => 2
+			},
 			result.AllocationStatistics.Count);
 		Assert.Equal(
-			entry == "IntegerToStringEntry" ? 8 : 0,
+			entry is "IntegerToStringEntry" or
+				"IntegerFormatStringEntry" or
+				"InterpolatedIntegerEntry"
+					? 8
+					: 0,
 			result.AllocationStatistics.Max(item => item.SpillFrameBytes));
+		if (entry == "InterpolatedIntegerEntry")
+		{
+			Assert.Equal(2, allocationCalls);
+		}
 		Assert.True(
 			cycles <= cycleBudget,
 			$"{entry} grew from {cycleBudget} to {cycles} MC68000 cycles.");
@@ -6755,6 +6805,309 @@ public sealed class CompilerExecutionTests
 		Assert.Equal((byte)'b', bus.Memory[address + 1]);
 		Assert.Equal((byte)'c', bus.Memory[address + 2]);
 		Assert.Equal(0, bus.Memory[address + 3]);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ScopedCStringBufferEncodesAndReleasesNativeStorage(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint execBase = 0x0000_3000;
+		const uint nativeBuffer = 0x0000_6000;
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CStringBufferEntry");
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		var freed = false;
+		bus.RegisterGateway(execBase - 198, state =>
+		{
+			Assert.Equal(8u, state.D[0]);
+			Assert.Equal((uint)global::Amiga.Exec.MemoryFlags.Public, state.D[1]);
+			state.D[0] = nativeBuffer;
+		});
+		bus.RegisterGateway(execBase - 210, state =>
+		{
+			Assert.Equal(nativeBuffer, state.A[1]);
+			Assert.Equal(8u, state.D[0]);
+			freed = true;
+		});
+
+		Assert.Equal(
+			nativeBuffer,
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Equal("Amiga", ReadCString(bus, nativeBuffer));
+		Assert.True(freed);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void RetainedCStringStorageEncodesAndReleasesNativeStorage(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint execBase = 0x0000_3000;
+		const uint nativeBuffer = 0x0000_6000;
+		const uint managedAllocator = 0x0000_2800;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CStringStorageEntry",
+			Cpu = target,
+			Imports = new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = managedAllocator
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		var managedHeap = 0x0000_4000u;
+		var freed = false;
+		bus.RegisterGateway(managedAllocator, state =>
+		{
+			var size = state.D[0];
+			state.D[0] = managedHeap;
+			managedHeap += (size + 3u) & ~3u;
+		});
+		bus.RegisterGateway(execBase - 198, state =>
+		{
+			Assert.Equal(12u, state.D[0]);
+			Assert.Equal((uint)global::Amiga.Exec.MemoryFlags.Public, state.D[1]);
+			state.D[0] = nativeBuffer;
+		});
+		bus.RegisterGateway(execBase - 210, state =>
+		{
+			Assert.Equal(nativeBuffer, state.A[1]);
+			Assert.Equal(12u, state.D[0]);
+			freed = true;
+		});
+
+		Assert.Equal(
+			nativeBuffer,
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Equal("Retained", ReadCString(bus, nativeBuffer));
+		Assert.True(freed);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void SealedDisposableUsesOrdinaryFrameworkInterfaceBinding(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = CompileWithAllocator(
+			target,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::SealedDisposableUsingEntry");
+
+		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
+	[Fact]
+	public void InterfaceTypedDisposableHasStableUnsupportedDiagnostic()
+	{
+		var exception = Assert.Throws<M68kCompilationException>(() =>
+			M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::InterfaceTypedDisposableEntry"
+			}));
+
+		Assert.Equal(M68kDiagnosticIds.UnsupportedPolymorphism, exception.DiagnosticId);
+		Assert.Contains("sealed exact receiver", exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void ListCoreSemanticFixturesMatchHostNet10() =>
+		Assert.Multiple(
+			() => Assert.Equal(42, CompilerFixtures.ListInt32Entry()),
+			() => Assert.Equal(0x0000_002A_5566_7788L, CompilerFixtures.ListInt64Entry()),
+			() => Assert.Equal(42, CompilerFixtures.ListRangeExceptionEntry()));
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ListCoreOperationsPreserveGenericValuesAcrossForcedCollection(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		foreach (var (entry, expected) in new[]
+		{
+			("ListInt32Entry", 42u),
+			("ListInt64Entry", 42u),
+			("ListRangeExceptionEntry", 42u),
+			("ListReferenceGcEntry", 42u)
+		})
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions
+				{
+					StartAddress = 0x0000_4000,
+					Size = 0x0000_5000
+				}
+			});
+
+			var actual = ExecuteHunk(result, model);
+			Assert.True(actual == expected, $"{entry} returned {actual} instead of {expected}.");
+		}
+	}
+
+	[Fact]
+	public void ListCoreMetricsStayWithinInitialMc68000Budgets()
+	{
+		var result = CompileWithAllocator(
+			M68kCpuTarget.M68000,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ListInt32Entry");
+		var bus = CreateHunkBus(result);
+		var heap = 0x0000_4000u;
+		var allocationCalls = 0;
+		bus.RegisterGateway(0x0000_2800, state =>
+		{
+			allocationCalls++;
+			var size = state.D[0];
+			state.D[0] = heap;
+			heap += (size + 3) & ~3u;
+		});
+		long cycles = 0;
+		Assert.Equal(
+			42u,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				HunkLoadAddress + result.EntryPoint,
+				afterReturn: state => cycles = state.Cycles));
+
+		Assert.True(
+			result.Image.Length <= 5_200,
+			$"ListInt32Entry image grew to {result.Image.Length} bytes.");
+		Assert.True(
+			result.Code.Length <= 3_850,
+			$"ListInt32Entry code grew to {result.Code.Length} bytes.");
+		Assert.True(
+			cycles <= 9_600,
+			$"ListInt32Entry grew to {cycles} MC68000 cycles.");
+		Assert.Equal(3, allocationCalls);
+		Assert.Equal(8, result.AllocationStatistics.Count);
+		Assert.All(
+			result.AllocationStatistics,
+			statistics => Assert.Equal(0, statistics.SpillFrameBytes));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DynamicCStringRejectsEmbeddedNullBeforeNativeAllocation(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CStringRejectsEmbeddedNullEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DynamicCStringRejectsUnmappableLatin1Input(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CStringRejectsUnmappableEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DynamicCStringReportsNativeAllocationFailure(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint execBase = 0x0000_3000;
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CStringAllocationFailureEntry");
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		bus.RegisterGateway(execBase - 198, state => state.D[0] = 0);
+
+		Assert.Equal(
+			42u,
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Fact]
+	public void CStringLiteralPathDoesNotLinkDynamicOwnershipHelpers()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CStringLiteralEntry");
+
+		Assert.DoesNotContain(
+			result.Symbols,
+			symbol => symbol.Name.Contains("CStringEncoding", StringComparison.Ordinal));
+		Assert.DoesNotContain("\tjsr\t-198(a6)", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tjsr\t-210(a6)", result.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void ScopedCStringMetricsStayWithinInitialMc68000Budgets()
+	{
+		const uint execBase = 0x0000_3000;
+		const uint nativeBuffer = 0x0000_6000;
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CStringBufferEntry");
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		var nativeAllocations = 0;
+		bus.RegisterGateway(execBase - 198, state =>
+		{
+			nativeAllocations++;
+			state.D[0] = nativeBuffer;
+		});
+		bus.RegisterGateway(execBase - 210, _ => { });
+		long cycles = 0;
+		Assert.Equal(
+			nativeBuffer,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				HunkLoadAddress + result.EntryPoint,
+				afterReturn: state => cycles = state.Cycles));
+		Assert.True(
+			result.Image.Length <= 4128,
+			$"CStringBufferEntry: image={result.Image.Length}, code={result.Code.Length}, cycles={cycles}.");
+		Assert.True(
+			result.Code.Length <= 3036,
+			$"CStringBufferEntry code grew to {result.Code.Length} bytes.");
+		Assert.True(
+			cycles <= 8750,
+			$"CStringBufferEntry grew to {cycles} MC68000 cycles.");
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CStringBufferEntry",
+			Cpu = M68kCpuTarget.M68000
+		});
+		Assert.Empty(analysis.ManagedAllocationSites);
+		Assert.All(
+			result.AllocationStatistics,
+			statistics => Assert.Equal(0, statistics.SpillFrameBytes));
+		Assert.Equal(1, nativeAllocations);
 	}
 
 	[Theory]

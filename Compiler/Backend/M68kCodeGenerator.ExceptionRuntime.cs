@@ -641,6 +641,7 @@ internal sealed partial class M68kCodeGenerator
 			"System.ArgumentOutOfRangeException");
 		var usesArgumentNull = _runtimeTypeDescriptors.Contains(
 			"System.ArgumentNullException");
+		var usesFormat = _runtimeTypeDescriptors.Contains("System.FormatException");
 		var haveException = UniqueLabel("eh_have_exception");
 		var nullFault = UniqueLabel("eh_null_fault");
 		var boundsFault = UniqueLabel("eh_bounds_fault");
@@ -652,6 +653,7 @@ internal sealed partial class M68kCodeGenerator
 		var argumentFault = UniqueLabel("eh_argument_fault");
 		var argumentOutOfRangeFault = UniqueLabel("eh_argument_out_of_range_fault");
 		var argumentNullFault = UniqueLabel("eh_argument_null_fault");
+		var formatFault = UniqueLabel("eh_format_fault");
 		var systemFault = UniqueLabel("eh_system_fault");
 
 		_assembler.AlignWord();
@@ -670,8 +672,8 @@ internal sealed partial class M68kCodeGenerator
 		EmitCompareImmediateLong(M68kRegister.D0, 4);
 		_assembler.EmitBranch(M68kCondition.Equal, overflowFault);
 		EmitCompareImmediateLong(M68kRegister.D0, 6);
-		if (!usesInvalidCast && !usesArrayTypeMismatch && !usesArgument &&
-			!usesArgumentOutOfRange && !usesArgumentNull)
+			if (!usesInvalidCast && !usesArrayTypeMismatch && !usesArgument &&
+				!usesArgumentOutOfRange && !usesArgumentNull && !usesFormat)
 		{
 			_assembler.EmitBranch(M68kCondition.NotEqual, systemFault);
 		}
@@ -698,11 +700,16 @@ internal sealed partial class M68kCodeGenerator
 				EmitCompareImmediateLong(M68kRegister.D0, 10);
 				_assembler.EmitBranch(M68kCondition.Equal, argumentOutOfRangeFault);
 			}
-			if (usesArgumentNull)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 11);
-				_assembler.EmitBranch(M68kCondition.Equal, argumentNullFault);
-			}
+				if (usesArgumentNull)
+				{
+					EmitCompareImmediateLong(M68kRegister.D0, 11);
+					_assembler.EmitBranch(M68kCondition.Equal, argumentNullFault);
+				}
+				if (usesFormat)
+				{
+					EmitCompareImmediateLong(M68kRegister.D0, 12);
+					_assembler.EmitBranch(M68kCondition.Equal, formatFault);
+				}
 			_assembler.EmitBranch(M68kCondition.True, systemFault);
 		}
 		if (usesArrayTypeMismatch)
@@ -737,6 +744,12 @@ internal sealed partial class M68kCodeGenerator
 			EmitRuntimeObjectAddress(
 				M68kRegister.A0,
 				"System.ArgumentNullException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesFormat)
+		{
+			_assembler.Mark(formatFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.FormatException");
 			_assembler.EmitBranch(M68kCondition.True, haveException);
 		}
 
@@ -1518,7 +1531,8 @@ internal sealed partial class M68kCodeGenerator
 			("System.ArrayTypeMismatchException", 8),
 			("System.ArgumentException", 9),
 			("System.ArgumentOutOfRangeException", 10),
-			("System.ArgumentNullException", 11)
+			("System.ArgumentNullException", 11),
+			("System.FormatException", 12)
 		};
 
 		foreach (var (typeName, reason) in mappings.Where(mapping =>
@@ -1681,7 +1695,8 @@ internal sealed partial class M68kCodeGenerator
 			"System.ArrayTypeMismatchException",
 			"System.ArgumentException",
 			"System.ArgumentOutOfRangeException",
-			"System.ArgumentNullException"
+			"System.ArgumentNullException",
+			"System.FormatException"
 		}.Where(_runtimeTypeDescriptors.Contains));
 		foreach (var typeName in exceptionTypes)
 		{
@@ -1713,6 +1728,7 @@ internal sealed partial class M68kCodeGenerator
 			"System.ArgumentException" => "System.Exception",
 			"System.ArgumentOutOfRangeException" => "System.ArgumentException",
 			"System.ArgumentNullException" => "System.ArgumentException",
+			"System.FormatException" => "System.SystemException",
 			"System.TypeInitializationException" => "System.SystemException",
 			_ => "System.Exception"
 		};

@@ -38,6 +38,8 @@ internal static class FrameworkBindingRegistry
 		FrameworkTypeId.GenericMethodParameter(0);
 	private static readonly FrameworkTypeId NullableDefinition =
 		Named("System.Runtime", "System.Nullable`1");
+	private static readonly FrameworkTypeId ListDefinition =
+		Named("System.Collections", "System.Collections.Generic.List`1");
 	private static readonly FrameworkTypeId SpanDefinition =
 		Named("System.Runtime", "System.Span`1");
 	private static readonly FrameworkTypeId SpanOfChar =
@@ -50,6 +52,10 @@ internal static class FrameworkBindingRegistry
 		FrameworkTypeId.GenericInstantiation(
 			ReadOnlySpanDefinition,
 			[GenericMethod0]);
+	private static readonly FrameworkTypeId DefaultInterpolatedStringHandler =
+		Named(
+			"System.Runtime",
+			"System.Runtime.CompilerServices.DefaultInterpolatedStringHandler");
 
 	private static readonly IReadOnlyDictionary<FrameworkMemberId, FrameworkBinding>
 		FrameworkBindings = CreateFrameworkBindings();
@@ -63,9 +69,19 @@ internal static class FrameworkBindingRegistry
 			return exact;
 		}
 
+		if (TryBindDefaultInterpolatedStringHandler(member, context) is { } handler)
+		{
+			return handler;
+		}
+
 		if (TryBindNullable(member, context) is { } nullable)
 		{
 			return nullable;
+		}
+
+		if (TryBindList(member, context) is { } list)
+		{
+			return list;
 		}
 
 		if (TryBindSpan(member, context) is { } span)
@@ -94,6 +110,72 @@ internal static class FrameworkBindingRegistry
 		}
 
 		return TryBindCompilerIntrinsic(member, context);
+	}
+
+	private static FrameworkBinding? TryBindDefaultInterpolatedStringHandler(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (!member.DeclaringType.Equals(DefaultInterpolatedStringHandler))
+		{
+			return null;
+		}
+
+		string? shadowName = null;
+		if (member.MethodTypeArguments.Length == 0)
+		{
+			if (member.Name == ".ctor" && SignatureEquals(member, Void, Int32, Int32))
+			{
+				shadowName = ".ctor";
+			}
+			else if (member.Name == "AppendLiteral" &&
+				SignatureEquals(member, Void, String))
+			{
+				shadowName = "AppendLiteral";
+			}
+			else if (member.Name == "ToStringAndClear" &&
+				SignatureEquals(member, String))
+			{
+				shadowName = "ToStringAndClear";
+			}
+		}
+		else if (member.Name == "AppendFormatted" &&
+			context.MethodTypeArguments is [{ DisplayName: var argumentType }])
+		{
+			if (argumentType == "int" &&
+				context.CilSignature.ParameterTypes is [{ DisplayName: "int" }])
+			{
+				shadowName = "AppendFormattedInt32";
+			}
+			else if (argumentType == "uint" &&
+				context.CilSignature.ParameterTypes is
+					[{ DisplayName: "uint" }, { DisplayName: "string" }])
+			{
+				shadowName = "AppendFormattedUInt32";
+			}
+		}
+
+		if (shadowName is null)
+		{
+			return null;
+		}
+
+		return Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowDefaultInterpolatedStringHandler",
+				shadowName),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.MayCollect |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory,
+				FrameworkFeature.IntegerFormatting,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.StringInterpolation));
 	}
 
 	private static FrameworkBinding? TryBindMemoryExtensions(
@@ -226,6 +308,18 @@ internal static class FrameworkBindingRegistry
 		CreateFrameworkBindings()
 	{
 		var bindings = new Dictionary<FrameworkMemberId, FrameworkBinding>();
+		AddManagedBody(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.IDisposable",
+				"Dispose",
+				isInstance: true,
+				Void),
+			"managed:closed-world-sealed-interface-dispatch",
+			Effects(
+				FrameworkEffects.MayThrow,
+				FrameworkFeature.ManagedObjects));
 		AddShadow(
 			bindings,
 			Member(
@@ -650,6 +744,29 @@ internal static class FrameworkBindingRegistry
 						FrameworkEffects.MayCollect |
 						FrameworkEffects.WritesManagedMemory,
 					FrameworkFeature.IntegerFormatting,
+						FrameworkFeature.ManagedStrings,
+						FrameworkFeature.Numerics));
+			AddShadow(
+				bindings,
+				Member(
+					"System.Runtime",
+					typeName,
+					"ToString",
+					isInstance: true,
+					String,
+					String),
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.Managed",
+					shadowType,
+					"ToString"),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.MayCollect |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.WritesManagedMemory,
+					FrameworkFeature.IntegerFormatting,
+					FrameworkFeature.ManagedExceptions,
 					FrameworkFeature.ManagedStrings,
 					FrameworkFeature.Numerics));
 		}
@@ -717,6 +834,66 @@ internal static class FrameworkBindingRegistry
 			member,
 			target,
 			Effects(effects, FrameworkFeature.NullableValues));
+	}
+
+	private static FrameworkBinding? TryBindList(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
+			!member.DeclaringType.ElementType!.Equals(ListDefinition) ||
+			member.DeclaringType.GenericArguments.Length != 1 ||
+			member.MethodTypeArguments.Length != 0 ||
+			context.ConstructedDeclaringType is not
+			{
+				GenericArguments: [var element]
+			} ||
+			!element.IsSupportedScalar ||
+			element.Kind is CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter)
+		{
+			return null;
+		}
+
+		var shadowName = member.Name switch
+		{
+			".ctor" when SignatureEquals(member, Void) => ".ctor",
+			"Add" when SignatureEquals(member, Void, GenericType0) => "Add",
+			"get_Count" when SignatureEquals(member, Int32) => "get_Count",
+			"get_Item" when SignatureEquals(member, GenericType0, Int32) => "get_Item",
+			"set_Item" when SignatureEquals(member, Void, Int32, GenericType0) => "set_Item",
+			_ => null
+		};
+		if (shadowName is null)
+		{
+			return null;
+		}
+
+		var effects = member.Name switch
+		{
+			".ctor" => FrameworkEffects.WritesManagedMemory,
+			"Add" => FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.MayCollect |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory,
+			"get_Count" => FrameworkEffects.ReadsManagedMemory,
+			"get_Item" => FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory,
+			_ => FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory
+		};
+		return Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowList`1",
+				shadowName),
+			Effects(
+				effects,
+				FrameworkFeature.ManagedCollections,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc));
 	}
 
 	private static FrameworkBinding? TryBindSpan(
@@ -1014,8 +1191,63 @@ internal static class FrameworkBindingRegistry
 					FrameworkEffects.MayThrow,
 					FrameworkFeature.ManagedExceptions));
 		}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowFormatException" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-throw-format",
+				Effects(
+					FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowArgumentException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-argument",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowArgumentNullException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-argument-null",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowArgumentOutOfRangeException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-argument-out-of-range",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowOutOfMemoryException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-out-of-memory",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
 
-		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
 			name.StartsWith("Dispose", StringComparison.Ordinal) &&
 			signature.ParameterTypes.Length == 1)
 		{
@@ -1496,11 +1728,41 @@ internal static class FrameworkBindingRegistry
 		}
 	}
 
+	private static void AddManagedBody(
+		IDictionary<FrameworkMemberId, FrameworkBinding> bindings,
+		FrameworkMemberId member,
+		string target,
+		FrameworkEffectSummary effects)
+	{
+		if (!bindings.TryAdd(
+				member,
+				new FrameworkBinding(
+					member,
+					FrameworkBindingKind.ManagedBody,
+					target,
+					effects)))
+		{
+			throw new InvalidOperationException(
+				$"Duplicate framework binding identity '{member.DisplayName}'.");
+		}
+	}
+
 	private static FrameworkBinding Intrinsic(
 		FrameworkMemberId member,
 		string target,
 		FrameworkEffectSummary effects) =>
 		new(member, FrameworkBindingKind.Intrinsic, target, effects);
+
+	private static FrameworkBinding Shadow(
+		FrameworkMemberId member,
+		FrameworkShadowMethod shadowMethod,
+		FrameworkEffectSummary effects) =>
+		new(
+			member,
+			FrameworkBindingKind.ShadowMethod,
+			$"shadow:{shadowMethod.AssemblyName}:{shadowMethod.TypeName}::{shadowMethod.MethodName}",
+			effects,
+			ShadowMethod: shadowMethod);
 
 	private static FrameworkEffectSummary Effects(
 		FrameworkEffects effects,

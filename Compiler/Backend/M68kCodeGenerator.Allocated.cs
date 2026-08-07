@@ -1879,7 +1879,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			elementSize = aggregateLayout.Size;
 		}
-		else if (elementType.Size is not (1 or 2 or 4) ||
+		else if (elementType.Size is not (1 or 2 or 4 or 8) ||
 			(!elementType.IsSupportedScalar && !elementType.IsReference))
 		{
 			throw new M68kCompilationException(
@@ -2171,13 +2171,25 @@ internal sealed partial class M68kCodeGenerator
 		};
 		if (instruction.Operation == M68kMachineOperation.ArrayStore)
 		{
+			var sourceRegister = allocated.Allocation.Registers[
+				instruction.Uses[2]].Register;
 			EmitAllocatedIndexedStore(
-				allocated.Allocation.Registers[instruction.Uses[2]].Register,
+				sourceRegister,
 				baseRegister,
 				indexRegister,
 				width,
 				access.Size,
 				12);
+			if (access.Size == 8)
+			{
+				EmitAllocatedIndexedStore(
+					(M68kRegister)((int)sourceRegister + 1),
+					baseRegister,
+					indexRegister,
+					M68kMachineValueWidth.Long,
+					access.Size,
+					16);
+			}
 			return;
 		}
 		var destination = allocated.Allocation.Registers[
@@ -2189,6 +2201,16 @@ internal sealed partial class M68kCodeGenerator
 			width,
 			access.Size,
 			12);
+		if (access.Size == 8)
+		{
+			EmitAllocatedIndexedLoad(
+				baseRegister,
+				indexRegister,
+				(M68kRegister)((int)destination + 1),
+				M68kMachineValueWidth.Long,
+				access.Size,
+				16);
+		}
 		if (access.Size == 1)
 		{
 			if (access.SignExtend)
@@ -2972,6 +2994,7 @@ internal sealed partial class M68kCodeGenerator
 				1 => 0,
 				2 => 1,
 				4 => 2,
+				8 => 3,
 				_ => throw new InvalidOperationException(
 					$"Unsupported indexed element size {elementSize}.")
 			};
@@ -5670,6 +5693,36 @@ internal sealed partial class M68kCodeGenerator
 			EmitExceptionRaise(reason: 4, hasException: false);
 			return;
 		}
+			if (name == "intrinsic:runtime-throw-format")
+			{
+				RegisterRuntimeTypeDescriptor("System.FormatException");
+				EmitExceptionRaise(reason: 12, hasException: false);
+				return;
+			}
+			if (name == "intrinsic:runtime-throw-argument")
+			{
+				RegisterRuntimeTypeDescriptor("System.ArgumentException");
+				EmitExceptionRaise(reason: 9, hasException: false);
+				return;
+			}
+			if (name == "intrinsic:runtime-throw-argument-null")
+			{
+				RegisterRuntimeTypeDescriptor("System.ArgumentNullException");
+				EmitExceptionRaise(reason: 11, hasException: false);
+				return;
+			}
+			if (name == "intrinsic:runtime-throw-argument-out-of-range")
+			{
+				RegisterRuntimeTypeDescriptor("System.ArgumentOutOfRangeException");
+				EmitExceptionRaise(reason: 10, hasException: false);
+				return;
+			}
+			if (name == "intrinsic:runtime-throw-out-of-memory")
+			{
+				RegisterRuntimeTypeDescriptor("System.OutOfMemoryException");
+				EmitExceptionRaise(reason: 6, hasException: false);
+				return;
+			}
 		if (name.StartsWith(
 			"intrinsic:nullable-ctor:",
 			StringComparison.Ordinal))
@@ -7212,8 +7265,13 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:aptr-is-null" or
 			"intrinsic:aptr-is-not-null" or
 			"intrinsic:runtime-dispose" or
-			"intrinsic:runtime-throw-overflow" or
-			"intrinsic:runtime-gc-collect" or
+				"intrinsic:runtime-throw-overflow" or
+				"intrinsic:runtime-throw-format" or
+				"intrinsic:runtime-throw-argument" or
+				"intrinsic:runtime-throw-argument-null" or
+				"intrinsic:runtime-throw-argument-out-of-range" or
+				"intrinsic:runtime-throw-out-of-memory" or
+				"intrinsic:runtime-gc-collect" or
 			"intrinsic:runtime-GetGcStaleBytes" or
 			"intrinsic:runtime-GetGcStaleBlocks";
 

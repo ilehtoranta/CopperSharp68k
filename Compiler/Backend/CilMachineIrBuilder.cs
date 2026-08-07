@@ -4239,7 +4239,12 @@ internal static class CilMachineIrBuilder
 			// Value-type instance shadow bodies receive the managed receiver
 			// address in D0, matching their normal internal method ABI. The
 			// public call-site value remains an Int32/UInt32 managed pointer.
-			return [CallArgumentConstraint.Fixed(M68kRegister.D0)];
+			return uses.Count == 1
+				? [CallArgumentConstraint.Fixed(M68kRegister.D0)]
+				: [
+					CallArgumentConstraint.Fixed(M68kRegister.D0),
+					CallArgumentConstraint.Fixed(M68kRegister.A0)
+				];
 		}
 
 		var result = new List<CallArgumentConstraint>();

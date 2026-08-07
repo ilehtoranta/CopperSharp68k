@@ -33,4 +33,21 @@ public sealed class ManagedRuntimeShadowTests
 			() => M68kRuntime.AllocateString(4));
 		Assert.Contains("compiler primitive", exception.Message, StringComparison.Ordinal);
 	}
+
+	[Fact]
+	public void ShadowListCoreOperationsMatchNetListContract()
+	{
+		var values = new ShadowList<int>();
+		for (var value = 0; value < 9; value++)
+		{
+			values.Add(value * 3);
+		}
+
+		Assert.Equal(9, values.Count);
+		Assert.Equal(24, values[8]);
+		values[4] = 42;
+		Assert.Equal(42, values[4]);
+		Assert.Throws<ArgumentOutOfRangeException>(() => _ = values[-1]);
+		Assert.Throws<ArgumentOutOfRangeException>(() => values[values.Count] = 0);
+	}
 }

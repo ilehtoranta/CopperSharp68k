@@ -13,7 +13,29 @@ public static class M68kRuntime
 	/// throws <see cref="OverflowException"/> directly so shadow methods remain
 	/// unit-testable.
 	/// </summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
 	public static void ThrowOverflowException() => throw new OverflowException();
+
+	/// <summary>Raises the target runtime's canonical invalid-format exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowFormatException() => throw new FormatException();
+
+	/// <summary>Raises the target runtime's canonical invalid-argument exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowArgumentException() => throw new ArgumentException();
+
+	/// <summary>Raises the target runtime's canonical null-argument exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowArgumentNullException() => throw new ArgumentNullException();
+
+	/// <summary>Raises the target runtime's canonical argument-range exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowArgumentOutOfRangeException() =>
+		throw new ArgumentOutOfRangeException();
+
+	/// <summary>Raises the target runtime's canonical out-of-memory exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowOutOfMemoryException() => throw new OutOfMemoryException();
 
 	/// <summary>
 	/// Allocates a target-runtime string with the requested UTF-16 code-unit

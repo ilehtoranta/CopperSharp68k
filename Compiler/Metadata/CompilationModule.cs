@@ -332,16 +332,18 @@ internal sealed class CompilationModule : IDisposable
 				}
 			}
 		var importName = TryGetImportName(definition.GetCustomAttributes());
-		var externalConvention = ResolveExternalCall(new M68kExternalMethod(
-			_assemblyName,
+			var externalConvention = definition.RelativeVirtualAddress == 0
+				? ResolveExternalCall(new M68kExternalMethod(
+				_assemblyName,
 			displayName,
 			typeName,
 			methodName,
 			!signature.Header.IsInstance,
 			DecodeAttributes(declaringType.GetCustomAttributes()),
 			DecodeAttributes(definition.GetCustomAttributes()),
-			Array.Empty<IReadOnlyList<M68kMetadataAttribute>>(),
-			Array.Empty<M68kMetadataAttribute>()));
+				Array.Empty<IReadOnlyList<M68kMetadataAttribute>>(),
+				Array.Empty<M68kMetadataAttribute>()))
+				: null;
 		if (importName is not null && externalConvention is not null)
 		{
 			throw new M68kCompilationException(
@@ -2328,7 +2330,8 @@ internal sealed class CompilationModule : IDisposable
 
 	public bool IsSupportedStructType(CilType type)
 	{
-		if (IsSupportedSpanLikeType(type))
+		if (IsSupportedSpanLikeType(type) ||
+			IsDefaultInterpolatedStringHandler(type))
 		{
 			return true;
 		}
@@ -2363,6 +2366,11 @@ internal sealed class CompilationModule : IDisposable
 			"System.ReadOnlySpan`1<",
 			StringComparison.Ordinal)) &&
 		type.GenericArguments.Length == 1;
+
+	public static bool IsDefaultInterpolatedStringHandler(CilType type) =>
+		type.Kind == CilTypeKind.ValueType &&
+		type.DisplayName ==
+			"System.Runtime.CompilerServices.DefaultInterpolatedStringHandler";
 
 		public bool TryGetReferenceFreeStructLayout(
 		CilType type,
@@ -2410,9 +2418,24 @@ internal sealed class CompilationModule : IDisposable
 			CilType type,
 			string preferredModuleName,
 			out CilTypeLayout layout)
-		{
-			layout = null!;
-			if (type.Kind != CilTypeKind.ValueType || type.IsSupportedScalar)
+			{
+				layout = null!;
+				if (IsDefaultInterpolatedStringHandler(type))
+				{
+					// Pinned .NET 10 field order: provider, pooled array, Span<char>,
+					// position, custom-formatter flag. The private target shadow uses
+					// the same 7-word shape and reference slots.
+					layout = new CilTypeLayout(
+						default,
+						type.DisplayName,
+						28,
+						(1u << 0) | (1u << 1) | (1u << 4),
+						new Dictionary<FieldDefinitionHandle, int>(),
+						preferredModuleName,
+						type);
+					return true;
+				}
+				if (type.Kind != CilTypeKind.ValueType || type.IsSupportedScalar)
 			{
 				return false;
 			}
@@ -2486,6 +2509,10 @@ internal sealed class CompilationModule : IDisposable
 		if (IsSupportedSpanLikeType(type))
 		{
 			return 3;
+		}
+		if (IsDefaultInterpolatedStringHandler(type))
+		{
+			return 7;
 		}
 		foreach (var handle in Reader.TypeDefinitions)
 		{
@@ -3774,11 +3801,13 @@ internal sealed class CompilationModule : IDisposable
 		{
 			var type = Reader.GetTypeDefinition((TypeDefinitionHandle)member.Parent);
 			var typeName = GetTypeName(type);
-			if (TryResolveRegisteredBinding(
-					handle,
-					typeName,
-					signature,
-				constructedDeclaringType: null) is { } registered)
+				if (TryResolveRegisteredBinding(
+						handle,
+						typeName,
+						signature,
+					constructedDeclaringType: null,
+					caller,
+					ilOffset) is { } registered)
 			{
 				return registered;
 			}
@@ -3816,13 +3845,19 @@ internal sealed class CompilationModule : IDisposable
 					handle,
 					typeName,
 					signature,
-				constructedDeclaringType: null) is { } registered)
+					constructedDeclaringType: null,
+					caller: caller,
+					ilOffset: ilOffset) is { } registered)
 			{
 				return registered;
 			}
-			var displayName = $"{typeName}::{name}";
-			var assemblyName = GetReferencedAssemblyName(parent.ResolutionScope);
-			var externalMethod = LoadExternalMethod(
+				var displayName = $"{typeName}::{name}";
+				var assemblyName = GetReferencedAssemblyName(parent.ResolutionScope);
+				if (TryResolveManagedMethod(assemblyName, typeName, name, signature) is { } managedMethod)
+				{
+					return MethodReference.ForDefinition(managedMethod);
+				}
+				var externalMethod = LoadExternalMethod(
 				assemblyName,
 				typeName,
 				name,
@@ -3888,11 +3923,7 @@ internal sealed class CompilationModule : IDisposable
 					new CilExternalCall(convention, abi)));
 			}
 
-			if (TryResolveManagedMethod(assemblyName, typeName, name, signature) is { } managedMethod)
-			{
-				return MethodReference.ForDefinition(managedMethod);
 			}
-		}
 
 		if (member.Parent.Kind == HandleKind.TypeSpecification)
 		{
@@ -3908,7 +3939,9 @@ internal sealed class CompilationModule : IDisposable
 					handle,
 					parentType.DisplayName,
 					constructedSignature,
-				parentType) is { } registered)
+					parentType,
+					caller: caller,
+					ilOffset: ilOffset) is { } registered)
 			{
 				return registered;
 			}
@@ -4213,14 +4246,18 @@ internal sealed class CompilationModule : IDisposable
 		MemberReferenceHandle handle,
 		string typeName,
 		MethodSignature<CilType> signature,
-		CilType? constructedDeclaringType)
+		CilType? constructedDeclaringType,
+		CilMethod? caller = null,
+		int ilOffset = -1)
 	{
 		var member = DescribeFrameworkMemberReference(handle, []);
 		return TryResolveRegisteredBinding(
 			member,
 			typeName,
 			signature,
-			constructedDeclaringType);
+			constructedDeclaringType,
+			caller: caller,
+			ilOffset: ilOffset);
 	}
 
 	private MethodReference? TryResolveRegisteredBinding(
@@ -4228,7 +4265,9 @@ internal sealed class CompilationModule : IDisposable
 		string typeName,
 		MethodSignature<CilType> signature,
 		CilType? constructedDeclaringType,
-		IReadOnlyList<CilType>? methodTypeArguments = null)
+		IReadOnlyList<CilType>? methodTypeArguments = null,
+		CilMethod? caller = null,
+		int ilOffset = -1)
 	{
 		var binding = FrameworkBindingRegistry.TryBind(
 			member,
@@ -4246,6 +4285,21 @@ internal sealed class CompilationModule : IDisposable
 		{
 			return null;
 		}
+		if (binding.Kind == FrameworkBindingKind.ManagedBody)
+		{
+			if (caller is null || ilOffset < 0)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedPolymorphism,
+					$"Framework managed binding '{binding.Member.DisplayName}' requires call-site receiver context.");
+			}
+			var implementation = ResolveClosedWorldSealedInterfaceCall(
+				binding,
+				caller,
+				ilOffset,
+				signature);
+			return MethodReference.ForManagedBinding(binding, implementation, signature);
+		}
 		if (binding.Kind == FrameworkBindingKind.ShadowMethod)
 		{
 			var shadowTarget = binding.ShadowMethod ??
@@ -4255,7 +4309,8 @@ internal sealed class CompilationModule : IDisposable
 				shadowTarget.AssemblyName,
 				shadowTarget.TypeName,
 				shadowTarget.MethodName,
-				signature) ??
+				signature,
+				constructedDeclaringType) ??
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.InvalidInput,
 					$"Shadow binding target '{binding.Target}' could not be resolved from the managed runtime.");
@@ -4275,6 +4330,187 @@ internal sealed class CompilationModule : IDisposable
 			boundSignature,
 			constructedDeclaringType);
 	}
+
+	private CilMethod ResolveClosedWorldSealedInterfaceCall(
+		FrameworkBinding binding,
+		CilMethod caller,
+		int ilOffset,
+		MethodSignature<CilType> signature)
+	{
+		if (signature.ParameterTypes.Length != 0 ||
+			!TryGetDirectCallReceiver(caller, ilOffset, out var receiverType))
+		{
+			throw ClosedWorldInterfaceDiagnostic(
+				binding,
+				caller,
+				ilOffset,
+				"the receiver is not a directly loaded exact managed type");
+		}
+
+		var candidates = new List<(CompilationModule Module, TypeDefinitionHandle Type)>();
+		var modules = new List<CompilationModule> { _root };
+		foreach (var assemblyName in _root._managedAssemblyPaths.Keys
+			.OrderBy(static name => name, StringComparer.Ordinal))
+		{
+			var module = GetOrLoadModule(assemblyName);
+			if (module is not null && !modules.Contains(module))
+			{
+				modules.Add(module);
+			}
+		}
+
+		foreach (var module in modules)
+		{
+			foreach (var typeHandle in module.Reader.TypeDefinitions)
+			{
+				if (string.Equals(
+						module.GetTypeName(typeHandle),
+						receiverType.DisplayName,
+						StringComparison.Ordinal))
+				{
+					candidates.Add((module, typeHandle));
+				}
+			}
+		}
+
+		if (candidates.Count != 1)
+		{
+			throw ClosedWorldInterfaceDiagnostic(
+				binding,
+				caller,
+				ilOffset,
+				$"the exact receiver type matched {candidates.Count} managed definitions");
+		}
+
+		var (receiverModule, receiverHandle) = candidates[0];
+		var receiverDefinition = receiverModule.Reader.GetTypeDefinition(receiverHandle);
+		if ((receiverDefinition.Attributes & TypeAttributes.Sealed) == 0)
+		{
+			throw ClosedWorldInterfaceDiagnostic(
+				binding,
+				caller,
+				ilOffset,
+				$"receiver '{receiverType.DisplayName}' is not sealed");
+		}
+		if (!receiverModule.ImplementsFrameworkInterface(
+				receiverHandle,
+				binding.Member.DeclaringType))
+		{
+			throw ClosedWorldInterfaceDiagnostic(
+				binding,
+				caller,
+				ilOffset,
+				$"receiver '{receiverType.DisplayName}' does not implement the public interface");
+		}
+
+		var implementations = receiverDefinition.GetMethods()
+			.Select(receiverModule.GetMethod)
+			.Where(method =>
+				method.Signature.Header.IsInstance &&
+				(method.Name == binding.Member.Name ||
+				 method.Name.EndsWith('.' + binding.Member.Name, StringComparison.Ordinal)) &&
+				SignaturesMatch(method.Signature, signature))
+			.ToArray();
+		if (implementations.Length != 1)
+		{
+			throw ClosedWorldInterfaceDiagnostic(
+				binding,
+				caller,
+				ilOffset,
+				$"receiver '{receiverType.DisplayName}' matched {implementations.Length} managed implementations");
+		}
+		return implementations[0];
+	}
+
+	private bool ImplementsFrameworkInterface(
+		TypeDefinitionHandle typeHandle,
+		FrameworkTypeId frameworkInterface)
+	{
+		if (frameworkInterface is not
+			{
+				Kind: FrameworkTypeKind.Named,
+				AssemblyName: { } assemblyName,
+				MetadataName: { } metadataName
+			})
+		{
+			return false;
+		}
+
+		var current = typeHandle;
+		while (!current.IsNil)
+		{
+			var type = Reader.GetTypeDefinition(current);
+			foreach (var implementationHandle in type.GetInterfaceImplementations())
+			{
+				var implemented = Reader
+					.GetInterfaceImplementation(implementationHandle)
+					.Interface;
+				if (implemented.Kind != HandleKind.TypeReference)
+				{
+					continue;
+				}
+				var reference = Reader.GetTypeReference((TypeReferenceHandle)implemented);
+				if (string.Equals(GetTypeName(reference), metadataName, StringComparison.Ordinal) &&
+					string.Equals(
+						GetReferencedAssemblyName(reference.ResolutionScope),
+						assemblyName,
+						StringComparison.Ordinal))
+				{
+					return true;
+				}
+			}
+
+			if (type.BaseType.Kind != HandleKind.TypeDefinition)
+			{
+				break;
+			}
+			current = (TypeDefinitionHandle)type.BaseType;
+		}
+		return false;
+	}
+
+	private static bool TryGetDirectCallReceiver(
+		CilMethod caller,
+		int callOffset,
+		out CilType receiverType)
+	{
+		var callIndex = -1;
+		for (var index = 0; index < caller.Instructions.Count; index++)
+		{
+			if (caller.Instructions[index].Offset == callOffset)
+			{
+				callIndex = index;
+				break;
+			}
+		}
+		for (var index = callIndex - 1; index >= 0; index--)
+		{
+			var producer = caller.Instructions[index];
+			if (producer.OpCode == OpCodes.Nop)
+			{
+				continue;
+			}
+			if (HasControlFlowEntryIntoDelegateEqualsSuffix(caller, index, callIndex))
+			{
+				break;
+			}
+			return TryGetDirectLoadedType(caller, producer, out receiverType) &&
+				receiverType.Kind == CilTypeKind.ManagedReference;
+		}
+		receiverType = default!;
+		return false;
+	}
+
+	private static M68kCompilationException ClosedWorldInterfaceDiagnostic(
+		FrameworkBinding binding,
+		CilMethod caller,
+		int ilOffset,
+		string detail) =>
+		new(
+			M68kDiagnosticIds.UnsupportedPolymorphism,
+			$"Framework interface member '{binding.Member.DisplayName}' is admitted only when closed-world analysis proves a sealed exact receiver; {detail}.",
+			caller.DisplayName,
+			ilOffset);
 
 	private bool? TypeContainsManagedReferences(CilType type)
 	{
@@ -4309,7 +4545,8 @@ internal sealed class CompilationModule : IDisposable
 		string assemblyName,
 		string typeName,
 		string methodName,
-		MethodSignature<CilType> signature)
+		MethodSignature<CilType> signature,
+		CilType? constructedDeclaringType = null)
 	{
 		var module = GetOrLoadModule(assemblyName);
 		if (module is null)
@@ -4328,10 +4565,20 @@ internal sealed class CompilationModule : IDisposable
 			foreach (var methodHandle in type.GetMethods())
 			{
 				var candidate = module.GetMethod(methodHandle);
-				if (candidate.Name == methodName &&
-					SignaturesMatch(candidate.Signature, signature))
+				var signatureMatches = constructedDeclaringType is null
+					? SignaturesMatch(candidate.Signature, signature)
+					: ConstructedSignaturesMatch(
+						candidate.Signature,
+						signature,
+						constructedDeclaringType.GenericArguments);
+				if (candidate.Name == methodName && signatureMatches)
 				{
-					return candidate;
+					return constructedDeclaringType is null
+						? candidate
+						: module.GetConstructedMethod(
+							methodHandle,
+							constructedDeclaringType,
+							ImmutableArray<CilType>.Empty);
 				}
 			}
 		}
@@ -4907,6 +5154,15 @@ internal sealed class CompilationModule : IDisposable
 	private string GetTypeName(TypeDefinition definition)
 		=> QualifiedName(definition.Namespace, definition.Name);
 
+	private string GetTypeName(TypeDefinitionHandle handle)
+	{
+		var definition = Reader.GetTypeDefinition(handle);
+		var declaringType = definition.GetDeclaringType();
+		return declaringType.IsNil
+			? GetTypeName(definition)
+			: $"{GetTypeName(declaringType)}/{Reader.GetString(definition.Name)}";
+	}
+
 	private string GetTypeName(TypeReference reference)
 	{
 		var name = QualifiedName(reference.Namespace, reference.Name);
@@ -5428,6 +5684,12 @@ internal sealed record MethodReference(
 		CilMethod shadowMethod,
 		MethodSignature<CilType> publicSignature) =>
 		new(shadowMethod, shadowMethod.ImportName, publicSignature, binding);
+
+	public static MethodReference ForManagedBinding(
+		FrameworkBinding binding,
+		CilMethod managedMethod,
+		MethodSignature<CilType> publicSignature) =>
+		new(managedMethod, managedMethod.ImportName, publicSignature, binding);
 
 	public int ParameterCount =>
 		Signature.ParameterTypes.Length + (Signature.Header.IsInstance ? 1 : 0);

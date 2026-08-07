@@ -55,6 +55,16 @@ internal sealed class Net10FrameworkContract
 		M68kCompilationException? resolutionFailure)
 	{
 		var rules = _bindings.Where(candidate => candidate.Matches(member)).ToArray();
+		if (resolutionFailure is not null)
+		{
+			return new FrameworkBindingDecision(
+				M68kFrameworkCompatibilityStatus.Unsupported,
+				null,
+				$"The compiler could not resolve an exact implementation for this constructed framework member: {resolutionFailure.Message}",
+				Array.Empty<string>(),
+				Array.Empty<string>());
+		}
+
 		if (resolved?.FrameworkBinding is { } binding)
 		{
 			if (!binding.Member.Equals(exactMember))

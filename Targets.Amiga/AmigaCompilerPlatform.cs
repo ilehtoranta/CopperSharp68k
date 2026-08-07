@@ -317,6 +317,7 @@ public static class AmigaM68kCompiler
 	{
 		ArgumentNullException.ThrowIfNull(request);
 		var resolvedOptions = options ?? new AmigaCompilationOptions();
+		request = IncludeAmigaSdkManagedBodies(request);
 		return M68kCompiler.AnalyzeFramework(request with
 		{
 			ExternalCallResolvers =
@@ -332,6 +333,7 @@ public static class AmigaM68kCompiler
 	{
 		ArgumentNullException.ThrowIfNull(request);
 		var resolvedOptions = options ?? new AmigaCompilationOptions();
+		request = IncludeAmigaSdkManagedBodies(request);
 		AmigaStaticAnalyzer.Analyze(request, resolvedOptions);
 		var imports = request.Imports;
 		if (request.ExceptionMode == M68kExceptionMode.Full &&
@@ -359,6 +361,29 @@ public static class AmigaM68kCompiler
 			[
 				new AmigaExternalCallResolver(resolvedOptions)
 			]
-		});
+			});
+	}
+
+	private static M68kCompilationRequest IncludeAmigaSdkManagedBodies(
+		M68kCompilationRequest request)
+	{
+		var assemblyDirectory = Path.GetDirectoryName(
+			Path.GetFullPath(request.AssemblyPath));
+		if (assemblyDirectory is null)
+		{
+			return request;
+		}
+
+		var sdkPath = Path.Combine(assemblyDirectory, "CopperSharp.Sdk.Amiga.dll");
+		if (!File.Exists(sdkPath) ||
+			request.ManagedAssemblyPaths.Contains(sdkPath, StringComparer.OrdinalIgnoreCase))
+		{
+			return request;
+		}
+
+		return request with
+		{
+			ManagedAssemblyPaths = [.. request.ManagedAssemblyPaths, sdkPath]
+		};
 	}
 }

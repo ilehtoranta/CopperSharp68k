@@ -1927,6 +1927,40 @@ public static class CompilerFixtures
 			: 0;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IntegerFormatStringEntry() =>
+		42.ToString((string?)null) == "42" &&
+		42.ToString("") == "42" &&
+		42.ToString("G") == "42" &&
+		42.ToString("G0") == "42" &&
+		(-42).ToString("D5") == "-00042" &&
+		42u.ToString("D8") == "00000042" &&
+		42u.ToString("X8") == "0000002A" &&
+		0xDEAD_BEEFu.ToString("x") == "deadbeef" &&
+		(-1).ToString("X") == "FFFFFFFF"
+			? 42
+			: 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IntegerFormatStringExceptionEntry()
+	{
+		var caught = 0;
+		try { _ = 42.ToString("Q"); }
+		catch (FormatException) { caught++; }
+		try { _ = 42u.ToString("D1000000000"); }
+		catch (FormatException) { caught++; }
+		return caught == 2 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InterpolatedIntegerEntry()
+	{
+		var signed = -42;
+		var unsigned = 0x2Au;
+		var text = $"signed={signed}; hex={unsigned:X8}";
+		return text == "signed=-42; hex=0000002A" ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int StringCopyToExceptionEntry()
 	{
 		var caught = 0;
@@ -2227,6 +2261,174 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint CStringLiteralEntry() =>
 		global::Amiga.CString.ToUInt32(global::Amiga.CString.FromLiteral("abc"));
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CStringBufferEntry()
+	{
+		using var buffer = new global::Amiga.CStringBuffer("Amiga");
+		var pointer = global::Amiga.CString.ToUInt32(buffer.Value);
+		var packed = global::Amiga.APTR.ReadUInt32(
+			global::Amiga.APTR.FromPointer(pointer),
+			0);
+		return packed == 0x416D_6967u && buffer.ByteSize == 8u ? pointer : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CStringStorageEntry()
+	{
+		using var storage = new global::Amiga.CStringStorage("Retained");
+		var pointer = global::Amiga.CString.ToUInt32(storage.Value);
+		return storage.ByteSize == 12u ? pointer : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int SealedDisposableUsingEntry()
+	{
+		RuntimeDisposable.DisposeCount = 0;
+		using (var disposable = new RuntimeDisposable())
+		{
+			if (RuntimeDisposable.DisposeCount != 0)
+			{
+				return 1;
+			}
+		}
+		return RuntimeDisposable.DisposeCount;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InterfaceTypedDisposableEntry()
+	{
+		IDisposable disposable = new RuntimeDisposable();
+		disposable.Dispose();
+		return RuntimeDisposable.DisposeCount;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListInt32Entry()
+	{
+		var values = new List<int>();
+		values.Add(10);
+		values.Add(20);
+		values.Add(30);
+		values.Add(40);
+		values.Add(50);
+		if (values.Count != 5 || values[0] != 10 || values[4] != 50)
+		{
+			return 1;
+		}
+		values[1] = 32;
+		return values[0] + values[1];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long ListInt64Entry()
+	{
+		const long first = 0x0000_0001_0000_0002L;
+		const long replacement = 0x0000_002A_5566_7788L;
+		var values = new List<long>();
+		values.Add(first);
+		values.Add(0x0000_0005_0000_0006L);
+		values.Add(0x0000_0007_0000_0008L);
+		values.Add(0x0000_0009_0000_000AL);
+		values.Add(0x0000_000B_0000_000CL);
+		values[4] = replacement;
+		return values[4];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListRangeExceptionEntry()
+	{
+		var values = new List<int>();
+		values.Add(1);
+		try
+		{
+			_ = values[-1];
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			try
+			{
+				values[values.Count] = 2;
+			}
+			catch (ArgumentOutOfRangeException)
+			{
+				return 42;
+			}
+		}
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListReferenceGcEntry()
+	{
+		var values = new List<ListReferenceValue>();
+		values.Add(new ListReferenceValue(19));
+		values.Add(new ListReferenceValue(1));
+		values.Add(new ListReferenceValue(2));
+		values.Add(new ListReferenceValue(3));
+		values.Add(new ListReferenceValue(23));
+		M68kRuntime.Collect();
+		return values[0].Value + values[4].Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedListStructEntry()
+	{
+		var values = new List<ListPair>();
+		values.Add(new ListPair(19, 23));
+		var value = values[0];
+		return value.First + value.Second;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedListRemoveEntry()
+	{
+		var values = new List<int>();
+		values.Add(1);
+		return values.Remove(1) ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CStringRejectsEmbeddedNullEntry()
+	{
+		try
+		{
+			using var buffer = new global::Amiga.CStringBuffer("bad\0value");
+			return buffer.ByteSize == 0 ? 1 : 2;
+		}
+		catch (ArgumentException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CStringRejectsUnmappableEntry()
+	{
+		try
+		{
+			using var buffer = new global::Amiga.CStringBuffer("bad\u0100value");
+			return buffer.ByteSize == 0 ? 1 : 2;
+		}
+		catch (ArgumentException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CStringAllocationFailureEntry()
+	{
+		try
+		{
+			using var buffer = new global::Amiga.CStringBuffer("OOM");
+			return buffer.ByteSize == 0 ? 1 : 2;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int ManagedArrayEntry()
@@ -5500,6 +5702,37 @@ public static class CompilerFixtures
 	private sealed class RuntimeGenericLayoutDerived<T> : RuntimeGenericLayoutBase<T>
 	{
 		public int DerivedValue;
+	}
+
+	private sealed class RuntimeDisposable : IDisposable
+	{
+		public static int DisposeCount;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public void Dispose()
+		{
+			DisposeCount = 42;
+		}
+	}
+
+	private sealed class ListReferenceValue
+	{
+		public ListReferenceValue(int value) => Value = value;
+
+		public int Value;
+	}
+
+	private readonly struct ListPair
+	{
+		public ListPair(int first, int second)
+		{
+			First = first;
+			Second = second;
+		}
+
+		public int First { get; }
+
+		public int Second { get; }
 	}
 
 	private interface IRuntimeConstrainedSource
