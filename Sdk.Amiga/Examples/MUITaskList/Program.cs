@@ -106,10 +106,10 @@ public static class Program
 		}
 
 		var list = MUIMaster.MUI_NewObject(
-			List.Name,
-			List.Format, "BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20",
-			List.Title, One(),
-			List.DisplayHook, Hook.AddressOf(ref _displayHook),
+			Amiga.MUI.List.Name,
+			Amiga.MUI.List.Format, "BAR,WEIGHT=50,BAR,WEIGHT=30,WEIGHT=20",
+			Amiga.MUI.List.Title, One(),
+			Amiga.MUI.List.DisplayHook, Hook.AddressOf(ref _displayHook),
 			Tag.Done);
 
 		var listView = MUIMaster.MUI_NewObject(
@@ -210,7 +210,7 @@ public static class Program
 		return BOOPSI.DoSuperMethodA(cl, obj, messageAddress);
 	}
 
-	[List.DisplayCallback("muitasklist.list.display")]
+	[Amiga.MUI.List.DisplayCallback("muitasklist.list.display")]
 	public static uint ListDisplay(uint entry, APTR columns)
 	{
 		var row = new TaskListDisplayRow(entry);
@@ -236,10 +236,10 @@ public static class Program
 
 	private static void PopulateList(uint list)
 	{
-		BOOPSI.DoMethod(list, List.Method.Clear);
-		BOOPSI.DoMethod(list, List.Method.InsertSingle, _entryWorkbench, unchecked((uint)List.Value.Insert.Bottom));
-		BOOPSI.DoMethod(list, List.Method.InsertSingle, _entryInput, unchecked((uint)List.Value.Insert.Bottom));
-		BOOPSI.DoMethod(list, List.Method.InsertSingle, _entryIdle, unchecked((uint)List.Value.Insert.Bottom));
+		BOOPSI.DoMethod(list, Amiga.MUI.List.Method.Clear);
+		BOOPSI.DoMethod(list, Amiga.MUI.List.Method.InsertSingle, _entryWorkbench, unchecked((uint)Amiga.MUI.List.Value.Insert.Bottom));
+		BOOPSI.DoMethod(list, Amiga.MUI.List.Method.InsertSingle, _entryInput, unchecked((uint)Amiga.MUI.List.Value.Insert.Bottom));
+		BOOPSI.DoMethod(list, Amiga.MUI.List.Method.InsertSingle, _entryIdle, unchecked((uint)Amiga.MUI.List.Value.Insert.Bottom));
 	}
 
 	private static uint AllocTaskEntry(CString name, CString state, CString priority)
