@@ -5,6 +5,7 @@
 
 namespace Amiga;
 
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2)]
 public struct Hook
 {
 	public const uint Size = MinNode.Size + 12;
