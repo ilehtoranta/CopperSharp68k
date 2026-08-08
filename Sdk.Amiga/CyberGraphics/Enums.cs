@@ -10,6 +10,7 @@ public enum CyberPixelFormat : uint
 	Lut8 = 0,
 	Rgb15 = 1,
 	Rgb15X = 2,
+	Bgr15 = Rgb15X,
 	Rgb15Pc = 3,
 	Bgr15Pc = 4,
 	Rgb16 = 5,

@@ -72,9 +72,65 @@ public enum MidiStatus : byte
 	NoteOn = 0x90,
 	PolyPressure = 0xa0,
 	Control = 0xb0,
+	Mode = Control,
 	Program = 0xc0,
 	ChannelPressure = 0xd0,
 	PitchBend = 0xe0,
 	System = 0xf0,
+	SystemExclusive = System,
+	QuarterFrame = 0xf1,
+	SongPosition = 0xf2,
+	SongSelect = 0xf3,
+	TuneRequest = 0xf6,
+	EndOfExclusive = 0xf7,
 	Realtime = 0xf8,
+	Clock = Realtime,
+	Start = 0xfa,
+	Continue = 0xfb,
+	Stop = 0xfc,
+	ActiveSensing = 0xfe,
+	Reset = 0xff,
+}
+
+
+public enum MidiLinkType : ushort
+{
+	Receiver = 0,
+	Sender = 1,
+	Count = 2,
+}
+
+public enum MidiLinkTag : uint
+{
+	Location = 0x80000041,
+	ChannelMask = 0x80000042,
+	EventMask = 0x80000043,
+	UserData = 0x80000044,
+	Comment = 0x80000045,
+	PortId = 0x80000046,
+	Private = 0x80000047,
+	Priority = 0x80000048,
+	SysExFilter = 0x80000049,
+	SysExFilterExtended = 0x8000004a,
+	Parse = 0x8000004b,
+	Reserved = 0x8000004c,
+	ErrorCode = 0x8000004d,
+	Name = 0x8000004e,
+}
+
+public enum MidiNodeTag : uint
+{
+	Name = 0x80000041,
+	SignalTask = 0x80000042,
+	ReceiveHook = 0x80000043,
+	ParticipantHook = 0x80000044,
+	ReceiveSignal = 0x80000045,
+	ParticipantSignal = 0x80000046,
+	MessageQueue = 0x80000047,
+	SysExSize = 0x80000048,
+	TimeStamp = 0x80000049,
+	ErrorFilter = 0x8000004a,
+	ClientType = 0x8000004b,
+	Image = 0x8000004c,
+	ErrorCode = 0x8000004d,
 }

@@ -76,7 +76,7 @@ public struct CurrentBinding
 	public const uint Size = 16;
 
 	public APTR ConfigDev;
-	public APTR FileName;
-	public APTR ProductString;
+	public STRPTR FileName;
+	public STRPTR ProductString;
 	public APTR ToolTypes;
 }

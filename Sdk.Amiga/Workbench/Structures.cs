@@ -13,7 +13,7 @@ public struct WBArg
 	public const uint Size = 8;
 
 	public BPTR Lock;
-	public APTR Name;
+	public STRPTR Name;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
@@ -25,7 +25,7 @@ public struct WBStartup
 	public APTR Process;
 	public BPTR Segment;
 	public int NumberOfArguments;
-	public APTR ToolWindow;
+	public STRPTR ToolWindow;
 	public APTR ArgumentList;
 }
 
@@ -110,11 +110,12 @@ public struct SetupCleanupHookMessage
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct AppIconRenderMessage
 {
-	public const uint Size = 24;
+	public const uint Size = 28;
 
 	public APTR RastPort;
 	public APTR Icon;
 	public STRPTR Label;
+	public APTR Tags;
 	public short Left;
 	public short Top;
 	public short Width;

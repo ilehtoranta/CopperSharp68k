@@ -5,7 +5,6 @@
 
 namespace Amiga;
 
-[System.Flags]
 public enum DataTypeFlags : ushort
 {
 	Binary = 0x0000,
@@ -34,7 +33,6 @@ public enum DataTypeToolKind : ushort
 	Mail = 5,
 }
 
-[System.Flags]
 public enum DataTypeToolFlags : ushort
 {
 	Shell = 1,

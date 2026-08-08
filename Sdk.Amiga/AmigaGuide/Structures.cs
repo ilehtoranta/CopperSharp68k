@@ -60,9 +60,9 @@ public struct AmigaGuideXRef
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct AmigaGuideHost
 {
-	public const uint Size = 24;
+	public const uint Size = 40;
 
-	public APTR Dispatcher;
+	public Hook Dispatcher;
 	public uint Reserved;
 	public uint Flags;
 	public uint UseCount;

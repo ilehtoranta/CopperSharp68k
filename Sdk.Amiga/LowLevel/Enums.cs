@@ -70,3 +70,12 @@ public enum LowLevelLanguage : uint
 	Hebrew = 17,
 	Korean = 18,
 }
+
+
+public enum LowLevelJoyPortAttributeType : uint
+{
+	AutoSense = 0,
+	GameController = 1,
+	Mouse = 2,
+	Joystick = 3,
+}

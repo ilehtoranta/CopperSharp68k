@@ -75,8 +75,11 @@ public struct UCS4CharsetCode
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct UCS4CharsetConversionTable
 {
-	public const uint Size = 12;
+	/// <summary>
+	/// Size of the fixed prefix. The trailing ConvTables member is a C99
+	/// flexible array and is not included in sizeof(struct UCS4_CharsetConvTable).
+	/// </summary>
+	public const uint Size = 4;
 
 	public APTR Mapping;
-	public UCS4ConversionTable FirstConversionTable;
 }

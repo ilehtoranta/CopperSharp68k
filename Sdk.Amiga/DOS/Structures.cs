@@ -92,7 +92,7 @@ public struct DeviceNode
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct FileHandle
 {
-	public const uint Size = 40;
+	public const uint Size = 44;
 
 	public APTR Link;
 	public APTR Port;
@@ -104,6 +104,7 @@ public struct FileHandle
 	public int Function2;
 	public int Function3;
 	public int Arguments;
+	public int Argument2;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2)]

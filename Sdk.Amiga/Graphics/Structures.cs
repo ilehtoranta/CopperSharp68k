@@ -222,7 +222,7 @@ public struct CprList
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct CopList
 {
-	public const uint Size = 54;
+	public const uint Size = 38;
 
 	public APTR Next;
 	public APTR SystemCopy;
@@ -234,7 +234,6 @@ public struct CopList
 	public short Count;
 	public short MaxCount;
 	public short YOffset;
-	public unsafe fixed uint AdditionalStarts[4];
 	public ushort ShortLongRepeat;
 	public ushort Flags;
 }
