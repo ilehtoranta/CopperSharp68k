@@ -15,6 +15,7 @@ public unsafe struct FileInfoBlock
 	public const int FileNameOffset = 8;
 	public const int CommentOffset = 144;
 	public const int DirEntryTypeOffset = 4;
+	public const int ProtectionOffset = 116;
 	public const int SizeOffset = 124;
 	public const int DateDaysOffset = 132;
 	public const int DateMinuteOffset = 136;
@@ -35,6 +36,9 @@ public unsafe struct FileInfoBlock
 
 	public static int GetSize(uint fileInfoBlock) =>
 		ReadInt32(fileInfoBlock, SizeOffset);
+
+	public static int GetProtection(uint fileInfoBlock) =>
+		ReadInt32(fileInfoBlock, ProtectionOffset);
 
 	public static int GetDateDays(uint fileInfoBlock) =>
 		ReadInt32(fileInfoBlock, DateDaysOffset);
