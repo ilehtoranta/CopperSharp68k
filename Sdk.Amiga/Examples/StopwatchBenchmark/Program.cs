@@ -10,8 +10,8 @@ namespace StopwatchBenchmarkExample;
 
 public static class Program
 {
-	private const int BufferLength = 4096;
-	private const uint ExpectedCrc32 = 0x548B6D54;
+	private const int BufferLength = 512;
+	private const uint ExpectedCrc32 = 0x003A981D;
 
 	[M68kEntryPoint]
 	public static int Main()
@@ -32,7 +32,7 @@ public static class Program
 		Console.Write("High-resolution timer: ");
 		Console.WriteLine(Stopwatch.IsHighResolution);
 
-		return checksum == ExpectedCrc32 ? 0 : 5;
+		return checksum == ExpectedCrc32 ? 0 : 20;
 	}
 
 	private static uint ComputeCrc32()
