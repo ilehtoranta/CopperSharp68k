@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <CopperSharpPackageVersion>0.1.0-preview.1</CopperSharpPackageVersion>
+    <Version Condition="'$(Version)' == ''">$(CopperSharpPackageVersion)</Version>
+    <PackageVersion Condition="'$(PackageVersion)' == ''">$(CopperSharpPackageVersion)</PackageVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Authors Condition="'$(Authors)' == ''">Ilkka Lehtoranta</Authors>
+    <PackageLicenseExpression Condition="'$(PackageLicenseExpression)' == ''">MIT</PackageLicenseExpression>
+    <PackageProjectUrl Condition="'$(PackageProjectUrl)' == ''">https://github.com/ilehtoranta/CopperSharp68k</PackageProjectUrl>
+    <RepositoryUrl Condition="'$(RepositoryUrl)' == ''">https://github.com/ilehtoranta/CopperSharp68k.git</RepositoryUrl>
+    <RepositoryType Condition="'$(RepositoryType)' == ''">git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>

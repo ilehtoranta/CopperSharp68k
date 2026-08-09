@@ -5,6 +5,9 @@
   <Project Path="Compiler.Tests/CopperSharp.Compiler.Tests.csproj" />
   <Project Path="Compiler.Tests.MultiModule/CopperSharp.Compiler.Tests.MultiModule.csproj" />
   <Project Path="Runtime.Managed/CopperSharp.Runtime.Managed.csproj" />
+  <Project Path="Runtime.AmigaPal/CopperSharp.Runtime.AmigaPal.csproj" />
   <Project Path="Sdk.Amiga/CopperSharp.Sdk.Amiga.csproj" />
+  <Project Path="Sdk/CopperSharp.Sdk.csproj" />
   <Project Path="Targets.Amiga/CopperSharp.Targets.Amiga.csproj" />
+  <Project Path="Templates/CopperSharp.Templates.csproj" />
 </Solution>
