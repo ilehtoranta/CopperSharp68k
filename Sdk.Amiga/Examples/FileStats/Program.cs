@@ -13,7 +13,7 @@ public static class Program
 	[M68kEntryPoint]
 	public static int Main(int argLength, CONST_STRPTR argText)
 	{
-		var dosBase = Exec.OpenLibrary("dos.library", 33);
+		var dosBase = Exec.OpenLibrary("dos.library", 0);
 		if (!dosBase.HasValue)
 		{
 			return DOS.RETURN_FAIL;
