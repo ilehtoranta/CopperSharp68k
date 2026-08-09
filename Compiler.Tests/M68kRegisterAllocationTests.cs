@@ -1384,6 +1384,47 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void SafepointOmitsImmortalLiteralButKeepsHeapReference()
+	{
+		var function = new M68kMachineFunction("literal-root", 0);
+		var block = AddBlock(function, 0, 0);
+		var literal = CreateReference(function);
+		var literalCopy = CreateReference(function);
+		var heap = CreateReference(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Address,
+			0,
+			definitions: [literal.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			1,
+			uses: [literal.Id],
+			definitions: [literalCopy.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			2,
+			definitions: [heap.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			3,
+			uses: [literalCopy.Id, heap.Id],
+			isSafepoint: true));
+		var blockLiveness = M68kLivenessAnalysis.Analyze(function);
+		var instructionLiveness = M68kLivenessAnalysis.AnalyzeInstructions(
+			function,
+			blockLiveness);
+
+		var plan = M68kSafepointPlanner.Create(function, instructionLiveness);
+		var safepoint = Assert.Single(plan.Safepoints);
+
+		Assert.DoesNotContain(literal.Id, safepoint.LiveReferences);
+		Assert.DoesNotContain(literalCopy.Id, safepoint.LiveReferences);
+		Assert.Contains(heap.Id, safepoint.LiveReferences);
+		Assert.Equal(heap.Id, Assert.Single(plan.RootSlotByValue).Key);
+		Assert.Equal(1, plan.RootSlotCount);
+	}
+
+	[Fact]
 	public void RootSynchronizerStoresLiveRegisterReferenceAndClearsItAfterDeath()
 	{
 		var function = new M68kMachineFunction("root-sync", 0);
@@ -1419,6 +1460,79 @@ public sealed class M68kRegisterAllocationTests
 		Assert.Equal(1, allocated.Safepoints.RootSlotCount);
 		Assert.Single(allocated.Frame.RootOffsets);
 		Assert.Equal(4, allocated.Frame.FrameBytes);
+	}
+
+	[Fact]
+	public void RootSynchronizerDoesNotRepublishUnchangedReferenceInSameBlock()
+	{
+		var function = new M68kMachineFunction("root-state", 0);
+		var block = AddBlock(function, 0, 0);
+		var reference = CreateReference(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [reference.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			1,
+			uses: [reference.Id],
+			isSafepoint: true));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			2,
+			uses: [reference.Id],
+			isSafepoint: true));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			3));
+
+		M68kRegisterAllocatorPipeline.Run(function);
+
+		Assert.Single(block.Instructions.Where(
+			static item => item.Operation == M68kMachineOperation.RootStore));
+		Assert.Single(block.Instructions.Where(
+			static item => item.Operation == M68kMachineOperation.RootClear));
+	}
+
+	[Fact]
+	public void RootSynchronizerCarriesProvenRootStateAcrossCfgEdge()
+	{
+		var function = new M68kMachineFunction("root-edge-state", 0);
+		var predecessor = AddBlock(function, 0, 0);
+		var successor = AddBlock(function, 1, 10);
+		Connect(predecessor, successor);
+		var reference = CreateReference(function);
+		predecessor.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [reference.Id]));
+		predecessor.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			1,
+			uses: [reference.Id],
+			isSafepoint: true));
+		predecessor.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			2));
+		successor.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			10,
+			uses: [reference.Id],
+			isSafepoint: true));
+		successor.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			11));
+
+		M68kRegisterAllocatorPipeline.Run(function);
+
+		Assert.Equal(
+			1,
+			function.Blocks.Sum(block => block.Instructions.Count(
+				static item => item.Operation == M68kMachineOperation.RootStore)));
+		Assert.Equal(
+			1,
+			function.Blocks.Sum(block => block.Instructions.Count(
+				static item => item.Operation == M68kMachineOperation.RootClear)));
 	}
 
 	[Fact]

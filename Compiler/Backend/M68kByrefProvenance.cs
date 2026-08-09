@@ -827,6 +827,7 @@ internal static class M68kByrefOwnerRooting
 			function,
 			allowCallerBorrowedByrefs,
 			out var canonicalOwners);
+		MarkFrameDependentCalls(function, provenance);
 		var ownerDominance = BuildOwnerDominance(function);
 		AttachTransportedOwners(
 			function,
@@ -920,6 +921,31 @@ internal static class M68kByrefOwnerRooting
 			block.Instructions.AddRange(rewritten);
 		}
 		M68kMachineIrVerifier.Verify(function);
+	}
+
+	private static void MarkFrameDependentCalls(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, M68kByrefProvenance> provenance)
+	{
+		foreach (var block in function.Blocks)
+		{
+			for (var index = 0; index < block.Instructions.Count; index++)
+			{
+				var instruction = block.Instructions[index];
+				if (instruction.Operation != M68kMachineOperation.Call ||
+					!instruction.Uses.Any(value =>
+						provenance.TryGetValue(value, out var byref) &&
+						byref.Kind == M68kByrefProvenanceKind.Frame))
+				{
+					continue;
+				}
+
+				block.Instructions[index] = instruction with
+				{
+					RequiresLiveCallerFrame = true
+				};
+			}
+		}
 	}
 
 	private static void AttachTransportedOwners(

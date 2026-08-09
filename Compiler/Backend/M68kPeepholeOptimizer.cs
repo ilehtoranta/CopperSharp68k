@@ -61,7 +61,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveDeadStackStoreBeforeClear(dataflow) ||
 				TryHoistZeroMoveAcrossStackClears(dataflow) ||
 				TryReuseZeroRegisterForStackStores(dataflow) ||
-				TryBypassTerminalStackReloadOnFallthrough(dataflow) ||
+				// Disabled: this local rewrite corrupts Console.Read/ReadLine state
+				// across shared terminal blocks on every supported CPU.
+				// TryBypassTerminalStackReloadOnFallthrough(dataflow) ||
 				TryForwardStackStoreReload(dataflow) ||
 				TryReplaceZeroAddressMove() ||
 				TryOptimizeSmallAddressImmediate(dataflow) ||
@@ -72,7 +74,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryUseDestructiveQuickImmediate(dataflow) ||
 				TryReplaceCompareZeroWithTest() ||
 				TryUseRegisterCompareForSmallImmediate(dataflow) ||
-				TryDistributeMoveQuickAcrossConditionalBranch() ||
+				TryDistributeMoveQuickAcrossConditionalBranch(dataflow) ||
 				TryReplaceAddressNullCheckWithTest(dataflow) ||
 				TryRemoveRedundantTest() ||
 				TryRemoveRedundantAndTest() ||
@@ -90,8 +92,11 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldByteAddIntoFrameStore(dataflow) ||
 				TryRemoveSelfMove(dataflow) ||
 				TryRemoveDeadAddressRegisterCopyBeforeBranch(dataflow) ||
+				TryRemoveRepeatedLea() ||
+				TryFoldZeroDisplacementLeaToDataMove(dataflow) ||
 				TryRemoveRedundantAddressRegisterReload(dataflow) ||
 				TryForwardAddressRegisterBase(dataflow) ||
+				TryForwardAddressToDataCopyChain(dataflow) ||
 				TryForwardDataRegisterCopyChain(dataflow) ||
 				TryRemoveDataRegisterRoundTrip(dataflow) ||
 				TryFoldDataRegisterCopyUpdate(dataflow) ||
@@ -185,22 +190,20 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
-		for (var start = 0; start + 2 < instructions.Count; start++)
+		for (var start = 0; start + 1 < instructions.Count; start++)
 		{
 			var first = instructions[start];
-			if (first.Length != 2 || (first.Opcode & 0xFFF8) != 0x2F00)
+			if (!TryGetLongRegisterPush(first, out var firstRegister))
 			{
 				continue;
 			}
 
-			var registers = new List<int> { first.Opcode & 7 };
+			var registers = new List<int> { firstRegister };
 			var end = start + 1;
-			while (end < instructions.Count && registers.Count < 8)
+			while (end < instructions.Count && registers.Count < 16)
 			{
 				var push = instructions[end];
-				var register = push.Opcode & 7;
-				if (push.Length != 2 ||
-					(push.Opcode & 0xFFF8) != 0x2F00 ||
+				if (!TryGetLongRegisterPush(push, out var register) ||
 					register >= registers[^1] ||
 					_buffer.HasLabelAt(push.Offset))
 				{
@@ -210,7 +213,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				end++;
 			}
 
-			if (registers.Count < 3)
+			if (registers.Count < 2)
 			{
 				continue;
 			}
@@ -235,6 +238,21 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 
 		return false;
+
+		static bool TryGetLongRegisterPush(
+			M68kEmittedInstruction instruction,
+			out int register)
+		{
+			if (instruction.Length == 2 &&
+				(instruction.Opcode & 0xFFF8) is var family &&
+				family is 0x2F00 or 0x2F08)
+			{
+				register = (family == 0x2F08 ? 8 : 0) | (instruction.Opcode & 7);
+				return true;
+			}
+			register = 0;
+			return false;
+		}
 	}
 
 	private bool TryCanonicalizeZeroDisplacementEffectiveAddress()
@@ -1171,11 +1189,14 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_buffer.Labels.Add(target, targetOffset);
 			}
 
-			// Dn already contains the value this edge stored. Skip the common
-			// reload, which remains available to cleanup/leave predecessors.
-			_buffer.WriteWord(store.Offset, 0x6000); // BRA.W
-			_buffer.WriteWord(store.Offset + 2, 0);
-			_buffer.Branches.Add(new BranchFixup(store.Offset, target));
+			// Dn already contains the value this edge stored, but the store can
+			// also publish exception/finally state. Preserve it and insert a
+			// fallthrough-only branch around the common reload. Existing labeled
+			// cleanup/leave predecessors continue to enter at the shifted reload.
+			_buffer.InsertBytes(reload.Offset, 4);
+			_buffer.WriteWord(reload.Offset, 0x6000); // BRA.W
+			_buffer.WriteWord(reload.Offset + 2, 0);
+			_buffer.Branches.Add(new BranchFixup(reload.Offset, target));
 			return true;
 		}
 
@@ -1285,6 +1306,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 				if (candidate.Opcode is 0x2F7C or 0x2B7C &&
 					candidate.Length == 8 &&
+					!_assembler.AddressFixupOffsets.Contains(candidate.Offset + 2) &&
 					_buffer.ReadLong(candidate.Offset + 2) == 0)
 				{
 					var registerStore = candidate.Opcode == 0x2F7C
@@ -1575,6 +1597,112 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			_buffer.WriteWord(
 				first.Offset,
 				0x2000 | (destination << 9) | source);
+			_buffer.RemoveBytes(second.Offset, second.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveRepeatedLea()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var first = instructions[index];
+			var second = instructions[index + 1];
+			if ((first.Opcode & 0xF1F8) != 0x41D0 ||
+				((first.Opcode >> 9) & 7) == (first.Opcode & 7) ||
+				first.Length != second.Length ||
+				first.Opcode != second.Opcode ||
+				first.ExtensionWord != second.ExtensionWord ||
+				first.ExtensionLong != second.ExtensionLong ||
+				IsReferencedLabelAt(second.Offset))
+			{
+				continue;
+			}
+
+			// LEA does not alter condition codes. Repeating the exact same address
+			// calculation into the same register has no observable effect.
+			_buffer.RemoveBytes(second.Offset, second.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryFoldZeroDisplacementLeaToDataMove(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var lea = instructions[index];
+			var move = instructions[index + 1];
+			var leaMode = (lea.Opcode >> 3) & 7;
+			if ((lea.Opcode & 0xF1C0) != 0x41C0 ||
+				leaMode is not (2 or 5) ||
+				(leaMode == 5 && (lea.Length != 4 || lea.ExtensionWord != 0)) ||
+				(leaMode == 2 && lea.Length != 2) ||
+				(move.Opcode & 0xF1F8) != 0x2008 ||
+				move.Length != 2 ||
+				IsReferencedLabelAt(move.Offset) ||
+				!dataflow.TryGetFacts(move.Offset, out var facts))
+			{
+				continue;
+			}
+
+			var temporaryAddress = (lea.Opcode >> 9) & 7;
+			if ((move.Opcode & 7) != temporaryAddress ||
+				(facts.LiveAddressAfter & (1 << temporaryAddress)) != 0)
+			{
+				continue;
+			}
+
+			var sourceAddress = lea.Opcode & 7;
+			var destinationData = (move.Opcode >> 9) & 7;
+			_buffer.WriteWord(
+				lea.Offset,
+				(ushort)(0x2008 | (destinationData << 9) | sourceAddress));
+			_buffer.RemoveBytes(lea.Offset + 2, lea.Length - 2 + move.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardAddressToDataCopyChain(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var first = instructions[index];
+			var second = instructions[index + 1];
+			if ((first.Opcode & 0xF1F8) != 0x2008 ||
+				first.Length != 2 ||
+				(second.Opcode & 0xF1F8) != 0x2000 ||
+				second.Length != 2 ||
+				IsReferencedLabelAt(second.Offset) ||
+				!dataflow.TryGetFacts(second.Offset, out var facts))
+			{
+				continue;
+			}
+
+			var temporary = (first.Opcode >> 9) & 7;
+			var destination = (second.Opcode >> 9) & 7;
+			if ((second.Opcode & 7) != temporary ||
+				destination == temporary ||
+				(facts.LiveDataAfter & (1 << temporary)) != 0)
+			{
+				continue;
+			}
+
+			// Both long MOVEs publish the same N/Z/V/C state. Move the address
+			// directly to the final data register when the temporary dies here.
+			_buffer.WriteWord(
+				first.Offset,
+				(ushort)(0x2008 | (destination << 9) | (first.Opcode & 7)));
 			_buffer.RemoveBytes(second.Offset, second.Length);
 			return true;
 		}
@@ -5691,6 +5819,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		{
 			var opcode = _buffer.ReadWord(offset);
 			if ((opcode & 0xFFF8) == 0x0C80 &&
+				!_assembler.AddressFixupOffsets.Contains(offset + 2) &&
 				_buffer.ReadLong(offset + 2) == 0)
 			{
 				_buffer.WriteWord(offset, (ushort)(0x4A80 | (opcode & 7))); // CMPI.L #0,Dn -> TST.L Dn
@@ -5778,9 +5907,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryDistributeMoveQuickAcrossConditionalBranch()
+	private bool TryDistributeMoveQuickAcrossConditionalBranch(
+		M68kInstructionDataflow dataflow)
 	{
-		var instructions = _assembler.GetInstructionStream();
+		var instructions = dataflow.Instructions;
 		for (var index = 0; index + 3 < instructions.Count; index++)
 		{
 			var move = instructions[index];
@@ -5801,14 +5931,34 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				IsReferencedLabelAt(moveQuick.Offset) ||
 				IsReferencedLabelAt(test.Offset) ||
 				IsReferencedLabelAt(branch.Offset) ||
-				IsReferencedLabelAt(branch.Offset + branch.Length) ||
-				!HasUniqueBranchPredecessor(instructions, index + 3, targetOffset) ||
-				!TryGetBranch(branch.Offset, out var branchFixup) ||
-				_buffer.Addresses.Any(address =>
-					!address.External &&
-					string.Equals(address.Target, branchFixup.Target, StringComparison.Ordinal)) ||
-				_buffer.PcRelative.Any(reference =>
-					string.Equals(reference.Target, branchFixup.Target, StringComparison.Ordinal)))
+				!TryGetBranch(branch.Offset, out var branchFixup))
+			{
+				continue;
+			}
+
+			var moveQuickRegister = (moveQuick.Opcode >> 9) & 7;
+			var moveQuickMask = 1 << moveQuickRegister;
+			var fallthroughOffset = branch.Offset + branch.Length;
+			if (!dataflow.TryGetFacts(fallthroughOffset, out var fallthroughFacts) ||
+				!dataflow.TryGetFacts(targetOffset, out var targetFacts))
+			{
+				continue;
+			}
+			var needsFallthroughMove =
+				(fallthroughFacts.LiveDataBefore & moveQuickMask) != 0;
+			var needsTargetMove =
+				(targetFacts.LiveDataBefore & moveQuickMask) != 0;
+			if (needsFallthroughMove &&
+				(IsReferencedLabelAt(fallthroughOffset) ||
+				 fallthroughFacts.LiveConditionsBefore != M68kConditionCodeSet.None) ||
+				needsTargetMove &&
+				(!HasUniqueBranchPredecessor(instructions, index + 3, targetOffset) ||
+				 targetFacts.LiveConditionsBefore != M68kConditionCodeSet.None ||
+				 _buffer.Addresses.Any(address =>
+					 !address.External &&
+					 string.Equals(address.Target, branchFixup.Target, StringComparison.Ordinal)) ||
+				 _buffer.PcRelative.Any(reference =>
+					 string.Equals(reference.Target, branchFixup.Target, StringComparison.Ordinal))))
 			{
 				continue;
 			}
@@ -5816,14 +5966,20 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var moveQuickOpcode = moveQuick.Opcode;
 			_buffer.RemoveBytes(moveQuick.Offset, moveQuick.Length + test.Length);
 			var shiftedBranchOffset = move.Offset + move.Length;
-			_buffer.InsertBytes(shiftedBranchOffset + branch.Length, 2);
-			_buffer.WriteWord(shiftedBranchOffset + branch.Length, moveQuickOpcode);
-			if (!_buffer.Labels.TryGetValue(branchFixup.Target, out var shiftedTargetOffset))
+			if (needsFallthroughMove)
 			{
-				throw new InvalidOperationException("Conditional branch target disappeared during MOVEQ distribution.");
+				_buffer.InsertBytes(shiftedBranchOffset + branch.Length, 2);
+				_buffer.WriteWord(shiftedBranchOffset + branch.Length, moveQuickOpcode);
 			}
-			_buffer.InsertBytes(shiftedTargetOffset, 2);
-			_buffer.WriteWord(shiftedTargetOffset, moveQuickOpcode);
+			if (needsTargetMove)
+			{
+				if (!_buffer.Labels.TryGetValue(branchFixup.Target, out var shiftedTargetOffset))
+				{
+					throw new InvalidOperationException("Conditional branch target disappeared during MOVEQ distribution.");
+				}
+				_buffer.InsertBytes(shiftedTargetOffset, 2);
+				_buffer.WriteWord(shiftedTargetOffset, moveQuickOpcode);
+			}
 			return true;
 		}
 

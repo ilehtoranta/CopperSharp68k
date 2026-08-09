@@ -74,6 +74,26 @@ public static class M68kRuntime
 	public static long CombineInt64(uint high, uint low) =>
 		unchecked((long)(((ulong)high << 32) | low));
 
+	/// <summary>Splits the raw IEEE-754 lanes of a Double value.</summary>
+	public static uint SplitDouble(double value, out uint high)
+	{
+		var bits = unchecked((ulong)BitConverter.DoubleToInt64Bits(value));
+		high = unchecked((uint)(bits >> 32));
+		return unchecked((uint)bits);
+	}
+
+	/// <summary>Combines raw IEEE-754 lanes into a Double value.</summary>
+	public static double CombineDouble(uint high, uint low) =>
+		BitConverter.Int64BitsToDouble(unchecked((long)(((ulong)high << 32) | low)));
+
+	/// <summary>Returns the raw IEEE-754 bits of a Single value.</summary>
+	public static uint SingleToUInt32Bits(float value) =>
+		unchecked((uint)BitConverter.SingleToInt32Bits(value));
+
+	/// <summary>Constructs a Single value from raw IEEE-754 bits.</summary>
+	public static float UInt32BitsToSingle(uint value) =>
+		BitConverter.Int32BitsToSingle(unchecked((int)value));
+
 	/// <summary>
 	/// Raises the target runtime's canonical overflow exception. On the host it
 	/// throws <see cref="OverflowException"/> directly so shadow methods remain
@@ -89,6 +109,10 @@ public static class M68kRuntime
 	/// <summary>Raises the target runtime's canonical invalid-argument exception.</summary>
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
 	public static void ThrowArgumentException() => throw new ArgumentException();
+
+	/// <summary>Raises the target runtime's canonical arithmetic exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowArithmeticException() => throw new ArithmeticException();
 
 	/// <summary>Raises the target runtime's canonical null-argument exception.</summary>
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]

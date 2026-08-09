@@ -235,7 +235,10 @@ internal sealed class CilSignatureTypeProvider :
 		string displayName,
 		out CilType enumType)
 	{
-		if (displayName is "System.StringComparison" or "System.IO.FileAttributes")
+		if (displayName is
+			"System.StringComparison" or
+			"System.IO.FileAttributes" or
+			"System.MidpointRounding")
 		{
 			enumType = new CilType(
 				CilTypeKind.SignedInteger,

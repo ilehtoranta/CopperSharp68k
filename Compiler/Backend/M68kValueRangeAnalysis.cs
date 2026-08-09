@@ -40,6 +40,28 @@ internal readonly record struct M68kValueRange(
 			: new M68kValueRange(true, (uint)minimum, (uint)maximum);
 	}
 
+	internal static M68kValueRange And(M68kValueRange left, M68kValueRange right)
+	{
+		var knownZeroMask = left.KnownZeroMask | right.KnownZeroMask;
+		if (left.IsExact(out var leftValue))
+		{
+			if (right.IsExact(out var rightValue))
+			{
+				return Exact(leftValue & rightValue);
+			}
+			return leftValue == uint.MaxValue
+				? right
+				: new M68kValueRange(true, 0, leftValue, knownZeroMask);
+		}
+		if (right.IsExact(out var rightMask))
+		{
+			return rightMask == uint.MaxValue
+				? left
+				: new M68kValueRange(true, 0, rightMask, knownZeroMask);
+		}
+		return new M68kValueRange(false, 0, 0, knownZeroMask);
+	}
+
 	internal static M68kValueRange Join(
 		M68kValueRange left,
 		M68kValueRange right,
@@ -308,6 +330,16 @@ internal sealed class M68kValueRangeAnalysis
 					? inputRange
 					: new M68kValueRange(true, 0, mask, ~mask);
 			}
+			return output;
+		}
+
+		if ((opcode & 0xF1F8) == 0xC080)
+		{
+			var source = opcode & 7;
+			var destination = (opcode >> 9) & 7;
+			output.Data[destination] = M68kValueRange.And(
+				input.Data[destination],
+				input.Data[source]);
 			return output;
 		}
 

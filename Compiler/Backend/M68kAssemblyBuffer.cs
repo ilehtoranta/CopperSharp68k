@@ -19,6 +19,8 @@ internal sealed class M68kAssemblyBuffer
 
 	internal List<PcRelativeFixup> PcRelative { get; } = new();
 
+	internal Dictionary<int, M68kInstructionEffects> InstructionEffectOverrides { get; } = new();
+
 	internal int? DataStartOffset { get; private set; }
 
 	internal bool HasLabelAt(int offset) => Labels.Values.Contains(offset);
@@ -90,6 +92,15 @@ internal sealed class M68kAssemblyBuffer
 				};
 			}
 		}
+		foreach (var instructionOffset in InstructionEffectOverrides.Keys
+			.Where(instructionOffset => instructionOffset >= offset)
+			.OrderDescending()
+			.ToArray())
+		{
+			var effects = InstructionEffectOverrides[instructionOffset];
+			InstructionEffectOverrides.Remove(instructionOffset);
+			InstructionEffectOverrides.Add(instructionOffset + count, effects);
+		}
 	}
 
 	internal void RemoveBytes(int offset, int count)
@@ -106,6 +117,12 @@ internal sealed class M68kAssemblyBuffer
 			address.Offset >= offset && address.Offset < end);
 		PcRelative.RemoveAll(fixup =>
 			fixup.DisplacementOffset >= offset && fixup.DisplacementOffset < end);
+		foreach (var instructionOffset in InstructionEffectOverrides.Keys
+			.Where(instructionOffset => instructionOffset >= offset && instructionOffset < end)
+			.ToArray())
+		{
+			InstructionEffectOverrides.Remove(instructionOffset);
+		}
 
 		foreach (var label in Labels.Keys.ToArray())
 		{
@@ -153,6 +170,15 @@ internal sealed class M68kAssemblyBuffer
 			{
 				PcRelative[index] = fixup with { DisplacementOffset = fixup.DisplacementOffset - count };
 			}
+		}
+		foreach (var instructionOffset in InstructionEffectOverrides.Keys
+			.Where(instructionOffset => instructionOffset >= end)
+			.OrderBy(static instructionOffset => instructionOffset)
+			.ToArray())
+		{
+			var effects = InstructionEffectOverrides[instructionOffset];
+			InstructionEffectOverrides.Remove(instructionOffset);
+			InstructionEffectOverrides.Add(instructionOffset - count, effects);
 		}
 	}
 }

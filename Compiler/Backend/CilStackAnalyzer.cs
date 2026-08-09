@@ -22,7 +22,7 @@ internal enum CilStackValueKind
 	Float64,
 	Reference,
 	ManagedPointer,
-	// Logical reference-free aggregate value represented by the address of stable
+	// Logical multiword aggregate value represented by the address of stable
 	// storage. The analyzer tracks its exact CilType separately so unrelated
 	// value types cannot merge merely because they share this storage shape.
 	AggregateAddress
@@ -828,7 +828,13 @@ internal static class CilStackAnalyzer
 			var arithmeticKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
 			if (arithmeticKind == CilStackValueKind.Int64)
 			{
-				throw Unsupported(method, instruction, "64-bit arithmetic and comparisons");
+				if (op != OpCodes.Add && op != OpCodes.Sub)
+				{
+					throw Unsupported(method, instruction, "64-bit arithmetic other than addition or subtraction");
+				}
+				return PushValue(
+					Pop(method, instruction, stack, 4),
+					CilStackValueKind.Int64);
 			}
 			if (op == OpCodes.Add_Ovf && arithmeticKind != CilStackValueKind.Int32)
 			{
@@ -1453,7 +1459,8 @@ internal static class CilStackAnalyzer
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
 			op == OpCodes.Rem_Un || op == OpCodes.Ceq || op == OpCodes.Cgt ||
 			op == OpCodes.Cgt_Un || op == OpCodes.Clt || op == OpCodes.Clt_Un) &&
-			currentStack.Length != 0 && currentStack[^1] == CilStackValueKind.Float64)
+			currentStack.Length != 0 && currentStack[^1] is
+				CilStackValueKind.Int64 or CilStackValueKind.Float64)
 		{
 			return 4;
 		}
@@ -1682,7 +1689,8 @@ internal static class CilStackAnalyzer
 		string moduleName) =>
 		!type.IsSupportedScalar &&
 		!module.IsTransparentScalarType(type) &&
-		module.TryGetReferenceFreeStructLayout(type, moduleName, out var layout) &&
+		(module.TryGetReferenceFreeStructLayout(type, moduleName, out var layout) ||
+		 module.TryGetStructLayout(type, moduleName, out layout)) &&
 		layout.Size > 4
 			? CilStackValueKind.AggregateAddress
 			: StackKindForType(type);

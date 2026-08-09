@@ -88,7 +88,9 @@ internal sealed partial class M68kCodeGenerator
 		string? StateLabel,
 		string Label);
 
-	private readonly Dictionary<string, ExceptionResumeAction> _exceptionResumeActions = new(StringComparer.Ordinal);
+	private readonly Dictionary<
+		(CilMethodIdentity Method, string? StateLabel),
+		ExceptionResumeAction> _exceptionResumeActions = new();
 
 	private bool RequiresRuntimeFrame(CilMethod method) => false;
 
@@ -643,6 +645,7 @@ internal sealed partial class M68kCodeGenerator
 		var usesArgumentNull = _runtimeTypeDescriptors.Contains(
 			"System.ArgumentNullException");
 		var usesFormat = _runtimeTypeDescriptors.Contains("System.FormatException");
+		var usesArithmetic = _usesArithmeticExceptionFault;
 		var usesInvalidOperation = _runtimeTypeDescriptors.Contains(
 			"System.InvalidOperationException");
 		var usesIo = _runtimeTypeDescriptors.Contains("System.IO.IOException");
@@ -656,7 +659,7 @@ internal sealed partial class M68kCodeGenerator
 			"System.Collections.Generic.KeyNotFoundException");
 		var usesExtendedFaults = usesInvalidCast || usesArrayTypeMismatch ||
 			usesArgument || usesArgumentOutOfRange || usesArgumentNull ||
-			usesFormat || usesInvalidOperation || usesIo || usesDirectoryNotFound ||
+			usesFormat || usesArithmetic || usesInvalidOperation || usesIo || usesDirectoryNotFound ||
 			usesFileNotFound ||
 			usesUnauthorizedAccess || usesKeyNotFound;
 		var haveException = UniqueLabel("eh_have_exception");
@@ -671,6 +674,7 @@ internal sealed partial class M68kCodeGenerator
 		var argumentOutOfRangeFault = UniqueLabel("eh_argument_out_of_range_fault");
 		var argumentNullFault = UniqueLabel("eh_argument_null_fault");
 		var formatFault = UniqueLabel("eh_format_fault");
+		var arithmeticFault = UniqueLabel("eh_arithmetic_fault");
 		var invalidOperationFault = UniqueLabel("eh_invalid_operation_fault");
 		var ioFault = UniqueLabel("eh_io_fault");
 		var directoryNotFoundFault = UniqueLabel("eh_directory_not_found_fault");
@@ -731,6 +735,11 @@ internal sealed partial class M68kCodeGenerator
 			{
 				EmitCompareImmediateLong(M68kRegister.D0, 12);
 				_assembler.EmitBranch(M68kCondition.Equal, formatFault);
+			}
+			if (usesArithmetic)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 19);
+				_assembler.EmitBranch(M68kCondition.Equal, arithmeticFault);
 			}
 			if (usesInvalidOperation)
 			{
@@ -802,6 +811,12 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.Mark(formatFault);
 			EmitRuntimeObjectAddress(M68kRegister.A0, "System.FormatException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesArithmetic)
+		{
+			_assembler.Mark(arithmeticFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArithmeticException");
 			_assembler.EmitBranch(M68kCondition.True, haveException);
 		}
 		if (usesInvalidOperation)
@@ -1442,7 +1457,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private string RegisterExceptionResumeAction(CilMethod method, string? stateLabel)
 	{
-		var key = $"{method.Identity}:{stateLabel ?? "unwind"}";
+		var key = (method.Identity, stateLabel);
 		if (!_exceptionResumeActions.TryGetValue(key, out var action))
 		{
 			action = new ExceptionResumeAction(
@@ -1636,11 +1651,15 @@ internal sealed partial class M68kCodeGenerator
 			("System.IO.IOException", 15),
 			("System.IO.DirectoryNotFoundException", 16),
 			("System.UnauthorizedAccessException", 17),
-			("System.IO.FileNotFoundException", 18)
+			("System.IO.FileNotFoundException", 18),
+			("System.ArithmeticException", 19)
 		};
 
 		foreach (var (typeName, reason) in mappings.Where(mapping =>
-			mapping.Item2 <= 6 || _runtimeTypeDescriptors.Contains(mapping.Item1)))
+			mapping.Item2 <= 6 ||
+				(mapping.Item2 == 19
+					? _usesArithmeticExceptionFault
+					: _runtimeTypeDescriptors.Contains(mapping.Item1))))
 		{
 			var next = UniqueLabel("eh_reason_next");
 			EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
@@ -1719,6 +1738,10 @@ internal sealed partial class M68kCodeGenerator
 		while (pending.TryDequeue(out var layout))
 		{
 			var baseType = _module.GetBaseType(layout);
+			if (baseType.IsNil)
+			{
+				continue;
+			}
 			if (baseType.Kind == HandleKind.TypeDefinition)
 			{
 				var baseHandle = (TypeDefinitionHandle)baseType;
@@ -1806,8 +1829,12 @@ internal sealed partial class M68kCodeGenerator
 			"System.IO.DirectoryNotFoundException",
 			"System.IO.FileNotFoundException",
 			"System.UnauthorizedAccessException",
-			"System.Collections.Generic.KeyNotFoundException"
-		}.Where(_runtimeTypeDescriptors.Contains));
+			"System.Collections.Generic.KeyNotFoundException",
+			"System.ArithmeticException"
+		}.Where(typeName =>
+			typeName == "System.ArithmeticException"
+				? _usesArithmeticExceptionFault
+				: _runtimeTypeDescriptors.Contains(typeName)));
 		foreach (var typeName in exceptionTypes)
 		{
 			_assembler.AlignWord();

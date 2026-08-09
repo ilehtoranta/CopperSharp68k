@@ -4845,12 +4845,14 @@ internal sealed class CompilationModule : IDisposable
 					"the selected ordered foreach slice requires an exact private ordered enumerator");
 			}
 		}
-			IReadOnlyList<CilType>? shadowMethodTypeArguments =
-				shadowTarget.TypeName == "CopperSharp.Runtime.ShadowEnumerable" &&
-				shadowMethodName is "Repeat" or "RepeatToArray" or "ArraySumSelector" or
-					"DictionaryUInt32ValuesOrderBy" or "DictionaryUInt32ValuesThenBy"
-					? methodTypeArguments
-					: null;
+			IReadOnlyList<CilType>? shadowMethodTypeArguments = null;
+			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowArray" ||
+				(shadowTarget.TypeName == "CopperSharp.Runtime.ShadowEnumerable" &&
+				 shadowMethodName is "Repeat" or "RepeatToArray" or "ArraySumSelector" or
+					 "DictionaryUInt32ValuesOrderBy" or "DictionaryUInt32ValuesThenBy"))
+			{
+				shadowMethodTypeArguments = methodTypeArguments;
+			}
 			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowObject" &&
 				(shadowTarget.MethodName.StartsWith(
 					"DefaultEquals",
@@ -5769,7 +5771,8 @@ internal sealed class CompilationModule : IDisposable
 		MethodSignature<CilType> publicSignature)
 	{
 		const string assemblyName = "System.Private.CoreLib";
-		const string typeName = "System.Diagnostics.Stopwatch";
+		var typeName = binding.Member.DeclaringType.MetadataName ??
+			throw UnsupportedPinnedBody(binding, "declaring type identity is unavailable");
 		var module = GetOrLoadImplementationModule(assemblyName) ??
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidInput,
@@ -5789,7 +5792,7 @@ internal sealed class CompilationModule : IDisposable
 					binding,
 					$"implementation type '{typeName}' has unsupported generic or explicit layout metadata");
 			}
-			ValidatePinnedStopwatchLayout(module, typeHandle, binding);
+			ValidatePinnedTypeLayout(module, typeHandle, binding);
 
 			foreach (var methodHandle in type.GetMethods())
 			{
@@ -5824,7 +5827,7 @@ internal sealed class CompilationModule : IDisposable
 			"exact implementation member was not found");
 	}
 
-	private static void ValidatePinnedStopwatchLayout(
+	private static void ValidatePinnedTypeLayout(
 		CompilationModule module,
 		TypeDefinitionHandle typeHandle,
 		FrameworkBinding binding)
@@ -5836,7 +5839,8 @@ internal sealed class CompilationModule : IDisposable
 			var field = module.Reader.GetFieldDefinition(pair.Key);
 			offsets.Add(module.Reader.GetString(field.Name), pair.Value);
 		}
-		if (layout.Size == 28 &&
+		var typeName = binding.Member.DeclaringType.MetadataName;
+		if (typeName == "System.Diagnostics.Stopwatch" && layout.Size == 28 &&
 			layout.ReferenceBitmap == 0 &&
 			offsets.Count == 3 &&
 			offsets.TryGetValue("_elapsed", out var elapsed) && elapsed == 8 &&
@@ -5845,10 +5849,20 @@ internal sealed class CompilationModule : IDisposable
 		{
 			return;
 		}
+		// GetTypeLayout uses managed-object coordinates for value-type definitions:
+		// the payload follows the eight-byte object header. Transport strips that
+		// header, leaving the expected eight-byte TimeSpan value.
+		if (typeName == "System.TimeSpan" && layout.Size == 16 &&
+			layout.ReferenceBitmap == 0 &&
+			offsets.Count == 1 &&
+			offsets.TryGetValue("_ticks", out var ticks) && ticks == 8)
+		{
+			return;
+		}
 
 		throw UnsupportedPinnedBody(
 			binding,
-			$"implementation type 'System.Diagnostics.Stopwatch' has layout " +
+			$"implementation type '{typeName}' has layout " +
 			$"size={layout.Size}, references=0x{layout.ReferenceBitmap:X8}, fields=" +
 			string.Join(",", offsets.OrderBy(static item => item.Key, StringComparer.Ordinal)
 				.Select(static item => $"{item.Key}@{item.Value}")));

@@ -38,6 +38,7 @@ internal enum M68kFpuFormat : byte
 internal enum M68kFpuOperation : byte
 {
 	Move = 0x00,
+	TruncateToInteger = 0x03,
 	SquareRoot = 0x04,
 	Absolute = 0x18,
 	Negate = 0x1A,
@@ -61,6 +62,16 @@ internal sealed class M68kAssembler
 
 	internal IReadOnlySet<int> AddressFixupOffsets =>
 		_addresses.Select(static address => address.Offset).ToHashSet();
+
+	internal void SetInstructionEffects(
+		int offset,
+		M68kInstructionEffects effects) =>
+		_buffer.InstructionEffectOverrides[offset] = effects;
+
+	internal bool TryGetInstructionEffects(
+		int offset,
+		out M68kInstructionEffects effects) =>
+		_buffer.InstructionEffectOverrides.TryGetValue(offset, out effects);
 
 	private static readonly OpcodeRenderRule[] SimpleInstructionRules =
 	[
@@ -1017,6 +1028,7 @@ internal sealed class M68kAssembler
 		var mnemonic = (extension & 0x7F) switch
 		{
 			0x00 => "fmove.x",
+			0x03 => "fintrz.x",
 			0x04 => "fsqrt.x",
 			0x18 => "fabs.x",
 			0x1A => "fneg.x",
@@ -1537,7 +1549,10 @@ internal sealed class M68kAssembler
 
 	private static bool TryRenderShift(in InstructionRenderContext context, out RenderedInstruction instruction)
 	{
-		var masked = context.Opcode & 0xF1F8;
+		// Bit 5 selects a data-register count instead of an immediate count.
+		// Ignore it while identifying the operation, then render the selected
+		// operand form below.
+		var masked = context.Opcode & 0xF1D8;
 		var mnemonic = masked switch
 		{
 			0xE000 => "asr.b",
@@ -1555,7 +1570,10 @@ internal sealed class M68kAssembler
 		};
 		if (mnemonic is not null)
 		{
-			instruction = new($"{mnemonic}\t#{QuickCount(context.Opcode)},d{context.Opcode & 7}", 2);
+			var count = (context.Opcode & 0x20) != 0
+				? $"d{(context.Opcode >> 9) & 7}"
+				: $"#{QuickCount(context.Opcode)}";
+			instruction = new($"{mnemonic}\t{count},d{context.Opcode & 7}", 2);
 			return true;
 		}
 

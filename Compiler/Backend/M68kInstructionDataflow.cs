@@ -141,7 +141,10 @@ internal sealed class M68kInstructionDataflow
 			.Select((instruction, index) => (instruction.Offset, index))
 			.ToDictionary(static item => item.Offset, static item => item.index);
 		var effects = instructions
-			.Select(Classify)
+			.Select(instruction =>
+				assembler.TryGetInstructionEffects(instruction.Offset, out var annotated)
+					? annotated
+					: Classify(instruction))
 			.ToArray();
 		var successors = BuildSuccessors(instructions, indexByOffset);
 		var predecessors = BuildPredecessors(successors);
@@ -864,15 +867,21 @@ internal sealed class M68kInstructionDataflow
 			{
 				UseAddress(addressRegister);
 				DefineAddress(addressRegister);
-				for (var register = 0; register < 8; register++)
+				for (var physicalRegister = 0; physicalRegister < 16; physicalRegister++)
 				{
-					if ((mask & (1 << register)) != 0)
+					// The 68k predecrement MOVEM encoding reverses the register
+					// mask: bit 15 denotes D0 and bit 0 denotes A7.
+					if ((mask & (1 << (15 - physicalRegister))) == 0)
 					{
-						UseData(register);
+						continue;
 					}
-					if ((mask & (1 << (register + 8))) != 0)
+					if (physicalRegister < 8)
 					{
-						UseAddress(register);
+						UseData(physicalRegister);
+					}
+					else
+					{
+						UseAddress(physicalRegister - 8);
 					}
 				}
 				AdjustStack(-4 * BitCount(mask), writesMemory: M68kMemorySet.Stack);

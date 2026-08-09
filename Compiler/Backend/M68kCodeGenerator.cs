@@ -3,6 +3,7 @@
 - SPDX-License-Identifier: MIT
  */
 
+using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Collections.Immutable;
@@ -36,6 +37,7 @@ internal sealed partial class M68kCodeGenerator
 	private int _uniqueLabel;
 	private int _currentStackDepth = 0;
 	private bool _usesExceptionRuntime;
+	private bool _usesArithmeticExceptionFault;
 	private bool _hasExceptionFrames;
 	private ImmutableArray<CilStackValueKind> _currentStackTypes = ImmutableArray<CilStackValueKind>.Empty;
 	private ImmutableArray<CilStackValueKind> _nextStackTypes = ImmutableArray<CilStackValueKind>.Empty;
@@ -55,6 +57,7 @@ internal sealed partial class M68kCodeGenerator
 	private readonly HashSet<CilMethodIdentity> _callerBorrowedByrefMethods = new();
 	private readonly HashSet<CilFieldIdentity> _escapedStaticFields = new();
 	private readonly Dictionary<CilMethodIdentity, CilMethod> _typeInitializers = new();
+	private readonly Dictionary<CilMethodIdentity, CilMethod> _foldedMethodAliases = new();
 
 	private enum InlineCandidateKind
 	{
@@ -140,6 +143,7 @@ internal sealed partial class M68kCodeGenerator
 		ValidateMethodSignature(entry, isEntry: true, isExport: false);
 		var exports = _module.GetExports();
 		var methods = PruneAlwaysInlinedMethods(DiscoverReachableMethods(entry, exports), entry, exports);
+		PlanIdenticalMethodFolds(methods, entry, exports);
 		var exportedMethods = exports
 			.Select(static export => export.Method.Identity)
 			.ToHashSet();
@@ -207,12 +211,12 @@ internal sealed partial class M68kCodeGenerator
 				_hasExceptionFrames);
 			if (!entryHasOtherInvocation &&
 				!usesManagedRuntime &&
-				!usesManagedLifecycle &&
-				!_hasExceptionFrames)
+				!usesManagedLifecycle)
 			{
-				// This adapter only initializes process state and falls through into
-				// the entry method. The Amiga process boundary has no caller-owned
-				// callee-saved registers, so keep the entry allocation root-only.
+				// This adapter only initializes process/exception state before entering
+				// the sole managed root. The Amiga process boundary has no caller-owned
+				// callee-saved registers, so keep the entry allocation root-only even
+				// when the adapter calls it to establish an exception return boundary.
 				_rootOnlyMethods.Add(entry.Identity);
 			}
 		}
@@ -223,6 +227,10 @@ internal sealed partial class M68kCodeGenerator
 		AnalyzePlatformBaseMethodEntries(methods, entry, exports);
 		foreach (var method in methods)
 		{
+			if (_foldedMethodAliases.ContainsKey(method.Identity))
+			{
+				continue;
+			}
 			CompileMethod(method);
 		}
 		foreach (var export in exports)
@@ -471,7 +479,10 @@ internal sealed partial class M68kCodeGenerator
 				}
 				else if (target.Definition is { IsImport: false } directDefinition)
 				{
-					queue.Enqueue(directDefinition);
+					if (!IsNativeShadowMathLeaf(directDefinition))
+					{
+						queue.Enqueue(directDefinition);
+					}
 				}
 			}
 		}
@@ -630,6 +641,196 @@ internal sealed partial class M68kCodeGenerator
 		instruction.OpCode == OpCodes.Call ||
 		instruction.OpCode == OpCodes.Callvirt ||
 		instruction.OpCode == OpCodes.Newobj;
+
+	private void PlanIdenticalMethodFolds(
+		IReadOnlyList<CilMethod> methods,
+		CilMethod entry,
+		IReadOnlyList<CilExport> exports)
+	{
+		var protectedMethods = exports
+			.Select(static export => export.Method.Identity)
+			.ToHashSet();
+		protectedMethods.Add(entry.Identity);
+		if (_managedPoolRuntime is not null)
+		{
+			protectedMethods.UnionWith(
+				_managedPoolRuntime.Methods.Select(static method => method.Identity));
+		}
+		foreach (var lifecycle in _managedLifecycles)
+		{
+			protectedMethods.UnionWith(
+				lifecycle.Methods.Select(static method => method.Identity));
+		}
+
+		var addressTaken = new HashSet<CilMethodIdentity>();
+		foreach (var caller in methods)
+		{
+			foreach (var instruction in caller.Instructions)
+			{
+				if (instruction.OpCode != OpCodes.Ldftn &&
+					instruction.OpCode != OpCodes.Ldvirtftn)
+				{
+					continue;
+				}
+
+				var target = _module.ResolveMethodToken(
+					(int)instruction.Operand!,
+					caller,
+					instruction.Offset);
+				if (target.Definition is { } definition)
+				{
+					addressTaken.Add(definition.Identity);
+				}
+			}
+		}
+
+		var canonicalMethods = new List<CilMethod>();
+		foreach (var method in methods)
+		{
+			if (!CanFoldIdenticalMethod(method, protectedMethods, addressTaken))
+			{
+				continue;
+			}
+
+			var canonical = canonicalMethods.FirstOrDefault(candidate =>
+				HaveIdenticalFoldableBodies(candidate, method));
+			if (canonical is null)
+			{
+				canonicalMethods.Add(method);
+				continue;
+			}
+
+			_foldedMethodAliases.Add(method.Identity, canonical);
+		}
+	}
+
+	private static bool CanFoldIdenticalMethod(
+		CilMethod method,
+		IReadOnlySet<CilMethodIdentity> protectedMethods,
+		IReadOnlySet<CilMethodIdentity> addressTaken) =>
+		!method.IsImport &&
+		!method.IsAbstract &&
+		!method.IsVirtual &&
+		!method.IsTypeInitializer &&
+		!method.DeclaringTypeIsInterface &&
+		method.Construction.Length == 0 &&
+		method.Instructions.Count != 0 &&
+		method.ExceptionRegions.Count == 0 &&
+		!protectedMethods.Contains(method.Identity) &&
+		!addressTaken.Contains(method.Identity);
+
+	private bool HaveIdenticalFoldableBodies(CilMethod left, CilMethod right)
+	{
+		if (left.ModuleName != right.ModuleName ||
+			left.Attributes != right.Attributes ||
+			left.DeclaringTypeAttributes != right.DeclaringTypeAttributes ||
+			left.InitializeLocals != right.InitializeLocals ||
+			(left.Name == ".ctor") != (right.Name == ".ctor") ||
+			IsTransparentScalarDeclaringType(left) !=
+				IsTransparentScalarDeclaringType(right) ||
+			!HaveSameSignature(left, right) ||
+			!HaveSameTypes(left.Locals, right.Locals) ||
+			!HaveSameParameterFlags(left.ParameterFlags, right.ParameterFlags) ||
+			!HaveSameInternalCallAbi(
+				GetInternalCallAbi(left),
+				GetInternalCallAbi(right)) ||
+			left.Instructions.Count != right.Instructions.Count)
+		{
+			return false;
+		}
+
+		for (var index = 0; index < left.Instructions.Count; index++)
+		{
+			var leftInstruction = left.Instructions[index];
+			var rightInstruction = right.Instructions[index];
+			if (leftInstruction.Offset != rightInstruction.Offset ||
+				leftInstruction.OpCode != rightInstruction.OpCode ||
+				leftInstruction.NextOffset != rightInstruction.NextOffset ||
+				leftInstruction.ConstrainedTypeToken !=
+					rightInstruction.ConstrainedTypeToken ||
+				!HaveSameInstructionOperand(
+					leftInstruction.Operand,
+					rightInstruction.Operand))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool HaveSameSignature(CilMethod left, CilMethod right) =>
+		left.Signature.Header.Equals(right.Signature.Header) &&
+		left.Signature.GenericParameterCount == right.Signature.GenericParameterCount &&
+		left.Signature.RequiredParameterCount == right.Signature.RequiredParameterCount &&
+		HaveSameType(left.Signature.ReturnType, right.Signature.ReturnType) &&
+		HaveSameTypes(left.Signature.ParameterTypes, right.Signature.ParameterTypes);
+
+	private static bool HaveSameTypes(
+		IReadOnlyList<CilType> left,
+		IReadOnlyList<CilType> right)
+	{
+		if (left.Count != right.Count)
+		{
+			return false;
+		}
+
+		for (var index = 0; index < left.Count; index++)
+		{
+			if (!HaveSameType(left[index], right[index]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool HaveSameType(CilType left, CilType right) =>
+		left.Kind == right.Kind &&
+		left.Size == right.Size &&
+		left.DisplayName == right.DisplayName &&
+		left.IsReadOnly == right.IsReadOnly &&
+		left.IsEnum == right.IsEnum &&
+		(left.ElementType is null
+			? right.ElementType is null
+			: right.ElementType is not null &&
+				HaveSameType(left.ElementType, right.ElementType)) &&
+		HaveSameGenericArguments(left.GenericArguments, right.GenericArguments);
+
+	private static bool HaveSameGenericArguments(
+		ImmutableArray<CilType> left,
+		ImmutableArray<CilType> right) =>
+		left.IsDefaultOrEmpty && right.IsDefaultOrEmpty ||
+		!left.IsDefault && !right.IsDefault && HaveSameTypes(left, right);
+
+	private static bool HaveSameParameterFlags(
+		ImmutableArray<ParameterAttributes> left,
+		ImmutableArray<ParameterAttributes> right) =>
+		left.IsDefaultOrEmpty && right.IsDefaultOrEmpty ||
+		!left.IsDefault && !right.IsDefault && left.SequenceEqual(right);
+
+	private static bool HaveSameInternalCallAbi(
+		InternalCallAbi left,
+		InternalCallAbi right) =>
+		left.StackBytes == right.StackBytes &&
+		left.ReturnBufferStackOffset == right.ReturnBufferStackOffset &&
+		left.Arguments.SequenceEqual(right.Arguments);
+
+	private static bool HaveSameInstructionOperand(object? left, object? right) =>
+		(left, right) switch
+		{
+			(null, null) => true,
+			(int[] leftTargets, int[] rightTargets) =>
+				leftTargets.AsSpan().SequenceEqual(rightTargets),
+			(float leftValue, float rightValue) =>
+				BitConverter.SingleToInt32Bits(leftValue) ==
+					BitConverter.SingleToInt32Bits(rightValue),
+			(double leftValue, double rightValue) =>
+				BitConverter.DoubleToInt64Bits(leftValue) ==
+					BitConverter.DoubleToInt64Bits(rightValue),
+			_ => Equals(left, right)
+		};
 
 	private static bool RequiresVirtualDispatch(CilInstruction instruction, CilMethod method) =>
 		instruction.OpCode == OpCodes.Callvirt &&
@@ -926,8 +1127,34 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private bool IsAlwaysInlinedMethod(CilMethod method) =>
-		GetInternalRegisterAbi(method) is [M68kRegister.D0] &&
-		IsIdentityReturnBody(method);
+		GetInternalRegisterAbi(method) switch
+		{
+			[M68kRegister.D0] => IsIdentityReturnBody(method),
+			[] => TryGetConstantReturnBody(method, out _),
+			_ => false
+		};
+
+	private static bool TryGetConstantReturnBody(
+		CilMethod method,
+		out int constant)
+	{
+		var body = method.Instructions
+			.Where(static instruction => instruction.OpCode != OpCodes.Nop)
+			.ToArray();
+		if (!method.Signature.Header.IsInstance &&
+			method.Signature.ParameterTypes.Length == 0 &&
+			method.Signature.ReturnType.IsSupportedScalar &&
+			!method.Signature.ReturnType.IsVoid &&
+			body is [var load, var ret] &&
+			ret.OpCode == OpCodes.Ret &&
+			TryGetConstant(load, out constant))
+		{
+			return true;
+		}
+
+		constant = 0;
+		return false;
+	}
 
 	private bool TryEmitLoadBranch(
 		CilMethod method,
@@ -4030,17 +4257,9 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		var done = UniqueLabel("shift_done");
-		var loop = UniqueLabel("shift_loop");
 		_assembler.EmitWord(0x0281); // ANDI.L #31,D1
 		_assembler.EmitLong(31);
-		_assembler.EmitWord(0x4A81); // TST.L D1
-		_assembler.EmitBranch(M68kCondition.Equal, done);
-		_assembler.Mark(loop);
-		_assembler.EmitWord(ShiftOpcode(op, width));
-		_assembler.EmitWord(0x5381); // SUBQ.L #1,D1
-		_assembler.EmitBranch(M68kCondition.NotEqual, loop);
-		_assembler.Mark(done);
+		_assembler.EmitWord((ushort)(ShiftOpcode(op, width) | 0x0020));
 	}
 
 	private void EmitImmediateShift(OpCode op, int width, int count)
@@ -5097,6 +5316,13 @@ internal sealed partial class M68kCodeGenerator
 				EmitExceptionRaise(reason: 4, hasException: false);
 				return;
 			}
+			if (target.ImportName == "intrinsic:runtime-throw-arithmetic")
+			{
+				_usesArithmeticExceptionFault = true;
+				RegisterRuntimeTypeDescriptor("System.ArithmeticException");
+				EmitExceptionRaise(reason: 19, hasException: false);
+				return;
+			}
 			if (target.ImportName == "intrinsic:list-enumerator-dispose")
 			{
 				EmitDiscardStackArguments(target.ParameterCount);
@@ -5249,9 +5475,33 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName == "intrinsic:aptr-read-uint8")
+			{
+				EmitAptrRead(1, pushResult);
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:aptr-read-uint16")
+			{
+				EmitAptrRead(2, pushResult);
+				return;
+			}
+
 			if (target.ImportName == "intrinsic:aptr-write-uint32")
 			{
 				EmitAptrWriteUInt32();
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:aptr-write-uint8")
+			{
+				EmitAptrWrite(1);
+				return;
+			}
+
+			if (target.ImportName == "intrinsic:aptr-write-uint16")
+			{
+				EmitAptrWrite(2);
 				return;
 			}
 
@@ -5455,6 +5705,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		ValidateMethodSignature(target.Definition, isEntry: false, isExport: false);
+		if (TryEmitNativeShadowMathCall(target.Definition, pushResult))
+		{
+			return;
+		}
 		if (instruction.OpCode == OpCodes.Callvirt &&
 			target.Definition.Signature.Header.IsInstance)
 		{
@@ -5557,6 +5811,41 @@ internal sealed partial class M68kCodeGenerator
 				EmitPushD0();
 			}
 		}
+	}
+
+	private bool TryEmitNativeShadowMathCall(CilMethod definition, bool pushResult)
+	{
+		if (!IsNativeShadowMathLeaf(definition))
+		{
+			return false;
+		}
+
+		var operation = definition.DisplayName switch
+		{
+			"CopperSharp.Runtime.ShadowMath::Sqrt" => M68kFpuOperation.SquareRoot,
+			"CopperSharp.Runtime.ShadowMath::Truncate" => M68kFpuOperation.TruncateToInteger,
+			_ => throw new InvalidOperationException("Unknown native Math leaf.")
+		};
+
+		EmitPopRegister(M68kRegister.D1); // low word
+		EmitPopRegister(M68kRegister.D0); // high word
+		EmitAllocateFrame(8);
+		_assembler.EmitWord(0x2E80); // MOVE.L D0,(A7)
+		_assembler.EmitWord(0x2F41); // MOVE.L D1,4(A7)
+		_assembler.EmitWord(4);
+		_assembler.EmitFpuStackToRegister(0, M68kFpuFormat.Double);
+		_assembler.EmitFpuUnaryOperation(0, operation);
+		_assembler.EmitFpuRegisterToStack(0, M68kFpuFormat.Double);
+		_assembler.EmitWord(0x2017); // MOVE.L (A7),D0
+		_assembler.EmitWord(0x222F); // MOVE.L 4(A7),D1
+		_assembler.EmitWord(4);
+		EmitReleaseStackBytes(8);
+		if (pushResult)
+		{
+			EmitPushRegister(M68kRegister.D0);
+			EmitPushRegister(M68kRegister.D1);
+		}
+		return true;
 	}
 
 	private void EmitRequireCallReceiverNonNull(MethodSignature<CilType> signature)
@@ -5779,6 +6068,19 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
+	private void EmitAptrRead(int size, bool pushResult)
+	{
+		EmitPopD0(); // byte offset
+		EmitPopRegister(M68kRegister.A0); // guest address
+		_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		_assembler.EmitWord(size == 1 ? (ushort)0x1010 : (ushort)0x3010); // MOVE.B/W (A0),D0
+		if (pushResult)
+		{
+			EmitPushD0();
+		}
+	}
+
 	private void EmitBoopsiInstanceData(bool pushResult)
 	{
 		EmitPopRegister(M68kRegister.A0); // object
@@ -5800,6 +6102,15 @@ internal sealed partial class M68kCodeGenerator
 		EmitPopRegister(M68kRegister.A0); // guest address
 		_assembler.EmitWord(0xD1C1); // ADDA.L D1,A0
 		_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
+	}
+
+	private void EmitAptrWrite(int size)
+	{
+		EmitPopD0(); // value
+		EmitPopRegister(M68kRegister.D1); // byte offset
+		EmitPopRegister(M68kRegister.A0); // guest address
+		_assembler.EmitWord(0xD1C1); // ADDA.L D1,A0
+		_assembler.EmitWord(size == 1 ? (ushort)0x1080 : (ushort)0x3080); // MOVE.B/W D0,(A0)
 	}
 
 	private bool IsNextExportAddressCall(CilMethod caller, CilInstruction instruction)
@@ -6042,6 +6353,15 @@ internal sealed partial class M68kCodeGenerator
 		return result;
 	}
 
+	private bool IsNativeShadowMathLeaf(CilMethod method) =>
+		_request.FloatingPoint is
+			M68kFloatingPointMode.M68040 or M68kFloatingPointMode.M68882 &&
+		method.DisplayName is
+			"CopperSharp.Runtime.ShadowMath::Sqrt" or
+			"CopperSharp.Runtime.ShadowMath::Truncate" &&
+		method.Signature.ParameterTypes is [{ IsFloatingPoint: true, Size: 8 }] &&
+		method.Signature.ReturnType is { IsFloatingPoint: true, Size: 8 };
+
 	private int ArgumentSlotLongs(CilMethod method, int argumentIndex) =>
 		SlotLongs(TypeForArgument(method, argumentIndex));
 
@@ -6177,6 +6497,14 @@ internal sealed partial class M68kCodeGenerator
 		M68kExternalCallConvention binding,
 		CilMethod method)
 	{
+		if (binding.BaseSource == M68kExternalBaseSource.Argument)
+		{
+			// Argument setup supplies the dynamic base. It also replaces any base
+			// identity previously known to be resident in the register.
+			_loadedPlatformBase = null;
+			return;
+		}
+
 		var platformBase = GetOrAddPlatformBase(binding, method);
 		if (_loadedPlatformBase != platformBase)
 		{
@@ -9437,9 +9765,16 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 
-	private string MethodLabel(CilMethod method) =>
-		$"method:{ModuleLabelPrefix(method.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle):X8}" +
-		ConstructionLabelSuffix(method.Construction);
+	private string MethodLabel(CilMethod method)
+	{
+		if (_foldedMethodAliases.TryGetValue(method.Identity, out var canonical))
+		{
+			method = canonical;
+		}
+
+		return $"method:{ModuleLabelPrefix(method.ModuleName)}{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle):X8}" +
+			ConstructionLabelSuffix(method.Construction);
+	}
 
 	private string MethodEndLabel(CilMethod method) =>
 		$"{MethodLabel(method)}:end";

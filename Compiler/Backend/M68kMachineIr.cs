@@ -218,7 +218,8 @@ internal sealed record M68kMachineInstruction(
 	int? Immediate = null,
 	bool AllowCopyCoalescing = true,
 	bool TransportsManagedByrefOwner = false,
-	M68kMachineBranchCondition? BranchCondition = null)
+	M68kMachineBranchCondition? BranchCondition = null,
+	bool RequiresLiveCallerFrame = false)
 {
 	public static M68kMachineInstruction Create(
 		int id,
@@ -239,7 +240,8 @@ internal sealed record M68kMachineInstruction(
 		int? immediate = null,
 		bool allowCopyCoalescing = true,
 		bool transportsManagedByrefOwner = false,
-		M68kMachineBranchCondition? branchCondition = null) =>
+		M68kMachineBranchCondition? branchCondition = null,
+		bool requiresLiveCallerFrame = false) =>
 		new(
 			id,
 			operation,
@@ -259,7 +261,8 @@ internal sealed record M68kMachineInstruction(
 			immediate,
 			allowCopyCoalescing,
 			transportsManagedByrefOwner,
-			branchCondition);
+			branchCondition,
+			requiresLiveCallerFrame);
 }
 
 internal sealed class M68kMachineBlock
@@ -364,7 +367,8 @@ internal sealed class M68kMachineFunction
 		int? immediate = null,
 		bool allowCopyCoalescing = true,
 		bool transportsManagedByrefOwner = false,
-		M68kMachineBranchCondition? branchCondition = null) =>
+		M68kMachineBranchCondition? branchCondition = null,
+		bool requiresLiveCallerFrame = false) =>
 		M68kMachineInstruction.Create(
 			_nextInstructionId++,
 			operation,
@@ -384,7 +388,8 @@ internal sealed class M68kMachineFunction
 			immediate,
 			allowCopyCoalescing,
 			transportsManagedByrefOwner,
-			branchCondition);
+			branchCondition,
+			requiresLiveCallerFrame);
 }
 
 internal static class M68kMachineIrVerifier

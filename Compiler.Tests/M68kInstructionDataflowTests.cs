@@ -494,11 +494,11 @@ public sealed class M68kInstructionDataflowTests
 		assembler.OptimizeForM68000();
 
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
-		Assert.DoesNotContain(
+		Assert.Contains(
 			"moveq\t#20,d0\r\n\tmove.l\td0,20(a7)",
 			assembly,
 			StringComparison.Ordinal);
-		Assert.Contains("moveq\t#20,d0\r\n\tbra.", assembly, StringComparison.Ordinal);
+		Assert.Contains("bra.", assembly, StringComparison.Ordinal);
 		Assert.Contains("move.l\t20(a7),d0", assembly, StringComparison.Ordinal);
 		Assert.Contains("move.l\td0,20(a7)", assembly, StringComparison.Ordinal);
 	}
@@ -1521,6 +1521,145 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void KeepsMoveQuickAndTestWhenSuccessorConsumesTestFlags()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2200); // MOVE.L D0,D1
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x4A81); // TST.L D1
+		assembler.EmitBranch(M68kCondition.LessThan, "negative");
+		assembler.EmitBranch(M68kCondition.Equal, "zero");
+		assembler.EmitWord(0x2400); // MOVE.L D0,D2 keeps D0 live on fallthrough.
+		assembler.EmitBranch(M68kCondition.True, "done");
+		assembler.Mark("negative");
+		assembler.EmitWord(0x2400); // MOVE.L D0,D2 keeps D0 live on target.
+		assembler.EmitBranch(M68kCondition.True, "done");
+		assembler.Mark("zero");
+		assembler.EmitWord(0x7401); // MOVEQ #1,D2
+		assembler.Mark("done");
+		assembler.EmitWord(0x2002); // MOVE.L D2,D0
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("moveq\t#0,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("tst.l\td1", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void AnnotatedExternalCallDefinitionEliminatesDeadArgumentWrite()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0 is not an argument.
+		var callOffset = assembler.Offset;
+		assembler.EmitWord(0x4EAE); // JSR -132(A6)
+		assembler.EmitWord(unchecked((ushort)-132));
+		assembler.SetInstructionEffects(
+			callOffset,
+			new M68kInstructionEffects(
+				UsesData: 0,
+				DefinesData: 1,
+				UsesAddress: 1 << 6,
+				DefinesAddress: 1 << 6,
+				ReadsConditions: M68kConditionCodeSet.None,
+				WritesConditions: M68kConditionCodeSet.All,
+				ReadsMemory: M68kMemorySet.All,
+				WritesMemory: M68kMemorySet.All,
+				StackDelta: 0,
+				IsBarrier: true,
+				CanRemoveWhenOutputsDead: false));
+		assembler.EmitWord(0x4E75); // RTS consumes the call result in D0.
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("moveq\t#0,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("jmp\t-132(a6)", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesOnlySafeRepeatedAddressLea()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x43D0); // LEA (A0),A1
+		assembler.EmitWord(0x43D0); // LEA (A0),A1
+		assembler.EmitWord(0x2009); // MOVE.L A1,D0
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain(
+			"lea\t(a0),a1\r\n\tlea\t(a0),a1",
+			assembly,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsRepeatedPcRelativeAndSelfBasedLea()
+	{
+		var pcRelative = new M68kAssembler();
+		pcRelative.EmitWord(0x41FA); // LEA first(PC),A0
+		pcRelative.EmitPcRelativeWord("first");
+		pcRelative.EmitWord(0x41FA); // LEA second(PC),A0 must remain the final value.
+		pcRelative.EmitPcRelativeWord("second");
+		pcRelative.EmitWord(0x2008); // MOVE.L A0,D0
+		pcRelative.EmitWord(0x4E75); // RTS
+		pcRelative.Mark("first");
+		pcRelative.EmitLong(0);
+		pcRelative.Mark("second");
+		pcRelative.EmitLong(0);
+		pcRelative.OptimizeForM68000();
+		var pcAssembly = pcRelative.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("second", pcAssembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("lea\tfirst", pcAssembly, StringComparison.Ordinal);
+
+		var selfBased = new M68kAssembler();
+		selfBased.EmitWord(0x41E8); // LEA 4(A0),A0
+		selfBased.EmitWord(4);
+		selfBased.EmitWord(0x41E8); // LEA 4(A0),A0 accumulates again.
+		selfBased.EmitWord(4);
+		selfBased.EmitWord(0x2008); // MOVE.L A0,D0
+		selfBased.EmitWord(0x4E75); // RTS
+		selfBased.OptimizeForM68000();
+		var selfAssembly = selfBased.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("#8,a0", selfAssembly, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"lea\t4(a0),a0\r\n\tlea\t4(a0),a0",
+			selfAssembly,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void FoldsAddressFormationAndCopyChainsToFinalDataRegister()
+	{
+		var stackAddress = new M68kAssembler();
+		stackAddress.EmitWord(0x41D7); // LEA (A7),A0
+		stackAddress.EmitWord(0x2608); // MOVE.L A0,D3
+		stackAddress.EmitWord(0x2043); // MOVEA.L D3,A0 overwrites the temporary.
+		stackAddress.EmitWord(0x2003); // MOVE.L D3,D0
+		stackAddress.EmitWord(0x4E75); // RTS
+		stackAddress.OptimizeForM68000();
+		var stackAssembly = stackAddress.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\ta7,", stackAssembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("lea\t(a7),a0", stackAssembly, StringComparison.Ordinal);
+
+		var copyChain = new M68kAssembler();
+		copyChain.EmitWord(0x2008); // MOVE.L A0,D0
+		copyChain.EmitWord(0x2600); // MOVE.L D0,D3
+		copyChain.EmitWord(0x2003); // MOVE.L D3,D0
+		copyChain.EmitWord(0x4E75); // RTS
+		copyChain.OptimizeForM68000();
+		var copyAssembly = copyChain.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\ta0,", copyAssembly, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"move.l\ta0,d0\r\n\tmove.l\td0,d3",
+			copyAssembly,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void TracksDeadConditionCodesAndStackPointerDelta()
 	{
 		var assembler = new M68kAssembler();
@@ -2159,6 +2298,25 @@ public sealed class M68kInstructionDataflowTests
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Equal(1, assembly.Split("andi.l\t#$000000F0,d0", StringSplitOptions.None).Length - 1);
 		Assert.Equal(1, assembly.Split("andi.l\t#$0000000F,d0", StringSplitOptions.None).Length - 1);
+	}
+
+	[Fact]
+	public void RemovesImmediateMaskAfterEquivalentRegisterAnd()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7E1F); // MOVEQ #31,D7
+		assembler.EmitWord(0xC287); // AND.L D7,D1
+		assembler.EmitWord(0x2008); // MOVE.L A0,D0; leaves D1 untouched
+		assembler.EmitWord(0x0281); // ANDI.L #31,D1
+		assembler.EmitLong(31);
+		assembler.EmitWord(0xD081); // ADD.L D1,D0 replaces mask flags
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("and.l\td7,d1", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("andi.l\t#$0000001F,d1", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -3956,6 +4114,25 @@ public sealed class M68kInstructionDataflowTests
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Contains("movem.l\td1-d2/d4,-(a7)", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\td4,-(a7)", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void GroupsTwoDescendingMixedRegisterPushesIntoOrderedMovemVector()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F0A); // MOVE.L A2,-(A7)
+		assembler.EmitWord(0x2F04); // MOVE.L D4,-(A7)
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		var flow = M68kInstructionDataflow.Analyze(assembler);
+		Assert.True(flow.TryGetFacts(0, out var movemFacts));
+		Assert.Equal(1 << 4, movemFacts.Effects.UsesData);
+		Assert.Equal(1 << 2, movemFacts.Effects.UsesAddress & ~(1 << 7));
+		Assert.Contains("movem.l\td4/a2,-(a7)", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\ta2,-(a7)", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]

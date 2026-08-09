@@ -118,7 +118,8 @@ public static class M68kCompiler
 			module,
 			entry,
 			exports,
-			managedPoolRuntime);
+			managedPoolRuntime,
+			request.FloatingPoint);
 		if (HasIncompatibleFrameworkMember(baseline))
 		{
 			return (baseline, Array.Empty<ManagedLifecycleModule>());
@@ -142,6 +143,7 @@ public static class M68kCompiler
 			entry,
 			exports,
 			managedPoolRuntime,
+			request.FloatingPoint,
 			lifecycles.SelectMany(static lifecycle => lifecycle.Methods));
 		return (augmented, lifecycles);
 	}

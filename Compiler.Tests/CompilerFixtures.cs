@@ -606,6 +606,41 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CrossMethodFinallyCatchEntry()
+	{
+		_counter = 0;
+		try
+		{
+			try
+			{
+				ThrowThroughFinally();
+				return 1;
+			}
+			catch (NullReferenceException)
+			{
+				return _counter + 35;
+			}
+		}
+		finally
+		{
+			_counter += 100;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ThrowThroughFinally()
+	{
+		try
+		{
+			throw null!;
+		}
+		finally
+		{
+			_counter = 7;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int A5ImportInsideCatchEntry()
 	{
 		var value = 0;
@@ -870,6 +905,46 @@ public static class CompilerFixtures
 		var value = AddThree(1024);
 		return (int)((uint)value >> 9);
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint VariableShiftCorpusEntry()
+	{
+		var value = 0x8F31_A5C7u;
+		value = MixVariableShifts(value, -1);
+		value = MixVariableShifts(value, 0);
+		value = MixVariableShifts(value, 1);
+		value = MixVariableShifts(value, 15);
+		value = MixVariableShifts(value, 16);
+		value = MixVariableShifts(value, 31);
+		value = MixVariableShifts(value, 32);
+		value = MixVariableShifts(value, 63);
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint VariableShiftDifferentialEntry()
+	{
+		var checksum = 0u;
+		var random = 0x68C0_D3A5u;
+		for (var index = 0; index < 32; index++)
+		{
+			random ^= random << 13;
+			random ^= random >> 17;
+			random ^= random << 5;
+			var count = unchecked((int)(random >> 24)) - 128;
+			checksum = unchecked(
+				((checksum << 1) | (checksum >> 31)) ^
+				MixVariableShifts(random, count));
+		}
+		return checksum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint MixVariableShifts(uint value, int count) =>
+		unchecked(
+			((value << count) ^ (value >> count) ^
+			 (uint)((int)(value ^ 0x55AA_33CCu) >> count)) *
+			16_777_619u);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int QuickArithmeticEntry() => QuickArithmetic(40);
@@ -1181,6 +1256,28 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBaseNestedFinallyEntry()
+	{
+		uint result;
+		try
+		{
+			try
+			{
+				result = PlatformBaseStateA();
+			}
+			finally
+			{
+				_ = PlatformBaseStateA();
+			}
+		}
+		finally
+		{
+			_ = PlatformBaseStateB();
+		}
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static uint PlatformBaseStateAHelper() => PlatformBaseStateA();
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -1245,10 +1342,18 @@ public static class CompilerFixtures
 	public static int CallProvidedLibrary() => GraphicsVectors.Add(19, 23);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CallCallerProvidedLibrary() =>
+		CallerProvidedVectors.Add(APTR.FromPointer(0x0000_3400), 19, 23);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallInvalidLibrarySignature() => InvalidVectors.MissingRegister(42);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallInvalidLibraryLvo() => InvalidVectors.InvalidLvo();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CallInvalidCallerProvidedLibrary() =>
+		InvalidCallerProvidedVectors.Read(42);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint CallSdkOpenLibrary()
@@ -1328,6 +1433,16 @@ public static class CompilerFixtures
 			[M68kRegister(M68kRegister.D1)] int right);
 	}
 
+	[AmigaLibrary("fixture.device", AmigaLibraryBasePolicy.CallerProvided)]
+	public static class CallerProvidedVectors
+	{
+		[AmigaLvo(-60)]
+		public static extern int Add(
+			[M68kRegister(M68kRegister.A6)] APTR deviceBase,
+			[M68kRegister(M68kRegister.D0)] int left,
+			[M68kRegister(M68kRegister.D1)] int right);
+	}
+
 	[AmigaLibrary("invalid.library", AmigaLibraryBasePolicy.Manual)]
 	public static class InvalidVectors
 	{
@@ -1336,6 +1451,14 @@ public static class CompilerFixtures
 
 		[AmigaLvo(-40_000)]
 		public static extern int InvalidLvo();
+	}
+
+	[AmigaLibrary("invalid.device", AmigaLibraryBasePolicy.CallerProvided)]
+	public static class InvalidCallerProvidedVectors
+	{
+		[AmigaLvo(-60)]
+		public static extern int Read(
+			[M68kRegister(M68kRegister.D0)] int value);
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -1354,6 +1477,40 @@ public static class CompilerFixtures
 		var box = new ManagedBox();
 		box.Value = 7 + _counter;
 		return box.Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NonNullMergeTrueEntry() => NonNullMergeEntry(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NonNullMergeFalseEntry() => NonNullMergeEntry(false);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NonNullMergeEntry(bool firstPath)
+	{
+		ManagedBox box;
+		if (firstPath)
+		{
+			box = new ManagedBox { Value = 19 };
+		}
+		else
+		{
+			box = new ManagedBox { Value = 23 };
+		}
+		box.OtherValue = 3;
+		return box.Value + box.OtherValue;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NullableMergeObjectEntry() => NullableMergeEntry(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NullableMergeEntry(bool hasValue)
+	{
+		ManagedBox? box = hasValue
+			? new ManagedBox { Value = 42 }
+			: null;
+		return box!.Value;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -2530,6 +2687,151 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ShadowMathIntegralSurfaceEntry()
+	{
+		var score = 0;
+		score += Math.Abs((sbyte)(-1)) == 1 ? 1 : 0;
+		score += Math.Abs((short)(-2)) == 2 ? 1 : 0;
+		score += Math.Abs(-3) == 3 ? 1 : 0;
+		score += HasInt64Bits(Math.Abs(-4L), 0, 4) ? 1 : 0;
+		score += Math.Abs((nint)(-5)) == (nint)5 ? 1 : 0;
+
+		score += Math.Sign((sbyte)(-1)) == -1 ? 1 : 0;
+		score += Math.Sign((short)(-1)) == -1 ? 1 : 0;
+		score += Math.Sign(0) == 0 ? 1 : 0;
+		score += Math.Sign(1L) == 1 ? 1 : 0;
+		score += Math.Sign((nint)1) == 1 ? 1 : 0;
+
+		score += Math.Min((byte)2, (byte)1) == 1 ? 1 : 0;
+		score += Math.Max((byte)1, (byte)2) == 2 ? 1 : 0;
+		score += Math.Clamp((byte)3, (byte)1, (byte)2) == 2 ? 1 : 0;
+		score += Math.Min((sbyte)2, (sbyte)1) == 1 ? 1 : 0;
+		score += Math.Max((sbyte)1, (sbyte)2) == 2 ? 1 : 0;
+		score += Math.Clamp((sbyte)3, (sbyte)1, (sbyte)2) == 2 ? 1 : 0;
+		score += Math.Min((short)2, (short)1) == 1 ? 1 : 0;
+		score += Math.Max((short)1, (short)2) == 2 ? 1 : 0;
+		score += Math.Clamp((short)3, (short)1, (short)2) == 2 ? 1 : 0;
+		score += Math.Min((ushort)2, (ushort)1) == 1 ? 1 : 0;
+		score += Math.Max((ushort)1, (ushort)2) == 2 ? 1 : 0;
+		score += Math.Clamp((ushort)3, (ushort)1, (ushort)2) == 2 ? 1 : 0;
+		score += Math.Min(2, 1) == 1 ? 1 : 0;
+		score += Math.Max(1, 2) == 2 ? 1 : 0;
+		score += Math.Clamp(3, 1, 2) == 2 ? 1 : 0;
+		score += Math.Min(2u, 1u) == 1u ? 1 : 0;
+		score += Math.Max(1u, 2u) == 2u ? 1 : 0;
+		score += Math.Clamp(3u, 1u, 2u) == 2u ? 1 : 0;
+		score += HasInt64Bits(Math.Min(2L, 1L), 0, 1) ? 1 : 0;
+		score += HasInt64Bits(Math.Max(1L, 2L), 0, 2) ? 1 : 0;
+		score += HasInt64Bits(Math.Clamp(3L, 1L, 2L), 0, 2) ? 1 : 0;
+		score += HasUInt64Bits(Math.Min(2UL, 1UL), 0, 1) ? 1 : 0;
+		score += HasUInt64Bits(Math.Max(1UL, 2UL), 0, 2) ? 1 : 0;
+		score += HasUInt64Bits(Math.Clamp(3UL, 1UL, 2UL), 0, 2) ? 1 : 0;
+		score += Math.Min((nint)2, (nint)1) == (nint)1 ? 1 : 0;
+		score += Math.Max((nint)1, (nint)2) == (nint)2 ? 1 : 0;
+		score += Math.Clamp((nint)3, (nint)1, (nint)2) == (nint)2 ? 1 : 0;
+		score += Math.Min((nuint)2, (nuint)1) == (nuint)1 ? 1 : 0;
+		score += Math.Max((nuint)1, (nuint)2) == (nuint)2 ? 1 : 0;
+		score += Math.Clamp((nuint)3, (nuint)1, (nuint)2) == (nuint)2 ? 1 : 0;
+
+		score += HasInt64Bits(Math.BigMul(-2, 3), 0xffff_ffffu, 0xffff_fffau) ? 1 : 0;
+		score += HasUInt64Bits(Math.BigMul(2u, 3u), 0, 6) ? 1 : 0;
+		return score;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool HasInt64Bits(long value, uint expectedHigh, uint expectedLow)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		return high == expectedHigh && low == expectedLow;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool HasUInt64Bits(ulong value, uint expectedHigh, uint expectedLow)
+	{
+		var low = M68kRuntime.SplitUInt64(value, out var high);
+		return high == expectedHigh && low == expectedLow;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ShadowMathIeeeSurfaceEntry()
+	{
+		var score = 0;
+		score += double.IsFinite(42.0) ? 1 : 0;
+		score += double.IsInfinity(double.PositiveInfinity) ? 1 : 0;
+		score += double.IsNaN(double.NaN) ? 1 : 0;
+		score += double.IsNegative(-0.0) ? 1 : 0;
+		score += double.IsNegativeInfinity(double.NegativeInfinity) ? 1 : 0;
+		score += double.IsPositiveInfinity(double.PositiveInfinity) ? 1 : 0;
+		score += double.IsNormal(1.0) ? 1 : 0;
+		score += double.IsSubnormal(double.Epsilon) ? 1 : 0;
+		score += float.IsFinite(42.0f) ? 1 : 0;
+		score += float.IsInfinity(float.PositiveInfinity) ? 1 : 0;
+		score += float.IsNaN(float.NaN) ? 1 : 0;
+		score += float.IsNegative(-0.0f) ? 1 : 0;
+		score += float.IsNegativeInfinity(float.NegativeInfinity) ? 1 : 0;
+		score += float.IsPositiveInfinity(float.PositiveInfinity) ? 1 : 0;
+		score += float.IsNormal(1.0f) ? 1 : 0;
+		score += float.IsSubnormal(float.Epsilon) ? 1 : 0;
+
+		var low = M68kRuntime.SplitDouble(Math.Abs(-1.0), out var high);
+		score += high == 0x3ff0_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.CopySign(1.0, -0.0), out high);
+		score += high == 0xbff0_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Min(0.0, -0.0), out high);
+		score += high == 0x8000_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Max(-0.0, 0.0), out high);
+		score += high == 0 && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Clamp(3.0, 1.0, 2.0), out high);
+		score += high == 0x4000_0000u && low == 0 ? 1 : 0;
+		score += Math.Sign(-1.0) == -1 ? 1 : 0;
+
+		score += M68kRuntime.SingleToUInt32Bits(Math.Abs(-1.0f)) == 0x3f80_0000u ? 1 : 0;
+		score += M68kRuntime.SingleToUInt32Bits(Math.Min(0.0f, -0.0f)) == 0x8000_0000u ? 1 : 0;
+		score += M68kRuntime.SingleToUInt32Bits(Math.Max(-0.0f, 0.0f)) == 0 ? 1 : 0;
+		score += M68kRuntime.SingleToUInt32Bits(Math.Clamp(3.0f, 1.0f, 2.0f)) == 0x4000_0000u ? 1 : 0;
+		score += Math.Sign(-1.0f) == -1 ? 1 : 0;
+		return score == 27 ? 42 : score;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ShadowMathFloatingSignNaNCatchEntry()
+	{
+		try
+		{
+			return Math.Sign(double.NaN);
+		}
+		catch (ArithmeticException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ShadowMathSoftwareRoundingEntry()
+	{
+		var score = 0;
+		var low = M68kRuntime.SplitDouble(Math.Sqrt(4.0), out var high);
+		score += high == 0x4000_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Round(2.5), out high);
+		score += high == 0x4000_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Round(2.5, MidpointRounding.AwayFromZero), out high);
+		score += high == 0x4008_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Truncate(-2.75), out high);
+		score += high == 0xc000_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Floor(-2.25), out high);
+		score += high == 0xc008_0000u && low == 0 ? 1 : 0;
+		low = M68kRuntime.SplitDouble(Math.Ceiling(-2.25), out high);
+		score += high == 0xc000_0000u && low == 0 ? 1 : 0;
+		return score == 6 ? 42 : score;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double NativeMathSqrtEntry() => Math.Sqrt(4.0);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double NativeMathTruncateEntry() => Math.Truncate(-2.75);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CheckedInt32AddEntry()
 	{
 		if (CheckedInt32Add(19, 23) != 42)
@@ -3329,6 +3631,37 @@ public static class CompilerFixtures
 		stopwatch.Reset();
 		return stopwatch.IsRunning ? 0 : 42;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long PortableStopwatchElapsedValuesEntry()
+	{
+		var stopwatch = new System.Diagnostics.Stopwatch();
+		_ = stopwatch.Elapsed;
+		_ = System.Diagnostics.Stopwatch.GetElapsedTime(100, 200);
+		_ = System.Diagnostics.Stopwatch.GetElapsedTime(100);
+		return stopwatch.ElapsedMilliseconds;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long PortablePinnedTimeSpanEntry()
+	{
+		var first = System.Diagnostics.Stopwatch.GetElapsedTime(100, 200);
+		var second = System.Diagnostics.Stopwatch.GetElapsedTime(100, 300);
+		var same = first;
+		if (first == second || first != same || first >= second || first > second)
+		{
+			return -1;
+		}
+		if (!(first < second) || !(first <= second) || !(second > first) || !(second >= first))
+		{
+			return -2;
+		}
+		return first.Ticks;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double PortableUnallowlistedTimeSpanTotalMillisecondsEntry() =>
+		System.Diagnostics.Stopwatch.GetElapsedTime(100, 200).TotalMilliseconds;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int PortableStopwatchInvalidOperationEntry()
@@ -4685,6 +5018,94 @@ public static class CompilerFixtures
 		}
 
 		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ArrayAlgorithmsEntry()
+	{
+		var firstEmpty = Array.Empty<int>();
+		var secondEmpty = Array.Empty<int>();
+		if (firstEmpty.Length != 0 || !ReferenceEquals(firstEmpty, secondEmpty))
+		{
+			return 1;
+		}
+
+		var values = new int[6];
+		values[0] = 1;
+		values[1] = 2;
+		values[2] = 3;
+		values[3] = 2;
+		values[4] = 5;
+		values[5] = 2;
+		Array.Fill(values, 7, 1, 2);
+		if (Array.IndexOf(values, 2) != 3 ||
+			Array.IndexOf(values, 7, 2) != 2 ||
+			Array.IndexOf(values, 2, 4, 2) != 5 ||
+			Array.LastIndexOf(values, 7) != 2 ||
+			Array.LastIndexOf(values, 7, 1) != 1 ||
+			Array.LastIndexOf(values, 7, 2, 2) != 2)
+		{
+			return 2;
+		}
+
+		Array.Reverse(values, 1, 4);
+		Array.Reverse(values);
+		if (values[0] != 2 || values[1] != 7 || values[2] != 7 ||
+			values[3] != 2 || values[4] != 5 || values[5] != 1)
+		{
+			return 3;
+		}
+
+		Array.Fill(values, 4);
+		for (var index = 0; index < values.Length; index++)
+		{
+			if (values[index] != 4)
+			{
+				return 4;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ArrayFloatingEqualityEntry()
+	{
+		var values = new float[4];
+		values[0] = 1.0f;
+		values[1] = float.NaN;
+		values[2] = 2.0f;
+		values[3] = float.NaN;
+		return Array.IndexOf(values, float.NaN) == 1 &&
+			Array.LastIndexOf(values, float.NaN) == 3
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ArrayFloatingEmptySearchEntry()
+	{
+		var values = Array.Empty<float>();
+		return Array.IndexOf(values, float.NaN) == -1 &&
+			Array.LastIndexOf(values, float.NaN) == -1
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ArrayAlgorithmsExceptionEntry()
+	{
+		var caught = 0;
+		try { Array.Fill<int>(null!, 1); }
+		catch (ArgumentNullException) { caught++; }
+		try { Array.Fill(new int[2], 0, -1, 1); }
+		catch (ArgumentOutOfRangeException) { caught++; }
+		try { _ = Array.IndexOf(new int[2], 0, 0, 3); }
+		catch (ArgumentOutOfRangeException) { caught++; }
+		try { _ = Array.LastIndexOf(Array.Empty<int>(), 0, 1, 0); }
+		catch (ArgumentOutOfRangeException) { caught++; }
+		try { Array.Reverse(new int[2], 1, 2); }
+		catch (ArgumentException) { caught++; }
+		return caught == 5 ? 42 : caught;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -9635,6 +10056,30 @@ public static class CompilerFixtures
 		}
 	}
 
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IdenticalDirectBodyFoldEntry() =>
+		IdenticalDirectBodyA(10) + IdenticalDirectBodyB(20);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalDirectBodyA(int value) => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalDirectBodyB(int value) => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IdenticalAddressTakenBodiesEntry()
+	{
+		var first = new Func<int, int>(IdenticalAddressTakenBodyA);
+		var second = new Func<int, int>(IdenticalAddressTakenBodyB);
+		return first.Equals(second) ? -1 : first(1) + second(2);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalAddressTakenBodyA(int value) => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalAddressTakenBodyB(int value) => value + 7;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int StaticDelegateEntry()

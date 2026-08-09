@@ -174,6 +174,17 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var blockStarts = GetPlatformBaseBlockStarts(method.Instructions, reachableOffsets);
+		foreach (var region in method.ExceptionRegions)
+		{
+			if (reachableOffsets.Contains(region.HandlerOffset))
+			{
+				blockStarts.Add(region.HandlerOffset);
+			}
+			if (region.FilterOffset >= 0 && reachableOffsets.Contains(region.FilterOffset))
+			{
+				blockStarts.Add(region.FilterOffset);
+			}
+		}
 		var states = new Dictionary<int, PlatformBaseState>();
 		var queue = new Queue<int>();
 		MergePlatformBaseState(
@@ -344,7 +355,9 @@ internal sealed partial class M68kCodeGenerator
 			instruction.Offset);
 		if (target.Definition?.ExternalCall is { } externalCall)
 		{
-			return externalCall.Convention.Identity;
+			return externalCall.Convention.BaseSource == M68kExternalBaseSource.Argument
+				? null
+				: externalCall.Convention.Identity;
 		}
 
 		if (op == OpCodes.Newobj &&
