@@ -49,6 +49,8 @@ public static class Program
 		ushort lineCount = 0;
 		ushort wordChecksum = 0;
 		uint byteCount = 0;
+		uint byteSum = 0;
+		uint rollingHash = 2166136261;
 
 		while (true)
 		{
@@ -60,8 +62,10 @@ public static class Program
 
 			var value = (byte)character;
 			byteChecksum = (byte)(byteChecksum + value);
-			wordChecksum = (ushort)(wordChecksum + value);
+			wordChecksum = (ushort)(((wordChecksum << 5) | (wordChecksum >> 11)) + value);
 			byteCount = byteCount + 1;
+			byteSum = byteSum + value;
+			rollingHash = (rollingHash ^ value) * 16777619;
 			if (value == 10)
 			{
 				lineCount = (ushort)(lineCount + 1);
@@ -69,7 +73,15 @@ public static class Program
 		}
 
 		DOS.Close(file.Value);
-		PrintReport(path, byteCount, (uint)lineCount, (uint)byteChecksum, (uint)wordChecksum);
+		var averageByte = byteCount == 0 ? 0 : byteSum / byteCount;
+		PrintReport(
+			path,
+			byteCount,
+			(uint)lineCount,
+			(uint)byteChecksum,
+			(uint)wordChecksum,
+			averageByte,
+			rollingHash);
 		return DOS.RETURN_OK;
 	}
 
@@ -78,14 +90,18 @@ public static class Program
 		uint byteCount,
 		uint lineCount,
 		uint byteChecksum,
-		uint wordChecksum)
+		uint wordChecksum,
+		uint averageByte,
+		uint rollingHash)
 	{
 		DOS.Printf(
-			"%s: %ld bytes, %ld lines, byte checksum %ld, word checksum %ld\n",
+			"%s: %ld bytes, %ld lines, byte checksum %ld, word checksum %ld, average byte %ld, hash %ld\n",
 			path,
 			byteCount,
 			lineCount,
 			byteChecksum,
-			wordChecksum);
+			wordChecksum,
+			averageByte,
+			rollingHash);
 	}
 }
