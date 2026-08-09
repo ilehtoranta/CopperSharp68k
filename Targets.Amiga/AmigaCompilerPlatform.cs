@@ -4,6 +4,7 @@
  */
 
 using System.Collections.ObjectModel;
+using System.Reflection;
 using CopperSharp.Compiler;
 using CopperSharp.Sdk.Amiga;
 
@@ -60,6 +61,7 @@ public static class AmigaLibraryBaseSymbols
 			["realtime"] = "Realtime",
 			["rexxsupport"] = "RexxSupport",
 			["rexxsyslib"] = "RexxSysLib",
+			["timerdevice"] = "TimerDevice",
 			["utility"] = "Utility",
 			["version"] = "Version",
 			["workbench"] = "Workbench",
@@ -307,6 +309,31 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 
 public static class AmigaM68kCompiler
 {
+	private static readonly M68kTargetContract TargetContract = new(
+		"amiga-m68k",
+		"CopperSharp.Targets.Amiga",
+		GetPackageVersion(typeof(AmigaM68kCompiler).Assembly));
+	private static readonly M68kManagedLifecycleHook ConsoleLifecycle = new(
+		"amiga-console",
+		"CopperSharp.Runtime.AmigaPal",
+		"CopperSharp.Runtime.AmigaPal.ConsolePal::Initialize",
+		"CopperSharp.Runtime.AmigaPal.ConsolePal::Shutdown");
+	private static readonly M68kManagedLifecycleHook ConsoleInputLifecycle = new(
+		"amiga-console-input",
+		"CopperSharp.Runtime.AmigaPal",
+		"CopperSharp.Runtime.AmigaPal.ConsolePal::InitializeInput",
+		"CopperSharp.Runtime.AmigaPal.ConsolePal::ShutdownInput");
+	private static readonly M68kManagedLifecycleHook FileSystemLifecycle = new(
+		"amiga-filesystem",
+		"CopperSharp.Runtime.AmigaPal",
+		"CopperSharp.Runtime.AmigaPal.FileSystemPal::Initialize",
+		"CopperSharp.Runtime.AmigaPal.FileSystemPal::Shutdown");
+	private static readonly M68kManagedLifecycleHook ClockLifecycle = new(
+		"amiga-clock",
+		"CopperSharp.Runtime.AmigaPal",
+		"CopperSharp.Runtime.AmigaPal.ClockPal::Initialize",
+		"CopperSharp.Runtime.AmigaPal.ClockPal::Shutdown");
+
 	/// <summary>
 	/// Analyzes reachable framework members using the Amiga platform resolver
 	/// without generating target code.
@@ -317,7 +344,7 @@ public static class AmigaM68kCompiler
 	{
 		ArgumentNullException.ThrowIfNull(request);
 		var resolvedOptions = options ?? new AmigaCompilationOptions();
-		request = IncludeAmigaSdkManagedBodies(request);
+		request = IncludeAmigaManagedBodies(request);
 		return M68kCompiler.AnalyzeFramework(request with
 		{
 			ExternalCallResolvers =
@@ -333,7 +360,7 @@ public static class AmigaM68kCompiler
 	{
 		ArgumentNullException.ThrowIfNull(request);
 		var resolvedOptions = options ?? new AmigaCompilationOptions();
-		request = IncludeAmigaSdkManagedBodies(request);
+		request = IncludeAmigaManagedBodies(request);
 		AmigaStaticAnalyzer.Analyze(request, resolvedOptions);
 		var imports = request.Imports;
 		if (request.ExceptionMode == M68kExceptionMode.Full &&
@@ -364,26 +391,84 @@ public static class AmigaM68kCompiler
 			});
 	}
 
-	private static M68kCompilationRequest IncludeAmigaSdkManagedBodies(
+	private static M68kCompilationRequest IncludeAmigaManagedBodies(
 		M68kCompilationRequest request)
 	{
-		var assemblyDirectory = Path.GetDirectoryName(
-			Path.GetFullPath(request.AssemblyPath));
-		if (assemblyDirectory is null)
+		var paths = request.ManagedAssemblyPaths.ToList();
+		var lifecycleHooks = request.ManagedLifecycleHooks.ToList();
+		if (!lifecycleHooks.Contains(ConsoleLifecycle))
 		{
-			return request;
+			lifecycleHooks.Add(ConsoleLifecycle);
+		}
+		if (!lifecycleHooks.Contains(ConsoleInputLifecycle))
+		{
+			lifecycleHooks.Add(ConsoleInputLifecycle);
+		}
+		if (!lifecycleHooks.Contains(FileSystemLifecycle))
+		{
+			lifecycleHooks.Add(FileSystemLifecycle);
+		}
+		if (!lifecycleHooks.Contains(ClockLifecycle))
+		{
+			lifecycleHooks.Add(ClockLifecycle);
+		}
+		var inputDirectory = Path.GetDirectoryName(
+			Path.GetFullPath(request.AssemblyPath));
+		if (inputDirectory is not null)
+		{
+			AddManagedAssembly(
+				paths,
+				Path.Combine(inputDirectory, "CopperSharp.Sdk.Amiga.dll"));
+			AddManagedAssembly(
+				paths,
+				Path.Combine(inputDirectory, "CopperSharp.Runtime.AmigaPal.dll"));
 		}
 
-		var sdkPath = Path.Combine(assemblyDirectory, "CopperSharp.Sdk.Amiga.dll");
-		if (!File.Exists(sdkPath) ||
-			request.ManagedAssemblyPaths.Contains(sdkPath, StringComparer.OrdinalIgnoreCase))
+		var targetDirectory = Path.GetDirectoryName(
+			typeof(AmigaM68kCompiler).Assembly.Location);
+		if (targetDirectory is not null)
+		{
+			AddManagedAssembly(
+				paths,
+				Path.Combine(targetDirectory, "CopperSharp.Runtime.AmigaPal.dll"));
+		}
+		if (paths.Count == request.ManagedAssemblyPaths.Count &&
+			lifecycleHooks.Count == request.ManagedLifecycleHooks.Count &&
+			request.TargetContract == TargetContract)
 		{
 			return request;
 		}
 
 		return request with
 		{
-			ManagedAssemblyPaths = [.. request.ManagedAssemblyPaths, sdkPath]
+			ManagedAssemblyPaths = paths,
+			ManagedLifecycleHooks = lifecycleHooks,
+			TargetContract = TargetContract
 		};
+	}
+
+	private static string GetPackageVersion(Assembly assembly)
+	{
+		var informationalVersion = assembly
+			.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+			.InformationalVersion;
+		if (!string.IsNullOrWhiteSpace(informationalVersion))
+		{
+			var metadataSeparator = informationalVersion.IndexOf('+');
+			return metadataSeparator < 0
+				? informationalVersion
+				: informationalVersion[..metadataSeparator];
+		}
+
+		return assembly.GetName().Version?.ToString() ?? "unknown";
+	}
+
+	private static void AddManagedAssembly(ICollection<string> paths, string path)
+	{
+		if (!File.Exists(path) || paths.Contains(path, StringComparer.OrdinalIgnoreCase))
+		{
+			return;
+		}
+		paths.Add(path);
 	}
 }
