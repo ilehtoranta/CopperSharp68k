@@ -1,0 +1,8 @@
+{
+  "runtimes": {
+    "any": {},
+    "amiga-m68k": {
+      "#import": [ "any" ]
+    }
+  }
+}

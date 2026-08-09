@@ -1,0 +1,151 @@
+<Project>
+  <PropertyGroup>
+    <_CopperSharpLegacyPropertiesUsed Condition="'$(Copper68kCompile)' == 'true' or '$(Copper68kEntry)' != '' or '$(Copper68kAdditionalArguments)' != ''">true</_CopperSharpLegacyPropertiesUsed>
+    <CopperSharpCompileOnBuild Condition="'$(CopperSharpCompileOnBuild)' == '' and '$(Copper68kCompile)' == 'true'">true</CopperSharpCompileOnBuild>
+    <CopperSharpCompileOnBuild Condition="'$(CopperSharpCompileOnBuild)' == ''">false</CopperSharpCompileOnBuild>
+    <CopperSharpEntry Condition="'$(CopperSharpEntry)' == '' and '$(Copper68kEntry)' != ''">$(Copper68kEntry)</CopperSharpEntry>
+    <CopperSharpCpu Condition="'$(CopperSharpCpu)' == '' and '$(Copper68kCpu)' != ''">$(Copper68kCpu)</CopperSharpCpu>
+    <CopperSharpOutputFormat Condition="'$(CopperSharpOutputFormat)' == '' and '$(Copper68kOutputFormat)' != ''">$(Copper68kOutputFormat)</CopperSharpOutputFormat>
+    <CopperSharpCpu Condition="'$(CopperSharpCpu)' == ''">68000</CopperSharpCpu>
+    <CopperSharpOutputFormat Condition="'$(CopperSharpOutputFormat)' == ''">hunk</CopperSharpOutputFormat>
+    <CopperSharpRuntimeProfile Condition="'$(CopperSharpRuntimeProfile)' == '' and '$(CopperSharpOutputFormat)' == 'hunk'">application</CopperSharpRuntimeProfile>
+    <CopperSharpRuntimeProfile Condition="'$(CopperSharpRuntimeProfile)' == '' and '$(CopperSharpOutputFormat)' == 'rom'">rom</CopperSharpRuntimeProfile>
+    <CopperSharpRuntimeProfile Condition="'$(CopperSharpRuntimeProfile)' == ''">freestanding</CopperSharpRuntimeProfile>
+    <CopperSharpFloatingPoint Condition="'$(CopperSharpFloatingPoint)' == ''">disabled</CopperSharpFloatingPoint>
+    <CopperSharpClrPolicy Condition="'$(CopperSharpClrPolicy)' == ''">auto</CopperSharpClrPolicy>
+    <CopperSharpExceptionMode Condition="'$(CopperSharpExceptionMode)' == ''">full</CopperSharpExceptionMode>
+    <CopperSharpCompilerAssembly>$(MSBuildThisFileDirectory)../tools/net10.0/any/CopperSharp.Compiler.Cli.dll</CopperSharpCompilerAssembly>
+    <CopperSharpOutputPath Condition="'$(CopperSharpOutputPath)' == ''">$(PublishDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpOutputPath>
+    <CopperSharpFrameworkReportPath Condition="'$(CopperSharpFrameworkReportPath)' == ''">$(CopperSharpOutputPath).framework.json</CopperSharpFrameworkReportPath>
+    <CopperSharpResponseManifestPath Condition="'$(CopperSharpResponseManifestPath)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp.publish.rsp'))</CopperSharpResponseManifestPath>
+    <CopperSharpBuildOutputPath Condition="'$(CopperSharpBuildOutputPath)' == '' and '$(Copper68kCompile)' == 'true' and '$(Copper68kOutputPath)' != ''">$(Copper68kOutputPath)</CopperSharpBuildOutputPath>
+    <CopperSharpBuildOutputPath Condition="'$(CopperSharpBuildOutputPath)' == ''">$(TargetDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpBuildOutputPath>
+    <CopperSharpBuildFrameworkReportPath Condition="'$(CopperSharpBuildFrameworkReportPath)' == ''">$(CopperSharpBuildOutputPath).framework.json</CopperSharpBuildFrameworkReportPath>
+    <CopperSharpBuildResponseManifestPath Condition="'$(CopperSharpBuildResponseManifestPath)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp.build.rsp'))</CopperSharpBuildResponseManifestPath>
+  </PropertyGroup>
+
+  <Target Name="CopperSharpWarnLegacyProperties"
+          BeforeTargets="CopperSharpValidateSdk"
+          Condition="'$(_CopperSharpLegacyPropertiesUsed)' == 'true'">
+    <Warning Code="C68KSDK001"
+             Text="Copper68k* MSBuild properties are deprecated under CopperSharp.Sdk and will be removed after this compatibility release. Use CopperSharpCompileOnBuild, CopperSharpEntry, CopperSharpCpu, CopperSharpOutputFormat, and CopperSharpBuildOutputPath." />
+  </Target>
+
+  <Target Name="CopperSharpValidateSdk"
+          BeforeTargets="PrepareForBuild;Publish">
+    <Error Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'amiga-m68k'"
+           Text="CopperSharp.Sdk supports RuntimeIdentifier 'amiga-m68k'; received '$(RuntimeIdentifier)'." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(TargetFramework)' != 'net10.0'"
+           Text="CopperSharp.Sdk amiga-m68k publishing requires TargetFramework 'net10.0'; received '$(TargetFramework)'." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(SelfContained)' == 'true'"
+           Text="amiga-m68k is emitted by CopperSharp and cannot use a Microsoft self-contained runtime pack. Set SelfContained to false." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(UseAppHost)' == 'true'"
+           Text="amiga-m68k does not use a Microsoft apphost. Set UseAppHost to false." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(PublishAot)' == 'true'"
+           Text="Do not set PublishAot for amiga-m68k; CopperSharp owns target AOT compilation." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(PublishSingleFile)' == 'true'"
+           Text="PublishSingleFile is a CoreCLR publish mode and is not supported for amiga-m68k." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(PublishTrimmed)' == 'true'"
+           Text="Do not set PublishTrimmed for amiga-m68k; CopperSharp performs closed-world reachability." />
+  </Target>
+
+  <Target Name="PrepareCopperSharpPublishManifest"
+          DependsOnTargets="CopperSharpValidateSdk"
+          Condition="'$(RuntimeIdentifier)' == 'amiga-m68k'">
+    <Error Condition="'$(CopperSharpEntry)' == ''"
+           Text="CopperSharpEntry must name an entry point as Namespace.Type::Method." />
+    <Error Condition="!Exists('$(CopperSharpCompilerAssembly)')"
+           Text="CopperSharp compiler payload is missing from '$(CopperSharpCompilerAssembly)'. Restore the CopperSharp.Sdk package again." />
+    <Error Condition="'$(CopperSharpAdditionalArguments)' != ''"
+           Text="CopperSharpAdditionalArguments is not accepted by the versioned publish manifest. Use the typed CopperSharp SDK properties." />
+    <Error Condition="'$(Copper68kAdditionalArguments)' != ''"
+           Text="Copper68kAdditionalArguments cannot be translated safely. Use typed CopperSharp SDK properties." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpOutputPath)'))" />
+    <ItemGroup>
+      <_CopperSharpManagedAssembly Include="@(ReferenceCopyLocalPaths)"
+                                   Condition="'%(Extension)' == '.dll'" />
+      <_CopperSharpResponseLine Include="coppersharp-response-v1" />
+      <_CopperSharpResponseLine Include="input=$(TargetPath)" />
+      <_CopperSharpResponseLine Include="entry=$(CopperSharpEntry)" />
+      <_CopperSharpResponseLine Include="output=$(CopperSharpOutputPath)" />
+      <_CopperSharpResponseLine Include="platform=amiga" />
+      <_CopperSharpResponseLine Include="cpu=$(CopperSharpCpu)" />
+      <_CopperSharpResponseLine Include="fpu=$(CopperSharpFloatingPoint)" />
+      <_CopperSharpResponseLine Include="clr=$(CopperSharpClrPolicy)" />
+      <_CopperSharpResponseLine Include="exceptions=$(CopperSharpExceptionMode)" />
+      <_CopperSharpResponseLine Include="format=$(CopperSharpOutputFormat)" />
+      <_CopperSharpResponseLine Include="runtime=$(CopperSharpRuntimeProfile)" />
+      <_CopperSharpResponseLine Include="compatibility-report=$(CopperSharpFrameworkReportPath)" />
+      <_CopperSharpResponseLine Include="@(_CopperSharpManagedAssembly->'managed-assembly=%(FullPath)')" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(CopperSharpResponseManifestPath)"
+                      Lines="@(_CopperSharpResponseLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(CopperSharpResponseManifestPath)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CompileCopperSharpPublishedImage"
+          AfterTargets="Publish"
+          DependsOnTargets="PrepareCopperSharpPublishManifest"
+          Condition="'$(RuntimeIdentifier)' == 'amiga-m68k'"
+          Inputs="$(CopperSharpResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly)"
+          Outputs="$(CopperSharpOutputPath);$(CopperSharpOutputPath).map;$(CopperSharpFrameworkReportPath)">
+    <Exec Command="dotnet &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpResponseManifestPath)&quot;" />
+    <ItemGroup>
+      <FileWrites Include="$(CopperSharpOutputPath);$(CopperSharpOutputPath).map;$(CopperSharpFrameworkReportPath)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="PrepareCopperSharpBuildManifest"
+          DependsOnTargets="CopperSharpValidateSdk"
+          Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCompileOnBuild)' == 'true' and '$(_IsPublishing)' != 'true'">
+    <Error Condition="'$(CopperSharpEntry)' == ''"
+           Text="CopperSharpEntry must name an entry point as Namespace.Type::Method." />
+    <Error Condition="!Exists('$(CopperSharpCompilerAssembly)')"
+           Text="CopperSharp compiler payload is missing from '$(CopperSharpCompilerAssembly)'. Restore the CopperSharp.Sdk package again." />
+    <Error Condition="'$(CopperSharpAdditionalArguments)' != ''"
+           Text="CopperSharpAdditionalArguments is not accepted by the versioned build manifest. Use the typed CopperSharp SDK properties." />
+    <Error Condition="'$(Copper68kAdditionalArguments)' != ''"
+           Text="Copper68kAdditionalArguments cannot be translated safely. Use typed CopperSharp SDK properties." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpBuildOutputPath)'))" />
+    <ItemGroup>
+      <_CopperSharpBuildManagedAssembly Include="@(ReferenceCopyLocalPaths)"
+                                        Condition="'%(Extension)' == '.dll'" />
+      <_CopperSharpBuildResponseLine Include="coppersharp-response-v1" />
+      <_CopperSharpBuildResponseLine Include="input=$(TargetPath)" />
+      <_CopperSharpBuildResponseLine Include="entry=$(CopperSharpEntry)" />
+      <_CopperSharpBuildResponseLine Include="output=$(CopperSharpBuildOutputPath)" />
+      <_CopperSharpBuildResponseLine Include="platform=amiga" />
+      <_CopperSharpBuildResponseLine Include="cpu=$(CopperSharpCpu)" />
+      <_CopperSharpBuildResponseLine Include="fpu=$(CopperSharpFloatingPoint)" />
+      <_CopperSharpBuildResponseLine Include="clr=$(CopperSharpClrPolicy)" />
+      <_CopperSharpBuildResponseLine Include="exceptions=$(CopperSharpExceptionMode)" />
+      <_CopperSharpBuildResponseLine Include="format=$(CopperSharpOutputFormat)" />
+      <_CopperSharpBuildResponseLine Include="runtime=$(CopperSharpRuntimeProfile)" />
+      <_CopperSharpBuildResponseLine Include="compatibility-report=$(CopperSharpBuildFrameworkReportPath)" />
+      <_CopperSharpBuildResponseLine Include="@(_CopperSharpBuildManagedAssembly->'managed-assembly=%(FullPath)')" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(CopperSharpBuildResponseManifestPath)"
+                      Lines="@(_CopperSharpBuildResponseLine)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <FileWrites Include="$(CopperSharpBuildResponseManifestPath)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CompileCopperSharpBuiltImage"
+          AfterTargets="Build"
+          DependsOnTargets="PrepareCopperSharpBuildManifest"
+          Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCompileOnBuild)' == 'true' and '$(_IsPublishing)' != 'true'"
+          Inputs="$(CopperSharpBuildResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly)"
+          Outputs="$(CopperSharpBuildOutputPath);$(CopperSharpBuildOutputPath).map;$(CopperSharpBuildFrameworkReportPath)">
+    <Exec Command="dotnet &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpBuildResponseManifestPath)&quot;" />
+    <ItemGroup>
+      <FileWrites Include="$(CopperSharpBuildOutputPath);$(CopperSharpBuildOutputPath).map;$(CopperSharpBuildFrameworkReportPath)" />
+    </ItemGroup>
+  </Target>
+</Project>

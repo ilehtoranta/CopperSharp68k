@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <CopperSharpSdkActive>true</CopperSharpSdkActive>
+    <RuntimeIdentifierGraphPath>$(MSBuildThisFileDirectory)amiga-m68k.runtime.json</RuntimeIdentifierGraphPath>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+    <UseAppHost Condition="'$(UseAppHost)' == ''">false</UseAppHost>
+    <PublishAot Condition="'$(PublishAot)' == ''">false</PublishAot>
+    <PublishSingleFile Condition="'$(PublishSingleFile)' == ''">false</PublishSingleFile>
+    <PublishTrimmed Condition="'$(PublishTrimmed)' == ''">false</PublishTrimmed>
+    <CopperSharpTargetPlatform Condition="'$(CopperSharpTargetPlatform)' == ''">amiga</CopperSharpTargetPlatform>
+  </PropertyGroup>
+</Project>
