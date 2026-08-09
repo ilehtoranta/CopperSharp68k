@@ -17,7 +17,6 @@
     <Compile Remove="Examples\**\*.cs" />
     <Compile Include="Examples\DOS\Program.cs" />
     <Compile Include="Examples\FileStats\Program.cs" />
-    <Compile Include="Examples\MUISunflower\Program.cs" />
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
     <None Include="Examples\DOS\DOS.csproj" />
     <None Include="Examples\FileStats\FileStats.csproj" />

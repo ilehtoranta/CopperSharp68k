@@ -183,4 +183,6 @@ program. See `Examples/MUISunflower` for a minimal MUI object tree with an
 application, window, group, text object, and button. See
 `Examples/IFFInspect` for DOS-backed IFF parsing with typed exceptions and
 nested deterministic cleanup. See `Examples/FileStats` for a YOLO-style DOS
-file report that mixes byte, word, and longword arithmetic.
+file report that mixes byte, word, and longword arithmetic. See
+`Examples/StopwatchBenchmark` for a portable .NET prime-number benchmark using
+`System.Diagnostics.Stopwatch` and `System.Console`.
