@@ -46,6 +46,12 @@ calling manual vectors. Clear or replace the base with `APTR.Null` during
 cleanup as needed. These properties map directly to the same writable base
 slots used by the generated LVO calls; they are not managed backing fields.
 
+Wrappers with `AmigaLibraryBasePolicy.CallerProvided` instead receive their
+already-opened library or device base as the single parameter assigned to
+`A6`. These calls create no writable global base slot. `TimerDevice.ReadEClock`
+uses this form because `Exec.OpenDevice()` returns the applicable base through
+the request's `IORequest.Device` field.
+
 `Amiga.BsdSocket` exposes the `bsdsocket.library` vector surface. The binding is
 explicitly manual: open `bsdsocket.library` with `Exec.OpenLibrary()` only after
 the TCP/IP stack is online, assign the returned base to

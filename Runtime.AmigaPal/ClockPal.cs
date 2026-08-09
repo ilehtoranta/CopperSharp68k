@@ -13,6 +13,7 @@ public static class ClockPal
 {
 	private const uint MsgPortMessageListOffset = 20;
 	private const int IORequestDeviceOffset = 20;
+	private const uint TimerRequestSize = 40;
 	private static ClockMsgPort _cachedPort;
 	private static ClockIORequest _cachedRequest;
 	private static uint _cachedDeviceBase;
@@ -148,10 +149,9 @@ public static class ClockPal
 		out uint low)
 	{
 		EClockValue value = default;
-		var previousTimerBase = APTR.ToUInt32(TimerDevice.TimerDeviceLibraryBase);
-		TimerDevice.TimerDeviceLibraryBase = APTR.FromPointer(deviceBase);
-		var frequency = TimerDevice.ReadEClock(EClockValue.AddressOf(ref value));
-		TimerDevice.TimerDeviceLibraryBase = APTR.FromPointer(previousTimerBase);
+		var frequency = TimerDevice.ReadEClock(
+			APTR.FromPointer(deviceBase),
+			EClockValue.AddressOf(ref value));
 		high = value.High;
 		low = value.Low;
 		return frequency;
@@ -172,7 +172,7 @@ public static class ClockPal
 		var requestAddress = APTR.FromPointer(request);
 		APTR.WriteUInt32(requestAddress, 8, (uint)NodeType.ReplyMessage << 24);
 		APTR.WriteUInt32(requestAddress, 14, port);
-		APTR.WriteUInt32(requestAddress, 18, IORequest.Size << 16);
+		APTR.WriteUInt32(requestAddress, 18, TimerRequestSize << 16);
 	}
 
 	private static APTR AddressOf(ref ClockMsgPort port) =>
@@ -220,6 +220,8 @@ public static class ClockPal
 		public ushort Command;
 		public byte Flags;
 		public sbyte Error;
+		public uint TimeSeconds;
+		public uint TimeMicroseconds;
 	}
 }
 

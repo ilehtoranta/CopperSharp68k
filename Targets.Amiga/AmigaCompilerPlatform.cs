@@ -204,8 +204,27 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 				InitialValue: GetProvidedBase(method, name),
 				ParameterRegisters: parameterRegisters,
 				ReturnRegister: returnRegister),
+			AmigaLibraryBasePolicy.CallerProvided =>
+				CreateCallerProvidedConvention(
+					name,
+					offset,
+					parameterRegisters,
+					returnRegister),
 			_ => throw Invalid(method, $"Unknown Amiga library base policy {policy}.")
 		};
+
+	private static M68kExternalCallConvention CreateCallerProvidedConvention(
+		string name,
+		short offset,
+		IReadOnlyList<M68kRegister>? parameterRegisters,
+		M68kRegister returnRegister)
+		=> new(
+			name,
+			M68kExternalBaseSource.Argument,
+			M68kRegister.A6,
+			offset,
+			ParameterRegisters: parameterRegisters,
+			ReturnRegister: returnRegister);
 
 	private uint GetProvidedBase(M68kExternalMethod method, string name) =>
 		_options.LibraryBases.TryGetValue(name, out var address)

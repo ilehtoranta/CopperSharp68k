@@ -136,7 +136,9 @@ public enum M68kExternalBaseSource
 {
 	CachedPointer,
 	WritableSlot,
-	Immediate
+	Immediate,
+	/// <summary>The call ABI supplies the base register as an argument.</summary>
+	Argument
 }
 
 /// <summary>How an external call reports a managed failure.</summary>

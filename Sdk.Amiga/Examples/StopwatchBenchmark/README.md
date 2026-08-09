@@ -1,8 +1,8 @@
 # StopwatchBenchmark
 
 Portable `System.Diagnostics.Stopwatch` benchmark for CopperSharp68k on
-AmigaOS. It uses trial division to find all primes up to 10,000, then
-prints the result, elapsed timer ticks, timer frequency, and timer resolution.
+AmigaOS. It calculates CRC-32 over a deterministic 4 KiB byte stream, then
+prints the checksum, elapsed timer ticks, timer frequency, and timer resolution.
 The source uses only .NET APIs; the Amiga platform layer supplies the supported
 `Stopwatch` and `Console` implementations during AOT compilation.
 
@@ -27,5 +27,5 @@ dotnet run --project .\Compiler.Cli -- `
   --platform amiga --cpu 68000 --format hunk --runtime application --exceptions full
 ```
 
-The prime count should be `1229`. Divide elapsed ticks by ticks per second to
-convert the measurement to seconds.
+The CRC-32 should be `548B6D54` (printed as decimal `1418423636`). Divide
+elapsed ticks by ticks per second to convert the measurement to seconds.

@@ -10,9 +10,11 @@ using CopperSharp.Compiler;
 namespace CopperSharp.Runtime.AmigaPal;
 
 /// <summary>
-/// Target-owned instance state and managed bodies for the admitted Stopwatch
-/// surface. The four UInt32 lanes are representation-compatible with the two
-/// Int64 fields in the pinned .NET implementation on the big-endian target.
+/// Deterministic no-pack fallback instance state and managed bodies for the
+/// admitted Stopwatch surface. A verified implementation pack selects the
+/// preferred pinned CoreLib bodies instead. The four UInt32 lanes are
+/// representation-compatible with the two Int64 fields in the pinned .NET
+/// implementation on the big-endian target.
 /// </summary>
 public sealed class ShadowStopwatch
 {

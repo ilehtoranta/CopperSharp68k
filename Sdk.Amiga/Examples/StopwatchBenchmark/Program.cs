@@ -10,18 +10,21 @@ namespace StopwatchBenchmarkExample;
 
 public static class Program
 {
-	private const int PrimeLimit = 10000;
+	private const int BufferLength = 4096;
+	private const uint ExpectedCrc32 = 0x548B6D54;
 
 	[M68kEntryPoint]
 	public static int Main()
 	{
+		Console.WriteLine("CRC-32 benchmark");
 		var started = (uint)Stopwatch.GetTimestamp();
-		var primeCount = CountPrimes();
+		var checksum = ComputeCrc32();
 		var elapsedTicks = (uint)Stopwatch.GetTimestamp() - started;
 
-		Console.WriteLine("Prime search benchmark");
-		Console.Write("Primes up to 10000: ");
-		Console.WriteLine(primeCount);
+		Console.Write("Bytes processed: ");
+		Console.WriteLine(BufferLength);
+		Console.Write("CRC-32: ");
+		Console.WriteLine(checksum);
 		Console.Write("Elapsed ticks: ");
 		Console.WriteLine(elapsedTicks);
 		Console.Write("Ticks per second: ");
@@ -29,33 +32,21 @@ public static class Program
 		Console.Write("High-resolution timer: ");
 		Console.WriteLine(Stopwatch.IsHighResolution);
 
-		return primeCount == 1229 ? 0 : 5;
+		return checksum == ExpectedCrc32 ? 0 : 5;
 	}
 
-	private static int CountPrimes()
+	private static uint ComputeCrc32()
 	{
-		var count = 1;
-		for (var candidate = 3; candidate <= PrimeLimit; candidate += 2)
+		var crc = uint.MaxValue;
+		for (var index = 0; index < BufferLength; index++)
 		{
-			if (IsPrime(candidate))
+			crc ^= (uint)(index ^ (index >> 3)) & 0xff;
+			for (var bit = 0; bit < 8; bit++)
 			{
-				count++;
+				crc = (crc >> 1) ^ ((crc & 1) != 0 ? 0xedb88320u : 0u);
 			}
 		}
 
-		return count;
-	}
-
-	private static bool IsPrime(int candidate)
-	{
-		for (var divisor = 3; divisor <= candidate / divisor; divisor += 2)
-		{
-			if (candidate % divisor == 0)
-			{
-				return false;
-			}
-		}
-
-		return true;
+		return ~crc;
 	}
 }

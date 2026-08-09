@@ -10,7 +10,9 @@ public enum AmigaLibraryBasePolicy
 	ExecBase,
 	Manual,
 	AutoOpen,
-	Provided
+	Provided,
+	/// <summary>The call receives its library or device base in A6.</summary>
+	CallerProvided
 }
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Method)]
