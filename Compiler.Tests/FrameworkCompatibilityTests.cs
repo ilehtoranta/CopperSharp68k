@@ -4,8 +4,11 @@
  */
 
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.Json;
+using CopperSharp.Compiler.Backend;
 using CopperSharp.Compiler.Framework;
+using CopperSharp.Compiler.Metadata;
 using CopperSharp.Targets.Amiga;
 
 namespace CopperSharp.Compiler.Tests;
@@ -179,6 +182,749 @@ public sealed class FrameworkCompatibilityTests
 		Assert.DoesNotContain(
 			analysis.ManagedAllocationSites,
 			site => site.AllocatedType.Contains("Span", StringComparison.Ordinal));
+		Assert.True(
+			analysis.IsCompatible,
+			string.Join(
+				Environment.NewLine,
+				analysis.Members.Select(member =>
+					$"{member.Member.TypeName}::{member.Member.Name} => " +
+					$"{member.Status} {member.Binding} {member.Reason}")));
+	}
+
+	[Fact]
+	public void MemoryViewsUseExactOfficialIntrinsicsWithoutWrapperAllocation()
+	{
+		var analysis = Analyze("MemoryArraySliceAndSpanEntry");
+		var memoryMembers = analysis.Members
+			.Where(member =>
+				member.Member.TypeName.StartsWith(
+					"System.Memory`1<",
+					StringComparison.Ordinal) ||
+				member.Member.TypeName.StartsWith(
+					"System.ReadOnlyMemory`1<",
+					StringComparison.Ordinal))
+			.ToArray();
+		Assert.NotEmpty(memoryMembers);
+		Assert.All(memoryMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Intrinsic, member.Status);
+			Assert.StartsWith("intrinsic:", member.Binding, StringComparison.Ordinal);
+			Assert.Contains("managed-memory", member.RequiredFeatures);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+			Assert.Contains("managed-gc", member.RequiredFeatures);
+		});
+		Assert.Single(
+			analysis.ManagedAllocationSites,
+			site => site is { Kind: "array", AllocatedType: "int[]" });
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("Memory", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+
+		var unrelated = Analyze("IntegerToStringEntry");
+		Assert.DoesNotContain(
+			"managed-memory",
+			unrelated.Members.SelectMany(member => member.RequiredFeatures));
+
+		var memoryOutput = M68kCompiler.Compile(Request("MemoryArraySliceAndSpanEntry") with
+		{
+			OutputFormat = M68kOutputFormat.Assembly,
+			Imports = new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = 0x0000_2800
+			}
+		});
+		Assert.Contains("managed-memory", memoryOutput.FrameworkFeatures);
+		var unrelatedOutput = M68kCompiler.Compile(Request("StringLiteralEntry") with
+		{
+			OutputFormat = M68kOutputFormat.Assembly
+		});
+		Assert.DoesNotContain("managed-memory", unrelatedOutput.FrameworkFeatures);
+	}
+
+	[Fact]
+	public void UnselectedMemoryConveniencesRemainExplicitlyUnsupported()
+	{
+		var analysis = Analyze("UnsupportedMemoryToArrayEntry");
+		var toArray = Assert.Single(
+			analysis.Members,
+			member => member.Member.Name == "ToArray" &&
+				member.Member.TypeName.StartsWith(
+					"System.Memory`1<",
+					StringComparison.Ordinal));
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, toArray.Status);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void SelectedLinqFactoriesAndToArrayUseExactOfficialShadowBindings()
+	{
+		foreach (var entry in new[]
+		{
+			"LinqRangeToArrayEntry",
+			"LinqRepeatByteToArrayEntry"
+		})
+		{
+			var analysis = Analyze(entry);
+			var members = analysis.Members
+				.Where(member => member.Member.TypeName == "System.Linq.Enumerable")
+				.ToArray();
+			Assert.Equal(2, members.Length);
+			Assert.All(members, member =>
+			{
+				Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+				Assert.StartsWith(
+					"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::",
+					member.Binding,
+					StringComparison.Ordinal);
+				Assert.Contains("linq", member.RequiredFeatures);
+				Assert.Contains("managed-arrays", member.RequiredFeatures);
+				Assert.Contains("managed-gc", member.RequiredFeatures);
+			});
+			Assert.True(analysis.IsCompatible);
+		}
+	}
+
+	[Fact]
+	public void LinqShadowsRemainPayForPlay()
+	{
+		var output = M68kCompiler.Compile(Request("StringLiteralEntry") with
+		{
+			OutputFormat = M68kOutputFormat.Assembly
+		});
+
+		Assert.DoesNotContain("linq", output.FrameworkFeatures);
+		Assert.DoesNotContain("ShadowEnumerable", output.Text, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void EnumerableToArrayRejectsUnprovenInterfaceSourcesDuringAnalysis()
+	{
+		var analysis = Analyze("UnsupportedEnumerableArrayToArrayEntry");
+		var toArray = Assert.Single(
+			analysis.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "ToArray");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, toArray.Status);
+		Assert.Contains("closed-world analysis", toArray.Reason, StringComparison.Ordinal);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Theory]
+	[InlineData("LinqRangeLocalRepeatedToArrayEntry", "LinqRangeLocalRepeatedToArrayEntry", 2)]
+	[InlineData("LinqRangeSameFamilyMergeToArrayEntry", "LinqRangeSameFamilyMergeToArray", 1)]
+	public void EnumerableToArrayTracksRangeThroughLocalsAndSameFamilyMerges(
+		string entry,
+		string containingMethod,
+		int expectedCallSites)
+	{
+		var analysis = Analyze(entry);
+		Assert.True(analysis.IsCompatible);
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var method = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			$"CopperSharp.Compiler.Tests.CompilerFixtures::{containingMethod}");
+		var terminals = method.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset) is
+				{
+					TypeName: "System.Linq.Enumerable",
+					Name: "ToArray"
+				})
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset))
+			.ToArray();
+
+		Assert.Equal(expectedCallSites, terminals.Length);
+		Assert.All(terminals, terminal => Assert.Equal("RangeToArray", terminal.Definition?.Name));
+	}
+
+	[Fact]
+	public void EnumerableToArrayRejectsMixedFactoryMergeDuringAnalysis()
+	{
+		var analysis = Analyze("UnsupportedLinqMixedFactoryMergeEntry");
+		var terminal = Assert.Single(
+			analysis.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "ToArray");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, terminal.Status);
+		Assert.Contains("merges different iterator families", terminal.Reason, StringComparison.Ordinal);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void SelectedRangeSelectPipelineUsesExactOfficialBindings()
+	{
+		var analysis = Analyze("LinqRangeSelectToArrayEntry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Linq.Enumerable")
+			.ToArray();
+
+		Assert.Equal(3, members.Length);
+		Assert.All(members, member =>
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status));
+		var select = Assert.Single(members, member => member.Member.Name == "Select");
+		Assert.Contains("delegates", select.RequiredFeatures);
+		Assert.True(
+			analysis.IsCompatible,
+			string.Join(
+				Environment.NewLine,
+				analysis.Members
+					.Where(member => member.Status == M68kFrameworkCompatibilityStatus.Unsupported)
+					.Select(member => $"{member.Member.DisplayName}: {member.Reason}")));
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqRangeSelectToArrayEntry");
+		var calls = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset)?.TypeName == "System.Linq.Enumerable")
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				entry,
+				instruction.Offset).Definition?.Name)
+			.ToArray();
+		Assert.Equal(
+			["Range", "SelectInt32", "SelectInt32ToArray", "SelectInt32ToArray"],
+			calls);
+	}
+
+	[Fact]
+	public void SelectRejectsNonRangeSourceProvenanceDuringAnalysis()
+	{
+		var analysis = Analyze("UnsupportedLinqRepeatSelectEntry");
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "Select" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported &&
+				member.Reason?.Contains("requires exact Range", StringComparison.Ordinal) == true);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void IndexedSelectOverloadRemainsOutsideSelectedSlice()
+	{
+		var analysis = Analyze("UnsupportedLinqIndexedSelectEntry");
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "Select" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void SelectedRangeSelectWherePipelineUsesExactOfficialBindings()
+	{
+		var analysis = Analyze("LinqRangeSelectWhereToArrayEntry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Linq.Enumerable")
+			.ToArray();
+
+		Assert.Equal(4, members.Length);
+		Assert.All(members, member =>
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status));
+		var where = Assert.Single(members, member => member.Member.Name == "Where");
+		Assert.Contains("delegates", where.RequiredFeatures);
+		Assert.True(analysis.IsCompatible);
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqRangeSelectWhereToArrayEntry");
+		var calls = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset)?.TypeName == "System.Linq.Enumerable")
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				entry,
+				instruction.Offset).Definition?.Name)
+			.ToArray();
+		Assert.Equal(
+			["Range", "SelectInt32", "SelectWhereInt32", "SelectWhereInt32ToArray"],
+			calls);
+	}
+
+	[Fact]
+	public void WhereRejectsUnsupportedSourceAndIndexedOverloadDuringAnalysis()
+	{
+		var repeat = Analyze("UnsupportedLinqRepeatWhereEntry");
+		Assert.Contains(
+			repeat.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "Where" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported &&
+				member.Reason?.Contains("Range or Range.Select", StringComparison.Ordinal) == true);
+		Assert.False(repeat.IsCompatible);
+
+		var indexed = Analyze("UnsupportedLinqIndexedWhereEntry");
+		Assert.Contains(
+			indexed.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "Where" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+		Assert.False(indexed.IsCompatible);
+	}
+
+	[Fact]
+	public void SelectedAnyOverloadsUseExactOfficialBindingsAndPrivateTargets()
+	{
+		foreach (var entryName in new[]
+		{
+			"LinqAnyWithoutPredicateEntry",
+			"LinqAnyPredicateEntry"
+		})
+		{
+			var analysis = Analyze(entryName);
+			var anyMembers = analysis.Members
+				.Where(member => member.Member.TypeName == "System.Linq.Enumerable" &&
+					member.Member.Name == "Any")
+				.ToArray();
+			Assert.NotEmpty(anyMembers);
+			Assert.All(anyMembers, member =>
+				Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status));
+			Assert.True(analysis.IsCompatible);
+		}
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var withoutPredicate = ResolveAnyTargets(module, "LinqAnyWithoutPredicateEntry");
+		Assert.True(
+			new HashSet<string>
+			{
+				"RangeAny",
+				"RepeatInt32Any",
+				"SelectInt32Any",
+				"RangeWhereInt32Any",
+				"SelectWhereInt32Any"
+			}.SetEquals(withoutPredicate),
+			string.Join(", ", withoutPredicate));
+		var withPredicate = ResolveAnyTargets(module, "LinqAnyPredicateEntry");
+		Assert.True(
+			new HashSet<string>
+			{
+				"RangeAnyPredicate",
+				"RepeatInt32AnyPredicate",
+				"SelectInt32AnyPredicate",
+				"RangeWhereInt32AnyPredicate",
+				"SelectWhereInt32AnyPredicate"
+			}.SetEquals(withPredicate),
+			string.Join(", ", withPredicate));
+
+		static HashSet<string> ResolveAnyTargets(
+			CompilationModule module,
+			string entryName)
+		{
+			var entry = module.ResolveManagedMethod(
+				"CopperSharp.Compiler.Tests",
+				$"CopperSharp.Compiler.Tests.CompilerFixtures::{entryName}");
+			return entry.Instructions
+				.Where(instruction => instruction.OpCode == OpCodes.Call &&
+					module.DescribeMethodToken(
+						(int)instruction.Operand!,
+						entry,
+						instruction.Offset) is
+					{
+						TypeName: "System.Linq.Enumerable",
+						Name: "Any"
+					})
+				.Select(instruction => module.ResolveMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset).Definition!.Name)
+				.ToHashSet(StringComparer.Ordinal);
+		}
+	}
+
+	[Fact]
+	public void AnyRejectsArrayAndUnselectedElementSourcesDuringAnalysis()
+	{
+		foreach (var entry in new[]
+		{
+			"UnsupportedLinqArrayAnyEntry",
+			"UnsupportedLinqByteAnyEntry"
+		})
+		{
+			var analysis = Analyze(entry);
+			Assert.Contains(
+				analysis.Members,
+				member => member.Member.TypeName == "System.Linq.Enumerable" &&
+					member.Member.Name == "Any" &&
+					member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+			Assert.False(analysis.IsCompatible);
+		}
+	}
+
+	[Fact]
+	public void SelectedTakeOverloadPreservesEveryExactPrivateSourceFamily()
+	{
+		foreach (var entryName in new[]
+		{
+			"LinqTakeToArrayEntry",
+			"LinqTakeAnyEntry"
+		})
+		{
+			var analysis = Analyze(entryName);
+			var takeMembers = analysis.Members
+				.Where(member => member.Member.TypeName == "System.Linq.Enumerable" &&
+					member.Member.Name == "Take")
+				.ToArray();
+			Assert.NotEmpty(takeMembers);
+			Assert.All(takeMembers, member =>
+				Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status));
+			Assert.True(analysis.IsCompatible);
+		}
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqTakeToArrayEntry");
+		var targets = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset) is
+				{
+					TypeName: "System.Linq.Enumerable",
+					Name: "Take"
+				})
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				entry,
+				instruction.Offset).Definition!.Name)
+			.ToHashSet(StringComparer.Ordinal);
+		Assert.True(
+			new HashSet<string>
+			{
+				"RangeTakeInt32",
+				"RepeatInt32TakeInt32",
+				"SelectInt32TakeInt32",
+				"RangeWhereInt32TakeInt32",
+				"SelectWhereInt32TakeInt32"
+			}.SetEquals(targets),
+			string.Join(", ", targets));
+	}
+
+	[Fact]
+	public void TakeRejectsArrayAndUnselectedElementSourcesDuringAnalysis()
+	{
+		foreach (var entry in new[]
+		{
+			"UnsupportedLinqArrayTakeEntry",
+			"UnsupportedLinqByteTakeEntry"
+		})
+		{
+			var analysis = Analyze(entry);
+			Assert.Contains(
+				analysis.Members,
+				member => member.Member.TypeName == "System.Linq.Enumerable" &&
+					member.Member.Name == "Take" &&
+					member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+			Assert.False(analysis.IsCompatible);
+		}
+	}
+
+	[Fact]
+	public void SelectedSumOverloadsResolveEveryExactPrivateSourceFamily()
+	{
+		var analysis = Analyze("LinqSumEveryPrivateTargetEntry");
+		var sumMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "Sum")
+			.ToArray();
+		Assert.NotEmpty(sumMembers);
+		Assert.All(sumMembers, member =>
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status));
+		Assert.True(analysis.IsCompatible);
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqSumEveryPrivateTargetEntry");
+		var targets = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset) is
+				{
+					TypeName: "System.Linq.Enumerable",
+					Name: "Sum"
+				})
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				entry,
+				instruction.Offset).Definition!.Name)
+			.ToHashSet(StringComparer.Ordinal);
+		Assert.True(
+			new HashSet<string>
+			{
+				"RangeSum",
+				"RangeSumSelector",
+				"RepeatInt32Sum",
+				"RepeatInt32SumSelector",
+				"SelectInt32Sum",
+				"SelectInt32SumSelector",
+				"RangeWhereInt32Sum",
+				"RangeWhereInt32SumSelector",
+				"RangeWhereInt32TakeSum",
+				"RangeWhereInt32TakeSumSelector",
+				"SelectWhereInt32Sum",
+				"SelectWhereInt32SumSelector",
+				"SelectWhereInt32TakeSum",
+				"SelectWhereInt32TakeSumSelector"
+			}.SetEquals(targets),
+			string.Join(", ", targets));
+	}
+
+	[Fact]
+	public void ReferenceFreeStructArraySumResolvesOnlyToItsGenericArrayShadow()
+	{
+		var analysis = Analyze("LinqArrayImageBlockSumSelectorEntry");
+		Assert.True(analysis.IsCompatible);
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == "Sum" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Implemented &&
+				member.Binding?.EndsWith("::SumSelector", StringComparison.Ordinal) == true);
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqArrayImageBlockSumSelectorEntry");
+		var target = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset) is
+				{
+					TypeName: "System.Linq.Enumerable",
+					Name: "Sum"
+				})
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				entry,
+				instruction.Offset).Definition!.Name)
+			.Distinct(StringComparer.Ordinal)
+			.Single();
+		Assert.Equal("ArraySumSelector", target);
+	}
+
+	[Fact]
+	public void SumRejectsUnselectedArraysAndNumericOverloadsDuringAnalysis()
+	{
+		foreach (var entry in new[]
+		{
+			"UnsupportedLinqArraySumEntry",
+			"UnsupportedLinqArraySumSelectorEntry",
+			"UnsupportedLinqReferenceStructArraySumSelectorEntry",
+			"UnsupportedLinqLongSumEntry"
+		})
+		{
+			var analysis = Analyze(entry);
+			Assert.Contains(
+				analysis.Members,
+				member => member.Member.TypeName == "System.Linq.Enumerable" &&
+					member.Member.Name == "Sum" &&
+					member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+			Assert.False(analysis.IsCompatible);
+		}
+	}
+
+	[Fact]
+	public void DictionaryValuesOrderingUsesOnlyTheExactTwoSelectedShadows()
+	{
+		var analysis = Analyze("LinqDictionaryValuesOrderByThenByEntry");
+		Assert.True(
+			analysis.IsCompatible,
+			string.Join(
+				Environment.NewLine,
+				analysis.Members.Select(member =>
+					$"{member.Member.TypeName}::{member.Member.Name} => " +
+					$"{member.Status} {member.Binding} {member.Reason}")));
+		var ordering = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name is "OrderBy" or "ThenBy")
+			.ToArray();
+		Assert.Equal(2, ordering.Length);
+		Assert.All(ordering, member =>
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status));
+
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry");
+		var targets = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset) is
+				{
+					TypeName: "System.Linq.Enumerable",
+					Name: "OrderBy" or "ThenBy"
+				})
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.Operand!,
+				entry,
+				instruction.Offset).Definition!.Name)
+			.ToArray();
+		Assert.Equal(
+			["DictionaryUInt32ValuesOrderBy", "DictionaryUInt32ValuesThenBy"],
+			targets);
+	}
+
+	[Theory]
+	[InlineData("UnsupportedLinqArrayOrderByEntry", "OrderBy")]
+	[InlineData("UnsupportedLinqAdditionalThenByEntry", "ThenBy")]
+	public void OrderingRejectsUnselectedSourcesAndAdditionalKeys(
+		string entry,
+		string memberName)
+	{
+		var analysis = Analyze(entry);
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.TypeName == "System.Linq.Enumerable" &&
+				member.Member.Name == memberName &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void LinqCallSitesResolveToTheirExactPrivateImplementations()
+	{
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqRangeToArrayEntry");
+		var calls = entry.Instructions
+			.Where(instruction => instruction.OpCode == OpCodes.Call)
+			.Select(instruction => new
+			{
+				Identity = module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset),
+				Target = module.ResolveMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset)
+			})
+			.Where(call => call.Identity?.TypeName == "System.Linq.Enumerable")
+			.ToArray();
+
+		Assert.Equal(4, calls.Length);
+		Assert.Equal(
+			["Range", "RangeToArray", "Range", "RangeToArray"],
+			calls.Select(call => call.Target.Definition?.Name).ToArray());
+		Assert.All(calls, call => Assert.Equal(
+			"CopperSharp.Runtime.Managed",
+			call.Target.Definition?.ModuleName));
+		Assert.All(
+			entry.Instructions.Where(instruction =>
+				instruction.OpCode == OpCodes.Call &&
+				module.DescribeMethodToken(
+					(int)instruction.Operand!,
+					entry,
+					instruction.Offset)?.TypeName == "System.Linq.Enumerable"),
+			instruction => Assert.Null(module.GetTriggeredTypeInitializer(entry, instruction)));
+	}
+
+	[Fact]
+	public void LinqMachineIrPreservesExactFrameworkCallTokens()
+	{
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumerable).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LinqRangeToArrayEntry");
+		var machine = CilMachineIrBuilder.Build(entry, module);
+		var machineCalls = machine.Blocks
+			.SelectMany(block => block.Instructions)
+			.Where(instruction => instruction.Operation == M68kMachineOperation.Call)
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.SourceInstruction!.Operand!,
+				entry,
+				instruction.SourceInstruction.Offset))
+			.ToArray();
+		var calls = machineCalls
+			.Where(target => target.FrameworkBinding?.Member.DeclaringType.MetadataName ==
+				"System.Linq.Enumerable")
+			.ToArray();
+
+		Assert.Equal(4, machineCalls.Length);
+		Assert.Equal(4, calls.Length);
+		Assert.Equal(
+			["Range", "RangeToArray", "Range", "RangeToArray"],
+			calls.Select(call => call.Definition?.Name).ToArray());
+		Assert.DoesNotContain(
+			machine.Blocks.SelectMany(block => block.Instructions),
+			instruction => instruction.Operation == M68kMachineOperation.TypeInitialize);
+	}
+
+	[Fact]
+	public void MemoryCopyMembersUseExactOfficialAllocationFreeIntrinsics()
+	{
+		var analysis = Analyze("MemoryCopyOperationsEntry");
+		var copyMembers = analysis.Members
+			.Where(member =>
+				member.Member.Name is "CopyTo" or "TryCopyTo" &&
+				(member.Member.TypeName.StartsWith(
+					"System.Memory`1<",
+					StringComparison.Ordinal) ||
+				 member.Member.TypeName.StartsWith(
+					"System.ReadOnlyMemory`1<",
+					StringComparison.Ordinal)))
+			.ToArray();
+		Assert.Equal(4, copyMembers.Length);
+		Assert.All(copyMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Intrinsic, member.Status);
+			Assert.Contains("copy-to", member.Binding, StringComparison.Ordinal);
+			Assert.Contains("managed-memory", member.RequiredFeatures);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+			Assert.Contains("managed-gc", member.RequiredFeatures);
+			Assert.Contains("spans", member.RequiredFeatures);
+		});
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("Memory", StringComparison.Ordinal));
 		Assert.True(analysis.IsCompatible);
 	}
 
@@ -636,6 +1382,36 @@ public sealed class FrameworkCompatibilityTests
 	}
 
 	[Fact]
+	public void ParameterlessInt64FormattingUsesPrivatePayForPlayShadows()
+	{
+		var analysis = Analyze("Int64ToStringEntry");
+		var formatters = analysis.Members
+			.Where(member => member.Member.Name == "ToString" &&
+				member.Member.TypeName is "System.Int64" or "System.UInt64")
+			.ToArray();
+		Assert.Equal(2, formatters.Length);
+		Assert.All(formatters, formatter =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, formatter.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.Shadow",
+				formatter.Binding,
+				StringComparison.Ordinal);
+			Assert.Equal(
+				["MayAllocate", "MayThrow", "MayCollect", "WritesManagedMemory"],
+				formatter.Effects);
+			Assert.Equal(
+				["integer-formatting", "managed-strings", "numerics"],
+				formatter.RequiredFeatures);
+		});
+		Assert.Equal(
+			2,
+			analysis.ManagedAllocationSites.Count(
+				site => site is { Kind: "string", AllocatedType: "string" }));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
 	public void IntegerFormatStringsUsePublicContractsAndPrivateShadows()
 	{
 		var analysis = Analyze("IntegerFormatStringEntry");
@@ -656,6 +1432,34 @@ public sealed class FrameworkCompatibilityTests
 				formatter.RequiredFeatures);
 		});
 		Assert.True(analysis.IsCompatible);
+
+		var referenceValues = Analyze("DictionaryInt32ReferenceGcEntry");
+		Assert.True(referenceValues.IsCompatible);
+		Assert.Contains(
+			referenceValues.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2<int,string>",
+				StringComparison.Ordinal) &&
+				member.Status == M68kFrameworkCompatibilityStatus.Implemented);
+
+		var unrelated = Analyze("IntegerToStringEntry");
+		Assert.DoesNotContain(
+			unrelated.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2",
+				StringComparison.Ordinal));
+		var unrelatedAssembly = M68kCompiler.Compile(Request("IntegerToStringEntry") with
+		{
+			OutputFormat = M68kOutputFormat.Assembly,
+			Imports = new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = 0x0000_2800
+			}
+		});
+		Assert.DoesNotContain(
+			"ShadowDictionary",
+			unrelatedAssembly.Text,
+			StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -917,6 +1721,38 @@ public sealed class FrameworkCompatibilityTests
 		Assert.Equal(before.Code, after.Code);
 		Assert.Equal(before.Map, after.Map);
 		Assert.Equal(before.Text, after.Text);
+	}
+
+	[Fact]
+	public void LinkerMapRecordsDeterministicCompilerContractAndTargetProvenance()
+	{
+		var request = Request("StringLiteralEntry") with
+		{
+			RuntimeProfile = M68kRuntimeProfile.Application
+		};
+		var generic = M68kCompiler.Compile(request);
+		var amiga = AmigaM68kCompiler.Compile(request);
+
+		Assert.Contains(
+			"COMPILER CopperSharp.Compiler 0.1.0-preview.1",
+			generic.Map,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"CONTRACT net10.0-10.0.9 Microsoft.NETCore.App.Ref 10.0.9",
+			generic.Map,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"TARGET m68k CopperSharp.Compiler 0.1.0-preview.1",
+			generic.Map,
+			StringComparison.Ordinal);
+		Assert.Contains("PROFILE Application", generic.Map, StringComparison.Ordinal);
+		Assert.Contains("CPU M68000", generic.Map, StringComparison.Ordinal);
+		Assert.Contains("FORMAT Hunk", generic.Map, StringComparison.Ordinal);
+		Assert.Contains(
+			"TARGET amiga-m68k CopperSharp.Targets.Amiga 0.1.0-preview.1",
+			amiga.Map,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(Assembly.GetExecutingAssembly().Location, amiga.Map);
 	}
 
 	[Fact]
@@ -1340,33 +2176,1580 @@ public sealed class FrameworkCompatibilityTests
 	}
 
 	[Fact]
-	public void UnimplementedListMemberRemainsExplicitlyDeferred()
+	public void DictionaryIntegralCoreUsesExactGenericPayForPlayShadows()
 	{
-		var analysis = Analyze("UnsupportedListRemoveEntry");
-		var remove = Assert.Single(
+		var analysis = Analyze("DictionaryInt32Entry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(6, members.Length);
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::",
+				member.Binding,
+				StringComparison.Ordinal);
+			Assert.Contains("managed-collections", member.RequiredFeatures);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void DictionaryStringKeysUseExactGenericShadows()
+	{
+		var analysis = Analyze("DictionaryStringGcEntry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2<string,string>",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.NotEmpty(members);
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::",
+				member.Binding,
+				StringComparison.Ordinal);
+			Assert.Contains("managed-collections", member.RequiredFeatures);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+			Assert.Contains("managed-gc", member.RequiredFeatures);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void DictionaryReferenceFreeStructValuesUseExactGenericShadows()
+	{
+		var analysis = Analyze("DictionaryReferenceFreeStructValueEntry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2<uint,",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(6, members.Length);
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::",
+				member.Binding,
+				StringComparison.Ordinal);
+		});
+		Assert.True(analysis.IsCompatible);
+
+		var unsupported = Analyze("UnsupportedDictionaryReferenceStructValueEntry");
+		Assert.False(unsupported.IsCompatible);
+		Assert.Contains(
+			unsupported.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2<uint,",
+				StringComparison.Ordinal) &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+
+		var values = Analyze("DictionaryReferenceFreeStructValuesIdentityEntry");
+		var getter = Assert.Single(
+			values.Members,
+			member => member.Member.Name == "get_Values");
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, getter.Status);
+		Assert.Equal(
+			"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::get_Values",
+			getter.Binding);
+		Assert.True(values.IsCompatible);
+
+		var keys = Analyze("UnsupportedDictionaryReferenceFreeStructKeysEntry");
+		Assert.Contains(
+			keys.Members,
+			member => member.Member.Name == "get_Keys" &&
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported);
+		Assert.False(keys.IsCompatible);
+	}
+
+	[Fact]
+	public void ListCapacityAndMutationMembersUseExactGenericShadows()
+	{
+		var analysis = Analyze("ListCapacityMutationEntry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(9, members.Length);
+		Assert.Equal(
+			new[]
+			{
+				".ctor",
+				"Add",
+				"Clear",
+				"get_Capacity",
+				"get_Count",
+				"get_Item",
+				"RemoveAt",
+				"set_Capacity",
+				"ToArray"
+			},
+			members.Select(member => member.Member.Name).Order().ToArray());
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowList`1::",
+				member.Binding,
+				StringComparison.Ordinal);
+			Assert.Contains("managed-collections", member.RequiredFeatures);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+			Assert.Contains("managed-gc", member.RequiredFeatures);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void ListDirectEnumerationUsesExactPublicEnumeratorIdentity()
+	{
+		var analysis = Analyze("ListDirectEnumerationEntry");
+		var getEnumerator = Assert.Single(
+			analysis.Members,
+			member => member.Member.Name == "GetEnumerator" &&
+				member.Member.TypeName.StartsWith(
+					"System.Collections.Generic.List`1<int>",
+					StringComparison.Ordinal));
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, getEnumerator.Status);
+		Assert.Equal(
+			"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowList`1::GetEnumerator",
+			getEnumerator.Binding);
+
+		var enumeratorMembers = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1/Enumerator<int>",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(2, enumeratorMembers.Length);
+		Assert.Equal(
+			["get_Current", "MoveNext"],
+			enumeratorMembers.Select(member => member.Member.Name).Order().ToArray());
+		Assert.All(enumeratorMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowListEnumerator`1::",
+				member.Binding,
+				StringComparison.Ordinal);
+		});
+		var dispose = Assert.Single(
 			analysis.Members,
 			member => member.Member is
-			{
-				Name: "Remove"
-			} && member.Member.TypeName.StartsWith(
-				"System.Collections.Generic.List`1",
-				StringComparison.Ordinal));
-		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, remove.Status);
-		Assert.Contains(
-			"could not resolve an exact implementation",
-			remove.Reason ?? string.Empty,
-			StringComparison.OrdinalIgnoreCase);
-		Assert.Contains(
-			analysis.Members,
-			member => member.Member.Name == "Add" &&
-				member.Status == M68kFrameworkCompatibilityStatus.Implemented);
+				{ TypeName: "System.IDisposable", Name: "Dispose" });
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Intrinsic, dispose.Status);
+		Assert.Equal("intrinsic:list-enumerator-dispose", dispose.Binding);
+		Assert.Equal(3, analysis.ManagedAllocationSites.Count);
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("Enumerator", StringComparison.Ordinal));
+		Assert.True(
+			analysis.IsCompatible,
+			string.Join(
+				Environment.NewLine,
+				analysis.Members.Select(member =>
+					$"{member.Member.TypeName}::{member.Member.Name}: {member.Status} {member.Reason}")));
+	}
+
+	[Fact]
+	public void ListInterfaceEnumerationIsExplicitlyDeferredWithoutRootingImplementations()
+	{
+		var analysis = Analyze("ListInterfaceEnumerationEntry");
+		var unsupported = analysis.Members
+			.Where(member =>
+				member.Status == M68kFrameworkCompatibilityStatus.Unsupported)
+			.ToArray();
+		Assert.Equal(4, unsupported.Length);
+		Assert.Equal(
+			[
+				("System.Collections.Generic.IEnumerable`1<int>", "GetEnumerator"),
+				("System.Collections.Generic.IEnumerator`1<int>", "get_Current"),
+				("System.Collections.IEnumerator", "MoveNext"),
+				("System.IDisposable", "Dispose")
+			],
+			unsupported
+				.Select(member => (member.Member.TypeName, member.Member.Name))
+				.OrderBy(member => member.TypeName, StringComparer.Ordinal)
+				.ThenBy(member => member.Name, StringComparer.Ordinal)
+				.ToArray());
+		Assert.All(
+			unsupported,
+			member => Assert.NotEmpty(member.Reason ?? string.Empty));
+		Assert.Equal(2, analysis.ManagedAllocationSites.Count);
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("Enumerator", StringComparison.Ordinal));
 		Assert.DoesNotContain(
 			analysis.Members,
-			member => member.Member.Name != "Remove" &&
-				member.Reason?.Contains(
-					"could not resolve an exact implementation",
-					StringComparison.OrdinalIgnoreCase) == true);
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1/Enumerator",
+				StringComparison.Ordinal));
 		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void FloatingListEqualityUsesBitwiseIntrinsicWithoutComparerObject()
+	{
+		var analysis = Analyze("ListFloatingEqualityEntry");
+		var equalityMembers = analysis.Members
+			.Where(member => member.Member.Name is "Contains" or "IndexOf" or "Remove")
+			.ToArray();
+		Assert.Equal(6, equalityMembers.Length);
+		Assert.All(equalityMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.DoesNotContain(
+			analysis.Members,
+			member => member.Member.TypeName.Contains(
+				"EqualityComparer",
+				StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void IntegralListEqualityMembersUseExactGenericShadows()
+	{
+		var analysis = Analyze("ListInt32EqualityEntry");
+		var equalityMembers = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1<int>",
+				StringComparison.Ordinal) &&
+				member.Member.Name is "Contains" or "IndexOf" or "Remove")
+			.ToArray();
+		Assert.Equal(3, equalityMembers.Length);
+		Assert.Equal(
+			["Contains", "IndexOf", "Remove"],
+			equalityMembers.Select(member => member.Member.Name).Order().ToArray());
+		Assert.All(equalityMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.Equal(
+				$"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowList`1::{member.Member.Name}",
+				member.Binding);
+		});
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.DoesNotContain(
+			analysis.Members,
+			member => member.Member.TypeName.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void LocalEnumListEqualityUsesProvenUnderlyingRepresentation()
+	{
+		foreach (var entry in new[]
+		{
+			"ListByteEnumEqualityEntry",
+			"ListIntEnumEqualityEntry",
+			"ListLongEnumEqualityEntry"
+		})
+		{
+			var analysis = Analyze(entry);
+			var equalityMembers = analysis.Members
+				.Where(member => member.Member.Name is "Contains" or "IndexOf" or "Remove")
+				.ToArray();
+			Assert.Equal(
+				["Contains", "IndexOf", "Remove"],
+				equalityMembers
+					.Select(member => member.Member.Name)
+					.Distinct(StringComparer.Ordinal)
+					.Order()
+					.ToArray());
+			Assert.All(equalityMembers, member =>
+			{
+				Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+				Assert.StartsWith(
+					"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowList`1::",
+					member.Binding,
+					StringComparison.Ordinal);
+			});
+			Assert.DoesNotContain(
+				analysis.ManagedAllocationSites,
+				site => site.AllocatedType.Contains("EqualityComparer", StringComparison.Ordinal));
+			Assert.True(analysis.IsCompatible);
+		}
+	}
+
+	[Fact]
+	public void ReferencedModuleEnumListEqualityUsesResolvedUnderlyingRepresentation()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("ListExternalEnumEqualityEntry") with
+			{
+				ManagedAssemblyPaths =
+				[
+					typeof(
+						CopperSharp.Compiler.Tests.MultiModule.ExternalListState)
+						.Assembly.Location
+				]
+			});
+		Assert.All(
+			analysis.Members.Where(member =>
+				member.Member.Name is "Contains" or "IndexOf" or "Remove"),
+			member => Assert.Equal(
+				M68kFrameworkCompatibilityStatus.Implemented,
+				member.Status));
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void StringListEqualityUsesExactGenericShadowsAndOrdinalIntrinsic()
+	{
+		var analysis = Analyze("ListStringEqualityEntry");
+		var equalityMembers = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.List`1<string>",
+				StringComparison.Ordinal) &&
+				member.Member.Name is "Contains" or "IndexOf" or "Remove")
+			.ToArray();
+		Assert.Equal(
+			["Contains", "IndexOf", "Remove"],
+			equalityMembers
+				.Select(member => member.Member.Name)
+				.Distinct(StringComparer.Ordinal)
+				.Order()
+				.ToArray());
+		Assert.All(equalityMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowList`1::",
+				member.Binding,
+				StringComparison.Ordinal);
+		});
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.DoesNotContain(
+			analysis.Members,
+			member => member.Member.TypeName.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void NullableIntListEqualityUsesExistingNullableContractWithoutComparerObject()
+	{
+		var analysis = Analyze("ListNullableIntEqualityEntry");
+		var equalityMembers = analysis.Members
+			.Where(member => member.Member.Name is "Contains" or "IndexOf" or "Remove")
+			.ToArray();
+		Assert.Equal(
+			["Contains", "IndexOf", "Remove"],
+			equalityMembers
+				.Select(member => member.Member.Name)
+				.Distinct(StringComparer.Ordinal)
+				.Order()
+				.ToArray());
+		Assert.All(equalityMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Nullable<",
+				StringComparison.Ordinal) &&
+				member.Status == M68kFrameworkCompatibilityStatus.Intrinsic);
+		Assert.DoesNotContain(
+			analysis.Members,
+			member => member.Member.TypeName.Contains(
+				"EqualityComparer",
+				StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Theory]
+	[InlineData("ListSealedReferenceFallbackEqualityEntry")]
+	[InlineData("ListSealedReferenceOverrideEqualityEntry")]
+	public void SealedReferenceListEqualityUsesProvenObjectEqualsFallback(string entry)
+	{
+		var analysis = Analyze(entry);
+		var equalityMembers = analysis.Members
+			.Where(member => member.Member.Name is "Contains" or "IndexOf" or "Remove")
+			.ToArray();
+		Assert.Equal(
+			["Contains", "IndexOf", "Remove"],
+			equalityMembers
+				.Select(member => member.Member.Name)
+				.Distinct(StringComparer.Ordinal)
+				.Order()
+				.ToArray());
+		Assert.All(equalityMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.DoesNotContain(
+			analysis.ManagedAllocationSites,
+			site => site.AllocatedType.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.DoesNotContain(
+			analysis.Members,
+			member => member.Member.TypeName.Contains("EqualityComparer", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void SealedEquatableListEqualityUsesExactTypedContract()
+	{
+		var analysis = Analyze("ListSealedEquatableReferenceEntry");
+		var contains = Assert.Single(
+			analysis.Members,
+			member => member.Member.Name == "Contains" &&
+				member.Member.TypeName.StartsWith(
+					"System.Collections.Generic.List`1",
+					StringComparison.Ordinal));
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, contains.Status);
+		Assert.Contains(
+			analysis.Members,
+			member => member.Member.Name == "Equals" &&
+				member.Member.TypeName.StartsWith(
+					"System.IEquatable`1",
+					StringComparison.Ordinal) &&
+				member.Status == M68kFrameworkCompatibilityStatus.Implemented);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Theory]
+	[InlineData("UnsupportedListNonSealedReferenceEntry")]
+	public void UnprovenReferenceListEqualityRemainsExplicitlyDeferred(string entry)
+	{
+		var analysis = Analyze(entry);
+		var contains = Assert.Single(
+			analysis.Members,
+			member => member.Member.Name == "Contains" &&
+				member.Member.TypeName.StartsWith(
+					"System.Collections.Generic.List`1",
+					StringComparison.Ordinal));
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, contains.Status);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PublicIntegralEqualityComparerUsesManagedPerTypeSingleton()
+	{
+		var analysis = Analyze("PublicIntegralEqualityComparerEntry");
+		var comparerMembers = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.EqualityComparer`1<",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(12, comparerMembers.Length);
+		Assert.All(comparerMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.Contains(comparerMembers, member =>
+			member.Member.Name == "get_Default" &&
+			member.Binding?.Contains(
+				"ShadowEqualityComparer",
+				StringComparison.Ordinal) == true);
+		var interfaceMembers = analysis.Members
+			.Where(member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.IEqualityComparer`1<int>",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Equal(
+			["Equals", "GetHashCode"],
+			interfaceMembers
+				.Select(member => member.Member.Name)
+				.Distinct(StringComparer.Ordinal)
+				.Order()
+				.ToArray());
+		Assert.All(interfaceMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PublicFloatingEqualityComparerUsesManagedSingletonAndBitKernels()
+	{
+		var analysis = Analyze("PublicFloatingEqualityComparerEntry");
+		var comparerMembers = analysis.Members
+			.Where(member => member.Member.TypeName.Contains(
+				"EqualityComparer`1<",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.Contains(comparerMembers, member =>
+			member.Member.TypeName.Contains("<float>", StringComparison.Ordinal));
+		Assert.Contains(comparerMembers, member =>
+			member.Member.TypeName.Contains("<double>", StringComparison.Ordinal));
+		Assert.All(comparerMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PublicStringEqualityComparerUsesManagedSingletonAndOrdinalKernels()
+	{
+		var analysis = Analyze("PublicStringEqualityComparerEntry");
+		var comparerMembers = analysis.Members
+			.Where(member => member.Member.TypeName.Contains(
+				"EqualityComparer`1<string>",
+				StringComparison.Ordinal))
+			.ToArray();
+		Assert.NotEmpty(comparerMembers);
+		Assert.Contains(comparerMembers, member =>
+			member.Member.Name == "GetHashCode");
+		Assert.All(comparerMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Implemented,
+			member.Status));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PublicNullableIntEqualityComparerUsesManagedSingletonAndAggregateKernels()
+	{
+		var analysis = Analyze("PublicNullableIntEqualityComparerEntry");
+		Assert.Contains(analysis.Members, member =>
+			member.Member.TypeName.Contains(
+				"EqualityComparer`1<System.Nullable<int>>",
+				StringComparison.Ordinal) &&
+			member.Member.Name == "GetHashCode" &&
+			member.Status == M68kFrameworkCompatibilityStatus.Implemented);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PublicSealedReferenceComparersUseClosedWorldEqualityAndHashing()
+	{
+		foreach (var entry in new[]
+		{
+			"PublicSealedReferenceEqualityComparerEntry",
+			"PublicSealedEquatableEqualityComparerEntry"
+		})
+		{
+			var analysis = Analyze(entry);
+			var comparerMembers = analysis.Members
+				.Where(member => member.Member.TypeName.Contains(
+					"EqualityComparer`1<",
+					StringComparison.Ordinal))
+				.ToArray();
+			Assert.NotEmpty(comparerMembers);
+			Assert.Contains(comparerMembers, member =>
+				member.Member.Name == "GetHashCode");
+			Assert.All(comparerMembers, member => Assert.Equal(
+				M68kFrameworkCompatibilityStatus.Implemented,
+				member.Status));
+			Assert.True(analysis.IsCompatible);
+		}
+	}
+
+	[Fact]
+	public void NonSealedReferenceComparerRemainsExplicitlyDeferred()
+	{
+		var analysis = Analyze("UnsupportedNonSealedReferenceEqualityComparerEntry");
+		var comparerCall = Assert.Single(
+			analysis.Members,
+			member => member.Member.TypeName.Contains(
+				"EqualityComparer`1<",
+				StringComparison.Ordinal) &&
+				member.Member.Name == "get_Default");
+		Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Unsupported,
+			comparerCall.Status);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleStringOutputUsesExplicitAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableConsoleWriteEntry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(2, consoleMembers.Length);
+		Assert.Contains(consoleMembers, member =>
+			member.Member.Name == "Write" &&
+			member.Binding == "platform:amiga-console-write");
+		Assert.Contains(consoleMembers, member =>
+			member.Member.Name == "WriteLine" &&
+			member.Binding == "platform:amiga-console-write-line");
+		Assert.All(consoleMembers, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Contains("amiga-console", member.RequiredFeatures);
+			Assert.Contains("managed-strings", member.RequiredFeatures);
+			Assert.Contains("native-memory", member.RequiredFeatures);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleBindingRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableConsoleWriteEntry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(2, consoleMembers.Length);
+		Assert.All(consoleMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Unsupported,
+			member.Status));
+		Assert.All(consoleMembers, member => Assert.Contains(
+			"could not resolve an exact implementation",
+			member.Reason ?? string.Empty,
+			StringComparison.OrdinalIgnoreCase));
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleFixturePreservesHostNet10Semantics()
+	{
+		var previous = Console.Out;
+		using var output = new StringWriter();
+		try
+		{
+			Console.SetOut(output);
+			Assert.Equal(42, CompilerFixtures.PortableConsoleWriteEntry());
+		}
+		finally
+		{
+			Console.SetOut(previous);
+		}
+
+		Assert.Equal($"A\0B\u00e4{Environment.NewLine}{Environment.NewLine}", output.ToString());
+	}
+
+	[Fact]
+	public void PortableConsoleIntegerOutputUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableConsolePrimitiveEntry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(5, consoleMembers.Length);
+		foreach (var binding in new[]
+		{
+			"platform:amiga-console-write-int32",
+			"platform:amiga-console-write-uint32",
+			"platform:amiga-console-write-line-int32",
+			"platform:amiga-console-write-line-uint32"
+		})
+		{
+			var member = Assert.Single(consoleMembers, item => item.Binding == binding);
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Contains("integer-formatting", member.RequiredFeatures);
+			Assert.DoesNotContain("managed-strings", member.RequiredFeatures);
+			Assert.Contains("native-memory", member.RequiredFeatures);
+			Assert.DoesNotContain("MayCollect", member.Effects);
+			Assert.DoesNotContain("ReadsManagedMemory", member.Effects);
+			Assert.DoesNotContain("WritesManagedMemory", member.Effects);
+			Assert.Contains("WritesNativeMemory", member.Effects);
+		}
+		Assert.Contains(consoleMembers, member =>
+			member.Binding == "platform:amiga-console-write");
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleIntegerBindingsRequireAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableConsolePrimitiveEntry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(5, consoleMembers.Length);
+		Assert.All(consoleMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Unsupported,
+			member.Status));
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleIntegerFixturePreservesHostNet10Semantics()
+	{
+		var previous = Console.Out;
+		using var output = new StringWriter();
+		try
+		{
+			Console.SetOut(output);
+			Assert.Equal(42, CompilerFixtures.PortableConsolePrimitiveEntry());
+		}
+		finally
+		{
+			Console.SetOut(previous);
+		}
+
+		Assert.Equal(
+			$"-2147483648|4294967295{Environment.NewLine}-42{Environment.NewLine}42",
+			output.ToString());
+	}
+
+	[Fact]
+	public void PortableConsoleInt64OutputUsesExactAllocationBoundedBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableConsoleInt64Entry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(5, consoleMembers.Length);
+		foreach (var binding in new[]
+		{
+			"platform:amiga-console-write-int64",
+			"platform:amiga-console-write-uint64",
+			"platform:amiga-console-write-line-int64",
+			"platform:amiga-console-write-line-uint64"
+		})
+		{
+			var member = Assert.Single(consoleMembers, item => item.Binding == binding);
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Contains("integer-formatting", member.RequiredFeatures);
+			Assert.DoesNotContain("managed-strings", member.RequiredFeatures);
+			Assert.Contains("native-memory", member.RequiredFeatures);
+			Assert.DoesNotContain("MayCollect", member.Effects);
+			Assert.DoesNotContain("ReadsManagedMemory", member.Effects);
+			Assert.DoesNotContain("WritesManagedMemory", member.Effects);
+			Assert.Contains("WritesNativeMemory", member.Effects);
+		}
+		Assert.Contains(consoleMembers, member =>
+			member.Binding == "platform:amiga-console-write");
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleInt64FixturePreservesHostNet10Semantics()
+	{
+		var previous = Console.Out;
+		using var output = new StringWriter();
+		try
+		{
+			Console.SetOut(output);
+			Assert.Equal(42, CompilerFixtures.PortableConsoleInt64Entry());
+		}
+		finally
+		{
+			Console.SetOut(previous);
+		}
+
+		Assert.Equal(
+			$"-9223372036854775808|18446744073709551615{Environment.NewLine}" +
+			$"-42{Environment.NewLine}42",
+			output.ToString());
+	}
+
+	[Fact]
+	public void PortableConsoleBooleanOutputUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableConsoleBooleanEntry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(2, consoleMembers.Length);
+		foreach (var binding in new[]
+		{
+			"platform:amiga-console-write-boolean",
+			"platform:amiga-console-write-line-boolean"
+		})
+		{
+			var member = Assert.Single(consoleMembers, item => item.Binding == binding);
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Contains("native-memory", member.RequiredFeatures);
+			Assert.DoesNotContain("integer-formatting", member.RequiredFeatures);
+			Assert.DoesNotContain("managed-strings", member.RequiredFeatures);
+			Assert.DoesNotContain("MayAllocate", member.Effects);
+			Assert.DoesNotContain("MayCollect", member.Effects);
+			Assert.DoesNotContain("ReadsManagedMemory", member.Effects);
+			Assert.DoesNotContain("WritesManagedMemory", member.Effects);
+			Assert.Contains("WritesNativeMemory", member.Effects);
+		}
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleCharacterOutputUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableConsoleCharacterEntry"));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(2, consoleMembers.Length);
+		foreach (var binding in new[]
+		{
+			"platform:amiga-console-write-char",
+			"platform:amiga-console-write-line-char"
+		})
+		{
+			var member = Assert.Single(consoleMembers, item => item.Binding == binding);
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Contains("native-memory", member.RequiredFeatures);
+			Assert.DoesNotContain("integer-formatting", member.RequiredFeatures);
+			Assert.DoesNotContain("managed-strings", member.RequiredFeatures);
+			Assert.Contains("MayAllocate", member.Effects);
+			Assert.DoesNotContain("MayCollect", member.Effects);
+			Assert.DoesNotContain("ReadsManagedMemory", member.Effects);
+			Assert.DoesNotContain("WritesManagedMemory", member.Effects);
+			Assert.Contains("WritesNativeMemory", member.Effects);
+		}
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Theory]
+	[InlineData("PortableConsoleBooleanEntry")]
+	[InlineData("PortableConsoleCharacterEntry")]
+	public void PortableConsoleBooleanAndCharacterBindingsRequireExplicitTargetPal(
+		string entry)
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(Request(entry));
+		var consoleMembers = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Console")
+			.ToArray();
+
+		Assert.Equal(2, consoleMembers.Length);
+		Assert.All(consoleMembers, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Unsupported,
+			member.Status));
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleBooleanFixturePreservesHostNet10Semantics()
+	{
+		var previous = Console.Out;
+		using var output = new StringWriter();
+		try
+		{
+			Console.SetOut(output);
+			Assert.Equal(42, CompilerFixtures.PortableConsoleBooleanEntry());
+		}
+		finally
+		{
+			Console.SetOut(previous);
+		}
+
+		Assert.Equal(
+			$"TrueFalse{Environment.NewLine}True{Environment.NewLine}False",
+			output.ToString());
+	}
+
+	[Fact]
+	public void PortableConsoleCharacterFixturePreservesHostNet10Semantics()
+	{
+		var previous = Console.Out;
+		using var output = new StringWriter();
+		try
+		{
+			Console.SetOut(output);
+			Assert.Equal(42, CompilerFixtures.PortableConsoleCharacterEntry());
+		}
+		finally
+		{
+			Console.SetOut(previous);
+		}
+
+		Assert.Equal($"\0\u00e4\u0100{Environment.NewLine}A", output.ToString());
+	}
+
+	[Theory]
+	[InlineData(
+		"PortableConsoleReadEntry",
+		"Read",
+		"platform:amiga-console-read",
+		false)]
+	[InlineData(
+		"PortableConsoleReadLineEntry",
+		"ReadLine",
+		"platform:amiga-console-read-line",
+		true)]
+	public void PortableConsoleInputUsesExactAmigaPlatformBindings(
+		string entry,
+		string memberName,
+		string binding,
+		bool returnsManagedString)
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(Request(entry));
+		var member = Assert.Single(
+			analysis.Members,
+			item => item.Member.TypeName == "System.Console");
+
+		Assert.Equal(memberName, member.Member.Name);
+		Assert.Equal(binding, member.Binding);
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+		Assert.Contains("amiga-console", member.RequiredFeatures);
+		Assert.Contains("amiga-console-input", member.RequiredFeatures);
+		Assert.Contains("native-memory", member.RequiredFeatures);
+		Assert.Contains("ReadsNativeMemory", member.Effects);
+		Assert.Contains("WritesNativeMemory", member.Effects);
+		Assert.Equal(
+			returnsManagedString,
+			member.RequiredFeatures.Contains("managed-strings"));
+		Assert.Equal(
+			returnsManagedString,
+			member.RequiredFeatures.Contains("managed-arrays"));
+		Assert.Equal(
+			returnsManagedString,
+			member.Effects.Contains("MayCollect"));
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Theory]
+	[InlineData("PortableConsoleReadEntry")]
+	[InlineData("PortableConsoleReadLineEntry")]
+	public void PortableConsoleInputRequiresAnExplicitTargetPal(string entry)
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(Request(entry));
+		var member = Assert.Single(
+			analysis.Members,
+			item => item.Member.TypeName == "System.Console");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableConsoleInputFixturesPreserveHostNet10Semantics()
+	{
+		var previous = Console.In;
+		try
+		{
+			Console.SetIn(new StringReader("A\0\u00e4"));
+			Assert.Equal(42, CompilerFixtures.PortableConsoleReadEntry());
+
+			Console.SetIn(new StringReader("A\0\u00e4\r\nB\n\rC"));
+			Assert.Equal(42, CompilerFixtures.PortableConsoleReadLineEntry());
+		}
+		finally
+		{
+			Console.SetIn(previous);
+		}
+	}
+
+	[Theory]
+	[InlineData("UnsupportedConsoleInEntry", "get_In")]
+	[InlineData("UnsupportedConsoleOutEntry", "get_Out")]
+	[InlineData("UnsupportedConsoleErrorEntry", "get_Error")]
+	[InlineData("UnsupportedConsoleInputEncodingEntry", "get_InputEncoding")]
+	[InlineData("UnsupportedConsoleOutputEncodingEntry", "get_OutputEncoding")]
+	public void ConsoleReaderWriterAndEncodingObjectsRemainExplicitlyDeferred(
+		string entry,
+		string getter)
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(Request(entry));
+		var member = Assert.Single(
+			analysis.Members,
+			item => item.Member.TypeName == "System.Console" &&
+				item.Member.Name == getter);
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.Null(member.Binding);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSystemExistenceUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableFileSystemExistsEntry"));
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName is "System.IO.File" or "System.IO.Directory")
+			.ToArray();
+
+		Assert.Equal(2, members.Length);
+		Assert.Contains(members, member =>
+			member.Member.TypeName == "System.IO.File" &&
+			member.Binding == "platform:amiga-file-exists");
+		Assert.Contains(members, member =>
+			member.Member.TypeName == "System.IO.Directory" &&
+			member.Binding == "platform:amiga-directory-exists");
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Contains("amiga-filesystem", member.RequiredFeatures);
+			Assert.Contains("managed-strings", member.RequiredFeatures);
+			Assert.Contains("native-cstrings", member.RequiredFeatures);
+			Assert.Contains("native-memory", member.RequiredFeatures);
+			Assert.Contains("ReadsNativeMemory", member.Effects);
+			Assert.Contains("WritesNativeMemory", member.Effects);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSystemExistenceRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableFileSystemExistsEntry"));
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName is "System.IO.File" or "System.IO.Directory")
+			.ToArray();
+
+		Assert.Equal(2, members.Length);
+		Assert.All(members, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Unsupported,
+			member.Status));
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSystemDeletionUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableFileSystemDeleteEntry"));
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName is "System.IO.File" or "System.IO.Directory")
+			.ToArray();
+
+		Assert.Equal(2, members.Length);
+		Assert.Contains(members, member =>
+			member.Member.TypeName == "System.IO.File" &&
+			member.Member.Name == "Delete" &&
+			member.Binding == "platform:amiga-file-delete");
+		Assert.Contains(members, member =>
+			member.Member.TypeName == "System.IO.Directory" &&
+			member.Member.Name == "Delete" &&
+			member.Binding == "platform:amiga-directory-delete");
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Equal("System.Runtime", member.Member.AssemblyName);
+			Assert.Contains("amiga-filesystem", member.RequiredFeatures);
+			Assert.Contains("managed-exceptions", member.RequiredFeatures);
+			Assert.Contains("MayThrow", member.Effects);
+		});
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSystemDeletionRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableFileSystemDeleteEntry"));
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName is "System.IO.File" or "System.IO.Directory")
+			.ToArray();
+
+		Assert.Equal(2, members.Length);
+		Assert.All(members, member => Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Unsupported,
+			member.Status));
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableDirectoryMoveUsesExactAmigaPlatformBinding()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableDirectoryMoveEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.IO.Directory" &&
+				candidate.Member.Name == "Move");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+		Assert.Equal("System.Runtime", member.Member.AssemblyName);
+		Assert.Equal("platform:amiga-directory-move", member.Binding);
+		Assert.Contains("amiga-filesystem", member.RequiredFeatures);
+		Assert.Contains("managed-strings", member.RequiredFeatures);
+		Assert.Contains("native-cstrings", member.RequiredFeatures);
+		Assert.Contains("native-memory", member.RequiredFeatures);
+		Assert.Contains("managed-exceptions", member.RequiredFeatures);
+		Assert.Contains("MayAllocate", member.Effects);
+		Assert.Contains("MayThrow", member.Effects);
+		Assert.Contains("ReadsNativeMemory", member.Effects);
+		Assert.Contains("WritesNativeMemory", member.Effects);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableDirectoryMoveRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableDirectoryMoveEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.IO.Directory" &&
+				candidate.Member.Name == "Move");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.Null(member.Binding);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileGetAttributesUsesExactAmigaPlatformBinding()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableFileGetAttributesEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.IO.File" &&
+				candidate.Member.Name == "GetAttributes");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+		Assert.Equal("System.Runtime", member.Member.AssemblyName);
+		Assert.Equal("System.IO.FileAttributes", member.Member.ReturnType);
+		Assert.Equal("platform:amiga-file-get-attributes", member.Binding);
+		Assert.Contains("amiga-filesystem", member.RequiredFeatures);
+		Assert.Contains("managed-strings", member.RequiredFeatures);
+		Assert.Contains("native-cstrings", member.RequiredFeatures);
+		Assert.Contains("native-memory", member.RequiredFeatures);
+		Assert.Contains("managed-exceptions", member.RequiredFeatures);
+		Assert.Contains("MayAllocate", member.Effects);
+		Assert.Contains("MayThrow", member.Effects);
+		Assert.Contains("ReadsNativeMemory", member.Effects);
+		Assert.Contains("WritesNativeMemory", member.Effects);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileGetAttributesRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableFileGetAttributesEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.IO.File" &&
+				candidate.Member.Name == "GetAttributes");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.Null(member.Binding);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSetAttributesUsesExactAmigaPlatformBinding()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableFileSetAttributesEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.IO.File" &&
+				candidate.Member.Name == "SetAttributes");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+		Assert.Equal("System.Runtime", member.Member.AssemblyName);
+		Assert.Equal("void", member.Member.ReturnType);
+		Assert.Equal(
+			["string", "System.IO.FileAttributes"],
+			member.Member.ParameterTypes);
+		Assert.Equal("platform:amiga-file-set-attributes", member.Binding);
+		Assert.Contains("amiga-filesystem", member.RequiredFeatures);
+		Assert.Contains("managed-strings", member.RequiredFeatures);
+		Assert.Contains("native-cstrings", member.RequiredFeatures);
+		Assert.Contains("native-memory", member.RequiredFeatures);
+		Assert.Contains("managed-exceptions", member.RequiredFeatures);
+		Assert.Contains("MayAllocate", member.Effects);
+		Assert.Contains("MayThrow", member.Effects);
+		Assert.Contains("ReadsNativeMemory", member.Effects);
+		Assert.Contains("WritesNativeMemory", member.Effects);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSetAttributesRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableFileSetAttributesEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.IO.File" &&
+				candidate.Member.Name == "SetAttributes");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.Null(member.Binding);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableEnvironmentUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableEnvironmentEntry"));
+		var members = analysis.Members
+			.Where(candidate => candidate.Member.TypeName == "System.Environment")
+			.ToDictionary(candidate => candidate.Member.Name);
+
+		var newLine = members["get_NewLine"];
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, newLine.Status);
+		Assert.Equal("System.Runtime", newLine.Member.AssemblyName);
+		Assert.Equal("string", newLine.Member.ReturnType);
+		Assert.Equal("platform:amiga-environment-new-line", newLine.Binding);
+		Assert.Contains("managed-strings", newLine.RequiredFeatures);
+		Assert.Contains("amiga-environment", newLine.RequiredFeatures);
+		Assert.Contains("ReadsManagedMemory", newLine.Effects);
+
+		var processorCount = members["get_ProcessorCount"];
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, processorCount.Status);
+		Assert.Equal("System.Runtime", processorCount.Member.AssemblyName);
+		Assert.Equal("int", processorCount.Member.ReturnType);
+		Assert.Equal(
+			"platform:amiga-environment-processor-count",
+			processorCount.Binding);
+		Assert.Equal(["amiga-environment"], processorCount.RequiredFeatures);
+		Assert.Empty(processorCount.Effects);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableEnvironmentRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableEnvironmentEntry"));
+		var members = analysis.Members
+			.Where(candidate => candidate.Member.TypeName == "System.Environment")
+			.ToArray();
+
+		Assert.Equal(2, members.Length);
+		Assert.All(
+			members,
+			member =>
+			{
+				Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+				Assert.Null(member.Binding);
+			});
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void EnvironmentContractsPreserveHostNet10Invariants()
+	{
+		Assert.NotEmpty(Environment.NewLine);
+		Assert.Equal('\n', Environment.NewLine[^1]);
+		Assert.True(Environment.ProcessorCount >= 1);
+	}
+
+	[Fact]
+	public void PortableStopwatchUsesExactAmigaPlatformBinding()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableStopwatchTimestampEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.Diagnostics.Stopwatch" &&
+				candidate.Member.Name == "GetTimestamp");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+		Assert.Equal("System.Runtime", member.Member.AssemblyName);
+		Assert.Equal("long", member.Member.ReturnType);
+		Assert.Empty(member.Member.ParameterTypes);
+		Assert.Equal("platform:amiga-stopwatch-get-timestamp", member.Binding);
+		Assert.Contains("native-memory", member.RequiredFeatures);
+		Assert.Contains("amiga-interop", member.RequiredFeatures);
+		Assert.Contains("amiga-clock", member.RequiredFeatures);
+		Assert.Contains("managed-exceptions", member.RequiredFeatures);
+		Assert.Contains("MayThrow", member.Effects);
+		Assert.Contains("ReadsNativeMemory", member.Effects);
+		Assert.Contains("WritesNativeMemory", member.Effects);
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableStopwatchRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableStopwatchTimestampEntry"));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == "System.Diagnostics.Stopwatch" &&
+				candidate.Member.Name == "GetTimestamp");
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.Null(member.Binding);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Theory]
+	[InlineData("PortableStopwatchFrequencyEntry")]
+	[InlineData("PortableStopwatchHighResolutionEntry")]
+	public void PortableStopwatchFieldsRequireAnExplicitTargetPal(string entry)
+	{
+		var exception = Assert.Throws<M68kCompilationException>(
+			() => M68kCompiler.Compile(Request(entry)));
+
+		Assert.Equal(M68kDiagnosticIds.UnsupportedInstruction, exception.DiagnosticId);
+	}
+
+	[Fact]
+	public void StopwatchContractsPreserveHostNet10Invariants()
+	{
+		var first = System.Diagnostics.Stopwatch.GetTimestamp();
+		var second = System.Diagnostics.Stopwatch.GetTimestamp();
+		Assert.True(System.Diagnostics.Stopwatch.Frequency > 0);
+		Assert.True(System.Diagnostics.Stopwatch.IsHighResolution);
+		Assert.True(second >= first);
+	}
+
+	[Fact]
+	public void PortableStopwatchInstanceUsesExactAmigaPlatformBindings()
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(
+			Request("PortableStopwatchInstanceEntry"));
+		var members = analysis.Members
+			.Where(candidate =>
+				candidate.Member.TypeName == "System.Diagnostics.Stopwatch")
+			.ToArray();
+		var expected = new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			[".ctor"] = "platform:amiga-stopwatch-ctor",
+			["Start"] = "platform:amiga-stopwatch-start",
+			["Stop"] = "platform:amiga-stopwatch-stop",
+			["Reset"] = "platform:amiga-stopwatch-reset",
+			["Restart"] = "platform:amiga-stopwatch-restart",
+			["StartNew"] = "platform:amiga-stopwatch-start-new",
+			["get_IsRunning"] = "platform:amiga-stopwatch-is-running",
+			["get_ElapsedTicks"] = "platform:amiga-stopwatch-elapsed-ticks"
+		};
+
+		foreach (var item in expected)
+		{
+			var member = Assert.Single(
+				members,
+				candidate => candidate.Member.Name == item.Key);
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status);
+			Assert.Equal(item.Value, member.Binding);
+			Assert.Contains("managed-objects", member.RequiredFeatures);
+		}
+		Assert.True(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableStopwatchInstanceRequiresAnExplicitTargetPal()
+	{
+		var analysis = M68kCompiler.AnalyzeFramework(
+			Request("PortableStopwatchInstanceEntry"));
+		var members = analysis.Members
+			.Where(candidate =>
+				candidate.Member.TypeName == "System.Diagnostics.Stopwatch")
+			.ToArray();
+
+		Assert.NotEmpty(members);
+		Assert.All(
+			members,
+			member =>
+			{
+				Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+				Assert.Null(member.Binding);
+			});
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void StopwatchInstanceContractsPreserveHostNet10Invariants()
+	{
+		var stopwatch = new System.Diagnostics.Stopwatch();
+		Assert.False(stopwatch.IsRunning);
+		Assert.Equal(0, stopwatch.ElapsedTicks);
+		stopwatch.Start();
+		stopwatch.Start();
+		Assert.True(stopwatch.IsRunning);
+		stopwatch.Stop();
+		stopwatch.Stop();
+		Assert.False(stopwatch.IsRunning);
+		Assert.True(stopwatch.ElapsedTicks >= 0);
+		stopwatch.Restart();
+		Assert.True(stopwatch.IsRunning);
+		stopwatch.Reset();
+		Assert.False(stopwatch.IsRunning);
+		Assert.Equal(0, stopwatch.ElapsedTicks);
+		var started = System.Diagnostics.Stopwatch.StartNew();
+		Assert.True(started.IsRunning);
+		started.Stop();
+		Assert.False(started.IsRunning);
+	}
+
+	[Theory]
+	[InlineData("UnsupportedFileMoveEntry", "System.IO.File", "Move")]
+	[InlineData("UnsupportedDirectoryCreateEntry", "System.IO.Directory", "CreateDirectory")]
+	public void AdjacentFileSystemApisRemainExplicitlyUnsupported(
+		string entry,
+		string typeName,
+		string memberName)
+	{
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(Request(entry));
+		var member = Assert.Single(
+			analysis.Members,
+			candidate => candidate.Member.TypeName == typeName &&
+				candidate.Member.Name == memberName);
+
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
+		Assert.Null(member.Binding);
+		Assert.False(analysis.IsCompatible);
+	}
+
+	[Fact]
+	public void PortableFileSystemExistenceFixturePreservesHostNet10Semantics()
+	{
+		const string fileName = ".coppersharp-portable-file";
+		const string directoryName = ".coppersharp-portable-directory";
+		Assert.False(File.Exists(fileName));
+		Assert.False(Directory.Exists(directoryName));
+
+		try
+		{
+			File.WriteAllBytes(fileName, [42]);
+			Directory.CreateDirectory(directoryName);
+			Assert.Equal(42, CompilerFixtures.PortableFileSystemExistsEntry());
+		}
+		finally
+		{
+			if (File.Exists(fileName))
+			{
+				File.Delete(fileName);
+			}
+			if (Directory.Exists(directoryName))
+			{
+				Directory.Delete(directoryName);
+			}
+		}
+	}
+
+	[Fact]
+	public void PortableFileSystemDeletionFixturePreservesHostNet10Semantics()
+	{
+		const string fileName = ".coppersharp-portable-file";
+		const string directoryName = ".coppersharp-portable-directory";
+		Assert.False(File.Exists(fileName));
+		Assert.False(Directory.Exists(directoryName));
+
+		try
+		{
+			File.WriteAllBytes(fileName, [42]);
+			Directory.CreateDirectory(directoryName);
+			Assert.Equal(42, CompilerFixtures.PortableFileSystemDeleteEntry());
+			Assert.False(File.Exists(fileName));
+			Assert.False(Directory.Exists(directoryName));
+			Assert.Throws<ArgumentNullException>(() => File.Delete(null!));
+			Assert.Throws<ArgumentNullException>(() => Directory.Delete(null!));
+			Assert.Throws<ArgumentException>(() => File.Delete(""));
+			Assert.Throws<ArgumentException>(() => Directory.Delete("bad\0path"));
+		}
+		finally
+		{
+			if (File.Exists(fileName))
+			{
+				File.Delete(fileName);
+			}
+			if (Directory.Exists(directoryName))
+			{
+				Directory.Delete(directoryName);
+			}
+		}
+	}
+
+	[Fact]
+	public void PortableDirectoryMoveFixturePreservesHostNet10Semantics()
+	{
+		const string directorySource = ".coppersharp-portable-directory-source";
+		const string directoryDestination = ".coppersharp-portable-directory-destination";
+		const string fileSource = ".coppersharp-portable-file-source";
+		const string fileDestination = ".coppersharp-portable-file-destination";
+
+		try
+		{
+			Directory.CreateDirectory(directorySource);
+			File.WriteAllBytes(fileSource, [42]);
+			Assert.Equal(42, CompilerFixtures.PortableDirectoryMoveEntry());
+			Assert.False(Directory.Exists(directorySource));
+			Assert.True(Directory.Exists(directoryDestination));
+			Assert.False(File.Exists(fileSource));
+			Assert.True(File.Exists(fileDestination));
+			Assert.Throws<ArgumentNullException>(() => Directory.Move(null!, "destination"));
+			Assert.Throws<ArgumentNullException>(() => Directory.Move("source", null!));
+			Assert.Throws<ArgumentException>(() => Directory.Move("", "destination"));
+			Assert.Throws<IOException>(() =>
+				Directory.Move(directoryDestination, directoryDestination));
+			Assert.Throws<DirectoryNotFoundException>(() =>
+				Directory.Move(".coppersharp-portable-missing", "destination"));
+		}
+		finally
+		{
+			if (Directory.Exists(directorySource))
+			{
+				Directory.Delete(directorySource);
+			}
+			if (Directory.Exists(directoryDestination))
+			{
+				Directory.Delete(directoryDestination);
+			}
+			if (File.Exists(fileSource))
+			{
+				File.Delete(fileSource);
+			}
+			if (File.Exists(fileDestination))
+			{
+				File.Delete(fileDestination);
+			}
+		}
+	}
+
+	[Fact]
+	public void PortableFileAttributesContractPreservesHostNet10Semantics()
+	{
+		var root = Path.Combine(
+			Path.GetTempPath(),
+			$"coppersharp-attributes-{Guid.NewGuid():N}");
+		var file = Path.Combine(root, "file");
+		var directory = Path.Combine(root, "directory");
+		Directory.CreateDirectory(root);
+		try
+		{
+			File.WriteAllBytes(file, [42]);
+			Directory.CreateDirectory(directory);
+			Assert.Equal(
+				FileAttributes.Directory,
+				File.GetAttributes(directory) & FileAttributes.Directory);
+			Assert.Equal(
+				FileAttributes.None,
+				File.GetAttributes(file) & FileAttributes.Directory);
+			File.SetAttributes(file, FileAttributes.ReadOnly | FileAttributes.Archive);
+			Assert.Equal(
+				FileAttributes.ReadOnly | FileAttributes.Archive,
+				File.GetAttributes(file) &
+					(FileAttributes.ReadOnly | FileAttributes.Archive));
+			File.SetAttributes(file, FileAttributes.Normal);
+			Assert.Equal(
+				FileAttributes.None,
+				File.GetAttributes(file) &
+					(FileAttributes.ReadOnly | FileAttributes.Archive));
+			Assert.Throws<ArgumentNullException>(() =>
+				File.GetAttributes((string)null!));
+			Assert.Throws<ArgumentException>(() => File.GetAttributes(""));
+			Assert.Throws<ArgumentNullException>(() =>
+				File.SetAttributes((string)null!, FileAttributes.Normal));
+			Assert.Throws<ArgumentException>(() =>
+				File.SetAttributes("", FileAttributes.Normal));
+			Assert.Throws<FileNotFoundException>(() =>
+				File.GetAttributes(Path.Combine(root, "missing")));
+			Assert.Throws<FileNotFoundException>(() =>
+				File.SetAttributes(
+					Path.Combine(root, "missing"),
+					FileAttributes.Normal));
+			Assert.Throws<DirectoryNotFoundException>(() =>
+				File.GetAttributes(Path.Combine(root, "missing-directory", "file")));
+		}
+		finally
+		{
+			if (File.Exists(file))
+			{
+				File.SetAttributes(file, FileAttributes.Normal);
+			}
+			if (Directory.Exists(root))
+			{
+				Directory.Delete(root, recursive: true);
+			}
+		}
 	}
 
 	[Fact]

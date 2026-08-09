@@ -47,17 +47,23 @@ internal sealed class CompilationModule : IDisposable
 	private readonly Dictionary<CilMethodIdentity, FrameworkVirtualFallback>
 		_frameworkVirtualFallbacks;
 	private readonly IReadOnlyDictionary<string, string> _managedAssemblyPaths;
+	private readonly FrameworkImplementationPackCatalog? _frameworkImplementationPack;
 	private string _assemblyName = string.Empty;
 
 	public CompilationModule(
 		string assemblyPath,
 		IReadOnlyList<IM68kExternalCallResolver>? externalCallResolvers = null,
-		IReadOnlyList<string>? managedAssemblyPaths = null)
+		IReadOnlyList<string>? managedAssemblyPaths = null,
+		FrameworkImplementationPackCatalog? frameworkImplementationPack = null)
 		: this(assemblyPath, externalCallResolvers, root: null)
 	{
 		_managedAssemblyPaths = CreateManagedAssemblyPathMap(
 			managedAssemblyPaths ?? Array.Empty<string>());
+		_frameworkImplementationPack = frameworkImplementationPack;
 	}
+
+	internal FrameworkImplementationPackCatalog? FrameworkImplementationPack =>
+		_root._frameworkImplementationPack;
 
 	private static IReadOnlyDictionary<string, string> CreateManagedAssemblyPathMap(
 		IReadOnlyList<string> paths)
@@ -114,6 +120,7 @@ internal sealed class CompilationModule : IDisposable
 			new Dictionary<CilMethodIdentity, FrameworkVirtualFallback>();
 		_managedAssemblyPaths = root?._managedAssemblyPaths ??
 			new Dictionary<string, string>(StringComparer.Ordinal);
+		_frameworkImplementationPack = root?._frameworkImplementationPack;
 		_signatureProvider = new CilSignatureTypeProvider(ResolveReferencedEnumType);
 		try
 		{

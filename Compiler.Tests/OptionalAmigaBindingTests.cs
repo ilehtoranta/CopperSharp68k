@@ -27,6 +27,7 @@ public sealed class OptionalAmigaBindingTests
 	[InlineData(typeof(XadMaster), "xadmaster.library", "_XadMasterLibraryBase")]
 	[InlineData(typeof(XpkMaster), "xpkmaster.library", "_XpkMasterLibraryBase")]
 	[InlineData(typeof(CAMD), "camd.library", "_CAMDLibraryBase")]
+	[InlineData(typeof(TimerDevice), "timer.device", "_TimerDeviceLibraryBase")]
 	public void OptionalLibrariesAreManual(Type libraryType, string name, string baseSymbol)
 	{
 		var attribute = libraryType.GetCustomAttribute<AmigaLibraryAttribute>();
@@ -42,6 +43,7 @@ public sealed class OptionalAmigaBindingTests
 	[InlineData(typeof(XadMaster), nameof(XadMaster.XadGetSystemInfo), -186)]
 	[InlineData(typeof(XpkMaster), nameof(XpkMaster.XpkPassRequest), -114)]
 	[InlineData(typeof(CAMD), nameof(CAMD.Midi2Driver), -240)]
+	[InlineData(typeof(TimerDevice), nameof(TimerDevice.ReadEClock), -60)]
 	public void OptionalLibraryVectorsUseExpectedOffsets(Type libraryType, string methodName, int offset)
 	{
 		var method = libraryType.GetMethod(methodName);

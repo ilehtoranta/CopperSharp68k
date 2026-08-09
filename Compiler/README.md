@@ -105,9 +105,12 @@ to the conservative freestanding profile; HUNK output defaults to application.
 --import platform.service=0x00F81234 --import __c68k_alloc=0x00002800
 ```
 
-The package also contains an opt-in MSBuild target. Set
-`Copper68kCompile=true`, `Copper68kEntry`, and ensure `copper68kc` is available
-on `PATH`.
+For new applications, use the `CopperSharp.Sdk` project SDK: normal build emits
+managed IL and publish uses the compiler carried by the restored package. Its
+optional `CopperSharpCompileOnBuild=true` hook requires no global tool. The
+compiler package's older `Copper68kCompile=true` build target remains only for
+projects that reference this package directly and still requires `copper68kc`
+on `PATH`; under `CopperSharp.Sdk` those properties are deprecated aliases.
 
 ## ABI
 
@@ -142,8 +145,38 @@ and `CopperSharp.Sdk.Amiga` packages.
 
 - Signed and unsigned 32-bit integer arithmetic, comparisons, conversions,
   branches, calls, locals, and arguments.
-- 64-bit integer constants, locals, returns, and register-pair import/platform
-  call parameters/results. 64-bit arithmetic and comparisons are still rejected.
+- 64-bit integer constants, locals, returns, 32-bit `conv.i8`/`conv.u8`
+  widening, register-pair managed/import/platform call parameters/results, and
+  exact parameterless `Int64`/`UInt64` decimal formatting. General 64-bit
+  arithmetic and comparisons are still rejected.
+- Exact .NET 10 `Console.Write`/`WriteLine` bindings for strings, 32/64-bit
+  integers, booleans, and characters, plus direct `Console.Read`/`ReadLine` on
+  the Amiga application PAL. Input/output use an explicit Latin-1 policy and
+  buffered DOS handles; `Console.In`/`Out`/`Error` and encoding objects remain
+  unsupported rather than exposing partial reader/writer contracts.
+- Exact .NET 10 `File.Exists(string)`, `Directory.Exists(string)`,
+  `File.Delete(string)`, non-recursive `Directory.Delete(string)`, and
+  `Directory.Move(string,string)`, plus `File.GetAttributes(string)` and
+  `File.SetAttributes(string,FileAttributes)` bindings on the independently
+  linked Amiga filesystem PAL. Paths use the declared Latin-1 policy;
+  existence, deletion, and attributes use AmigaDOS lock/examine semantics,
+  while move uses same-volume `Rename` with typed failure translation.
+  Attributes map directory/link entry types and Amiga write-denied/archive
+  protection to `Directory`, `ReparsePoint`, `ReadOnly`, and `Archive`;
+  mutation preserves unmapped Amiga protection bits and ignores defined flags
+  that cannot be represented. `File.Move`, recursive deletion, streams,
+  enumeration, and other adjacent `System.IO` APIs remain unsupported.
+- Exact .NET 10 `Environment.NewLine` and `Environment.ProcessorCount`
+  bindings in an independently linked, allocation-free Amiga environment
+  group. The declared target values are LF and one available processor;
+  adjacent environment/process/OS objects remain unsupported.
+- Exact .NET 10 `Stopwatch.GetTimestamp`, `Stopwatch.Frequency`, and
+  `Stopwatch.IsHighResolution` bindings backed by the raw Amiga
+  `timer.device` E-clock, plus the instance constructor, `Start`, `Stop`,
+  `Reset`, `Restart`, `StartNew`, `IsRunning`, and `ElapsedTicks`. The counter
+  and device-reported frequency remain coherent without timestamp scaling;
+  `Elapsed`, `ElapsedMilliseconds`, `GetElapsedTime`, and adjacent `TimeSpan`
+  APIs remain unsupported.
 - `Nullable<T>` locals for 32-bit scalar values and transparent 32-bit structs,
   including null initialization, construction, `HasValue`, `Value`, and
   `GetValueOrDefault`.

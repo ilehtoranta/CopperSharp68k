@@ -8,14 +8,7 @@
     <NoWarn>1591;1701;1702;NU1900</NoWarn>
     <PackageId>CopperSharp.Compiler</PackageId>
     <Title>CopperSharp Compiler</Title>
-    <Authors>Ilkka Lehtoranta</Authors>
     <Description>Optional closed-world CIL to Motorola 68000-family ahead-of-time compiler with Amiga HUNK and Kickstart ROM output.</Description>
-    <PackageVersion>0.1.0-preview.1</PackageVersion>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://github.com/ilehtoranta/CopperSharp68k</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/ilehtoranta/CopperSharp68k.git</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IsPackable>true</IsPackable>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

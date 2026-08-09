@@ -395,6 +395,29 @@ public sealed record M68kGcTelemetryOptions
 	public ushort IntervalTicks { get; init; }
 }
 
+/// <summary>
+/// Target-supplied managed startup and shutdown methods selected only when a
+/// particular framework feature is reachable in an application image.
+/// </summary>
+public sealed record M68kManagedLifecycleHook(
+	string RequiredFrameworkFeature,
+	string AssemblyName,
+	string InitializeMethod,
+	string ShutdownMethod);
+
+/// <summary>Stable target-package identity recorded in compiler output provenance.</summary>
+public sealed record M68kTargetContract(
+	string RuntimeIdentifier,
+	string PackageId,
+	string PackageVersion);
+
+/// <summary>
+/// Selects an explicitly supplied, fingerprinted framework implementation
+/// pack. The manifest owns artifact identity only; compiler-owned profiles
+/// decide which implementation bodies may be admitted.
+/// </summary>
+public sealed record M68kFrameworkImplementationPackOptions(string ManifestPath);
+
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
@@ -405,6 +428,28 @@ public sealed record M68kCompilationRequest
 	/// compilation graph. Other references remain metadata-only platform dependencies.
 	/// </summary>
 	public IReadOnlyList<string> ManagedAssemblyPaths { get; init; } = Array.Empty<string>();
+
+	/// <summary>
+	/// Optional pinned framework implementation pack. Implementation assemblies
+	/// are isolated from <see cref="ManagedAssemblyPaths"/> and never become
+	/// general managed-reference candidates.
+	/// </summary>
+	public M68kFrameworkImplementationPackOptions? FrameworkImplementationPack { get; init; }
+
+	/// <summary>
+	/// Target-managed lifecycle hooks. Hooks are pay-for-play and run only for
+	/// <see cref="M68kRuntimeProfile.Application"/> when their required framework
+	/// feature is reachable. Initialization follows declaration order; shutdown
+	/// runs in reverse order and must be idempotent and non-throwing.
+	/// </summary>
+	public IReadOnlyList<M68kManagedLifecycleHook> ManagedLifecycleHooks { get; init; } =
+		Array.Empty<M68kManagedLifecycleHook>();
+
+	/// <summary>
+	/// Target-package identity written to the linker map. Platform wrappers set
+	/// this value; direct compiler use falls back to the generic compiler target.
+	/// </summary>
+	public M68kTargetContract? TargetContract { get; init; }
 
 	/// <summary>
 	/// Entry selector in <c>Namespace.Type::Method</c> form. When omitted, exactly one
@@ -503,7 +548,8 @@ public sealed class M68kCompilationResult
 		IReadOnlyList<Backend.M68kTerminalDeadStoreStatistics>
 			terminalDeadStoreStatistics,
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
-		IReadOnlyList<string> frameworkFeatures)
+		IReadOnlyList<string> frameworkFeatures,
+		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		Image = image;
 		Code = code;
@@ -516,6 +562,7 @@ public sealed class M68kCompilationResult
 		TerminalDeadStoreStatistics = terminalDeadStoreStatistics;
 		LoopFootprints = loopFootprints;
 		FrameworkFeatures = frameworkFeatures;
+		FrameworkAnalysis = frameworkAnalysis;
 	}
 
 	public byte[] Image { get; }
@@ -542,6 +589,9 @@ public sealed class M68kCompilationResult
 
 	/// <summary>Independently linked framework/runtime capabilities.</summary>
 	public IReadOnlyList<string> FrameworkFeatures { get; }
+
+	/// <summary>The exact closed-world framework analysis reused by this compilation.</summary>
+	public M68kFrameworkAnalysisResult FrameworkAnalysis { get; }
 
 	internal IReadOnlyList<Backend.M68kMethodAllocationStatistics>
 		AllocationStatistics { get; }

@@ -379,10 +379,17 @@ internal sealed class FrameworkArrayShape : IEquatable<FrameworkArrayShape>
 internal enum FrameworkBindingKind
 {
 	ManagedBody,
+	PinnedManagedBody,
 	ShadowMethod,
 	Intrinsic,
 	PlatformOperation,
 	Unsupported
+}
+
+internal enum FrameworkTypeInitializerPolicy
+{
+	Implementation,
+	TargetOwned
 }
 
 [Flags]
@@ -411,16 +418,33 @@ internal readonly record struct FrameworkFeature(string Name)
 
 	public static FrameworkFeature Spans { get; } = new("spans");
 
+	public static FrameworkFeature ManagedMemory { get; } = new("managed-memory");
+
 	public static FrameworkFeature ManagedArrays { get; } = new("managed-arrays");
 
 	public static FrameworkFeature ManagedCollections { get; } =
 		new("managed-collections");
+
+	public static FrameworkFeature Linq { get; } = new("linq");
 
 	public static FrameworkFeature ManagedGc { get; } = new("managed-gc");
 
 	public static FrameworkFeature NativeMemory { get; } = new("native-memory");
 
 	public static FrameworkFeature AmigaInterop { get; } = new("amiga-interop");
+
+	public static FrameworkFeature AmigaConsole { get; } = new("amiga-console");
+
+	public static FrameworkFeature AmigaConsoleInput { get; } =
+		new("amiga-console-input");
+
+	public static FrameworkFeature AmigaFileSystem { get; } =
+		new("amiga-filesystem");
+
+	public static FrameworkFeature AmigaEnvironment { get; } =
+		new("amiga-environment");
+
+	public static FrameworkFeature AmigaClock { get; } = new("amiga-clock");
 
 	public static FrameworkFeature ManagedExceptions { get; } = new("managed-exceptions");
 
@@ -455,7 +479,9 @@ internal sealed record FrameworkBinding(
 	string? Reason = null,
 	string? SuggestedAlternative = null,
 	FrameworkShadowMethod? ShadowMethod = null,
-	bool PreservesVirtualDispatch = false)
+	bool PreservesVirtualDispatch = false,
+	FrameworkTypeInitializerPolicy TypeInitializerPolicy =
+		FrameworkTypeInitializerPolicy.Implementation)
 {
 	public bool IsAccepted => Kind != FrameworkBindingKind.Unsupported;
 }
@@ -464,3 +490,17 @@ internal sealed record FrameworkShadowMethod(
 	string AssemblyName,
 	string TypeName,
 	string MethodName);
+
+/// <summary>
+/// Exact source framework field mapped to private target-owned static storage.
+/// This is intentionally separate from method binding: field CIL has no call
+/// site that can be represented by <see cref="FrameworkBinding"/>.
+/// </summary>
+internal sealed record FrameworkShadowFieldBinding(
+	string SourceAssemblyName,
+	string SourceTypeName,
+	string SourceFieldName,
+	string SourceFieldType,
+	string ShadowAssemblyName,
+	string ShadowTypeName,
+	string ShadowFieldName);

@@ -15,7 +15,8 @@ internal static class FrameworkReachabilityAnalyzer
 		CompilationModule module,
 		CilMethod entry,
 		IReadOnlyList<CilExport> exports,
-		ManagedPoolRuntimeModule? managedPoolRuntime)
+		ManagedPoolRuntimeModule? managedPoolRuntime,
+		IEnumerable<CilMethod>? additionalRoots = null)
 	{
 		var contract = Net10FrameworkContract.Default;
 		var members = new Dictionary<MemberObservationKey, MemberAccumulator>();
@@ -37,6 +38,10 @@ internal static class FrameworkReachabilityAnalyzer
 			{
 				EnqueueRoot(method);
 			}
+		}
+		foreach (var root in additionalRoots ?? Array.Empty<CilMethod>())
+		{
+			EnqueueRoot(root);
 		}
 
 	ProcessPending:
@@ -151,6 +156,7 @@ internal static class FrameworkReachabilityAnalyzer
 						"intrinsic:nullable-ctor:",
 						StringComparison.Ordinal) != true &&
 					!IsSpanValueConstructor(target?.ImportName) &&
+					!IsMemoryValueConstructor(target?.ImportName) &&
 					(target?.Definition is null ||
 					 !module.IsValueTypeConstructor(target.Definition)) &&
 					(description is not null || target?.Definition is not null))
@@ -270,7 +276,8 @@ internal static class FrameworkReachabilityAnalyzer
 				.ThenBy(static site => site.IlOffset)
 				.ThenBy(static site => site.Kind, StringComparer.Ordinal)
 				.ThenBy(static site => site.AllocatedType, StringComparer.Ordinal)
-				.ToArray());
+				.ToArray(),
+			module.FrameworkImplementationPack?.Provenance);
 	}
 
 	private static void EnqueueTargets(
@@ -359,6 +366,14 @@ internal static class FrameworkReachabilityAnalyzer
 		IsSpanByrefConstructor(importName) ||
 		importName?.StartsWith(
 			"intrinsic:span-from-pointer:",
+			StringComparison.Ordinal) == true;
+
+	private static bool IsMemoryValueConstructor(string? importName) =>
+		importName?.StartsWith(
+			"intrinsic:memory-from-array",
+			StringComparison.Ordinal) == true ||
+		importName?.StartsWith(
+			"intrinsic:readonly-memory-from-array",
 			StringComparison.Ordinal) == true;
 
 	private static bool RequiresVirtualDispatch(CilInstruction instruction, CilMethod method) =>

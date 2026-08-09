@@ -12,6 +12,26 @@ public sealed record M68kFrameworkContract(
 	string ReferencePackVersion,
 	int ManifestSchemaVersion);
 
+/// <summary>Exact identity of one verified framework implementation assembly.</summary>
+public sealed record M68kFrameworkImplementationAssemblyProvenance(
+	string Name,
+	string Version,
+	string PublicKeyToken,
+	Guid Mvid,
+	string Sha256);
+
+/// <summary>Verified framework implementation input used by one analysis.</summary>
+public sealed record M68kFrameworkImplementationPackProvenance(
+	int ManifestSchemaVersion,
+	string PackId,
+	string PackVersion,
+	string RuntimeIdentifier,
+	string TargetFramework,
+	string ReferencePack,
+	string ReferencePackVersion,
+	string ImplementationProfile,
+	IReadOnlyList<M68kFrameworkImplementationAssemblyProvenance> Assemblies);
+
 /// <summary>Compatibility disposition for one reachable framework member.</summary>
 public enum M68kFrameworkCompatibilityStatus
 {
@@ -78,16 +98,24 @@ public sealed class M68kFrameworkAnalysisResult
 	internal M68kFrameworkAnalysisResult(
 		M68kFrameworkContract contract,
 		IReadOnlyList<M68kFrameworkMemberAnalysis> members,
-		IReadOnlyList<M68kManagedAllocationSite> managedAllocationSites)
+		IReadOnlyList<M68kManagedAllocationSite> managedAllocationSites,
+		M68kFrameworkImplementationPackProvenance? implementationPack = null)
 	{
 		Contract = contract;
 		Members = members;
 		ManagedAllocationSites = managedAllocationSites;
+		ImplementationPack = implementationPack;
 	}
 
 	public M68kFrameworkContract Contract { get; }
 
 	public IReadOnlyList<M68kFrameworkMemberAnalysis> Members { get; }
+
+	/// <summary>
+	/// Verified implementation input used by this analysis, or <see langword="null"/>
+	/// when framework bodies came only from compiler-owned intrinsics, PALs, and shadows.
+	/// </summary>
+	public M68kFrameworkImplementationPackProvenance? ImplementationPack { get; }
 
 	/// <summary>
 	/// Reachable <c>newobj</c> and <c>newarr</c> instructions that allocate on

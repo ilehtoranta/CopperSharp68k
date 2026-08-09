@@ -8,13 +8,23 @@ using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Framework;
 
+internal enum FrameworkDefaultEqualityKind
+{
+	Unsupported,
+	SealedObjectEquals,
+	SealedIEquatable
+}
+
 internal readonly record struct FrameworkBindingContext(
 	string TypeName,
 	MethodSignature<CilType> CilSignature,
 	CilType? ConstructedDeclaringType,
 	bool IsSupportedNullableType,
 	IReadOnlyList<CilType>? MethodTypeArguments = null,
-	IReadOnlyList<bool?>? MethodTypeArgumentContainsReferences = null);
+	IReadOnlyList<bool?>? MethodTypeArgumentContainsReferences = null,
+	FrameworkDefaultEqualityKind DefaultEqualityKind =
+		FrameworkDefaultEqualityKind.Unsupported,
+	IReadOnlyList<bool?>? DeclaringTypeArgumentContainsReferences = null);
 
 internal static class FrameworkBindingRegistry
 {
@@ -24,6 +34,12 @@ internal static class FrameworkBindingRegistry
 		FrameworkTypeId.Primitive("System.Boolean");
 	private static readonly FrameworkTypeId Int32 =
 		FrameworkTypeId.Primitive("System.Int32");
+	private static readonly FrameworkTypeId UInt32 =
+		FrameworkTypeId.Primitive("System.UInt32");
+	private static readonly FrameworkTypeId Int64 =
+		FrameworkTypeId.Primitive("System.Int64");
+	private static readonly FrameworkTypeId UInt64 =
+		FrameworkTypeId.Primitive("System.UInt64");
 	private static readonly FrameworkTypeId Char =
 		FrameworkTypeId.Primitive("System.Char");
 	private static readonly FrameworkTypeId Object =
@@ -32,20 +48,88 @@ internal static class FrameworkBindingRegistry
 		FrameworkTypeId.Primitive("System.String");
 	private static readonly FrameworkTypeId FrameworkStringComparison =
 		Named("System.Runtime", "System.StringComparison");
+	private static readonly FrameworkTypeId FileAttributes =
+		Named("System.Runtime", "System.IO.FileAttributes");
+	private static readonly FrameworkTypeId Stopwatch =
+		Named("System.Runtime", "System.Diagnostics.Stopwatch");
 	private static readonly FrameworkTypeId GenericType0 =
 		FrameworkTypeId.GenericTypeParameter(0);
+	private static readonly FrameworkTypeId GenericType1 =
+		FrameworkTypeId.GenericTypeParameter(1);
 	private static readonly FrameworkTypeId GenericMethod0 =
 		FrameworkTypeId.GenericMethodParameter(0);
+	private static readonly FrameworkTypeId GenericMethod1 =
+		FrameworkTypeId.GenericMethodParameter(1);
 	private static readonly FrameworkTypeId NullableDefinition =
 		Named("System.Runtime", "System.Nullable`1");
 	private static readonly FrameworkTypeId ListDefinition =
 		Named("System.Collections", "System.Collections.Generic.List`1");
+	private static readonly FrameworkTypeId DictionaryDefinition =
+		Named("System.Collections", "System.Collections.Generic.Dictionary`2");
+	private static readonly FrameworkTypeId DictionaryValueCollectionDefinition =
+		FrameworkTypeId.Named(
+			"System.Collections",
+			"ValueCollection",
+			DictionaryDefinition);
+	private static readonly FrameworkTypeId EqualityComparerDefinition =
+		Named("System.Collections", "System.Collections.Generic.EqualityComparer`1");
+	private static readonly FrameworkTypeId EqualityComparerInterfaceDefinition =
+		Named("System.Runtime", "System.Collections.Generic.IEqualityComparer`1");
+	private static readonly FrameworkTypeId EquatableDefinition =
+		Named("System.Runtime", "System.IEquatable`1");
+	private static readonly FrameworkTypeId ListEnumeratorDefinition =
+		FrameworkTypeId.Named(
+			"System.Collections",
+			"Enumerator",
+			ListDefinition);
 	private static readonly FrameworkTypeId SpanDefinition =
 		Named("System.Runtime", "System.Span`1");
 	private static readonly FrameworkTypeId SpanOfChar =
 		FrameworkTypeId.GenericInstantiation(SpanDefinition, [Char]);
 	private static readonly FrameworkTypeId ReadOnlySpanDefinition =
 		Named("System.Runtime", "System.ReadOnlySpan`1");
+	private static readonly FrameworkTypeId MemoryDefinition =
+		Named("System.Runtime", "System.Memory`1");
+	private static readonly FrameworkTypeId ReadOnlyMemoryDefinition =
+		Named("System.Runtime", "System.ReadOnlyMemory`1");
+	private static readonly FrameworkTypeId EnumerableDefinition =
+		Named("System.Linq", "System.Linq.Enumerable");
+	private static readonly FrameworkTypeId EnumerableInterfaceDefinition =
+		Named("System.Runtime", "System.Collections.Generic.IEnumerable`1");
+	private static readonly FrameworkTypeId EnumeratorInterfaceDefinition =
+		Named("System.Runtime", "System.Collections.Generic.IEnumerator`1");
+	private static readonly FrameworkTypeId NonGenericEnumeratorInterface =
+		Named("System.Runtime", "System.Collections.IEnumerator");
+	private static readonly FrameworkTypeId OrderedEnumerableInterfaceDefinition =
+		Named("System.Linq", "System.Linq.IOrderedEnumerable`1");
+	private static readonly FrameworkTypeId EnumerableOfInt32 =
+		FrameworkTypeId.GenericInstantiation(
+			Named("System.Runtime", "System.Collections.Generic.IEnumerable`1"),
+			[Int32]);
+	private static readonly FrameworkTypeId EnumerableOfGenericMethod0 =
+		FrameworkTypeId.GenericInstantiation(
+			Named("System.Runtime", "System.Collections.Generic.IEnumerable`1"),
+			[GenericMethod0]);
+	private static readonly FrameworkTypeId EnumerableOfGenericMethod1 =
+		FrameworkTypeId.GenericInstantiation(
+			Named("System.Runtime", "System.Collections.Generic.IEnumerable`1"),
+			[GenericMethod1]);
+	private static readonly FrameworkTypeId OrderedEnumerableOfGenericMethod0 =
+		FrameworkTypeId.GenericInstantiation(
+			OrderedEnumerableInterfaceDefinition,
+			[GenericMethod0]);
+	private static readonly FrameworkTypeId FuncOfGenericMethod0And1 =
+		FrameworkTypeId.GenericInstantiation(
+			Named("System.Runtime", "System.Func`2"),
+			[GenericMethod0, GenericMethod1]);
+	private static readonly FrameworkTypeId FuncOfGenericMethod0AndBoolean =
+		FrameworkTypeId.GenericInstantiation(
+			Named("System.Runtime", "System.Func`2"),
+			[GenericMethod0, Boolean]);
+	private static readonly FrameworkTypeId FuncOfGenericMethod0AndInt32 =
+		FrameworkTypeId.GenericInstantiation(
+			Named("System.Runtime", "System.Func`2"),
+			[GenericMethod0, Int32]);
 	private static readonly FrameworkTypeId ReadOnlySpanOfChar =
 		FrameworkTypeId.GenericInstantiation(ReadOnlySpanDefinition, [Char]);
 	private static readonly FrameworkTypeId ReadOnlySpanOfGenericMethod0 =
@@ -79,9 +163,34 @@ internal static class FrameworkBindingRegistry
 			return nullable;
 		}
 
+		if (TryBindEquatable(member) is { } equatable)
+		{
+			return equatable;
+		}
+
+		if (TryBindEqualityComparerInterface(member, context) is { } comparerInterface)
+		{
+			return comparerInterface;
+		}
+
+		if (TryBindEqualityComparer(member, context) is { } equalityComparer)
+		{
+			return equalityComparer;
+		}
+
 		if (TryBindList(member, context) is { } list)
 		{
 			return list;
+		}
+
+		if (TryBindDictionary(member, context) is { } dictionary)
+		{
+			return dictionary;
+		}
+
+		if (TryBindListEnumerator(member, context) is { } listEnumerator)
+		{
+			return listEnumerator;
 		}
 
 		if (TryBindSpan(member, context) is { } span)
@@ -94,9 +203,29 @@ internal static class FrameworkBindingRegistry
 			return readOnlySpan;
 		}
 
+		if (TryBindMemory(member, context) is { } memory)
+		{
+			return memory;
+		}
+
+		if (TryBindReadOnlyMemory(member, context) is { } readOnlyMemory)
+		{
+			return readOnlyMemory;
+		}
+
 		if (TryBindMemoryExtensions(member, context) is { } memoryExtensions)
 		{
 			return memoryExtensions;
+		}
+
+		if (TryBindEnumerable(member, context) is { } enumerable)
+		{
+			return enumerable;
+		}
+
+		if (TryBindOrderedEnumerationInterfaces(member, context) is { } orderedEnumeration)
+		{
+			return orderedEnumeration;
 		}
 
 		if (TryBindRuntimeHelpers(member, context) is { } runtimeHelpers)
@@ -110,6 +239,200 @@ internal static class FrameworkBindingRegistry
 		}
 
 		return TryBindCompilerIntrinsic(member, context);
+	}
+
+	public static FrameworkShadowFieldBinding? TryBindReadOnlyStaticField(
+		string assemblyName,
+		string typeName,
+		string fieldName,
+		CilType fieldType)
+	{
+		if (!string.Equals(assemblyName, "System.Runtime", StringComparison.Ordinal) ||
+			!string.Equals(typeName, "System.Diagnostics.Stopwatch", StringComparison.Ordinal))
+		{
+			return null;
+		}
+
+		var expectedType = fieldName switch
+		{
+			"Frequency" => "long",
+			"IsHighResolution" => "bool",
+			_ => null
+		};
+		if (expectedType is null ||
+			!string.Equals(fieldType.DisplayName, expectedType, StringComparison.Ordinal))
+		{
+			return null;
+		}
+
+		return new FrameworkShadowFieldBinding(
+			assemblyName,
+			typeName,
+			fieldName,
+			expectedType,
+			"CopperSharp.Runtime.AmigaPal",
+			fieldName == "Frequency"
+				? "CopperSharp.Runtime.AmigaPal.StopwatchFrequencyField"
+				: "CopperSharp.Runtime.AmigaPal.StopwatchHighResolutionField",
+			fieldName);
+	}
+
+	private static FrameworkBinding? TryBindEquatable(FrameworkMemberId member)
+	{
+		if (member.DeclaringType is not
+			{
+				Kind: FrameworkTypeKind.GenericInstantiation,
+				GenericArguments: [_]
+			} ||
+			!member.DeclaringType.ElementType!.Equals(EquatableDefinition) ||
+			member.MethodTypeArguments.Length != 0 ||
+			member.Name != "Equals" ||
+			!member.Signature.IsInstance ||
+			!SignatureEquals(member, Boolean, GenericType0))
+		{
+			return null;
+		}
+
+		return new FrameworkBinding(
+			member,
+			FrameworkBindingKind.ManagedBody,
+			"managed:closed-world-sealed-equatable-dispatch",
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.MayCollect |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory,
+				FrameworkFeature.ManagedObjects,
+				FrameworkFeature.ManagedGc));
+	}
+
+	private static FrameworkBinding? TryBindEqualityComparer(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
+			!member.DeclaringType.ElementType!.Equals(EqualityComparerDefinition) ||
+			member.DeclaringType.GenericArguments.Length != 1 ||
+			member.MethodTypeArguments.Length != 0 ||
+			context.ConstructedDeclaringType is not
+			{
+				GenericArguments: [var element]
+			} ||
+			!IsSupportedPublicEqualityComparerElement(element, context))
+		{
+			return null;
+		}
+
+		var comparerType = FrameworkTypeId.GenericInstantiation(
+			EqualityComparerDefinition,
+			[GenericType0]);
+		if (member.Name == ".ctor" && SignatureEquals(member, Void))
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:object-ctor",
+				Effects(
+					FrameworkEffects.None,
+					FrameworkFeature.ManagedObjects));
+		}
+
+		var shadow = new FrameworkShadowMethod(
+			"CopperSharp.Runtime.Managed",
+			"CopperSharp.Runtime.ShadowEqualityComparer`1",
+			member.Name == "get_Default" ? "GetDefault" : "Equals");
+		if (member.Name == "get_Default" &&
+			!member.Signature.IsInstance &&
+			member.Signature.GenericParameterCount == 0 &&
+			member.Signature.RequiredParameterCount == 0 &&
+			member.Signature.ReturnType.Equals(comparerType))
+		{
+			return Shadow(
+				member,
+				shadow,
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.MayCollect |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.WritesManagedMemory,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.ManagedGc));
+		}
+		if (member.Name == "Equals" &&
+			SignatureEquals(member, Boolean, GenericType0, GenericType0))
+		{
+			return Shadow(
+				member,
+				shadow,
+				Effects(
+					FrameworkEffects.None,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.ManagedGc),
+				preservesVirtualDispatch: true);
+		}
+		if (member.Name == "GetHashCode" &&
+			SignatureEquals(member, Int32, GenericType0))
+		{
+			return Shadow(
+				member,
+				new FrameworkShadowMethod(
+					shadow.AssemblyName,
+					shadow.TypeName,
+					"GetHashCode"),
+				Effects(
+					FrameworkEffects.None,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.ManagedGc),
+				preservesVirtualDispatch: true);
+		}
+
+		return null;
+	}
+
+	private static FrameworkBinding? TryBindEqualityComparerInterface(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
+			!member.DeclaringType.ElementType!.Equals(
+				EqualityComparerInterfaceDefinition) ||
+			member.DeclaringType.GenericArguments.Length != 1 ||
+			member.MethodTypeArguments.Length != 0 ||
+			context.ConstructedDeclaringType is not
+			{
+				GenericArguments: [var element]
+			} ||
+			!IsSupportedPublicEqualityComparerElement(element, context))
+		{
+			return null;
+		}
+
+		var methodName = member.Name switch
+		{
+			"Equals" when SignatureEquals(
+				member,
+				Boolean,
+				GenericType0,
+				GenericType0) => "Equals",
+			"GetHashCode" when SignatureEquals(
+				member,
+				Int32,
+				GenericType0) => "GetHashCode",
+			_ => null
+		};
+		return methodName is null
+			? null
+			: Shadow(
+				member,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.Managed",
+					"CopperSharp.Runtime.IShadowEqualityComparer`1",
+					methodName),
+				Effects(
+					FrameworkEffects.None,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.ManagedGc));
 	}
 
 	private static FrameworkBinding? TryBindDefaultInterpolatedStringHandler(
@@ -213,6 +536,303 @@ internal static class FrameworkBindingRegistry
 				FrameworkFeature.Spans));
 	}
 
+	private static FrameworkBinding? TryBindEnumerable(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (!member.DeclaringType.Equals(EnumerableDefinition))
+		{
+			return null;
+		}
+
+		string? shadowName = null;
+		if (member.Name == "Range" &&
+			member.MethodTypeArguments.Length == 0 &&
+			member.Signature.Header == 0x00 &&
+			member.Signature.GenericParameterCount == 0 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(EnumerableOfInt32) &&
+			member.Signature.ParameterTypes.SequenceEqual([Int32, Int32]))
+		{
+			shadowName = "Range";
+		}
+		else if (member.Name == "Repeat" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [var repeatElement] &&
+			IsSupportedEnumerableElement(repeatElement) &&
+			GenericStaticSignatureEquals(
+				member,
+				EnumerableOfGenericMethod0,
+				GenericMethod0,
+				Int32))
+		{
+			shadowName = "Repeat";
+		}
+		else if (member.Name == "Select" &&
+			member.MethodTypeArguments is [_, _] &&
+			context.MethodTypeArguments is [var sourceElement, var resultElement] &&
+			sourceElement.DisplayName == "int" &&
+			resultElement.DisplayName == "int" &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 2 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(EnumerableOfGenericMethod1) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[EnumerableOfGenericMethod0, FuncOfGenericMethod0And1]))
+		{
+			shadowName = "Select";
+		}
+		else if (member.Name == "Where" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [{ DisplayName: "int" }] &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 1 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(EnumerableOfGenericMethod0) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[EnumerableOfGenericMethod0, FuncOfGenericMethod0AndBoolean]))
+		{
+			shadowName = "Where";
+		}
+		else if (member.Name == "Take" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [{ DisplayName: "int" }] &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 1 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(EnumerableOfGenericMethod0) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[EnumerableOfGenericMethod0, Int32]))
+		{
+			shadowName = "Take";
+		}
+		else if (member.Name == "Any" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [{ DisplayName: "int" }] &&
+			GenericStaticSignatureEquals(
+				member,
+				Boolean,
+				EnumerableOfGenericMethod0))
+		{
+			shadowName = "Any";
+		}
+		else if (member.Name == "Any" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [{ DisplayName: "int" }] &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 1 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(Boolean) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[EnumerableOfGenericMethod0, FuncOfGenericMethod0AndBoolean]))
+		{
+			shadowName = "AnyPredicate";
+		}
+		else if (member.Name == "Sum" &&
+			member.MethodTypeArguments.Length == 0 &&
+			member.Signature.Header == 0x00 &&
+			member.Signature.GenericParameterCount == 0 &&
+			member.Signature.RequiredParameterCount == 1 &&
+			member.Signature.ReturnType.Equals(Int32) &&
+			member.Signature.ParameterTypes.SequenceEqual([EnumerableOfInt32]))
+		{
+			shadowName = "Sum";
+		}
+		else if (member.Name == "Sum" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [var sumElement] &&
+			(sumElement.DisplayName == "int" ||
+			 (sumElement.Kind == CilTypeKind.ValueType &&
+			  context.MethodTypeArgumentContainsReferences is [false])) &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 1 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(Int32) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[EnumerableOfGenericMethod0, FuncOfGenericMethod0AndInt32]))
+		{
+			shadowName = "SumSelector";
+		}
+		else if (member.Name == "OrderBy" &&
+			member.MethodTypeArguments is [_, _] &&
+			context.MethodTypeArguments is
+			[
+				{ Kind: CilTypeKind.ValueType },
+				{ DisplayName: "int" }
+			] &&
+			context.MethodTypeArgumentContainsReferences is [false, false] &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 2 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(OrderedEnumerableOfGenericMethod0) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[EnumerableOfGenericMethod0, FuncOfGenericMethod0And1]))
+		{
+			shadowName = "OrderBy";
+		}
+		else if (member.Name == "ThenBy" &&
+			member.MethodTypeArguments is [_, _] &&
+			context.MethodTypeArguments is
+			[
+				{ Kind: CilTypeKind.ValueType },
+				{ DisplayName: "int" }
+			] &&
+			context.MethodTypeArgumentContainsReferences is [false, false] &&
+			member.Signature.Header == 0x10 &&
+			member.Signature.GenericParameterCount == 2 &&
+			member.Signature.RequiredParameterCount == 2 &&
+			member.Signature.ReturnType.Equals(OrderedEnumerableOfGenericMethod0) &&
+			member.Signature.ParameterTypes.SequenceEqual(
+				[OrderedEnumerableOfGenericMethod0, FuncOfGenericMethod0And1]))
+		{
+			shadowName = "ThenBy";
+		}
+		else if (member.Name == "ToArray" &&
+			member.MethodTypeArguments is [_] &&
+			context.MethodTypeArguments is [var arrayElement] &&
+			IsSupportedEnumerableElement(arrayElement) &&
+			GenericStaticSignatureEquals(
+				member,
+				FrameworkTypeId.SzArray(GenericMethod0),
+				EnumerableOfGenericMethod0))
+		{
+			shadowName = "ToArray";
+		}
+
+		if (shadowName is null)
+		{
+			return null;
+		}
+
+		var effects = FrameworkEffects.MayAllocate |
+			FrameworkEffects.MayThrow |
+			FrameworkEffects.MayCollect |
+			FrameworkEffects.ReadsManagedMemory |
+			FrameworkEffects.WritesManagedMemory;
+		var features = shadowName is "Select" or "Where" or "AnyPredicate" or
+			"SumSelector" or "OrderBy" or "ThenBy"
+			? new[]
+			{
+				FrameworkFeature.Linq,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc,
+				FrameworkFeature.Delegates
+			}
+			: new[]
+			{
+				FrameworkFeature.Linq,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc
+			};
+		return Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowEnumerable",
+				shadowName),
+			Effects(effects, features));
+	}
+
+	private static FrameworkBinding? TryBindOrderedEnumerationInterfaces(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		FrameworkShadowMethod? target = null;
+		var effects = FrameworkEffects.MayThrow |
+			FrameworkEffects.ReadsManagedMemory;
+		if (member.DeclaringType.Kind == FrameworkTypeKind.GenericInstantiation &&
+			member.DeclaringType.ElementType!.Equals(EnumerableInterfaceDefinition) &&
+			member.DeclaringType.GenericArguments.Length == 1 &&
+			member.MethodTypeArguments.Length == 0 &&
+			context.ConstructedDeclaringType is
+			{
+				GenericArguments: [{ Kind: CilTypeKind.ValueType }]
+			} &&
+			context.DeclaringTypeArgumentContainsReferences is [false] &&
+			member.Name == "GetEnumerator" &&
+			SignatureEquals(
+				member,
+				FrameworkTypeId.GenericInstantiation(
+					EnumeratorInterfaceDefinition,
+					[GenericType0])))
+		{
+			target = new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowOrderedEnumerable`1",
+				"GetEnumerator");
+			effects |= FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayCollect |
+				FrameworkEffects.WritesManagedMemory;
+		}
+		else if (member.DeclaringType.Equals(NonGenericEnumeratorInterface) &&
+			member.MethodTypeArguments.Length == 0 &&
+			member.Name == "MoveNext" &&
+			SignatureEquals(member, Boolean))
+		{
+			target = new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowOrderedEnumeratorBase",
+				"MoveNext");
+			effects |= FrameworkEffects.WritesManagedMemory;
+		}
+		else if (member.DeclaringType.Kind == FrameworkTypeKind.GenericInstantiation &&
+			member.DeclaringType.ElementType!.Equals(EnumeratorInterfaceDefinition) &&
+			member.DeclaringType.GenericArguments.Length == 1 &&
+			member.MethodTypeArguments.Length == 0 &&
+			context.ConstructedDeclaringType is
+			{
+				GenericArguments: [{ Kind: CilTypeKind.ValueType }]
+			} &&
+			context.DeclaringTypeArgumentContainsReferences is [false] &&
+			member.Name == "get_Current" &&
+			SignatureEquals(member, GenericType0))
+		{
+			target = new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowOrderedEnumerator`1",
+				"get_Current");
+		}
+
+		return target is null
+			? null
+			: Shadow(
+				member,
+				target,
+				Effects(
+					effects,
+					FrameworkFeature.Linq,
+					FrameworkFeature.ManagedArrays,
+					FrameworkFeature.ManagedGc));
+	}
+
+	public static FrameworkBinding BindOrderedEnumeratorDispose(
+		FrameworkMemberId member) =>
+		Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowOrderedEnumeratorBase",
+				"Dispose"),
+			Effects(
+				FrameworkEffects.None,
+				FrameworkFeature.Linq,
+				FrameworkFeature.ManagedGc));
+
+	private static bool IsSupportedEnumerableElement(CilType element) =>
+		element.IsSupportedScalar &&
+		element.Kind is not CilTypeKind.ManagedPointer and
+			not CilTypeKind.GenericParameter;
+
+	private static bool GenericStaticSignatureEquals(
+		FrameworkMemberId member,
+		FrameworkTypeId returnType,
+		params FrameworkTypeId[] parameterTypes) =>
+		member.Signature.Header == 0x10 &&
+		member.Signature.GenericParameterCount == 1 &&
+		member.Signature.RequiredParameterCount == parameterTypes.Length &&
+		member.Signature.ReturnType.Equals(returnType) &&
+		member.Signature.ParameterTypes.SequenceEqual(parameterTypes);
+
 	private static FrameworkBinding? TryBindRuntimeHelpers(
 		FrameworkMemberId member,
 		FrameworkBindingContext context)
@@ -253,6 +873,15 @@ internal static class FrameworkBindingRegistry
 				FrameworkEffects.ReadsManagedMemory,
 				FrameworkFeature.Delegates));
 
+	public static FrameworkBinding BindListEnumeratorDispose(
+		FrameworkMemberId member) =>
+		Intrinsic(
+			member,
+			"intrinsic:list-enumerator-dispose",
+			Effects(
+				FrameworkEffects.None,
+				FrameworkFeature.ManagedCollections));
+
 	private static FrameworkBinding? TryBindDelegate(
 		FrameworkMemberId member,
 		FrameworkBindingContext context)
@@ -291,7 +920,9 @@ internal static class FrameworkBindingRegistry
 					FrameworkFeature.ManagedGc));
 		}
 
-		if (member.Name == "Invoke" && context.CilSignature.Header.IsInstance)
+		if (member.Name == "Invoke" &&
+			context.CilSignature.Header.IsInstance &&
+			IsSupportedDelegateInvokeShape(metadataName, context))
 		{
 			return Intrinsic(
 				member,
@@ -304,10 +935,560 @@ internal static class FrameworkBindingRegistry
 		return null;
 	}
 
+	private static bool IsSupportedDelegateInvokeShape(
+		string metadataName,
+		FrameworkBindingContext context)
+	{
+		var arguments = context.ConstructedDeclaringType?.GenericArguments ?? [];
+		if (metadataName == "System.Func`1" &&
+			arguments is [{ DisplayName: "int" }])
+		{
+			return true;
+		}
+		if (metadataName == "System.Func`2" &&
+			arguments is [{ DisplayName: "int" }, { DisplayName: "int" or "bool" }])
+		{
+			return true;
+		}
+		if (metadataName == "System.Action`1" &&
+			arguments is [{ DisplayName: "int" }])
+		{
+			return true;
+		}
+
+		return metadataName == "System.Func`2" &&
+			arguments is [{ Kind: CilTypeKind.ValueType }, { DisplayName: "int" }] &&
+			context.DeclaringTypeArgumentContainsReferences is [false, false];
+	}
+
 	private static IReadOnlyDictionary<FrameworkMemberId, FrameworkBinding>
 		CreateFrameworkBindings()
 	{
 		var bindings = new Dictionary<FrameworkMemberId, FrameworkBinding>();
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Console",
+				"System.Console",
+				"Write",
+				isInstance: false,
+				Void,
+				String),
+			"platform:amiga-console-write",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ConsolePal",
+				"Write"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaConsole,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Console",
+				"System.Console",
+				"WriteLine",
+				isInstance: false,
+				Void,
+				String),
+			"platform:amiga-console-write-line",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ConsolePal",
+				"WriteLine"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaConsole,
+				FrameworkFeature.ManagedExceptions));
+		foreach (var (memberName, parameterType, target) in new[]
+		{
+			("Write", Int32, "platform:amiga-console-write-int32"),
+			("Write", UInt32, "platform:amiga-console-write-uint32"),
+			("Write", Int64, "platform:amiga-console-write-int64"),
+			("Write", UInt64, "platform:amiga-console-write-uint64"),
+			("WriteLine", Int32, "platform:amiga-console-write-line-int32"),
+			("WriteLine", UInt32, "platform:amiga-console-write-line-uint32"),
+			("WriteLine", Int64, "platform:amiga-console-write-line-int64"),
+			("WriteLine", UInt64, "platform:amiga-console-write-line-uint64")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Console",
+					"System.Console",
+					memberName,
+					isInstance: false,
+					Void,
+					parameterType),
+				target,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ConsolePal",
+					memberName),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.IntegerFormatting,
+					FrameworkFeature.Numerics,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaConsole,
+					FrameworkFeature.ManagedExceptions));
+		}
+		foreach (var (memberName, target) in new[]
+		{
+			("Write", "platform:amiga-console-write-boolean"),
+			("WriteLine", "platform:amiga-console-write-line-boolean")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Console",
+					"System.Console",
+					memberName,
+					isInstance: false,
+					Void,
+					Boolean),
+				target,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ConsolePal",
+					memberName),
+				Effects(
+					FrameworkEffects.MayThrow |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaConsole,
+					FrameworkFeature.ManagedExceptions));
+		}
+		foreach (var (memberName, target) in new[]
+		{
+			("Write", "platform:amiga-console-write-char"),
+			("WriteLine", "platform:amiga-console-write-line-char")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Console",
+					"System.Console",
+					memberName,
+					isInstance: false,
+					Void,
+					Char),
+				target,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ConsolePal",
+					memberName),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaConsole,
+					FrameworkFeature.ManagedExceptions));
+		}
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Console",
+				"System.Console",
+				"Read",
+				isInstance: false,
+				Int32),
+			"platform:amiga-console-read",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ConsolePal",
+				"Read"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaConsole,
+				FrameworkFeature.AmigaConsoleInput,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Console",
+				"System.Console",
+				"ReadLine",
+				isInstance: false,
+				String),
+			"platform:amiga-console-read-line",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ConsolePal",
+				"ReadLine"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.MayCollect |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaConsole,
+				FrameworkFeature.AmigaConsoleInput,
+				FrameworkFeature.ManagedExceptions));
+		foreach (var (typeName, memberName, target, shadowMethod) in new[]
+		{
+			("System.IO.File", "Exists", "platform:amiga-file-exists", "FileExists"),
+			("System.IO.Directory", "Exists", "platform:amiga-directory-exists", "DirectoryExists")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					typeName,
+					memberName,
+					isInstance: false,
+					Boolean,
+					String),
+				target,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.FileSystemPal",
+					shadowMethod),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.ReadsNativeMemory |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.ManagedStrings,
+					FrameworkFeature.NativeCStrings,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaFileSystem,
+					FrameworkFeature.ManagedExceptions));
+		}
+		foreach (var (typeName, target, shadowMethod) in new[]
+		{
+			("System.IO.File", "platform:amiga-file-delete", "DeleteFile"),
+			("System.IO.Directory", "platform:amiga-directory-delete", "DeleteDirectory")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					typeName,
+					"Delete",
+					isInstance: false,
+					Void,
+					String),
+				target,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.FileSystemPal",
+					shadowMethod),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.ReadsNativeMemory |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.ManagedStrings,
+					FrameworkFeature.NativeCStrings,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaFileSystem,
+					FrameworkFeature.ManagedExceptions));
+		}
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.IO.Directory",
+				"Move",
+				isInstance: false,
+				Void,
+				String,
+				String),
+			"platform:amiga-directory-move",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.FileSystemPal",
+				"MoveDirectory"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.NativeCStrings,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaFileSystem,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.IO.File",
+				"GetAttributes",
+				isInstance: false,
+				FileAttributes,
+				String),
+			"platform:amiga-file-get-attributes",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.FileSystemPal",
+				"GetFileAttributes"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.NativeCStrings,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaFileSystem,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.IO.File",
+				"SetAttributes",
+				isInstance: false,
+				Void,
+				String,
+				FileAttributes),
+			"platform:amiga-file-set-attributes",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.FileSystemPal",
+				"SetFileAttributes"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.NativeCStrings,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaFileSystem,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Environment",
+				"get_NewLine",
+				isInstance: false,
+				String),
+			"platform:amiga-environment-new-line",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.EnvironmentPal",
+				"GetNewLine"),
+			Effects(
+				FrameworkEffects.ReadsManagedMemory,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.AmigaEnvironment));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Environment",
+				"get_ProcessorCount",
+				isInstance: false,
+				Int32),
+			"platform:amiga-environment-processor-count",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.EnvironmentPal",
+				"GetProcessorCount"),
+			Effects(
+				FrameworkEffects.None,
+				FrameworkFeature.AmigaEnvironment));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"GetTimestamp",
+				isInstance: false,
+				Int64),
+			"platform:amiga-stopwatch-get-timestamp",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ClockPal",
+				"GetTimestamp"),
+			Effects(
+				FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaClock,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				".ctor",
+				isInstance: true,
+				Void),
+			"platform:amiga-stopwatch-ctor",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"Initialize"),
+			Effects(
+				FrameworkEffects.None,
+				FrameworkFeature.ManagedObjects));
+		foreach (var (memberName, targetName, shadowName) in new[]
+		{
+			("Start", "platform:amiga-stopwatch-start", "Start"),
+			("Stop", "platform:amiga-stopwatch-stop", "Stop"),
+			("Restart", "platform:amiga-stopwatch-restart", "Restart")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					"System.Diagnostics.Stopwatch",
+					memberName,
+					isInstance: true,
+					Void),
+				targetName,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+					shadowName),
+				Effects(
+					FrameworkEffects.MayThrow |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.WritesManagedMemory |
+						FrameworkEffects.ReadsNativeMemory |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaClock,
+					FrameworkFeature.ManagedExceptions));
+		}
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"Reset",
+				isInstance: true,
+				Void),
+			"platform:amiga-stopwatch-reset",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"Reset"),
+			Effects(
+				FrameworkEffects.WritesManagedMemory,
+				FrameworkFeature.ManagedObjects));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"StartNew",
+				isInstance: false,
+				Stopwatch),
+			"platform:amiga-stopwatch-start-new",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"StartNew"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayCollect |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedObjects,
+				FrameworkFeature.ManagedGc,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaClock,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"get_IsRunning",
+				isInstance: true,
+				Boolean),
+			"platform:amiga-stopwatch-is-running",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"GetIsRunning"),
+			Effects(
+				FrameworkEffects.ReadsManagedMemory,
+				FrameworkFeature.ManagedObjects));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"get_ElapsedTicks",
+				isInstance: true,
+				Int64),
+			"platform:amiga-stopwatch-elapsed-ticks",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"GetElapsedTicks"),
+			Effects(
+				FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.ManagedObjects,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaClock,
+				FrameworkFeature.ManagedExceptions));
 		AddManagedBody(
 			bindings,
 			Member(
@@ -723,7 +1904,9 @@ internal static class FrameworkBindingRegistry
 		foreach (var (typeName, shadowType) in new[]
 		{
 			("System.Int32", "CopperSharp.Runtime.ShadowInt32"),
-			("System.UInt32", "CopperSharp.Runtime.ShadowUInt32")
+			("System.UInt32", "CopperSharp.Runtime.ShadowUInt32"),
+			("System.Int64", "CopperSharp.Runtime.ShadowInt64"),
+			("System.UInt64", "CopperSharp.Runtime.ShadowUInt64")
 		})
 		{
 			AddShadow(
@@ -744,8 +1927,15 @@ internal static class FrameworkBindingRegistry
 						FrameworkEffects.MayCollect |
 						FrameworkEffects.WritesManagedMemory,
 					FrameworkFeature.IntegerFormatting,
-						FrameworkFeature.ManagedStrings,
-						FrameworkFeature.Numerics));
+					FrameworkFeature.ManagedStrings,
+					FrameworkFeature.Numerics));
+		}
+		foreach (var (typeName, shadowType) in new[]
+		{
+			("System.Int32", "CopperSharp.Runtime.ShadowInt32"),
+			("System.UInt32", "CopperSharp.Runtime.ShadowUInt32")
+		})
+		{
 			AddShadow(
 				bindings,
 				Member(
@@ -848,7 +2038,8 @@ internal static class FrameworkBindingRegistry
 			{
 				GenericArguments: [var element]
 			} ||
-			!element.IsSupportedScalar ||
+			(!element.IsSupportedScalar &&
+			 !IsSupportedNullableListEqualityElement(element)) ||
 			element.Kind is CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter)
 		{
 			return null;
@@ -857,10 +2048,120 @@ internal static class FrameworkBindingRegistry
 		var shadowName = member.Name switch
 		{
 			".ctor" when SignatureEquals(member, Void) => ".ctor",
+			".ctor" when SignatureEquals(member, Void, Int32) => ".ctor",
 			"Add" when SignatureEquals(member, Void, GenericType0) => "Add",
+			"Clear" when SignatureEquals(member, Void) => "Clear",
+			"Contains" when IsSupportedListEqualityElement(element, context) &&
+				SignatureEquals(member, Boolean, GenericType0) => "Contains",
+			"get_Capacity" when SignatureEquals(member, Int32) => "get_Capacity",
 			"get_Count" when SignatureEquals(member, Int32) => "get_Count",
 			"get_Item" when SignatureEquals(member, GenericType0, Int32) => "get_Item",
+			"IndexOf" when IsSupportedListEqualityElement(element, context) &&
+				SignatureEquals(member, Int32, GenericType0) => "IndexOf",
+			"Remove" when IsSupportedListEqualityElement(element, context) &&
+				SignatureEquals(member, Boolean, GenericType0) => "Remove",
+			"RemoveAt" when SignatureEquals(member, Void, Int32) => "RemoveAt",
+			"set_Capacity" when SignatureEquals(member, Void, Int32) => "set_Capacity",
 			"set_Item" when SignatureEquals(member, Void, Int32, GenericType0) => "set_Item",
+			"GetEnumerator" when SignatureEquals(
+				member,
+				FrameworkTypeId.GenericInstantiation(
+					ListEnumeratorDefinition,
+					[GenericType0])) => "GetEnumerator",
+			"ToArray" when SignatureEquals(
+				member,
+				FrameworkTypeId.SzArray(GenericType0)) => "ToArray",
+			_ => null
+		};
+		if (shadowName is null)
+		{
+			return null;
+		}
+
+		var effects = member.Name switch
+		{
+			".ctor" when member.Signature.ParameterTypes.Length == 0 =>
+				FrameworkEffects.WritesManagedMemory,
+			".ctor" => FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.MayCollect |
+				FrameworkEffects.WritesManagedMemory,
+			"Add" => FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.MayCollect |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory,
+			"Clear" => FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory,
+			"get_Capacity" or "get_Count" =>
+				FrameworkEffects.ReadsManagedMemory,
+			"Contains" or "IndexOf" => FrameworkEffects.ReadsManagedMemory,
+			"Remove" => FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory,
+			"GetEnumerator" => FrameworkEffects.ReadsManagedMemory,
+			"get_Item" => FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory,
+			"set_Capacity" or "ToArray" => FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.MayCollect |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory,
+			_ => FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory
+		};
+		return Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowList`1",
+				shadowName),
+			Effects(
+				effects,
+				FrameworkFeature.ManagedCollections,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc));
+	}
+
+	private static FrameworkBinding? TryBindDictionary(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
+			!member.DeclaringType.ElementType!.Equals(DictionaryDefinition) ||
+			member.DeclaringType.GenericArguments.Length != 2 ||
+			member.MethodTypeArguments.Length != 0 ||
+			context.ConstructedDeclaringType is not
+			{
+				GenericArguments: [var key, var value]
+			} ||
+			!IsSupportedDictionaryKey(key) ||
+			!IsSupportedDictionaryValue(value, context))
+		{
+			return null;
+		}
+
+		var shadowName = member.Name switch
+		{
+			".ctor" when SignatureEquals(member, Void) => ".ctor",
+			"Add" when SignatureEquals(member, Void, GenericType0, GenericType1) => "Add",
+			"get_Count" when SignatureEquals(member, Int32) => "get_Count",
+			"get_Values" when SignatureEquals(
+				member,
+				FrameworkTypeId.GenericInstantiation(
+					DictionaryValueCollectionDefinition,
+					[GenericType0, GenericType1])) => "get_Values",
+			"get_Item" when SignatureEquals(member, GenericType1, GenericType0) => "get_Item",
+			"set_Item" when SignatureEquals(
+				member,
+				Void,
+				GenericType0,
+				GenericType1) => "set_Item",
+			"TryGetValue" when SignatureEquals(
+				member,
+				Boolean,
+				GenericType0,
+				FrameworkTypeId.ByReference(GenericType1)) => "TryGetValue",
 			_ => null
 		};
 		if (shadowName is null)
@@ -871,15 +2172,20 @@ internal static class FrameworkBindingRegistry
 		var effects = member.Name switch
 		{
 			".ctor" => FrameworkEffects.WritesManagedMemory,
-			"Add" => FrameworkEffects.MayAllocate |
+			"get_Count" => FrameworkEffects.ReadsManagedMemory,
+			"get_Values" => FrameworkEffects.MayAllocate |
 				FrameworkEffects.MayThrow |
 				FrameworkEffects.MayCollect |
 				FrameworkEffects.ReadsManagedMemory |
 				FrameworkEffects.WritesManagedMemory,
-			"get_Count" => FrameworkEffects.ReadsManagedMemory,
+			"TryGetValue" => FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory,
 			"get_Item" => FrameworkEffects.MayThrow |
 				FrameworkEffects.ReadsManagedMemory,
-			_ => FrameworkEffects.MayThrow |
+			_ => FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.MayCollect |
 				FrameworkEffects.ReadsManagedMemory |
 				FrameworkEffects.WritesManagedMemory
 		};
@@ -887,7 +2193,111 @@ internal static class FrameworkBindingRegistry
 			member,
 			new FrameworkShadowMethod(
 				"CopperSharp.Runtime.Managed",
-				"CopperSharp.Runtime.ShadowList`1",
+				"CopperSharp.Runtime.ShadowDictionary`2",
+				shadowName),
+			Effects(
+				effects,
+				FrameworkFeature.ManagedCollections,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc));
+	}
+
+	private static bool IsSupportedDictionaryKey(CilType key) =>
+		(IsIntegralListEqualityElement(key) || IsStringListEqualityElement(key)) &&
+		key.Kind is not (CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter);
+
+	private static bool IsSupportedDictionaryValue(
+		CilType value,
+		FrameworkBindingContext context) =>
+		((IsIntegralListEqualityElement(value) || IsStringListEqualityElement(value)) &&
+		 value.Kind is not (CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter)) ||
+		(value.Kind == CilTypeKind.ValueType &&
+		 context.DeclaringTypeArgumentContainsReferences is [_, false]);
+
+	private static bool IsIntegralListEqualityElement(CilType element) =>
+		element.Kind is
+			CilTypeKind.Boolean or
+			CilTypeKind.Character or
+			CilTypeKind.SignedInteger or
+			CilTypeKind.UnsignedInteger or
+			CilTypeKind.NativeInteger;
+
+	private static bool IsStringListEqualityElement(CilType element) =>
+		element.Kind == CilTypeKind.ManagedReference &&
+		element.DisplayName == "string";
+
+	private static bool IsFloatingPointListEqualityElement(CilType element) =>
+		element.IsFloatingPoint && element.Size is 4 or 8;
+
+	private static bool IsSupportedPublicEqualityComparerElement(
+		CilType element,
+		FrameworkBindingContext context) =>
+		IsIntegralListEqualityElement(element) ||
+		IsFloatingPointListEqualityElement(element) ||
+		IsStringListEqualityElement(element) ||
+		IsSupportedNullableListEqualityElement(element) ||
+		context.DefaultEqualityKind is
+			FrameworkDefaultEqualityKind.SealedObjectEquals or
+			FrameworkDefaultEqualityKind.SealedIEquatable;
+
+	private static bool IsSupportedNullableListEqualityElement(CilType element) =>
+		element.NullableElementType is { } nullableElement &&
+		IsIntegralListEqualityElement(nullableElement) &&
+		nullableElement.Size == 4;
+
+	private static bool IsSupportedListEqualityElement(
+		CilType element,
+		FrameworkBindingContext context) =>
+		IsIntegralListEqualityElement(element) ||
+		IsFloatingPointListEqualityElement(element) ||
+		IsStringListEqualityElement(element) ||
+		IsSupportedNullableListEqualityElement(element) ||
+		context.DefaultEqualityKind is
+			FrameworkDefaultEqualityKind.SealedObjectEquals or
+			FrameworkDefaultEqualityKind.SealedIEquatable;
+
+	private static FrameworkBinding? TryBindListEnumerator(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
+			!member.DeclaringType.ElementType!.Equals(ListEnumeratorDefinition) ||
+			member.DeclaringType.GenericArguments.Length != 1 ||
+			member.MethodTypeArguments.Length != 0 ||
+			context.ConstructedDeclaringType is not
+			{
+				GenericArguments: [var element]
+			} ||
+			!element.IsSupportedScalar ||
+			element.Kind is CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter)
+		{
+			return null;
+		}
+
+		var shadowName = member.Name switch
+		{
+			"MoveNext" when SignatureEquals(member, Boolean) => "MoveNext",
+			"get_Current" when SignatureEquals(member, GenericType0) => "get_Current",
+			"Dispose" when SignatureEquals(member, Void) => "Dispose",
+			_ => null
+		};
+		if (shadowName is null)
+		{
+			return null;
+		}
+
+		var effects = member.Name == "MoveNext"
+			? FrameworkEffects.MayThrow |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory
+			: member.Name == "get_Current"
+				? FrameworkEffects.ReadsManagedMemory
+				: FrameworkEffects.None;
+		return Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowListEnumerator`1",
 				shadowName),
 			Effects(
 				effects,
@@ -1141,6 +2551,260 @@ internal static class FrameworkBindingRegistry
 				: Effects(effects, FrameworkFeature.Spans, FrameworkFeature.ManagedArrays));
 	}
 
+	private static FrameworkBinding? TryBindMemory(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (!TryGetMemoryElement(
+				member,
+				context,
+				MemoryDefinition,
+				out var element))
+		{
+			return null;
+		}
+
+		var signature = context.CilSignature;
+		var target = member.Name switch
+		{
+			".ctor" when
+				signature.Header.IsInstance &&
+				IsElementArrayParameter(signature, element) =>
+					$"intrinsic:memory-from-array:{element.DisplayName}",
+			".ctor" when
+				signature.Header.IsInstance &&
+				IsElementArrayRangeParameters(signature, element) =>
+					$"intrinsic:memory-from-array-range:{element.DisplayName}",
+			"op_Implicit" when
+				!signature.Header.IsInstance &&
+				IsElementArrayParameter(signature, element) &&
+				signature.ReturnType.DisplayName ==
+					context.ConstructedDeclaringType!.DisplayName =>
+					$"intrinsic:memory-from-array:{element.DisplayName}",
+			"op_Implicit" when
+				!signature.Header.IsInstance &&
+				signature.ParameterTypes is
+				[
+					{
+						Kind: CilTypeKind.ValueType,
+						GenericArguments: [var sourceElement]
+					} source
+				] &&
+				source.DisplayName.StartsWith(
+					"System.Memory`1<",
+					StringComparison.Ordinal) &&
+				sourceElement.Equals(element) &&
+				signature.ReturnType.DisplayName.StartsWith(
+					"System.ReadOnlyMemory`1<",
+					StringComparison.Ordinal) =>
+					$"intrinsic:readonly-memory-from-memory:{element.DisplayName}",
+			"get_Length" when IsMemoryScalarGetter(signature, "int") =>
+				$"intrinsic:memory-length:{element.DisplayName}",
+			"get_IsEmpty" when IsMemoryScalarGetter(signature, "bool") =>
+				$"intrinsic:memory-is-empty:{element.DisplayName}",
+			"Slice" when IsMemorySlice(signature, context, withLength: false) =>
+				$"intrinsic:memory-slice-start:{element.DisplayName}",
+			"Slice" when IsMemorySlice(signature, context, withLength: true) =>
+				$"intrinsic:memory-slice-range:{element.DisplayName}",
+			"get_Span" when
+				IsMemorySpanGetter(signature, element, readOnly: false) =>
+					$"intrinsic:span-from-memory:{element.DisplayName}",
+			"CopyTo" when IsMemoryCopy(signature, element, returnsBoolean: false) =>
+				$"intrinsic:memory-copy-to:{element.DisplayName}",
+			"TryCopyTo" when IsMemoryCopy(signature, element, returnsBoolean: true) =>
+				$"intrinsic:memory-try-copy-to:{element.DisplayName}",
+			_ => null
+		};
+		return CreateMemoryBinding(member, target);
+	}
+
+	private static FrameworkBinding? TryBindReadOnlyMemory(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (!TryGetMemoryElement(
+				member,
+				context,
+				ReadOnlyMemoryDefinition,
+				out var element))
+		{
+			return null;
+		}
+
+		var signature = context.CilSignature;
+		var target = member.Name switch
+		{
+			".ctor" when
+				signature.Header.IsInstance &&
+				IsElementArrayParameter(signature, element) =>
+					$"intrinsic:readonly-memory-from-array:{element.DisplayName}",
+			".ctor" when
+				signature.Header.IsInstance &&
+				IsElementArrayRangeParameters(signature, element) =>
+					$"intrinsic:readonly-memory-from-array-range:{element.DisplayName}",
+			"op_Implicit" when
+				!signature.Header.IsInstance &&
+				IsElementArrayParameter(signature, element) &&
+				signature.ReturnType.DisplayName ==
+					context.ConstructedDeclaringType!.DisplayName =>
+					$"intrinsic:readonly-memory-from-array:{element.DisplayName}",
+			"get_Length" when IsMemoryScalarGetter(signature, "int") =>
+				$"intrinsic:readonly-memory-length:{element.DisplayName}",
+			"get_IsEmpty" when IsMemoryScalarGetter(signature, "bool") =>
+				$"intrinsic:readonly-memory-is-empty:{element.DisplayName}",
+			"Slice" when IsMemorySlice(signature, context, withLength: false) =>
+				$"intrinsic:readonly-memory-slice-start:{element.DisplayName}",
+			"Slice" when IsMemorySlice(signature, context, withLength: true) =>
+				$"intrinsic:readonly-memory-slice-range:{element.DisplayName}",
+			"get_Span" when
+				IsMemorySpanGetter(signature, element, readOnly: true) =>
+					$"intrinsic:readonly-span-from-memory:{element.DisplayName}",
+			"CopyTo" when IsMemoryCopy(signature, element, returnsBoolean: false) =>
+				$"intrinsic:readonly-memory-copy-to:{element.DisplayName}",
+			"TryCopyTo" when IsMemoryCopy(signature, element, returnsBoolean: true) =>
+				$"intrinsic:readonly-memory-try-copy-to:{element.DisplayName}",
+			_ => null
+		};
+		return CreateMemoryBinding(member, target);
+	}
+
+	private static bool TryGetMemoryElement(
+		FrameworkMemberId member,
+		FrameworkBindingContext context,
+		FrameworkTypeId definition,
+		out CilType element)
+	{
+		element = null!;
+		if (member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
+			!member.DeclaringType.ElementType!.Equals(definition) ||
+			member.DeclaringType.GenericArguments.Length != 1 ||
+			member.MethodTypeArguments.Length != 0 ||
+			context.ConstructedDeclaringType is not
+			{
+				GenericArguments: [var candidate]
+			} ||
+			!candidate.IsSupportedScalar ||
+			candidate.Kind is CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter)
+		{
+			return false;
+		}
+
+		element = candidate;
+		return true;
+	}
+
+	private static bool IsElementArrayParameter(
+		MethodSignature<CilType> signature,
+		CilType element) =>
+		signature.ParameterTypes is
+		[
+			{
+				Kind: CilTypeKind.ManagedReference,
+				ElementType: { } arrayElement
+			}
+		] &&
+		arrayElement.Equals(element);
+
+	private static bool IsElementArrayRangeParameters(
+		MethodSignature<CilType> signature,
+		CilType element) =>
+		signature.ParameterTypes is
+		[
+			{
+				Kind: CilTypeKind.ManagedReference,
+				ElementType: { } arrayElement
+			},
+			{ DisplayName: "int" },
+			{ DisplayName: "int" }
+		] &&
+		arrayElement.Equals(element);
+
+	private static bool IsMemoryScalarGetter(
+		MethodSignature<CilType> signature,
+		string returnType) =>
+		signature.Header.IsInstance &&
+		signature.ParameterTypes.Length == 0 &&
+		signature.ReturnType.DisplayName == returnType;
+
+	private static bool IsMemorySlice(
+		MethodSignature<CilType> signature,
+		FrameworkBindingContext context,
+		bool withLength) =>
+		signature.Header.IsInstance &&
+		signature.ReturnType.DisplayName ==
+			context.ConstructedDeclaringType!.DisplayName &&
+		(withLength
+			? signature.ParameterTypes is
+				[{ DisplayName: "int" }, { DisplayName: "int" }]
+			: signature.ParameterTypes is [{ DisplayName: "int" }]);
+
+	private static bool IsMemorySpanGetter(
+		MethodSignature<CilType> signature,
+		CilType element,
+		bool readOnly) =>
+		signature.Header.IsInstance &&
+		signature.ParameterTypes.Length == 0 &&
+		signature.ReturnType.Kind == CilTypeKind.ValueType &&
+		signature.ReturnType.GenericArguments is [var resultElement] &&
+		resultElement.Equals(element) &&
+		signature.ReturnType.DisplayName.StartsWith(
+			readOnly ? "System.ReadOnlySpan`1<" : "System.Span`1<",
+			StringComparison.Ordinal);
+
+	private static bool IsMemoryCopy(
+		MethodSignature<CilType> signature,
+		CilType element,
+		bool returnsBoolean) =>
+		signature.Header.IsInstance &&
+		signature.ParameterTypes is
+		[
+			{
+				Kind: CilTypeKind.ValueType,
+				GenericArguments: [var destinationElement]
+			} destination
+		] &&
+		destination.DisplayName.StartsWith(
+			"System.Memory`1<",
+			StringComparison.Ordinal) &&
+		destinationElement.Equals(element) &&
+		signature.ReturnType.DisplayName == (returnsBoolean ? "bool" : "void");
+
+	private static FrameworkBinding? CreateMemoryBinding(
+		FrameworkMemberId member,
+		string? target)
+	{
+		if (target is null)
+		{
+			return null;
+		}
+
+		var isCopy = target.Contains("memory-copy-to:", StringComparison.Ordinal) ||
+			target.Contains("memory-try-copy-to:", StringComparison.Ordinal);
+		var effects = isCopy
+			? FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory |
+				(target.Contains("try-copy", StringComparison.Ordinal)
+					? FrameworkEffects.None
+					: FrameworkEffects.MayThrow)
+			: target.Contains("-range:", StringComparison.Ordinal) ||
+				target.Contains("-slice-", StringComparison.Ordinal)
+					? FrameworkEffects.MayThrow | FrameworkEffects.ReadsManagedMemory
+					: FrameworkEffects.ReadsManagedMemory;
+		var features = target.Contains("span-from-memory:", StringComparison.Ordinal) || isCopy
+			? Effects(
+				effects,
+				FrameworkFeature.ManagedMemory,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc,
+				FrameworkFeature.Spans)
+			: Effects(
+				effects,
+				FrameworkFeature.ManagedMemory,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc);
+		return Intrinsic(member, target, features);
+	}
+
 	private static FrameworkBinding? TryBindCompilerIntrinsic(
 		FrameworkMemberId member,
 		FrameworkBindingContext context)
@@ -1148,6 +2812,298 @@ internal static class FrameworkBindingRegistry
 		var typeName = context.TypeName;
 		var name = member.Name;
 		var signature = context.CilSignature;
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DefaultEquals" &&
+			context.MethodTypeArguments is [var element] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "bool",
+				ParameterTypes: [var left, var right]
+			} &&
+			left.DisplayName == element.DisplayName &&
+			right.DisplayName == element.DisplayName)
+		{
+			if (IsIntegralListEqualityElement(element))
+			{
+				return Intrinsic(
+					member,
+					$"intrinsic:runtime-integral-equals:{element.Size * 8}",
+					FrameworkEffectSummary.None);
+			}
+			if (IsFloatingPointListEqualityElement(element))
+			{
+				return Intrinsic(
+					member,
+					$"intrinsic:runtime-floating-equals:{element.Size * 8}",
+					FrameworkEffectSummary.None);
+			}
+			if (IsStringListEqualityElement(element))
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:string-equality",
+					Effects(
+						FrameworkEffects.ReadsManagedMemory,
+						FrameworkFeature.ManagedStrings));
+			}
+			if (IsSupportedNullableListEqualityElement(element))
+			{
+				return Shadow(
+					member,
+					new FrameworkShadowMethod(
+						"CopperSharp.Runtime.Managed",
+						"CopperSharp.Runtime.ShadowObject",
+						"DefaultEqualsNullable"),
+					Effects(
+						FrameworkEffects.None,
+						FrameworkFeature.NullableValues));
+			}
+			if (context.DefaultEqualityKind == FrameworkDefaultEqualityKind.SealedObjectEquals)
+			{
+				return Shadow(
+					member,
+					new FrameworkShadowMethod(
+						"CopperSharp.Runtime.Managed",
+						"CopperSharp.Runtime.ShadowObject",
+						"DefaultEqualsObject"),
+					Effects(
+						FrameworkEffects.MayAllocate |
+							FrameworkEffects.MayThrow |
+							FrameworkEffects.MayCollect |
+							FrameworkEffects.ReadsManagedMemory |
+							FrameworkEffects.WritesManagedMemory,
+						FrameworkFeature.ManagedObjects,
+						FrameworkFeature.ManagedGc));
+			}
+			if (context.DefaultEqualityKind == FrameworkDefaultEqualityKind.SealedIEquatable)
+			{
+				return Shadow(
+					member,
+					new FrameworkShadowMethod(
+						"CopperSharp.Runtime.Managed",
+						"CopperSharp.Runtime.ShadowObject",
+						"DefaultEqualsEquatable"),
+					Effects(
+						FrameworkEffects.MayAllocate |
+							FrameworkEffects.MayThrow |
+							FrameworkEffects.MayCollect |
+							FrameworkEffects.ReadsManagedMemory |
+							FrameworkEffects.WritesManagedMemory,
+						FrameworkFeature.ManagedObjects,
+						FrameworkFeature.ManagedGc));
+			}
+		}
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DefaultHashCode" &&
+			context.MethodTypeArguments is [var referenceHashElement] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "int",
+				ParameterTypes: [var referenceHashValue]
+			} &&
+			referenceHashValue.DisplayName == referenceHashElement.DisplayName &&
+			context.DefaultEqualityKind is
+				FrameworkDefaultEqualityKind.SealedObjectEquals or
+				FrameworkDefaultEqualityKind.SealedIEquatable)
+		{
+			return Shadow(
+				member,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.Managed",
+					"CopperSharp.Runtime.ShadowObject",
+					"DefaultHashCodeObject"),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.MayCollect |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.WritesManagedMemory,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.ManagedGc));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DefaultHashCode" &&
+			context.MethodTypeArguments is [var nullableHashElement] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "int",
+				ParameterTypes: [var nullableHashValue]
+			} &&
+			nullableHashValue.DisplayName == nullableHashElement.DisplayName &&
+			IsSupportedNullableListEqualityElement(nullableHashElement))
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-nullable-integral-hash:32",
+				Effects(
+					FrameworkEffects.None,
+					FrameworkFeature.NullableValues));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DefaultHashCode" &&
+			context.MethodTypeArguments is [var stringHashElement] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "int",
+				ParameterTypes: [var stringHashValue]
+			} &&
+			stringHashValue.DisplayName == stringHashElement.DisplayName &&
+			IsStringListEqualityElement(stringHashElement))
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-string-hash",
+				Effects(
+					FrameworkEffects.ReadsManagedMemory,
+					FrameworkFeature.ManagedStrings));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DefaultHashCode" &&
+			context.MethodTypeArguments is [var floatingHashElement] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "int",
+				ParameterTypes: [var floatingHashValue]
+			} &&
+			floatingHashValue.DisplayName == floatingHashElement.DisplayName &&
+			IsFloatingPointListEqualityElement(floatingHashElement))
+		{
+			return Intrinsic(
+				member,
+				$"intrinsic:runtime-floating-hash:{floatingHashElement.Size * 8}",
+				FrameworkEffectSummary.None);
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DefaultHashCode" &&
+			context.MethodTypeArguments is [var hashElement] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "int",
+				ParameterTypes: [var hashValue]
+			} &&
+			hashValue.DisplayName == hashElement.DisplayName &&
+			IsIntegralListEqualityElement(hashElement))
+		{
+			return Intrinsic(
+				member,
+				$"intrinsic:runtime-integral-hash:{hashElement.Size * 8}",
+				FrameworkEffectSummary.None);
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "DictionaryKeyIsNull" &&
+			context.MethodTypeArguments is [var dictionaryKey] &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "bool",
+				ParameterTypes: [var dictionaryKeyValue]
+			} &&
+			dictionaryKeyValue.DisplayName == dictionaryKey.DisplayName &&
+			IsSupportedDictionaryKey(dictionaryKey))
+		{
+			return Intrinsic(
+				member,
+				IsStringListEqualityElement(dictionaryKey)
+					? "intrinsic:dictionary-key-is-null:reference"
+					: "intrinsic:dictionary-key-is-null:false",
+				FrameworkEffectSummary.None);
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "ReferenceAsObject" &&
+			context.MethodTypeArguments is [var referenceType] &&
+			referenceType.Kind == CilTypeKind.ManagedReference &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "object",
+				ParameterTypes: [var value]
+			} &&
+			value.DisplayName == referenceType.DisplayName)
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:ref-cast",
+				Effects(FrameworkEffects.None, FrameworkFeature.ManagedObjects));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "ReferenceAsEquatable" &&
+			context.MethodTypeArguments is [var equatableReferenceType] &&
+			equatableReferenceType.Kind == CilTypeKind.ManagedReference &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType:
+				{
+					Kind: CilTypeKind.ManagedReference,
+					GenericArguments: [var equatableElement]
+				},
+				ParameterTypes: [var equatableValue]
+			} &&
+			signature.ReturnType.DisplayName.StartsWith(
+				"System.IEquatable`1<",
+				StringComparison.Ordinal) &&
+			equatableValue.DisplayName == equatableReferenceType.DisplayName &&
+			equatableElement.DisplayName == equatableReferenceType.DisplayName)
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:ref-cast",
+				Effects(FrameworkEffects.None, FrameworkFeature.ManagedObjects));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name is "SplitInt64" or "SplitUInt64" &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "uint",
+				ParameterTypes:
+				[
+					{ Size: 8, IsSupportedScalar: true },
+					{ DisplayName: "uint&" }
+				]
+			})
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-int64-split",
+				Effects(
+					FrameworkEffects.WritesManagedMemory,
+					FrameworkFeature.Numerics));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "CombineInt64" &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ReturnType.DisplayName: "long",
+				ParameterTypes:
+				[
+					{ DisplayName: "uint" },
+					{ DisplayName: "uint" }
+				]
+			})
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-int64-combine",
+				Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		}
 
 		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
 			name == "AllocateString" &&
@@ -1231,6 +3187,72 @@ internal static class FrameworkBindingRegistry
 				return Intrinsic(
 					member,
 					"intrinsic:runtime-throw-argument-out-of-range",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowInvalidOperationException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-invalid-operation",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowIOException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-io",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowDirectoryNotFoundException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-directory-not-found",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowFileNotFoundException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-file-not-found",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowUnauthorizedAccessException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-unauthorized-access",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowKeyNotFoundException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-key-not-found",
 					Effects(
 						FrameworkEffects.MayThrow,
 						FrameworkFeature.ManagedExceptions));
@@ -1357,6 +3379,7 @@ internal static class FrameworkBindingRegistry
 			var offset = name switch
 			{
 				"GetDirEntryType" => 4,
+				"GetProtection" => 116,
 				"GetSize" => 124,
 				"GetDateDays" => 132,
 				"GetDateMinute" => 136,
@@ -1747,6 +3770,27 @@ internal static class FrameworkBindingRegistry
 		}
 	}
 
+	private static void AddPlatform(
+		IDictionary<FrameworkMemberId, FrameworkBinding> bindings,
+		FrameworkMemberId member,
+		string target,
+		FrameworkShadowMethod shadowMethod,
+		FrameworkEffectSummary effects)
+	{
+		if (!bindings.TryAdd(
+				member,
+				new FrameworkBinding(
+					member,
+					FrameworkBindingKind.PlatformOperation,
+					target,
+					effects,
+					ShadowMethod: shadowMethod)))
+		{
+			throw new InvalidOperationException(
+				$"Duplicate framework binding identity '{member.DisplayName}'.");
+		}
+	}
+
 	private static FrameworkBinding Intrinsic(
 		FrameworkMemberId member,
 		string target,
@@ -1756,13 +3800,15 @@ internal static class FrameworkBindingRegistry
 	private static FrameworkBinding Shadow(
 		FrameworkMemberId member,
 		FrameworkShadowMethod shadowMethod,
-		FrameworkEffectSummary effects) =>
+		FrameworkEffectSummary effects,
+		bool preservesVirtualDispatch = false) =>
 		new(
 			member,
 			FrameworkBindingKind.ShadowMethod,
 			$"shadow:{shadowMethod.AssemblyName}:{shadowMethod.TypeName}::{shadowMethod.MethodName}",
 			effects,
-			ShadowMethod: shadowMethod);
+			ShadowMethod: shadowMethod,
+			PreservesVirtualDispatch: preservesVirtualDispatch);
 
 	private static FrameworkEffectSummary Effects(
 		FrameworkEffects effects,

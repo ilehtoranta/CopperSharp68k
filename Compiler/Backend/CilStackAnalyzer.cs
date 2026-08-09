@@ -327,9 +327,7 @@ internal static class CilStackAnalyzer
 		{
 			var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
 			var count = ParameterSlotCount(target.Signature.ParameterTypes) +
-				(target.Signature.Header.IsInstance &&
-					(op != OpCodes.Newobj ||
-					 target.ImportName?.StartsWith("intrinsic:nullable-ctor:", StringComparison.Ordinal) == true)
+				(target.Signature.Header.IsInstance && op != OpCodes.Newobj
 					? 1
 					: 0);
 			var pushes = op == OpCodes.Newobj
@@ -549,6 +547,7 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Ldelem_U2 ||
 		op == OpCodes.Ldelem_I4 ||
 		op == OpCodes.Ldelem_U4 ||
+		op == OpCodes.Ldelem_I8 ||
 		op == OpCodes.Ldelem_I ||
 		op == OpCodes.Ldelem_Ref ||
 		op == OpCodes.Ldelem ||
@@ -590,7 +589,10 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Conv_I ||
 		op == OpCodes.Conv_U ||
 		op == OpCodes.Conv_I4 ||
+		op == OpCodes.Conv_Ovf_I4_Un ||
 		op == OpCodes.Conv_U4 ||
+		op == OpCodes.Conv_I8 ||
+		op == OpCodes.Conv_U8 ||
 		op == OpCodes.Conv_I1 ||
 		op == OpCodes.Conv_U1 ||
 		op == OpCodes.Conv_I2 ||
@@ -816,7 +818,7 @@ internal static class CilStackAnalyzer
 				comparisonKind == CilStackValueKind.Float64 ? 4 : 2), CilStackValueKind.Int32);
 		}
 
-		if (op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.And ||
+		if (op == OpCodes.Add || op == OpCodes.Add_Ovf || op == OpCodes.Sub || op == OpCodes.And ||
 			op == OpCodes.Or || op == OpCodes.Xor || op == OpCodes.Mul ||
 			op == OpCodes.Mul_Ovf || op == OpCodes.Mul_Ovf_Un ||
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
@@ -827,6 +829,10 @@ internal static class CilStackAnalyzer
 			if (arithmeticKind == CilStackValueKind.Int64)
 			{
 				throw Unsupported(method, instruction, "64-bit arithmetic and comparisons");
+			}
+			if (op == OpCodes.Add_Ovf && arithmeticKind != CilStackValueKind.Int32)
+			{
+				throw Unsupported(method, instruction, "checked addition other than signed 32-bit integers");
 			}
 			if (arithmeticKind is CilStackValueKind.Float32 or CilStackValueKind.Float64 &&
 				(op == OpCodes.And || op == OpCodes.Or || op == OpCodes.Xor ||
@@ -905,21 +911,21 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Call || op == OpCodes.Callvirt || op == OpCodes.Newobj)
 		{
 			var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
-			var count = ParameterSlotCount(target.Signature.ParameterTypes) +
-				(target.Signature.Header.IsInstance &&
-					(op != OpCodes.Newobj ||
-					 target.ImportName?.StartsWith("intrinsic:nullable-ctor:", StringComparison.Ordinal) == true)
-					? 1
-					: 0);
+				var count = ParameterSlotCount(target.Signature.ParameterTypes) +
+					(target.Signature.Header.IsInstance && op != OpCodes.Newobj
+						? 1
+						: 0);
 			var result = Pop(method, instruction, stack, count);
 			if (op == OpCodes.Newobj)
 			{
-				if (IsSpanValueConstructor(target.ImportName) &&
-					target.ConstructedDeclaringType is { } spanType)
-				{
-					return PushValue(
-						result,
-						StackKindForType(module, spanType, method.ModuleName));
+					if ((IsSpanValueConstructor(target.ImportName) ||
+						 IsMemoryValueConstructor(target.ImportName) ||
+						 target.ConstructedDeclaringType?.IsNullable == true) &&
+						target.ConstructedDeclaringType is { } constructedValueType)
+					{
+						return PushValue(
+							result,
+							StackKindForType(module, constructedValueType, method.ModuleName));
 				}
 				return Push(result, CilStackValueKind.Reference);
 			}
@@ -1000,10 +1006,12 @@ internal static class CilStackAnalyzer
 							method,
 							instruction.Offset),
 						method.ModuleName))
-				: Push(result, op == OpCodes.Ldelema
+				: PushValue(result, op == OpCodes.Ldelema
 				? CilStackValueKind.ManagedPointer
 				: op == OpCodes.Ldelem_Ref
 					? CilStackValueKind.Reference
+					: op == OpCodes.Ldelem_I8
+						? CilStackValueKind.Int64
 					: op == OpCodes.Ldelem_I1
 						? CilStackValueKind.SignedByte
 						: op == OpCodes.Ldelem_U1
@@ -1075,7 +1083,11 @@ internal static class CilStackAnalyzer
 			}
 			if (op == OpCodes.Stsfld)
 			{
-				return Pop(method, instruction, stack, 1);
+				return Pop(
+					method,
+					instruction,
+					stack,
+					SlotCount(field.Type));
 			}
 			if (op == OpCodes.Ldfld)
 			{
@@ -1087,7 +1099,11 @@ internal static class CilStackAnalyzer
 			{
 				return Push(Pop(method, instruction, stack, 1), CilStackValueKind.ManagedPointer);
 			}
-			return Pop(method, instruction, stack, 2);
+			return Pop(
+				method,
+				instruction,
+				stack,
+				1 + SlotCount(field.Type));
 		}
 
 		if (op == OpCodes.Ret)
@@ -1108,7 +1124,7 @@ internal static class CilStackAnalyzer
 				CilStackValueKind.Int64 or CilStackValueKind.Float64
 					? 2
 					: 1;
-			return Push(
+			return PushValue(
 				Pop(method, instruction, stack, inputSlots),
 				StackKindForConversion(op));
 		}
@@ -1229,7 +1245,9 @@ internal static class CilStackAnalyzer
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
-			if (IsSpanValueConstructor(target.ImportName))
+			if (IsSpanValueConstructor(target.ImportName) ||
+				IsMemoryValueConstructor(target.ImportName) ||
+				target.ConstructedDeclaringType?.IsNullable == true)
 			{
 				type = target.ConstructedDeclaringType;
 			}
@@ -1292,6 +1310,14 @@ internal static class CilStackAnalyzer
 			"intrinsic:span-from-pointer:",
 			StringComparison.Ordinal) == true;
 
+	private static bool IsMemoryValueConstructor(string? importName) =>
+		importName?.StartsWith(
+			"intrinsic:memory-from-array",
+			StringComparison.Ordinal) == true ||
+		importName?.StartsWith(
+			"intrinsic:readonly-memory-from-array",
+			StringComparison.Ordinal) == true;
+
 	private static string FormatTypedStack(
 		ImmutableArray<CilStackValueKind> stack,
 		ImmutableArray<CilAggregateStackType?> aggregateTypes)
@@ -1320,14 +1346,10 @@ internal static class CilStackAnalyzer
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
-			return ParameterSlotCount(target.Signature.ParameterTypes) +
-				(target.Signature.Header.IsInstance &&
-					(op != OpCodes.Newobj ||
-					 target.ImportName?.StartsWith(
-						"intrinsic:nullable-ctor:",
-						StringComparison.Ordinal) == true)
-					? 1
-					: 0);
+				return ParameterSlotCount(target.Signature.ParameterTypes) +
+					(target.Signature.Header.IsInstance && op != OpCodes.Newobj
+						? 1
+						: 0);
 		}
 
 		if (op == OpCodes.Initobj)
@@ -1391,6 +1413,15 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Stind_I8)
 		{
 			return 3;
+		}
+		if (op == OpCodes.Stfld || op == OpCodes.Stsfld)
+		{
+			var field = module.ResolveFieldToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			return (op == OpCodes.Stfld ? 1 : 0) +
+				SlotCount(field.Type);
 		}
 		if (IsArrayStore(op))
 		{
@@ -1616,7 +1647,9 @@ internal static class CilStackAnalyzer
 	}
 
 	private static CilStackValueKind StackKindForConversion(OpCode op) =>
-		TryGetNarrowConversionKind(op, out var kind)
+		op == OpCodes.Conv_I8 || op == OpCodes.Conv_U8
+			? CilStackValueKind.Int64
+			: TryGetNarrowConversionKind(op, out var kind)
 			? kind
 			: CilStackValueKind.Int32;
 
@@ -1649,7 +1682,7 @@ internal static class CilStackAnalyzer
 		string moduleName) =>
 		!type.IsSupportedScalar &&
 		!module.IsTransparentScalarType(type) &&
-		module.TryGetStructLayout(type, moduleName, out var layout) &&
+		module.TryGetReferenceFreeStructLayout(type, moduleName, out var layout) &&
 		layout.Size > 4
 			? CilStackValueKind.AggregateAddress
 			: StackKindForType(type);
