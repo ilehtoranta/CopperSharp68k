@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Ilkka Lehtoranta",
+  "classifications": ["Amiga", "C#", "Motorola 68k"],
+  "identity": "CopperSharp.Templates.AmigaApp",
+  "name": "CopperSharp Amiga application",
+  "shortName": "amiga",
+  "sourceName": "CopperSharpAmiga",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  },
+  "symbols": {
+    "cpu": {
+      "type": "parameter",
+      "datatype": "choice",
+      "defaultValue": "68000",
+      "description": "Motorola 68k CPU used for generated code.",
+      "replaces": "__COPPERSHARP_CPU__",
+      "choices": [
+        { "choice": "68000", "description": "MC68000 compatible output" },
+        { "choice": "68020", "description": "MC68020 output" },
+        { "choice": "68040", "description": "MC68040 output" },
+        { "choice": "68060", "description": "MC68060 output" }
+      ]
+    }
+  }
+}

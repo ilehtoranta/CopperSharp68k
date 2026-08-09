@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageType>Template</PackageType>
+    <PackageId>CopperSharp.Templates</PackageId>
+    <Title>CopperSharp project templates</Title>
+    <Description>dotnet new templates for Motorola 68k Amiga programs built with CopperSharp.</Description>
+    <PackageTags>dotnet-new;templates;amiga;m68k;cil;aot</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="AmigaApp\**\*"
+             Exclude="AmigaApp\**\bin\**;AmigaApp\**\obj\**"
+             Pack="true"
+             PackagePath="content\%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>
