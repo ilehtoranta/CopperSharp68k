@@ -60,6 +60,8 @@
            Text="CopperSharpAdditionalArguments is not accepted by the versioned publish manifest. Use the typed CopperSharp SDK properties." />
     <Error Condition="'$(Copper68kAdditionalArguments)' != ''"
            Text="Copper68kAdditionalArguments cannot be translated safely. Use typed CopperSharp SDK properties." />
+    <Error Condition="'$(CopperSharpFrameworkImplementationManifest)' != '' and !Exists('$(CopperSharpFrameworkImplementationManifest)')"
+           Text="CopperSharpFrameworkImplementationManifest names missing file '$(CopperSharpFrameworkImplementationManifest)'." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpOutputPath)'))" />
     <ItemGroup>
       <_CopperSharpManagedAssembly Include="@(ReferenceCopyLocalPaths)"
@@ -76,6 +78,8 @@
       <_CopperSharpResponseLine Include="format=$(CopperSharpOutputFormat)" />
       <_CopperSharpResponseLine Include="runtime=$(CopperSharpRuntimeProfile)" />
       <_CopperSharpResponseLine Include="compatibility-report=$(CopperSharpFrameworkReportPath)" />
+      <_CopperSharpResponseLine Include="framework-implementation-manifest=$([System.IO.Path]::GetFullPath('$(CopperSharpFrameworkImplementationManifest)'))"
+                                Condition="'$(CopperSharpFrameworkImplementationManifest)' != ''" />
       <_CopperSharpResponseLine Include="@(_CopperSharpManagedAssembly->'managed-assembly=%(FullPath)')" />
     </ItemGroup>
     <WriteLinesToFile File="$(CopperSharpResponseManifestPath)"
@@ -91,7 +95,7 @@
           AfterTargets="Publish"
           DependsOnTargets="PrepareCopperSharpPublishManifest"
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k'"
-          Inputs="$(CopperSharpResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly)"
+          Inputs="$(CopperSharpResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpFrameworkImplementationManifest)"
           Outputs="$(CopperSharpOutputPath);$(CopperSharpOutputPath).map;$(CopperSharpFrameworkReportPath)">
     <Exec Command="dotnet &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpResponseManifestPath)&quot;" />
     <ItemGroup>
@@ -110,6 +114,8 @@
            Text="CopperSharpAdditionalArguments is not accepted by the versioned build manifest. Use the typed CopperSharp SDK properties." />
     <Error Condition="'$(Copper68kAdditionalArguments)' != ''"
            Text="Copper68kAdditionalArguments cannot be translated safely. Use typed CopperSharp SDK properties." />
+    <Error Condition="'$(CopperSharpFrameworkImplementationManifest)' != '' and !Exists('$(CopperSharpFrameworkImplementationManifest)')"
+           Text="CopperSharpFrameworkImplementationManifest names missing file '$(CopperSharpFrameworkImplementationManifest)'." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpBuildOutputPath)'))" />
     <ItemGroup>
       <_CopperSharpBuildManagedAssembly Include="@(ReferenceCopyLocalPaths)"
@@ -126,6 +132,8 @@
       <_CopperSharpBuildResponseLine Include="format=$(CopperSharpOutputFormat)" />
       <_CopperSharpBuildResponseLine Include="runtime=$(CopperSharpRuntimeProfile)" />
       <_CopperSharpBuildResponseLine Include="compatibility-report=$(CopperSharpBuildFrameworkReportPath)" />
+      <_CopperSharpBuildResponseLine Include="framework-implementation-manifest=$([System.IO.Path]::GetFullPath('$(CopperSharpFrameworkImplementationManifest)'))"
+                                     Condition="'$(CopperSharpFrameworkImplementationManifest)' != ''" />
       <_CopperSharpBuildResponseLine Include="@(_CopperSharpBuildManagedAssembly->'managed-assembly=%(FullPath)')" />
     </ItemGroup>
     <WriteLinesToFile File="$(CopperSharpBuildResponseManifestPath)"
@@ -141,7 +149,7 @@
           AfterTargets="Build"
           DependsOnTargets="PrepareCopperSharpBuildManifest"
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCompileOnBuild)' == 'true' and '$(_IsPublishing)' != 'true'"
-          Inputs="$(CopperSharpBuildResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly)"
+          Inputs="$(CopperSharpBuildResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpFrameworkImplementationManifest)"
           Outputs="$(CopperSharpBuildOutputPath);$(CopperSharpBuildOutputPath).map;$(CopperSharpBuildFrameworkReportPath)">
     <Exec Command="dotnet &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpBuildResponseManifestPath)&quot;" />
     <ItemGroup>

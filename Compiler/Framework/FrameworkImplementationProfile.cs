@@ -72,25 +72,42 @@ internal static class FrameworkImplementationProfile
 		return true;
 	}
 
+	public static bool IsPinnedBinding(FrameworkBinding binding) =>
+		binding.Kind == FrameworkBindingKind.PinnedManagedBody &&
+		IsPinnedStopwatchMember(binding.Member) &&
+		string.Equals(
+			binding.Target,
+			$"pinned:[{ImplementationAssembly}]{StopwatchType}::{binding.Member.Name}",
+			StringComparison.Ordinal) &&
+		binding.TypeInitializerPolicy == FrameworkTypeInitializerPolicy.TargetOwned;
+
 	public static bool IsRequiredCoreLibOverride(
 		FrameworkMemberId referencedMember,
 		FrameworkBinding? binding)
 	{
-		if (!string.Equals(
-			referencedMember.AssemblyName,
-			ImplementationAssembly,
-			StringComparison.Ordinal) ||
-			binding is null)
+		if (binding is null)
 		{
 			return false;
 		}
-		var typeName = referencedMember.DeclaringType.MetadataName;
+		var member = Canonicalize(referencedMember);
+		var typeName = member.DeclaringType.MetadataName;
 		return (string.Equals(typeName, ObjectType, StringComparison.Ordinal) &&
-			string.Equals(referencedMember.Name, ".ctor", StringComparison.Ordinal) &&
+			string.Equals(member.Name, ".ctor", StringComparison.Ordinal) &&
 			binding.Kind == FrameworkBindingKind.Intrinsic) ||
 			(string.Equals(typeName, StopwatchType, StringComparison.Ordinal) &&
-			 string.Equals(referencedMember.Name, "GetTimestamp", StringComparison.Ordinal) &&
+			 string.Equals(member.Name, "GetTimestamp", StringComparison.Ordinal) &&
 			 binding.Kind == FrameworkBindingKind.PlatformOperation);
+	}
+
+	public static bool IsPinnedTypeBoundary(FrameworkMemberId referencedMember)
+	{
+		var member = Canonicalize(referencedMember);
+		return string.Equals(member.AssemblyName, ContractAssembly, StringComparison.Ordinal) &&
+			member.DeclaringType.Kind == FrameworkTypeKind.Named &&
+			string.Equals(
+				member.DeclaringType.MetadataName,
+				StopwatchType,
+				StringComparison.Ordinal);
 	}
 
 	private static bool IsPinnedStopwatchMember(FrameworkMemberId member)

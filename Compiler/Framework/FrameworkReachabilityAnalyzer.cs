@@ -141,9 +141,12 @@ internal static class FrameworkReachabilityAnalyzer
 						description,
 						target,
 						resolutionFailure);
+					var reportedIdentity = module.FrameworkImplementationPack is null
+						? exactIdentity
+						: FrameworkImplementationProfile.Canonicalize(exactIdentity);
 					AddObservation(
 						members,
-						exactIdentity,
+						reportedIdentity,
 						description,
 						decision,
 						method.DisplayName,

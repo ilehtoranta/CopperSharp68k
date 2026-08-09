@@ -76,6 +76,27 @@ internal sealed class Net10FrameworkContract
 					Array.Empty<string>(),
 					Array.Empty<string>());
 			}
+			if (binding.Kind == FrameworkBindingKind.PinnedManagedBody)
+			{
+				if (!FrameworkImplementationProfile.IsPinnedBinding(binding))
+				{
+					return new FrameworkBindingDecision(
+						M68kFrameworkCompatibilityStatus.Unsupported,
+						null,
+						"The pinned managed body is not admitted by the compiler-owned implementation profile.",
+						Array.Empty<string>(),
+						Array.Empty<string>());
+				}
+				return new FrameworkBindingDecision(
+					M68kFrameworkCompatibilityStatus.Implemented,
+					binding.Target,
+					binding.Reason,
+					EffectNames(binding.EffectSummary.Effects),
+					binding.EffectSummary.RequiredFeatures
+						.Select(static feature => feature.Name)
+						.Order(StringComparer.Ordinal)
+						.ToArray());
+			}
 			if (rules.Length == 0)
 			{
 				return new FrameworkBindingDecision(
@@ -217,7 +238,9 @@ internal sealed class Net10FrameworkContract
 	private static M68kFrameworkCompatibilityStatus BindingStatus(
 		FrameworkBindingKind kind) => kind switch
 		{
-			FrameworkBindingKind.ManagedBody or FrameworkBindingKind.ShadowMethod =>
+			FrameworkBindingKind.ManagedBody or
+			FrameworkBindingKind.PinnedManagedBody or
+			FrameworkBindingKind.ShadowMethod =>
 				M68kFrameworkCompatibilityStatus.Implemented,
 			FrameworkBindingKind.Intrinsic => M68kFrameworkCompatibilityStatus.Intrinsic,
 			FrameworkBindingKind.PlatformOperation => M68kFrameworkCompatibilityStatus.Platform,
@@ -374,12 +397,21 @@ internal sealed class Net10FrameworkContract
 
 		private static bool MatchesType(string pattern, string typeName)
 		{
-			const string genericWildcard = "<*>";
-			return pattern.EndsWith(genericWildcard, StringComparison.Ordinal)
-				? typeName.StartsWith(
-					pattern[..^genericWildcard.Length] + "<",
-					StringComparison.Ordinal) && typeName.EndsWith('>')
-				: string.Equals(pattern, typeName, StringComparison.Ordinal);
+			var wildcard = pattern.IndexOf('*');
+			if (wildcard < 0)
+			{
+				return string.Equals(pattern, typeName, StringComparison.Ordinal);
+			}
+			if (pattern.IndexOf('*', wildcard + 1) >= 0)
+			{
+				return false;
+			}
+
+			var prefix = pattern[..wildcard];
+			var suffix = pattern[(wildcard + 1)..];
+			return typeName.Length >= prefix.Length + suffix.Length &&
+				typeName.StartsWith(prefix, StringComparison.Ordinal) &&
+				typeName.EndsWith(suffix, StringComparison.Ordinal);
 		}
 	}
 }

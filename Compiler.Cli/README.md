@@ -31,6 +31,20 @@ publish settings do not expand the shell command.
 `--compatibility-report` writes the exact framework analysis already produced
 by a successful compilation; it does not run a second reachability pass.
 
+`--framework-implementation-manifest <file>` opts into compiler-approved bodies
+from an explicitly pinned framework implementation pack. The same setting is
+available as `framework-implementation-manifest=<file>` in a response manifest.
+The compiler does not inspect installed host runtimes: it verifies the assembly
+identity, MVID, and SHA-256 declared by the supplied manifest, and records that
+provenance in the map and compatibility JSON. Implementation assemblies remain
+separate from `--managed-assembly` dependency inputs.
+
+For the supported Stopwatch instance slice, pinned CoreLib is preferred when a
+verified manifest is available: it provides the official implementation and
+currently beats the shadow implementation in image size, generated code size,
+and measured execution cycles. Omitting the option keeps `ShadowStopwatch` as
+the deterministic fallback; the CLI never discovers a host runtime on its own.
+
 Run `copper68kc --help` for ROM layout and fixed-address import options.
 Use `--fpu disabled|040|68882|soft` to select floating-point generation. `040`
 requires `--cpu 68040` or `--cpu 68060`; `68882` requires `--cpu 68020`.

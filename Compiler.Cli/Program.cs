@@ -55,6 +55,8 @@ static int Run(string[] args)
 		var managedAssemblyPaths = ParseManagedAssemblyPaths(
 			GetOptional(args, "--managed-assemblies"),
 			GetAll(args, "--managed-assembly"));
+		var frameworkImplementationManifest =
+			GetOptional(args, "--framework-implementation-manifest");
 
 		var request = new M68kCompilationRequest
 		{
@@ -68,6 +70,10 @@ static int Run(string[] args)
 			RuntimeProfile = runtimeProfile,
 			Imports = imports,
 			ManagedAssemblyPaths = managedAssemblyPaths,
+			FrameworkImplementationPack = frameworkImplementationManifest is null
+				? null
+				: new M68kFrameworkImplementationPackOptions(
+					Path.GetFullPath(frameworkImplementationManifest)),
 			Rom = new KickstartRomOutputOptions
 			{
 				Size = romSize,
@@ -214,6 +220,7 @@ static string[] ExpandResponseManifest(string[] args)
 			"stack" => "--stack",
 			"framework-report" => "--framework-report",
 			"compatibility-report" => "--compatibility-report",
+			"framework-implementation-manifest" => "--framework-implementation-manifest",
 			"managed-assembly" => "--managed-assembly",
 			"import" => "--import",
 			_ => throw new ArgumentException(
@@ -268,6 +275,7 @@ static void WriteFrameworkReport(
 		request.Cpu,
 		request.OutputFormat,
 		analysis.IsCompatible,
+		analysis.ImplementationPack,
 		analysis.Members,
 		analysis.ManagedAllocationSites);
 	var json = JsonSerializer.Serialize(report, options);
@@ -526,6 +534,7 @@ static void PrintUsage()
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]
 		  [--managed-assemblies <UTF-8 path-list>]
+		  [--framework-implementation-manifest <JSON manifest>]
 		  [--compatibility-report <file|->]
 		""");
 }
@@ -553,5 +562,6 @@ sealed record CompatibilityReport(
 	M68kCpuTarget Cpu,
 	M68kOutputFormat OutputFormat,
 	bool IsCompatible,
+	M68kFrameworkImplementationPackProvenance? ImplementationPack,
 	IReadOnlyList<M68kFrameworkMemberAnalysis> Members,
 	IReadOnlyList<M68kManagedAllocationSite> ManagedAllocationSites);

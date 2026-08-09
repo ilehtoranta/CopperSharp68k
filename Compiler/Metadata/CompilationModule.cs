@@ -41,6 +41,7 @@ internal sealed class CompilationModule : IDisposable
 	private readonly Dictionary<CilInterfaceImplementationIdentity, CilInterfaceImplementation?> _interfaceImplementationCache = new();
 	private readonly Dictionary<string, bool> _transparentScalarTypeCache = new(StringComparer.Ordinal);
 	private readonly IReadOnlyList<IM68kExternalCallResolver> _externalCallResolvers;
+	private readonly string _assemblyPath;
 	private readonly string _assemblyDirectory;
 	private readonly CompilationModule _root;
 	private readonly Dictionary<string, CompilationModule> _modules;
@@ -60,6 +61,13 @@ internal sealed class CompilationModule : IDisposable
 		_managedAssemblyPaths = CreateManagedAssemblyPathMap(
 			managedAssemblyPaths ?? Array.Empty<string>());
 		_frameworkImplementationPack = frameworkImplementationPack;
+		if (_frameworkImplementationPack is not null)
+		{
+			// Layout can be needed before the first pinned method body is bound.
+			// Load the verified CoreLib now so identity resolution never records a
+			// synthetic nil-handle layout for an implementation-owned type.
+			_ = GetOrLoadImplementationModule("System.Private.CoreLib");
+		}
 	}
 
 	internal FrameworkImplementationPackCatalog? FrameworkImplementationPack =>
@@ -113,7 +121,8 @@ internal sealed class CompilationModule : IDisposable
 		CompilationModule? root)
 	{
 		_externalCallResolvers = externalCallResolvers ?? Array.Empty<IM68kExternalCallResolver>();
-		_assemblyDirectory = Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!;
+		_assemblyPath = Path.GetFullPath(assemblyPath);
+		_assemblyDirectory = Path.GetDirectoryName(_assemblyPath)!;
 		_root = root ?? this;
 		_modules = root?._modules ?? new Dictionary<string, CompilationModule>(StringComparer.Ordinal);
 		_frameworkVirtualFallbacks = root?._frameworkVirtualFallbacks ??
@@ -124,7 +133,7 @@ internal sealed class CompilationModule : IDisposable
 		_signatureProvider = new CilSignatureTypeProvider(ResolveReferencedEnumType);
 		try
 		{
-			_stream = File.OpenRead(assemblyPath);
+			_stream = File.OpenRead(_assemblyPath);
 			_peReader = new PEReader(_stream, PEStreamOptions.PrefetchEntireImage);
 			if (!_peReader.HasMetadata)
 			{
@@ -598,7 +607,19 @@ internal sealed class CompilationModule : IDisposable
 			}
 		}
 
-		if (parameterRegisters.Contains(binding.BaseRegister))
+		var baseArgumentCount = parameterRegisters.Count(
+			register => register == binding.BaseRegister);
+		if (binding.BaseSource == M68kExternalBaseSource.Argument)
+		{
+			if (baseArgumentCount != 1)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedSignature,
+					$"Argument-sourced platform calls require exactly one {binding.BaseRegister} argument.",
+					displayName);
+			}
+		}
+		else if (baseArgumentCount != 0)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedSignature,
@@ -801,10 +822,16 @@ internal sealed class CompilationModule : IDisposable
 			return null;
 		}
 
-		var target = ResolveMethodToken(
+		var reference = ResolveMethodToken(
 			(int)instruction.Operand!,
 			caller,
-			instruction.Offset).Definition;
+			instruction.Offset);
+		if (reference.FrameworkBinding?.TypeInitializerPolicy ==
+			FrameworkTypeInitializerPolicy.TargetOwned)
+		{
+			return null;
+		}
+		var target = reference.Definition;
 		if (target is null || target.IsTypeInitializer)
 		{
 			return null;
@@ -965,6 +992,13 @@ internal sealed class CompilationModule : IDisposable
 				continue;
 			}
 
+			if (field.Type.IsSupportedScalar && field.Type.Size == 8)
+			{
+				fieldOffsets.Add(fieldHandle, size);
+				size = checked(size + 8);
+				continue;
+			}
+
 			if ((!field.Type.IsSupportedScalar && !IsTransparentScalarType(field.Type)) || field.Type.Size > 4)
 			{
 				throw new M68kCompilationException(
@@ -1009,8 +1043,18 @@ internal sealed class CompilationModule : IDisposable
 			: module.GetTypeLayout(field.DeclaringType);
 	}
 
-	public CilTypeLayout GetTypeLayout(CilTypeLayout owner, TypeDefinitionHandle handle) =>
-		GetModule(owner.ModuleName).GetTypeLayout(handle);
+	public CilTypeLayout GetTypeLayout(CilTypeLayout owner, TypeDefinitionHandle handle)
+	{
+		var module = GetModule(owner.ModuleName);
+		var row = MetadataTokens.GetRowNumber(handle);
+		if (row <= 0 || row > module.Reader.TypeDefinitions.Count)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Base type handle row {row} for runtime layout '{owner.DisplayName}' is outside module '{module.AssemblyName}' ({module.Reader.TypeDefinitions.Count} type definitions).");
+		}
+		return module.GetTypeLayout(handle);
+	}
 
 	public CilVirtualTable GetVirtualTable(CilTypeLayout layout) =>
 		GetModule(layout.ModuleName).GetVirtualTable(
@@ -2594,7 +2638,7 @@ internal sealed class CompilationModule : IDisposable
 			}
 
 			var target = ResolveRuntimeTypeIdentity(type, preferredModuleName);
-		if (target.Handle.Kind != HandleKind.TypeDefinition)
+		if (target.Handle.IsNil || target.Handle.Kind != HandleKind.TypeDefinition)
 		{
 			return false;
 		}
@@ -3232,6 +3276,12 @@ internal sealed class CompilationModule : IDisposable
 			{
 				return target;
 			}
+		}
+		if (GetOrLoadImplementationModule("System.Private.CoreLib") is { } implementation &&
+			!ReferenceEquals(implementation, preferred) &&
+			implementation.TryFindRuntimeTypeDefinition(type, out target))
+		{
+			return target;
 		}
 		return new CilRuntimeTypeTarget(
 			type,
@@ -4565,9 +4615,7 @@ internal sealed class CompilationModule : IDisposable
 		CilMethod? caller = null,
 		int ilOffset = -1)
 	{
-		var binding = FrameworkBindingRegistry.TryBind(
-			member,
-			new FrameworkBindingContext(
+		var context = new FrameworkBindingContext(
 				typeName,
 				signature,
 				constructedDeclaringType,
@@ -4581,9 +4629,37 @@ internal sealed class CompilationModule : IDisposable
 						member,
 						constructedDeclaringType,
 						methodTypeArguments),
-					constructedDeclaringType?.GenericArguments
+				constructedDeclaringType?.GenericArguments
 						.Select(TypeContainsManagedReferences)
-						.ToArray()));
+						.ToArray());
+		var lookupMember = FrameworkImplementationPack is null
+			? member
+			: FrameworkImplementationProfile.Canonicalize(member);
+		var binding = FrameworkBindingRegistry.TryBind(lookupMember, context);
+		if (FrameworkImplementationPack is not null &&
+			FrameworkImplementationProfile.TryCreatePinnedBinding(
+				member,
+				binding,
+				out var pinnedBinding))
+		{
+			var implementation = ResolvePinnedImplementationMethod(
+				pinnedBinding,
+				signature);
+			return MethodReference.ForManagedBinding(
+				pinnedBinding,
+				implementation,
+				signature);
+		}
+		if (FrameworkImplementationPack is not null &&
+			(string.Equals(
+					member.AssemblyName,
+					"System.Private.CoreLib",
+					StringComparison.Ordinal) ||
+			 FrameworkImplementationProfile.IsPinnedTypeBoundary(member)) &&
+			!FrameworkImplementationProfile.IsRequiredCoreLibOverride(member, binding))
+		{
+			binding = null;
+		}
 		if (binding is null)
 		{
 			return null;
@@ -5688,6 +5764,120 @@ internal sealed class CompilationModule : IDisposable
 		return null;
 	}
 
+	private CilMethod ResolvePinnedImplementationMethod(
+		FrameworkBinding binding,
+		MethodSignature<CilType> publicSignature)
+	{
+		const string assemblyName = "System.Private.CoreLib";
+		const string typeName = "System.Diagnostics.Stopwatch";
+		var module = GetOrLoadImplementationModule(assemblyName) ??
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidInput,
+				$"Verified framework implementation assembly '{assemblyName}' could not be loaded.");
+		CilMethod? match = null;
+		foreach (var typeHandle in module.Reader.TypeDefinitions)
+		{
+			var type = module.Reader.GetTypeDefinition(typeHandle);
+			if (!string.Equals(module.GetTypeName(type), typeName, StringComparison.Ordinal))
+			{
+				continue;
+			}
+			if (type.GetGenericParameters().Count != 0 ||
+				(type.Attributes & TypeAttributes.LayoutMask) == TypeAttributes.ExplicitLayout)
+			{
+				throw UnsupportedPinnedBody(
+					binding,
+					$"implementation type '{typeName}' has unsupported generic or explicit layout metadata");
+			}
+			ValidatePinnedStopwatchLayout(module, typeHandle, binding);
+
+			foreach (var methodHandle in type.GetMethods())
+			{
+				var definition = module.Reader.GetMethodDefinition(methodHandle);
+				if (!string.Equals(
+						module.Reader.GetString(definition.Name),
+						binding.Member.Name,
+						StringComparison.Ordinal) ||
+					definition.GetGenericParameters().Count != 0)
+				{
+					continue;
+				}
+				var candidateSignature = definition.DecodeSignature(
+					module._signatureProvider,
+					CilGenericContext.Empty);
+				if (!SignaturesMatch(candidateSignature, publicSignature))
+				{
+					continue;
+				}
+				ValidatePinnedMethodDefinition(module, definition, binding);
+				if (match is not null)
+				{
+					throw UnsupportedPinnedBody(
+						binding,
+						"implementation member identity is ambiguous");
+				}
+				match = module.GetMethod(methodHandle);
+			}
+		}
+		return match ?? throw UnsupportedPinnedBody(
+			binding,
+			"exact implementation member was not found");
+	}
+
+	private static void ValidatePinnedStopwatchLayout(
+		CompilationModule module,
+		TypeDefinitionHandle typeHandle,
+		FrameworkBinding binding)
+	{
+		var layout = module.GetTypeLayout(typeHandle);
+		var offsets = new Dictionary<string, int>(StringComparer.Ordinal);
+		foreach (var pair in layout.FieldOffsets)
+		{
+			var field = module.Reader.GetFieldDefinition(pair.Key);
+			offsets.Add(module.Reader.GetString(field.Name), pair.Value);
+		}
+		if (layout.Size == 28 &&
+			layout.ReferenceBitmap == 0 &&
+			offsets.Count == 3 &&
+			offsets.TryGetValue("_elapsed", out var elapsed) && elapsed == 8 &&
+			offsets.TryGetValue("_startTimeStamp", out var started) && started == 16 &&
+			offsets.TryGetValue("_isRunning", out var running) && running == 24)
+		{
+			return;
+		}
+
+		throw UnsupportedPinnedBody(
+			binding,
+			$"implementation type 'System.Diagnostics.Stopwatch' has layout " +
+			$"size={layout.Size}, references=0x{layout.ReferenceBitmap:X8}, fields=" +
+			string.Join(",", offsets.OrderBy(static item => item.Key, StringComparer.Ordinal)
+				.Select(static item => $"{item.Key}@{item.Value}")));
+	}
+
+	private static void ValidatePinnedMethodDefinition(
+		CompilationModule module,
+		MethodDefinition definition,
+		FrameworkBinding binding)
+	{
+		var implementation = definition.ImplAttributes;
+		if (definition.RelativeVirtualAddress == 0 ||
+			(definition.Attributes & (MethodAttributes.Abstract | MethodAttributes.PinvokeImpl)) != 0 ||
+			(implementation & MethodImplAttributes.CodeTypeMask) != MethodImplAttributes.IL ||
+			(implementation & MethodImplAttributes.InternalCall) != 0)
+		{
+			throw UnsupportedPinnedBody(
+				binding,
+				$"implementation method '{module.Reader.GetString(definition.Name)}' is native, runtime-provided, abstract, or has no CIL body");
+		}
+	}
+
+	private static M68kCompilationException UnsupportedPinnedBody(
+		FrameworkBinding binding,
+		string reason) =>
+		new(
+			M68kDiagnosticIds.UnsupportedFrameworkMember,
+			$"Pinned framework binding '{binding.Member.DisplayName}' cannot be used because {reason}.");
+
 	private static bool UsesPrivateShadowConstruction(string typeName) =>
 		typeName is
 			"CopperSharp.Runtime.ShadowEqualityComparer`1" or
@@ -5731,6 +5921,26 @@ internal sealed class CompilationModule : IDisposable
 		return File.Exists(path)
 			? new CompilationModule(path, _externalCallResolvers, _root)
 			: null;
+	}
+
+	private CompilationModule? GetOrLoadImplementationModule(string assemblyName)
+	{
+		if (FrameworkImplementationPack is null ||
+			!FrameworkImplementationPack.TryGetAssemblyPath(assemblyName, out var path))
+		{
+			return null;
+		}
+		if (_root._modules.TryGetValue(assemblyName, out var loaded))
+		{
+			if (!string.Equals(loaded._assemblyPath, path, StringComparison.OrdinalIgnoreCase))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidInput,
+					$"Framework implementation assembly identity '{assemblyName}' collides with separately loaded managed assembly '{loaded._assemblyPath}'.");
+			}
+			return loaded;
+		}
+		return new CompilationModule(path, _externalCallResolvers, _root);
 	}
 
 	private CilType? ResolveReferencedEnumType(
