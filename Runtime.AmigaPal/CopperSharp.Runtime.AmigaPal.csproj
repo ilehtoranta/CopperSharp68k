@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1591</NoWarn>
+    <PackageId>CopperSharp.Runtime.AmigaPal</PackageId>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
+	<ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
+    <ProjectReference Include="..\Sdk.Amiga\CopperSharp.Sdk.Amiga.csproj" />
+  </ItemGroup>
+</Project>
