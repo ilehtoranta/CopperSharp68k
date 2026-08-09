@@ -193,26 +193,22 @@ public static class MUIMaster
 
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint MUI_NewObject(
+	public static extern uint MUI_NewObject(
 		[M68kRegister(M68kRegister.A0)] CString className,
 		[M68kRegister(M68kRegister.A1)]
 		[AmigaStackVarargs]
-		params AmigaVarArg[] tags) =>
-		throw new System.NotSupportedException(
-			"MUI_NewObject stack varargs are lowered by CopperSharp.");
+		params AmigaVarArg[] tags);
 
 	public static uint MUI_MakeObjectParameters(int type, uint parameters) =>
 		MUI_MakeObjectA(type, parameters);
 
 	[AmigaLvo(-120)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint MUI_MakeObject(
+	public static extern uint MUI_MakeObject(
 		[M68kRegister(M68kRegister.D0)] int type,
 		[M68kRegister(M68kRegister.A0)]
 		[AmigaStackVarargs]
-		params AmigaVarArg[] parameters) =>
-		throw new System.NotSupportedException(
-			"MUI_MakeObject stack varargs are lowered by CopperSharp.");
+		params AmigaVarArg[] parameters);
 
 	public static int MUI_Request(
 		uint app,
