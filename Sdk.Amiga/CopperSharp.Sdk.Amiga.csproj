@@ -7,8 +7,9 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1591</NoWarn>
     <PackageId>CopperSharp.Sdk.Amiga</PackageId>
-    <PackageVersion>0.1.0-preview.1</PackageVersion>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Title>CopperSharp Amiga SDK</Title>
+    <Description>Typed Amiga and MorphOS m68k ABI declarations for programs compiled with CopperSharp.</Description>
+    <PackageTags>amiga;morphos;m68k;cil;aot;sdk</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
   </PropertyGroup>

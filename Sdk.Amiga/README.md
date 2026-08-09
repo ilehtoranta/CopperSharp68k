@@ -2,6 +2,28 @@
 
 Amiga ABI declarations for code compiled by `CopperSharp.Targets.Amiga`.
 
+## Start a project
+
+Install the compiler tool and project templates:
+
+```text
+dotnet tool install --global CopperSharp.Compiler.Cli --version 0.1.0-preview.1
+dotnet new install CopperSharp.Templates::0.1.0-preview.1
+```
+
+Create and build a minimal Amiga program:
+
+```text
+dotnet new amiga -n HelloAmiga
+cd HelloAmiga
+dotnet build
+```
+
+The generated project references this SDK and `CopperSharp.Compiler`. Its build
+produces a managed assembly followed by a Motorola 68k HUNK executable. The
+sample opens `dos.library`, writes a line, and closes the library before
+returning.
+
 The initial reference surface includes:
 
 - `Amiga.Exec.OpenLibrary`, LVO -552: name in A1, minimum version in D0,
