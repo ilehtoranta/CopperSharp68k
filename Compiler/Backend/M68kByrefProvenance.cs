@@ -412,8 +412,21 @@ internal static class M68kManagedByrefTypeTracker
 		{
 			return true;
 		}
-		return CompilationModule.IsSupportedSpanLikeType(first) &&
-			CompilationModule.IsSupportedSpanLikeType(second) &&
+		if (StringComparer.Ordinal.Equals(first.DisplayName, second.DisplayName) &&
+			first.GenericArguments.IsDefaultOrEmpty &&
+			second.GenericArguments.IsDefaultOrEmpty)
+		{
+			return true;
+		}
+		var isAdmittedConstructedValue =
+			CompilationModule.IsSupportedSpanLikeType(first) &&
+				CompilationModule.IsSupportedSpanLikeType(second) ||
+			CompilationModule.IsSupportedMemoryLikeType(first) &&
+				CompilationModule.IsSupportedMemoryLikeType(second) ||
+			CompilationModule.IsListEnumeratorType(first) &&
+				CompilationModule.IsListEnumeratorType(second) ||
+			first.IsNullable && second.IsNullable;
+		return isAdmittedConstructedValue &&
 			first.DisplayName.Split('<', 2)[0] ==
 				second.DisplayName.Split('<', 2)[0] &&
 			first.GenericArguments.SequenceEqual(second.GenericArguments);

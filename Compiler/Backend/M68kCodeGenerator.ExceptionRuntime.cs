@@ -24,11 +24,12 @@ internal sealed partial class M68kCodeGenerator
 	private bool UsesExtendedUnwindSites =>
 		_unwindMethodLayouts.Values.Any(static layout => layout.HasDynamicStackAllocation);
 
-	private int UnwindSiteEntryBytes =>
+	private bool UsesExtendedUnwindMetadata =>
 		UsesExtendedUnwindSites ||
-		_unwindSites.Any(static site => site.ExceptionCleanupLabel is not null)
-			? 24
-			: 20;
+		_unwindSites.Any(static site => site.ExceptionCleanupLabel is not null);
+
+	private int UnwindSiteEntryBytes =>
+		UsesExtendedUnwindMetadata ? 24 : 20;
 
 	private sealed record UnwindMethodLayout(
 		CilMethod Method,
@@ -642,6 +643,22 @@ internal sealed partial class M68kCodeGenerator
 		var usesArgumentNull = _runtimeTypeDescriptors.Contains(
 			"System.ArgumentNullException");
 		var usesFormat = _runtimeTypeDescriptors.Contains("System.FormatException");
+		var usesInvalidOperation = _runtimeTypeDescriptors.Contains(
+			"System.InvalidOperationException");
+		var usesIo = _runtimeTypeDescriptors.Contains("System.IO.IOException");
+		var usesDirectoryNotFound = _runtimeTypeDescriptors.Contains(
+			"System.IO.DirectoryNotFoundException");
+		var usesFileNotFound = _runtimeTypeDescriptors.Contains(
+			"System.IO.FileNotFoundException");
+		var usesUnauthorizedAccess = _runtimeTypeDescriptors.Contains(
+			"System.UnauthorizedAccessException");
+		var usesKeyNotFound = _runtimeTypeDescriptors.Contains(
+			"System.Collections.Generic.KeyNotFoundException");
+		var usesExtendedFaults = usesInvalidCast || usesArrayTypeMismatch ||
+			usesArgument || usesArgumentOutOfRange || usesArgumentNull ||
+			usesFormat || usesInvalidOperation || usesIo || usesDirectoryNotFound ||
+			usesFileNotFound ||
+			usesUnauthorizedAccess || usesKeyNotFound;
 		var haveException = UniqueLabel("eh_have_exception");
 		var nullFault = UniqueLabel("eh_null_fault");
 		var boundsFault = UniqueLabel("eh_bounds_fault");
@@ -654,6 +671,12 @@ internal sealed partial class M68kCodeGenerator
 		var argumentOutOfRangeFault = UniqueLabel("eh_argument_out_of_range_fault");
 		var argumentNullFault = UniqueLabel("eh_argument_null_fault");
 		var formatFault = UniqueLabel("eh_format_fault");
+		var invalidOperationFault = UniqueLabel("eh_invalid_operation_fault");
+		var ioFault = UniqueLabel("eh_io_fault");
+		var directoryNotFoundFault = UniqueLabel("eh_directory_not_found_fault");
+		var fileNotFoundFault = UniqueLabel("eh_file_not_found_fault");
+		var unauthorizedAccessFault = UniqueLabel("eh_unauthorized_access_fault");
+		var keyNotFoundFault = UniqueLabel("eh_key_not_found_fault");
 		var systemFault = UniqueLabel("eh_system_fault");
 
 		_assembler.AlignWord();
@@ -672,8 +695,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitCompareImmediateLong(M68kRegister.D0, 4);
 		_assembler.EmitBranch(M68kCondition.Equal, overflowFault);
 		EmitCompareImmediateLong(M68kRegister.D0, 6);
-			if (!usesInvalidCast && !usesArrayTypeMismatch && !usesArgument &&
-				!usesArgumentOutOfRange && !usesArgumentNull && !usesFormat)
+		if (!usesExtendedFaults)
 		{
 			_assembler.EmitBranch(M68kCondition.NotEqual, systemFault);
 		}
@@ -700,16 +722,46 @@ internal sealed partial class M68kCodeGenerator
 				EmitCompareImmediateLong(M68kRegister.D0, 10);
 				_assembler.EmitBranch(M68kCondition.Equal, argumentOutOfRangeFault);
 			}
-				if (usesArgumentNull)
-				{
-					EmitCompareImmediateLong(M68kRegister.D0, 11);
-					_assembler.EmitBranch(M68kCondition.Equal, argumentNullFault);
-				}
-				if (usesFormat)
-				{
-					EmitCompareImmediateLong(M68kRegister.D0, 12);
-					_assembler.EmitBranch(M68kCondition.Equal, formatFault);
-				}
+			if (usesArgumentNull)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 11);
+				_assembler.EmitBranch(M68kCondition.Equal, argumentNullFault);
+			}
+			if (usesFormat)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 12);
+				_assembler.EmitBranch(M68kCondition.Equal, formatFault);
+			}
+			if (usesInvalidOperation)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 13);
+				_assembler.EmitBranch(M68kCondition.Equal, invalidOperationFault);
+			}
+			if (usesIo)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 15);
+				_assembler.EmitBranch(M68kCondition.Equal, ioFault);
+			}
+			if (usesDirectoryNotFound)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 16);
+				_assembler.EmitBranch(M68kCondition.Equal, directoryNotFoundFault);
+			}
+			if (usesFileNotFound)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 18);
+				_assembler.EmitBranch(M68kCondition.Equal, fileNotFoundFault);
+			}
+			if (usesUnauthorizedAccess)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 17);
+				_assembler.EmitBranch(M68kCondition.Equal, unauthorizedAccessFault);
+			}
+			if (usesKeyNotFound)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, 14);
+				_assembler.EmitBranch(M68kCondition.Equal, keyNotFoundFault);
+			}
 			_assembler.EmitBranch(M68kCondition.True, systemFault);
 		}
 		if (usesArrayTypeMismatch)
@@ -750,6 +802,52 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.Mark(formatFault);
 			EmitRuntimeObjectAddress(M68kRegister.A0, "System.FormatException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesInvalidOperation)
+		{
+			_assembler.Mark(invalidOperationFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.InvalidOperationException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesIo)
+		{
+			_assembler.Mark(ioFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.IO.IOException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesDirectoryNotFound)
+		{
+			_assembler.Mark(directoryNotFoundFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.IO.DirectoryNotFoundException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesFileNotFound)
+		{
+			_assembler.Mark(fileNotFoundFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.IO.FileNotFoundException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesUnauthorizedAccess)
+		{
+			_assembler.Mark(unauthorizedAccessFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.UnauthorizedAccessException");
+			_assembler.EmitBranch(M68kCondition.True, haveException);
+		}
+		if (usesKeyNotFound)
+		{
+			_assembler.Mark(keyNotFoundFault);
+			EmitRuntimeObjectAddress(
+				M68kRegister.A0,
+				"System.Collections.Generic.KeyNotFoundException");
 			_assembler.EmitBranch(M68kCondition.True, haveException);
 		}
 
@@ -806,7 +904,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x4E90); // JSR (A0)
 			_assembler.Mark(noCleanup);
 		}
-		if (UsesExtendedUnwindSites)
+		if (UsesExtendedUnwindMetadata)
 		{
 			var staticFrameBase = UniqueLabel("exception-static-frame-base");
 			var haveFrameBase = UniqueLabel("exception-have-frame-base");
@@ -866,6 +964,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(RuntimeExceptionUnhandledLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
 		EmitRestoreExceptionCursorRegisters();
+		EmitManagedLifecycleShutdown();
 		EmitDetermineExceptionReason();
 		if (_request.Imports.ContainsKey(M68kRuntimeImports.UnhandledException))
 		{
@@ -1284,8 +1383,7 @@ internal sealed partial class M68kCodeGenerator
 					_assembler.Mark(nextCatch);
 				}
 			}
-
-			var finallyRegion = group.Regions
+				var finallyRegion = group.Regions
 				.Select(static entry => entry.Region)
 				.FirstOrDefault(static region => region.IsFinally);
 			if (finallyRegion is not null)
@@ -1532,7 +1630,13 @@ internal sealed partial class M68kCodeGenerator
 			("System.ArgumentException", 9),
 			("System.ArgumentOutOfRangeException", 10),
 			("System.ArgumentNullException", 11),
-			("System.FormatException", 12)
+			("System.FormatException", 12),
+			("System.InvalidOperationException", 13),
+			("System.Collections.Generic.KeyNotFoundException", 14),
+			("System.IO.IOException", 15),
+			("System.IO.DirectoryNotFoundException", 16),
+			("System.UnauthorizedAccessException", 17),
+			("System.IO.FileNotFoundException", 18)
 		};
 
 		foreach (var (typeName, reason) in mappings.Where(mapping =>
@@ -1696,7 +1800,13 @@ internal sealed partial class M68kCodeGenerator
 			"System.ArgumentException",
 			"System.ArgumentOutOfRangeException",
 			"System.ArgumentNullException",
-			"System.FormatException"
+			"System.FormatException",
+			"System.InvalidOperationException",
+			"System.IO.IOException",
+			"System.IO.DirectoryNotFoundException",
+			"System.IO.FileNotFoundException",
+			"System.UnauthorizedAccessException",
+			"System.Collections.Generic.KeyNotFoundException"
 		}.Where(_runtimeTypeDescriptors.Contains));
 		foreach (var typeName in exceptionTypes)
 		{
@@ -1723,11 +1833,16 @@ internal sealed partial class M68kCodeGenerator
 			"System.OverflowException" => "System.SystemException",
 			"System.OutOfMemoryException" or
 			"System.InvalidOperationException" or
+			"System.IO.IOException" or
+			"System.UnauthorizedAccessException" or
+			"System.Collections.Generic.KeyNotFoundException" or
 			"System.InvalidCastException" or
 			"System.ArrayTypeMismatchException" => "System.SystemException",
 			"System.ArgumentException" => "System.Exception",
 			"System.ArgumentOutOfRangeException" => "System.ArgumentException",
 			"System.ArgumentNullException" => "System.ArgumentException",
+			"System.IO.DirectoryNotFoundException" or
+			"System.IO.FileNotFoundException" => "System.IO.IOException",
 			"System.FormatException" => "System.SystemException",
 			"System.TypeInitializationException" => "System.SystemException",
 			_ => "System.Exception"

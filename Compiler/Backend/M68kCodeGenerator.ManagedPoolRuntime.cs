@@ -56,6 +56,8 @@ internal sealed partial class M68kCodeGenerator
 		bool usesExceptionRuntime)
 	{
 		const string label = "entry:managed";
+		var usesManagedLifecycle = _managedLifecycles.Count != 0;
+		var wrapsEntry = usesManagedRuntime || usesManagedLifecycle;
 		_assembler.AlignWord();
 		_assembler.Mark(label);
 		if (UsesAmigaUnhandledExceptionRequester)
@@ -75,11 +77,11 @@ internal sealed partial class M68kCodeGenerator
 			preservesWideResult;
 		var needsD3 = preservesWideResult;
 		var needsA2 = usesAmigaStartupArguments || preservesAddressResult;
-		if (usesManagedRuntime)
+		if (wrapsEntry)
 		{
 			// D0/D1/A0/A1 are volatile in the private ABI. Only the result
 			// registers that the entry method actually uses need a callee-saved
-			// temporary while the shutdown hook runs.
+			// temporary while target and runtime shutdown hooks run.
 			if (needsD2)
 			{
 				EmitPushRegister(M68kRegister.D2);
@@ -93,7 +95,7 @@ internal sealed partial class M68kCodeGenerator
 				EmitPushRegister(M68kRegister.A2);
 			}
 		}
-		if (usesManagedRuntime && usesAmigaStartupArguments)
+		if (wrapsEntry && usesAmigaStartupArguments)
 		{
 			EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
 			EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
@@ -116,6 +118,10 @@ internal sealed partial class M68kCodeGenerator
 			}
 			_loadedPlatformBase = null;
 			EmitRequireNonNull();
+		}
+		EmitManagedLifecycleInitialize();
+		if (wrapsEntry)
+		{
 			if (usesAmigaStartupArguments)
 			{
 				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
@@ -136,8 +142,12 @@ internal sealed partial class M68kCodeGenerator
 				EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
 				EmitMoveRegister(M68kRegister.D1, M68kRegister.D3);
 			}
-			EmitRuntimeJsr(RuntimeShutdownTarget, M68kRuntimeImports.GcShutdown);
-			_loadedPlatformBase = null;
+			EmitManagedLifecycleShutdown();
+			if (usesManagedRuntime)
+			{
+				EmitRuntimeJsr(RuntimeShutdownTarget, M68kRuntimeImports.GcShutdown);
+				_loadedPlatformBase = null;
+			}
 			if (preservesScalarResult)
 			{
 				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
@@ -176,6 +186,24 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return label;
+	}
+
+	private void EmitManagedLifecycleInitialize()
+	{
+		foreach (var lifecycle in _managedLifecycles)
+		{
+			_assembler.EmitBsr(MethodLabel(lifecycle.Initialize));
+			_loadedPlatformBase = null;
+		}
+	}
+
+	private void EmitManagedLifecycleShutdown()
+	{
+		for (var index = _managedLifecycles.Count - 1; index >= 0; index--)
+		{
+			_assembler.EmitBsr(MethodLabel(_managedLifecycles[index].Shutdown));
+			_loadedPlatformBase = null;
+		}
 	}
 
 	private void EmitRuntimeJsr(string internalLabel, string externalLabel)
@@ -258,31 +286,31 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeMarkRootsLabel);
 		EmitRootWalkArguments();
-		if (UsesExtendedUnwindSites)
+		if (UsesExtendedUnwindMetadata)
 		{
 			EmitPushRegister(M68kRegister.A5);
 		}
 		EmitPushRegister(M68kRegister.A1);
 		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitBsr(MethodLabel(
-			UsesExtendedUnwindSites ? runtime.MarkRootsExtended : runtime.MarkRoots));
-		EmitDiscardStackArguments(UsesExtendedUnwindSites ? 3 : 2);
+			UsesExtendedUnwindMetadata ? runtime.MarkRootsExtended : runtime.MarkRoots));
+		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 3 : 2);
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeCollectWithRootsLabel);
 		EmitRootWalkArguments();
-		if (UsesExtendedUnwindSites)
+		if (UsesExtendedUnwindMetadata)
 		{
 			EmitPushRegister(M68kRegister.A5);
 		}
 		EmitPushRegister(M68kRegister.A1);
 		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitBsr(MethodLabel(
-			UsesExtendedUnwindSites
+			UsesExtendedUnwindMetadata
 				? runtime.CollectWithRootsExtended
 				: runtime.CollectWithRoots));
-		EmitDiscardStackArguments(UsesExtendedUnwindSites ? 3 : 2);
+		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 3 : 2);
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
@@ -291,7 +319,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeCollectWithRootsLabel);
 		EmitRootWalkArguments();
-		if (UsesExtendedUnwindSites)
+		if (UsesExtendedUnwindMetadata)
 		{
 			_assembler.EmitWord(0x244D); // MOVEA.L A5,A2 current frame anchor
 		}

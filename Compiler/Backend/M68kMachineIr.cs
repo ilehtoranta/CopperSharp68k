@@ -53,6 +53,7 @@ internal enum M68kMachineOperation
 	RootClear,
 	ByrefOwnerKeepAlive,
 	OutgoingArgumentPush,
+	IncomingArgumentPush,
 	OutgoingArgumentCleanup,
 	Address,
 	Add,
@@ -732,6 +733,21 @@ internal static class M68kMachineIrVerifier
 					throw Invalid(
 						function,
 						$"Outgoing argument push {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.IncomingArgumentPush:
+				if (instruction.ArgumentIndex is not 4 ||
+					instruction.SpillSlotIndex is null or < 0 ||
+					instruction.Uses.Length != 0 ||
+					instruction.Definitions.Length != 1 ||
+					function.Values[instruction.Definitions[0]].PrecoloredRegister !=
+						M68kRegister.D0 ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Write)
+				{
+					throw Invalid(
+						function,
+						$"Incoming argument push {instruction.Id} has an invalid shape.");
 				}
 				break;
 

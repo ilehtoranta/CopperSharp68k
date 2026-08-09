@@ -480,6 +480,7 @@ internal static class M68kTerminalDeadStoreEliminator
 			M68kMachineOperation.RootStore or
 			M68kMachineOperation.RootClear or
 			M68kMachineOperation.OutgoingArgumentPush or
+			M68kMachineOperation.IncomingArgumentPush or
 			M68kMachineOperation.OutgoingArgumentCleanup)
 		{
 			// Frame and outgoing-stack storage cannot alias a static or library

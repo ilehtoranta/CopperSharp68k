@@ -10,7 +10,11 @@ namespace CopperSharp.Compiler;
 
 internal static class M68kStaticAnalyzer
 {
-	public static void Analyze(CompilationModule module, CilMethod entry, M68kCompilationRequest request)
+	public static void Analyze(
+		CompilationModule module,
+		CilMethod entry,
+		M68kCompilationRequest request,
+		IEnumerable<CilMethod>? additionalRoots = null)
 	{
 		var memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
 		var visited = new HashSet<CilMethod>();
@@ -21,6 +25,10 @@ internal static class M68kStaticAnalyzer
 		foreach (var export in module.GetExports())
 		{
 			pending.Enqueue(export.Method);
+		}
+		foreach (var root in additionalRoots ?? Array.Empty<CilMethod>())
+		{
+			pending.Enqueue(root);
 		}
 
 	ProcessPending:

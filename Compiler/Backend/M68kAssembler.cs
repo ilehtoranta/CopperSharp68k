@@ -59,6 +59,9 @@ internal sealed class M68kAssembler
 	private List<PcRelativeFixup> _pcRelative => _buffer.PcRelative;
 	private readonly HashSet<string> _longAlignmentLabels = new(StringComparer.Ordinal);
 
+	internal IReadOnlySet<int> AddressFixupOffsets =>
+		_addresses.Select(static address => address.Offset).ToHashSet();
+
 	private static readonly OpcodeRenderRule[] SimpleInstructionRules =
 	[
 		new(0xFFFF, 0x4E71, static _ => "nop"),
@@ -77,12 +80,15 @@ internal sealed class M68kAssembler
 		new(0xFFF8, 0x48C0, static opcode => "ext.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x49C0, static opcode => "extb.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4840, static opcode => "swap\td" + (opcode & 7)),
+		new(0xFFF8, 0x4240, static opcode => "clr.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x4280, static opcode => "clr.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4850, static opcode => "pea\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4E90, static opcode => "jsr\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4ED0, static opcode => "jmp\t(a" + (opcode & 7) + ")"),
 		new(0xF100, 0x7000, static opcode =>
 			"moveq\t#" + unchecked((sbyte)(opcode & 0xFF)) + ",d" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0xD180, static opcode =>
+			"addx.l\td" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0xD1C0, static opcode =>
 			"adda.l\td" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0x91C8, static opcode =>
@@ -99,6 +105,8 @@ internal sealed class M68kAssembler
 			"cmp.l\ta" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0xC140, static opcode =>
 			"exg\td" + ((opcode >> 9) & 7) + ",d" + (opcode & 7)),
+		new(0xF1F8, 0xC188, static opcode =>
+			"exg\td" + ((opcode >> 9) & 7) + ",a" + (opcode & 7)),
 		new(0xF0F8, 0x50C0, static opcode =>
 			SetConditionMnemonic((M68kCondition)((opcode >> 8) & 0x0F)) + "\td" + (opcode & 7)),
 		new(0xFFF8, 0x4298, static opcode => "clr.l\t(a" + (opcode & 7) + ")+"),
@@ -108,6 +116,8 @@ internal sealed class M68kAssembler
 		new(0xFFF8, 0x4640, static opcode => "not.w\td" + (opcode & 7)),
 		new(0xF1FF, 0x5097, static opcode => "addq.l\t#" + QuickCount(opcode) + ",(a7)"),
 		new(0xF1FF, 0x5197, static opcode => "subq.l\t#" + QuickCount(opcode) + ",(a7)"),
+		new(0xF1F8, 0x5000, static opcode => "addq.b\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
+		new(0xF1F8, 0x5100, static opcode => "subq.b\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
 		new(0xF1F8, 0x5080, static opcode => "addq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
 		new(0xF1F8, 0x5180, static opcode => "subq.l\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
 		new(0xF1F8, 0x5040, static opcode => "addq.w\t#" + QuickCount(opcode) + ",d" + (opcode & 7)),
@@ -1539,6 +1549,7 @@ internal sealed class M68kAssembler
 			0xE080 => "asr.l",
 			0xE088 => "lsr.l",
 			0xE188 => "lsl.l",
+			0xE158 => "rol.w",
 			0xE098 => "ror.l",
 			_ => null
 		};
@@ -2056,7 +2067,9 @@ internal sealed class M68kAssembler
 				.Select(static item => item.Key)
 				.OrderBy(static item => item, StringComparer.Ordinal)
 				.ToArray();
-			var displayLabel = labels.FirstOrDefault(static label => !IsIlLabel(label)) ??
+			var displayLabel = labels.FirstOrDefault(label =>
+				referencedLabels.Contains(label) && !IsIlLabel(label)) ??
+				labels.FirstOrDefault(static label => !IsIlLabel(label)) ??
 				labels.FirstOrDefault(label => referencedLabels.Contains(label));
 			if (displayLabel is null)
 			{

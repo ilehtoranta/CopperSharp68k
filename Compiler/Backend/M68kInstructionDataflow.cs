@@ -244,7 +244,12 @@ internal sealed class M68kInstructionDataflow
 		return new M68kInstructionDataflow(
 			instructions,
 			result,
-			M68kValueRangeAnalysis.Analyze(instructions, successors, predecessors, effects),
+			M68kValueRangeAnalysis.Analyze(
+				instructions,
+				successors,
+				predecessors,
+				effects,
+				assembler.AddressFixupOffsets),
 			M68kConditionProvenanceAnalysis.Analyze(
 				instructions,
 				successors,
@@ -336,7 +341,7 @@ internal sealed class M68kInstructionDataflow
 				0,
 				AllRegisters,
 				0,
-				M68kConditionCodeSet.All,
+				M68kConditionCodeSet.None,
 				M68kConditionCodeSet.All,
 				M68kMemorySet.All,
 				M68kMemorySet.All,
@@ -640,7 +645,8 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
-			if ((opcode & 0xFFC0) is 0x48C0 or 0x4CC0)
+			if ((opcode & 0xFFC0) is 0x48C0 or 0x4CC0 &&
+				((opcode >> 3) & 7) >= 2)
 			{
 				ClassifyMovem(opcode, extensionWord);
 				return;
@@ -653,7 +659,7 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
-			if ((opcode & 0xF000) == 0x2000)
+			if ((opcode & 0xF000) is 0x1000 or 0x2000)
 			{
 				ClassifyMove(opcode);
 				_canRemoveWhenOutputsDead = true;
@@ -673,6 +679,16 @@ internal sealed class M68kInstructionDataflow
 				DefineData((opcode >> 9) & 7);
 				UseData(opcode & 7);
 				DefineData(opcode & 7);
+				_canRemoveWhenOutputsDead = true;
+				return;
+			}
+
+			if ((opcode & 0xF1F8) == 0xC188)
+			{
+				UseData((opcode >> 9) & 7);
+				DefineData((opcode >> 9) & 7);
+				UseAddress(opcode & 7);
+				DefineAddress(opcode & 7);
 				_canRemoveWhenOutputsDead = true;
 				return;
 			}

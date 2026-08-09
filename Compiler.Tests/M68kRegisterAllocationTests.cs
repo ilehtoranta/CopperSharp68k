@@ -490,6 +490,53 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void AllocationVerifierRejectsClobberedPendingOutgoingArgument()
+	{
+		var function = new M68kMachineFunction("pending-outgoing-argument", 0);
+		var block = AddBlock(function, 0, 0);
+		var terminal = CreateLong(function);
+		var lateAddress = CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Constant,
+			0,
+			definitions: [terminal.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Address,
+			1,
+			definitions: [lateAddress.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.OutgoingArgumentPush,
+			2,
+			uses: [terminal.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			argumentIndex: 4));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.OutgoingArgumentPush,
+			3,
+			uses: [lateAddress.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			argumentIndex: 4));
+
+		var liveness = M68kLivenessAnalysis.Analyze(function);
+		var graph = M68kInterferenceBuilder.Build(function, liveness);
+		// Simulate an independently corrupted interference graph. The verifier
+		// must derive simultaneous liveness from the instruction stream itself.
+		graph.AddCoalescableCopy(terminal.Id, lateAddress.Id);
+		graph.FinalizeCoalescableCopies();
+		var allocation = new M68kAllocationResult(
+			new Dictionary<int, M68kAllocatedLocation>
+			{
+				[terminal.Id] = new(M68kRegister.D0, IsPair: false),
+				[lateAddress.Id] = new(M68kRegister.D0, IsPair: false)
+			},
+			new HashSet<int>());
+
+		var exception = Assert.Throws<InvalidOperationException>(() =>
+			M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation));
+		Assert.Contains("simultaneously live", exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void AddressConstraintCoalescesAnExistingAddressValue()
 	{
 		var function = new M68kMachineFunction("address-copy", 0);
@@ -721,6 +768,111 @@ public sealed class M68kRegisterAllocationTests
 			allocation.Registers[source.Id],
 			allocation.Registers[fixedArgument.Id]);
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void TransparentRawCopyCoalescesIntoFixedDataAbiRegister()
+	{
+		var function = new M68kMachineFunction("transparent-fixed-copy", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress);
+		var raw = function.CreateValue(
+			CilStackValueKind.Int32,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Data);
+		var fixedArgument = function.CreateValue(
+			CilStackValueKind.Int32,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.D1),
+			precoloredRegister: M68kRegister.D1);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			1,
+			uses: [source.Id],
+			definitions: [raw.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			2,
+			uses: [raw.Id],
+			definitions: [fixedArgument.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			3,
+			uses: [fixedArgument.Id]));
+
+		var allocation = Allocate(function, out var graph);
+
+		Assert.Equal(M68kRegister.D1, allocation.Registers[source.Id].Register);
+		Assert.Equal(allocation.Registers[source.Id], allocation.Registers[raw.Id]);
+		Assert.Equal(
+			allocation.Registers[source.Id],
+			allocation.Registers[fixedArgument.Id]);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void FlagDeadLongCounterAdmitsAddressRegisterAllocation()
+	{
+		var function = new M68kMachineFunction("address-counter", 0);
+		var block = AddBlock(function, 0, 0);
+		var incoming = function.CreateValue(
+			CilStackValueKind.Int32,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.D0),
+			precoloredRegister: M68kRegister.D0);
+		var counter = CreateLong(function);
+		var one = CreateLong(function);
+		var updated = CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			0,
+			uses: [incoming.Id],
+			definitions: [counter.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Constant,
+			1,
+			definitions: [one.Id],
+			sourceInstruction: new CilInstruction(1, OpCodes.Ldc_I4_1, null, 2)));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Add,
+			2,
+			uses: [counter.Id, one.Id],
+			definitions: [updated.Id],
+			sourceInstruction: new CilInstruction(2, OpCodes.Add, null, 3)));
+
+		M68kAddressRegisterEligibility.Apply(function);
+
+		Assert.Equal(M68kRegisterSet.DataOrAddress, function.Values[counter.Id].AllowedRegisters);
+		Assert.Equal(M68kRegisterSet.DataOrAddress, function.Values[updated.Id].AllowedRegisters);
+		Assert.Equal(M68kRegisterSet.Data, function.Values[one.Id].AllowedRegisters);
+	}
+
+	[Fact]
+	public void CheckedLongCounterRemainsInDataRegistersForOverflowFlags()
+	{
+		var function = new M68kMachineFunction("checked-address-counter", 0);
+		var block = AddBlock(function, 0, 0);
+		var counter = CreateLong(function);
+		var one = CreateLong(function);
+		var updated = CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Add,
+			0,
+			uses: [counter.Id, one.Id],
+			definitions: [updated.Id],
+			sourceInstruction: new CilInstruction(0, OpCodes.Add_Ovf, null, 1)));
+
+		M68kAddressRegisterEligibility.Apply(function);
+
+		Assert.Equal(M68kRegisterSet.Data, function.Values[counter.Id].AllowedRegisters);
+		Assert.Equal(M68kRegisterSet.Data, function.Values[updated.Id].AllowedRegisters);
 	}
 
 	[Fact]

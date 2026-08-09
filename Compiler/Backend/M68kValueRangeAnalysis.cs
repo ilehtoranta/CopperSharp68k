@@ -5,11 +5,15 @@
 
 namespace CopperSharp.Compiler.Backend;
 
-internal readonly record struct M68kValueRange(bool IsKnown, uint Minimum, uint Maximum)
+internal readonly record struct M68kValueRange(
+	bool IsKnown,
+	uint Minimum,
+	uint Maximum,
+	uint KnownZeroMask = 0)
 {
 	internal static M68kValueRange Unknown => default;
 
-	internal static M68kValueRange Exact(uint value) => new(true, value, value);
+	internal static M68kValueRange Exact(uint value) => new(true, value, value, ~value);
 
 	internal bool IsExact(out uint value)
 	{
@@ -26,9 +30,14 @@ internal readonly record struct M68kValueRange(bool IsKnown, uint Minimum, uint 
 
 		var minimum = (ulong)left.Minimum + right.Minimum;
 		var maximum = (ulong)left.Maximum + right.Maximum;
-		return maximum <= uint.MaxValue
-			? new M68kValueRange(true, (uint)minimum, (uint)maximum)
-			: Unknown;
+		if (maximum > uint.MaxValue)
+		{
+			return Unknown;
+		}
+
+		return minimum == maximum
+			? Exact((uint)minimum)
+			: new M68kValueRange(true, (uint)minimum, (uint)maximum);
 	}
 
 	internal static M68kValueRange Join(
@@ -36,9 +45,10 @@ internal readonly record struct M68kValueRange(bool IsKnown, uint Minimum, uint 
 		M68kValueRange right,
 		bool widen)
 	{
+		var knownZeroMask = left.KnownZeroMask & right.KnownZeroMask;
 		if (!left.IsKnown || !right.IsKnown)
 		{
-			return Unknown;
+			return new M68kValueRange(false, 0, 0, knownZeroMask);
 		}
 		if (left == right)
 		{
@@ -46,13 +56,25 @@ internal readonly record struct M68kValueRange(bool IsKnown, uint Minimum, uint 
 		}
 		if (widen)
 		{
-			return Unknown;
+			if ((left.Minimum >> 16) == (left.Maximum >> 16) &&
+				(right.Minimum >> 16) == (right.Maximum >> 16) &&
+				(left.Minimum >> 16) == (right.Minimum >> 16))
+			{
+				var upperWord = left.Minimum & 0xFFFF0000;
+				return new M68kValueRange(
+					true,
+					upperWord,
+					upperWord | 0x0000FFFF,
+					knownZeroMask | (~upperWord & 0xFFFF0000));
+			}
+			return new M68kValueRange(false, 0, 0, knownZeroMask);
 		}
 
 		return new M68kValueRange(
 			true,
 			Math.Min(left.Minimum, right.Minimum),
-			Math.Max(left.Maximum, right.Maximum));
+			Math.Max(left.Maximum, right.Maximum),
+			knownZeroMask);
 	}
 }
 
@@ -108,7 +130,8 @@ internal sealed class M68kValueRangeAnalysis
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyList<int>[] successors,
 		IReadOnlyList<int>[] predecessors,
-		IReadOnlyList<M68kInstructionEffects> effects)
+		IReadOnlyList<M68kInstructionEffects> effects,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
 		var before = new AbstractState?[instructions.Count];
 		var pending = new Queue<int>();
@@ -130,7 +153,11 @@ internal sealed class M68kValueRangeAnalysis
 			var index = pending.Dequeue();
 			queued[index] = false;
 			var input = before[index]!;
-			var output = Transfer(input, instructions[index], effects[index]);
+			var output = Transfer(
+				input,
+				instructions[index],
+				effects[index],
+				addressFixupOffsets);
 			foreach (var successor in successors[index])
 			{
 				var changed = before[successor] is null
@@ -164,17 +191,24 @@ internal sealed class M68kValueRangeAnalysis
 	private static AbstractState Transfer(
 		AbstractState input,
 		M68kEmittedInstruction instruction,
-		M68kInstructionEffects effects)
+		M68kInstructionEffects effects,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
 		var output = input.Clone();
 		if (effects.IsBarrier)
 		{
-			// A call or undecoded instruction can replace register values even when
-			// the conservative liveness model treats every register as an input.
-			// Do not let constants or address aliases survive that boundary.
-			Array.Fill(output.Data, M68kValueRange.Unknown);
+			// Calls obey the compiler/Amiga ABI: D0-D1/A0-A1 are caller-saved,
+			// while D2-D7/A2-A7 retain their values. An undecoded barrier has no
+			// such contract and must invalidate every register.
+			var dataRegisterCount = instruction.Kind == M68kInstructionKind.Call
+				? 2
+				: 8;
+			for (var register = 0; register < dataRegisterCount; register++)
+			{
+				output.Data[register] = M68kValueRange.Unknown;
+			}
 			var addressRegisterCount = instruction.Kind == M68kInstructionKind.Call
-				? 7
+				? 2
 				: 8;
 			for (var register = 0; register < addressRegisterCount; register++)
 			{
@@ -186,7 +220,12 @@ internal sealed class M68kValueRangeAnalysis
 			InvalidateDefinedRegisters(output, effects);
 		}
 
-		var preciseStackWrite = TryGetPreciseStackWrite(input, instruction, out var writeOffset, out var writeValue);
+		var preciseStackWrite = TryGetPreciseStackWrite(
+			input,
+			instruction,
+			addressFixupOffsets,
+			out var writeOffset,
+			out var writeValue);
 		if ((effects.WritesMemory &
 			(M68kMemorySet.Stack | M68kMemorySet.Indirect | M68kMemorySet.Unknown)) != 0)
 		{
@@ -213,7 +252,26 @@ internal sealed class M68kValueRangeAnalysis
 
 		if ((opcode & 0xF000) == 0x2000)
 		{
-			TransferMoveLong(input, output, instruction);
+			TransferMoveLong(input, output, instruction, addressFixupOffsets);
+			return output;
+		}
+
+		if ((opcode & 0xF000) == 0x1000 &&
+			((opcode >> 3) & 7) == 0 &&
+			((opcode >> 6) & 7) == 0)
+		{
+			var destination = (opcode >> 9) & 7;
+			var priorDestination = input.Data[destination];
+			if (priorDestination.IsKnown &&
+				(priorDestination.Minimum >> 8) == (priorDestination.Maximum >> 8))
+			{
+				var upper = priorDestination.Minimum & 0xFFFFFF00;
+				output.Data[destination] = new M68kValueRange(
+					true,
+					upper,
+					upper | 0xFF,
+					~upper & 0xFFFFFF00);
+			}
 			return output;
 		}
 
@@ -235,6 +293,24 @@ internal sealed class M68kValueRangeAnalysis
 			return output;
 		}
 
+		if ((opcode & 0xFFF8) == 0x0280 && instruction.Length == 6)
+		{
+			var register = opcode & 7;
+			var mask = instruction.ExtensionLong;
+			var inputRange = input.Data[register];
+			if (inputRange.IsExact(out var exact))
+			{
+				output.Data[register] = M68kValueRange.Exact(exact & mask);
+			}
+			else if ((mask & unchecked(mask + 1)) == 0)
+			{
+				output.Data[register] = inputRange.IsKnown && inputRange.Maximum <= mask
+					? inputRange
+					: new M68kValueRange(true, 0, mask, ~mask);
+			}
+			return output;
+		}
+
 		if ((opcode & 0xF1F8) == 0xD080)
 		{
 			var source = opcode & 7;
@@ -242,6 +318,21 @@ internal sealed class M68kValueRangeAnalysis
 			output.Data[destination] = M68kValueRange.Add(
 				input.Data[destination],
 				input.Data[source]);
+			return output;
+		}
+
+		if ((opcode & 0xF1F8) == 0xD040)
+		{
+			var destination = (opcode >> 9) & 7;
+			output.Data[destination] = PreserveUpperWord(input.Data[destination]);
+			return output;
+		}
+
+		if ((opcode & 0xF000) == 0xE000 &&
+			(opcode & 0x00C0) == 0x0040)
+		{
+			var destination = opcode & 7;
+			output.Data[destination] = PreserveUpperWord(input.Data[destination]);
 			return output;
 		}
 
@@ -307,6 +398,25 @@ internal sealed class M68kValueRangeAnalysis
 		return output;
 	}
 
+	private static M68kValueRange PreserveUpperWord(M68kValueRange input)
+	{
+		if (!input.IsKnown || (input.Minimum >> 16) != (input.Maximum >> 16))
+		{
+			return new M68kValueRange(
+				false,
+				0,
+				0,
+				input.KnownZeroMask & 0xFFFF0000);
+		}
+
+		var upperWord = input.Minimum & 0xFFFF0000;
+		return new M68kValueRange(
+			true,
+			upperWord,
+			upperWord | 0x0000FFFF,
+			~upperWord & 0xFFFF0000);
+	}
+
 	private static void InvalidateDefinedRegisters(
 		AbstractState output,
 		M68kInstructionEffects effects)
@@ -342,7 +452,8 @@ internal sealed class M68kValueRangeAnalysis
 	private static void TransferMoveLong(
 		AbstractState input,
 		AbstractState output,
-		M68kEmittedInstruction instruction)
+		M68kEmittedInstruction instruction,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
 		var opcode = instruction.Opcode;
 		var sourceMode = (opcode >> 3) & 7;
@@ -356,7 +467,8 @@ internal sealed class M68kValueRangeAnalysis
 				input,
 				sourceMode,
 				sourceRegister,
-				instruction);
+				instruction,
+				addressFixupOffsets);
 			return;
 		}
 
@@ -372,7 +484,8 @@ internal sealed class M68kValueRangeAnalysis
 		AbstractState state,
 		int mode,
 		int register,
-		M68kEmittedInstruction instruction)
+		M68kEmittedInstruction instruction,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
 		if (mode == 0)
 		{
@@ -380,7 +493,9 @@ internal sealed class M68kValueRangeAnalysis
 		}
 		if (mode == 7 && register == 4)
 		{
-			return M68kValueRange.Exact(instruction.ExtensionLong);
+			return addressFixupOffsets.Contains(instruction.Offset + 2)
+				? M68kValueRange.Unknown
+				: M68kValueRange.Exact(instruction.ExtensionLong);
 		}
 
 		var address = ResolveAddress(
@@ -398,6 +513,7 @@ internal sealed class M68kValueRangeAnalysis
 	private static bool TryGetPreciseStackWrite(
 		AbstractState state,
 		M68kEmittedInstruction instruction,
+		IReadOnlySet<int> addressFixupOffsets,
 		out int offset,
 		out M68kValueRange value)
 	{
@@ -441,7 +557,8 @@ internal sealed class M68kValueRangeAnalysis
 			state,
 			sourceMode,
 			opcode & 7,
-			instruction);
+			instruction,
+			addressFixupOffsets);
 		return true;
 	}
 

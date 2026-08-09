@@ -4,6 +4,7 @@
  */
 
 using System.Text;
+using System.Reflection;
 using CopperSharp.Compiler.Backend;
 using CopperSharp.Compiler.Framework;
 using CopperSharp.Compiler.Metadata;
@@ -14,6 +15,9 @@ namespace CopperSharp.Compiler;
 /// <summary>Compiles a closed set of CIL methods into a linked 68k image.</summary>
 public static class M68kCompiler
 {
+	private static readonly string CompilerPackageVersion = GetPackageVersion(
+		typeof(M68kCompiler).Assembly);
+
 	/// <summary>
 	/// Analyzes the reachable framework surface without generating or linking target code.
 	/// </summary>
@@ -22,22 +26,27 @@ public static class M68kCompiler
 		ArgumentNullException.ThrowIfNull(request);
 		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
 		ValidateRuntimeOptions(request);
+		var implementationPack = FrameworkImplementationPackLoader.Load(
+			request.FrameworkImplementationPack);
 
 		using var module = new CompilationModule(
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
-			GetManagedAssemblyPaths(request));
+			GetManagedAssemblyPaths(request),
+			implementationPack);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
 				? ResolveManagedPoolRuntime(module)
 				: null;
 
-		return FrameworkReachabilityAnalyzer.Analyze(
+		var (analysis, _) = AnalyzeFrameworkAndLifecycles(
 			module,
 			entry,
 			module.GetExports(),
-			managedPoolRuntime);
+			managedPoolRuntime,
+			request);
+		return analysis;
 	}
 
 	/// <summary>Compiles and links one assembly.</summary>
@@ -48,43 +57,100 @@ public static class M68kCompiler
 		ValidateRuntimeOptions(request);
 
 		var managedAssemblyPaths = GetManagedAssemblyPaths(request);
+		var implementationPack = FrameworkImplementationPackLoader.Load(
+			request.FrameworkImplementationPack);
 
 		using var module = new CompilationModule(
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
-			managedAssemblyPaths);
+			managedAssemblyPaths,
+			implementationPack);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
 				? ResolveManagedPoolRuntime(module)
 				: null;
-		var frameworkAnalysis = FrameworkReachabilityAnalyzer.Analyze(
+		var (frameworkAnalysis, managedLifecycles) = AnalyzeFrameworkAndLifecycles(
 			module,
 			entry,
 			module.GetExports(),
-			managedPoolRuntime);
+			managedPoolRuntime,
+			request);
 		ThrowIfFrameworkIncompatible(frameworkAnalysis);
-		M68kStaticAnalyzer.Analyze(module, entry, request);
-		var generated = new M68kCodeGenerator(
-			module,
-			request,
-			managedPoolRuntime).Generate(entry);
 		var frameworkFeatures = frameworkAnalysis.Members
 			.SelectMany(static member => member.RequiredFeatures)
 			.Distinct(StringComparer.Ordinal)
 			.Order(StringComparer.Ordinal)
 			.ToArray();
+		M68kStaticAnalyzer.Analyze(
+			module,
+			entry,
+			request,
+			managedLifecycles.SelectMany(static lifecycle => lifecycle.Methods));
+		var generated = new M68kCodeGenerator(
+			module,
+			request,
+			managedPoolRuntime,
+			managedLifecycles).Generate(entry);
 
 		return request.OutputFormat switch
 		{
-			M68kOutputFormat.Hunk => LinkHunk(generated, request, frameworkFeatures),
-			M68kOutputFormat.KickstartRom => LinkRom(generated, request, frameworkFeatures),
-			M68kOutputFormat.Assembly => WriteAssembly(generated, request, frameworkFeatures),
+			M68kOutputFormat.Hunk => LinkHunk(generated, request, frameworkFeatures, frameworkAnalysis),
+			M68kOutputFormat.KickstartRom => LinkRom(generated, request, frameworkFeatures, frameworkAnalysis),
+			M68kOutputFormat.Assembly => WriteAssembly(generated, request, frameworkFeatures, frameworkAnalysis),
 			_ => throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidOutputOptions,
 				$"Unknown output format {request.OutputFormat}.")
 		};
 	}
+
+	private static (
+		M68kFrameworkAnalysisResult Analysis,
+		IReadOnlyList<ManagedLifecycleModule> Lifecycles)
+		AnalyzeFrameworkAndLifecycles(
+			CompilationModule module,
+			CilMethod entry,
+			IReadOnlyList<CilExport> exports,
+			ManagedPoolRuntimeModule? managedPoolRuntime,
+			M68kCompilationRequest request)
+	{
+		var baseline = FrameworkReachabilityAnalyzer.Analyze(
+			module,
+			entry,
+			exports,
+			managedPoolRuntime);
+		if (HasIncompatibleFrameworkMember(baseline))
+		{
+			return (baseline, Array.Empty<ManagedLifecycleModule>());
+		}
+
+		var baselineFeatures = baseline.Members
+			.SelectMany(static member => member.RequiredFeatures)
+			.Distinct(StringComparer.Ordinal)
+			.ToArray();
+		var lifecycles = ResolveManagedLifecycles(
+			module,
+			request,
+			baselineFeatures);
+		if (lifecycles.Count == 0)
+		{
+			return (baseline, lifecycles);
+		}
+
+		var augmented = FrameworkReachabilityAnalyzer.Analyze(
+			module,
+			entry,
+			exports,
+			managedPoolRuntime,
+			lifecycles.SelectMany(static lifecycle => lifecycle.Methods));
+		return (augmented, lifecycles);
+	}
+
+	private static bool HasIncompatibleFrameworkMember(
+		M68kFrameworkAnalysisResult analysis) =>
+		analysis.Members.Any(static member => member.Status is
+			M68kFrameworkCompatibilityStatus.Deferred or
+			M68kFrameworkCompatibilityStatus.Unsupported);
 
 	private static void ThrowIfFrameworkIncompatible(
 		M68kFrameworkAnalysisResult analysis)
@@ -177,6 +243,58 @@ public static class M68kCompiler
 			Field("StaleBlocksThreshold"));
 	}
 
+	private static IReadOnlyList<ManagedLifecycleModule> ResolveManagedLifecycles(
+		CompilationModule module,
+		M68kCompilationRequest request,
+		IReadOnlyCollection<string> frameworkFeatures)
+	{
+		if (request.RuntimeProfile != M68kRuntimeProfile.Application ||
+			request.ManagedLifecycleHooks.Count == 0)
+		{
+			return Array.Empty<ManagedLifecycleModule>();
+		}
+
+		var reachableFeatures = frameworkFeatures.ToHashSet(StringComparer.Ordinal);
+		var result = new List<ManagedLifecycleModule>();
+		foreach (var hook in request.ManagedLifecycleHooks)
+		{
+			if (!reachableFeatures.Contains(hook.RequiredFrameworkFeature))
+			{
+				continue;
+			}
+
+			var initialize = module.ResolveManagedMethod(
+				hook.AssemblyName,
+				hook.InitializeMethod);
+			var shutdown = module.ResolveManagedMethod(
+				hook.AssemblyName,
+				hook.ShutdownMethod);
+			ValidateLifecycleMethod(initialize, "initialize");
+			ValidateLifecycleMethod(shutdown, "shutdown");
+			result.Add(new ManagedLifecycleModule(
+				hook.RequiredFrameworkFeature,
+				initialize,
+				shutdown));
+		}
+		return result;
+	}
+
+	private static void ValidateLifecycleMethod(CilMethod method, string role)
+	{
+		if (!method.IsImport &&
+			!method.Signature.Header.IsInstance &&
+			method.ParameterCount == 0 &&
+			method.Signature.ReturnType.IsVoid)
+		{
+			return;
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.InvalidMetadata,
+			$"Managed lifecycle {role} method must be a managed static void method with no parameters.",
+			method.DisplayName);
+	}
+
 	internal static M68kMemoryManagement GetEffectiveMemoryManagement(
 		M68kCompilationRequest request) =>
 		request.MemoryManagement ??
@@ -186,6 +304,36 @@ public static class M68kCompiler
 
 	private static void ValidateRuntimeOptions(M68kCompilationRequest request)
 	{
+		if (request.TargetContract is { } target &&
+			(!IsSingleLineValue(target.RuntimeIdentifier) ||
+			 !IsSingleLineValue(target.PackageId) ||
+			 !IsSingleLineValue(target.PackageVersion)))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidOutputOptions,
+				"Target provenance requires non-empty, single-line runtime, package, and version values.");
+		}
+
+		var lifecycleHooks = new HashSet<M68kManagedLifecycleHook>();
+		foreach (var hook in request.ManagedLifecycleHooks)
+		{
+			if (string.IsNullOrWhiteSpace(hook.RequiredFrameworkFeature) ||
+				string.IsNullOrWhiteSpace(hook.AssemblyName) ||
+				string.IsNullOrWhiteSpace(hook.InitializeMethod) ||
+				string.IsNullOrWhiteSpace(hook.ShutdownMethod))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					"Managed lifecycle hooks require non-empty feature, assembly, initialize, and shutdown identities.");
+			}
+			if (!lifecycleHooks.Add(hook))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					$"Duplicate managed lifecycle hook for '{hook.RequiredFrameworkFeature}'.");
+			}
+		}
+
 		if (request.FloatingPoint == M68kFloatingPointMode.M68040 &&
 			request.Cpu is not M68kCpuTarget.M68040 and not M68kCpuTarget.M68060)
 		{
@@ -225,6 +373,10 @@ public static class M68kCompiler
 		}
 	}
 
+	private static bool IsSingleLineValue(string? value) =>
+		!string.IsNullOrWhiteSpace(value) &&
+		value.IndexOfAny(['\r', '\n']) < 0;
+
 	internal static M68kGcSweepStrategy GetEffectiveGcSweepStrategy(
 		M68kCompilationRequest request) =>
 		request.GcSweepStrategy ?? M68kGcSweepStrategy.OnAllocationFailure;
@@ -240,7 +392,8 @@ public static class M68kCompiler
 	private static M68kCompilationResult WriteAssembly(
 		GeneratedProgram program,
 		M68kCompilationRequest request,
-		IReadOnlyList<string> frameworkFeatures)
+		IReadOnlyList<string> frameworkFeatures,
+		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var imports = new Dictionary<string, uint>(request.Imports, StringComparer.Ordinal);
 		foreach (var import in program.Assembler.ExternalTargets)
@@ -265,6 +418,7 @@ public static class M68kCompiler
 			linked.Relocations,
 			CreateMap(
 				request,
+				frameworkAnalysis,
 				entryOffset,
 				symbols,
 				linked.Relocations,
@@ -274,13 +428,15 @@ public static class M68kCompiler
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
 			loopFootprints,
-			frameworkFeatures);
+			frameworkFeatures,
+			frameworkAnalysis);
 	}
 
 	private static M68kCompilationResult LinkHunk(
 		GeneratedProgram program,
 		M68kCompilationRequest request,
-		IReadOnlyList<string> frameworkFeatures)
+		IReadOnlyList<string> frameworkFeatures,
+		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var linked = program.Assembler.Link(0, request.Imports);
 		var symbols = CreateSymbols(program, linked, 0);
@@ -303,6 +459,7 @@ public static class M68kCompiler
 			linked.Relocations,
 			CreateMap(
 				request,
+				frameworkAnalysis,
 				entryOffset,
 				symbols,
 				linked.Relocations,
@@ -312,13 +469,15 @@ public static class M68kCompiler
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
 			loopFootprints,
-			frameworkFeatures);
+			frameworkFeatures,
+			frameworkAnalysis);
 	}
 
 	private static M68kCompilationResult LinkRom(
 		GeneratedProgram program,
 		M68kCompilationRequest request,
-		IReadOnlyList<string> frameworkFeatures)
+		IReadOnlyList<string> frameworkFeatures,
+		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var romBase = KickstartRomWriter.GetBaseAddress(request.Rom);
 		var codeOrigin = checked(romBase + 8);
@@ -339,6 +498,7 @@ public static class M68kCompiler
 			linked.Relocations,
 			CreateMap(
 				request,
+				frameworkAnalysis,
 				entryPoint,
 				symbols,
 				linked.Relocations,
@@ -348,7 +508,8 @@ public static class M68kCompiler
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
 			loopFootprints,
-			frameworkFeatures);
+			frameworkFeatures,
+			frameworkAnalysis);
 	}
 
 	private static IReadOnlyList<M68kSymbol> CreateSymbols(
@@ -418,13 +579,38 @@ public static class M68kCompiler
 
 	private static string CreateMap(
 		M68kCompilationRequest request,
+		M68kFrameworkAnalysisResult frameworkAnalysis,
 		uint entryPoint,
 		IReadOnlyList<M68kSymbol> symbols,
 		IReadOnlyList<M68kRelocation> relocations,
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
 		IReadOnlyList<string> frameworkFeatures)
 	{
+		var target = request.TargetContract ?? new M68kTargetContract(
+			"m68k",
+			"CopperSharp.Compiler",
+			CompilerPackageVersion);
+		var contract = frameworkAnalysis.Contract;
 		var map = new StringBuilder();
+		map.AppendLine($"COMPILER CopperSharp.Compiler {CompilerPackageVersion}");
+		map.AppendLine(
+			$"CONTRACT {contract.TargetFramework}-{contract.ReferencePackVersion} " +
+			$"{contract.ReferencePack} {contract.ReferencePackVersion}");
+		map.AppendLine(
+			$"TARGET {target.RuntimeIdentifier} {target.PackageId} {target.PackageVersion}");
+		if (frameworkAnalysis.ImplementationPack is { } implementationPack)
+		{
+			map.AppendLine(
+				$"IMPLEMENTATION PACK {implementationPack.PackId} {implementationPack.PackVersion} " +
+				$"{implementationPack.RuntimeIdentifier} {implementationPack.ImplementationProfile}");
+			foreach (var assembly in implementationPack.Assemblies)
+			{
+				map.AppendLine(
+					$"IMPLEMENTATION ASSEMBLY {assembly.Name} {assembly.Version} " +
+					$"pkt={assembly.PublicKeyToken} mvid={assembly.Mvid:D} sha256={assembly.Sha256}");
+			}
+		}
+		map.AppendLine($"PROFILE {request.RuntimeProfile}");
 		map.AppendLine($"CPU {request.Cpu}");
 		map.AppendLine($"FORMAT {request.OutputFormat}");
 		map.AppendLine($"ENTRY {entryPoint:X8}");
@@ -458,5 +644,21 @@ public static class M68kCompiler
 		}
 
 		return map.ToString();
+	}
+
+	private static string GetPackageVersion(Assembly assembly)
+	{
+		var informationalVersion = assembly
+			.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+			.InformationalVersion;
+		if (!string.IsNullOrWhiteSpace(informationalVersion))
+		{
+			var metadataSeparator = informationalVersion.IndexOf('+');
+			return metadataSeparator < 0
+				? informationalVersion
+				: informationalVersion[..metadataSeparator];
+		}
+
+		return assembly.GetName().Version?.ToString() ?? "unknown";
 	}
 }

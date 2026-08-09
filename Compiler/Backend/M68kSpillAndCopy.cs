@@ -625,16 +625,17 @@ internal static class M68kParallelCopyResolver
 		IEnumerable<M68kParallelCopy> copies,
 		M68kStorageLocation temporary)
 	{
-		var remaining = copies
+		var original = copies
 			.Where(static copy => copy.Destination != copy.Source)
-			.ToList();
-		if (remaining.Select(static copy => copy.Destination).Distinct().Count() !=
-			remaining.Count)
+			.ToArray();
+		if (original.Select(static copy => copy.Destination).Distinct().Count() !=
+			original.Length)
 		{
 			throw new InvalidOperationException(
 				"Parallel copy has more than one source for a destination.");
 		}
 
+		var remaining = original.ToList();
 		var result = new List<M68kParallelCopy>();
 		while (remaining.Count != 0)
 		{
@@ -666,7 +667,39 @@ internal static class M68kParallelCopyResolver
 				}
 			}
 		}
+		Verify(original, result, temporary);
 		return result;
+	}
+
+	private static void Verify(
+		IReadOnlyList<M68kParallelCopy> original,
+		IReadOnlyList<M68kParallelCopy> resolved,
+		M68kStorageLocation temporary)
+	{
+		var locations = original
+			.SelectMany(static copy => new[] { copy.Source, copy.Destination })
+			.Append(temporary)
+			.Distinct();
+		var contents = locations.ToDictionary(
+			static location => location,
+			static location => location);
+		foreach (var copy in resolved)
+		{
+			if (!contents.TryGetValue(copy.Source, out var value))
+			{
+				throw new InvalidOperationException(
+					"Resolved parallel copy reads an unknown source location.");
+			}
+			contents[copy.Destination] = value;
+		}
+		foreach (var copy in original)
+		{
+			if (contents[copy.Destination] != copy.Source)
+			{
+				throw new InvalidOperationException(
+					"Resolved parallel copy overwrites a source before its last use.");
+			}
+		}
 	}
 }
 

@@ -199,6 +199,136 @@ internal static class M68kMachineCostAnalysis
 		left >= long.MaxValue - right ? long.MaxValue : left + right;
 }
 
+internal static class M68kAddressRegisterEligibility
+{
+	public static void Apply(M68kMachineFunction function)
+	{
+		var candidates = new HashSet<int>();
+		foreach (var instruction in function.Blocks
+			.SelectMany(static block => block.Instructions))
+		{
+			if (!IsFlagIndependentLongArithmetic(instruction) ||
+				instruction.Uses.Length < 1 ||
+				instruction.Definitions.Length != 1)
+			{
+				continue;
+			}
+			AddCandidate(instruction.Uses[0]);
+			AddCandidate(instruction.Definitions[0]);
+		}
+
+		bool changed;
+		do
+		{
+			changed = false;
+			foreach (var instruction in function.Blocks
+				.SelectMany(static block => block.Instructions)
+				.Where(static instruction =>
+					instruction.Operation == M68kMachineOperation.Copy &&
+					instruction.Uses.Length == 1 &&
+					instruction.Definitions.Length == 1))
+			{
+				if (candidates.Contains(instruction.Uses[0]) ||
+					candidates.Contains(instruction.Definitions[0]))
+				{
+					changed |= AddCandidate(instruction.Uses[0]);
+					changed |= AddCandidate(instruction.Definitions[0]);
+				}
+			}
+			foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
+			{
+				var values = phi.Inputs.Values.Append(phi.Definition).Distinct().ToArray();
+				if (!values.Any(candidates.Contains))
+				{
+					continue;
+				}
+				foreach (var value in values)
+				{
+					changed |= AddCandidate(value);
+				}
+			}
+		}
+		while (changed);
+
+		foreach (var block in function.Blocks)
+		{
+			foreach (var instruction in block.Instructions)
+			{
+				for (var index = 0; index < instruction.Uses.Length; index++)
+				{
+					if (candidates.Contains(instruction.Uses[index]) &&
+						!CanUseAddressRegister(instruction, index))
+					{
+						candidates.Remove(instruction.Uses[index]);
+					}
+				}
+				foreach (var definition in instruction.Definitions)
+				{
+					if (candidates.Contains(definition) &&
+						!CanDefineAddressRegister(instruction))
+					{
+						candidates.Remove(definition);
+					}
+				}
+			}
+		}
+
+		foreach (var valueId in candidates)
+		{
+			var value = function.Values[valueId];
+			function.Values[valueId] = value with
+			{
+				AllowedRegisters = M68kRegisterSet.DataOrAddress
+			};
+		}
+
+		bool AddCandidate(int valueId)
+		{
+			var value = function.Values[valueId];
+			return value.Kind == CilStackValueKind.Int32 &&
+				value.Width == M68kMachineValueWidth.Long &&
+				value.PrecoloredRegister is null &&
+				value.AllowedRegisters == M68kRegisterSet.Data &&
+				candidates.Add(valueId);
+		}
+	}
+
+	private static bool IsFlagIndependentLongArithmetic(
+		M68kMachineInstruction instruction)
+	{
+		if (instruction.Operation is not
+			M68kMachineOperation.Add and not M68kMachineOperation.Subtract)
+		{
+			return false;
+		}
+		var op = instruction.SourceInstruction?.OpCode;
+		return op != System.Reflection.Emit.OpCodes.Add_Ovf &&
+			op != System.Reflection.Emit.OpCodes.Add_Ovf_Un &&
+			op != System.Reflection.Emit.OpCodes.Sub_Ovf &&
+			op != System.Reflection.Emit.OpCodes.Sub_Ovf_Un;
+	}
+
+	private static bool CanUseAddressRegister(
+		M68kMachineInstruction instruction,
+		int useIndex) =>
+		instruction.Operation switch
+		{
+			M68kMachineOperation.Copy => true,
+			M68kMachineOperation.Add or M68kMachineOperation.Subtract =>
+				useIndex == 0 && IsFlagIndependentLongArithmetic(instruction),
+			M68kMachineOperation.LocalStore or
+			M68kMachineOperation.ArgumentStore or
+			M68kMachineOperation.Store or
+			M68kMachineOperation.OutgoingArgumentPush => true,
+			_ => false
+		};
+
+	private static bool CanDefineAddressRegister(
+		M68kMachineInstruction instruction) =>
+		instruction.Operation == M68kMachineOperation.Copy ||
+		IsFlagIndependentLongArithmetic(instruction);
+}
+
 internal sealed class M68kLivenessInfo
 {
 	public Dictionary<int, HashSet<int>> Use { get; } = new();
@@ -487,6 +617,19 @@ internal static class M68kInterferenceBuilder
 						instruction.Definitions[0],
 						instruction.Uses[1]);
 				}
+				if (instruction.Operation is
+						M68kMachineOperation.Add or
+						M68kMachineOperation.Subtract or
+						M68kMachineOperation.And or
+						M68kMachineOperation.Or or
+						M68kMachineOperation.Xor &&
+					instruction.Uses.Length != 0 &&
+					instruction.Definitions.Length == 1)
+				{
+					graph.AddCopyPreference(
+						instruction.Definitions[0],
+						instruction.Uses[0]);
+				}
 				live.ExceptWith(instruction.Definitions);
 				live.UnionWith(instruction.Uses);
 				if (!instruction.Clobbers.IsEmpty)
@@ -527,6 +670,46 @@ internal static class M68kInterferenceBuilder
 				{
 					graph.AddCopyPreference(phi.Definition, input);
 				}
+			}
+		}
+
+		// Incoming arguments are materialized together by the allocated prologue.
+		// Their post-entry homes must therefore remain distinct even when their
+		// first managed uses occur at different points in the entry block.
+		var entry = function.Blocks.Single(block =>
+			block.Id == function.EntryBlockId);
+		var incomingHomes = entry.Instructions
+			.Where(static instruction =>
+				instruction.Operation == M68kMachineOperation.Argument &&
+				instruction.Definitions.Length == 1)
+			.Select(argument =>
+			{
+				var incoming = argument.Definitions[0];
+				if (function.Values[incoming].PrecoloredRegister is null)
+				{
+					return incoming;
+				}
+
+				var copies = entry.Instructions.Where(instruction =>
+					instruction.Operation == M68kMachineOperation.Copy &&
+					instruction.IlOffset == entry.StartIlOffset &&
+					instruction.Uses is [var source] &&
+					source == incoming &&
+					instruction.Definitions.Length == 1).ToArray();
+				if (copies.Length != 1)
+				{
+					throw new InvalidOperationException(
+						"Register argument does not have one canonical entry copy.");
+				}
+				return copies[0].Definitions[0];
+			})
+			.Distinct()
+			.ToArray();
+		for (var left = 0; left < incomingHomes.Length; left++)
+		{
+			for (var right = left + 1; right < incomingHomes.Length; right++)
+			{
+				graph.AddEdge(incomingHomes[left], incomingHomes[right]);
 			}
 		}
 
@@ -598,6 +781,7 @@ internal static class M68kRegisterAllocatorPipeline
 			allowCallerBorrowedByrefs,
 			rejectManagedByrefReturn);
 		M68kCriticalEdgeSplitter.SplitPhiEdges(function);
+		M68kAddressRegisterEligibility.Apply(function);
 		var originalValueCount = function.Values.Count;
 		var allSlots = new Dictionary<int, M68kSpillSlot>();
 		var allRematerialized = new HashSet<int>();
@@ -622,7 +806,8 @@ internal static class M68kRegisterAllocatorPipeline
 			M68kGraphColoringAllocator.VerifyAllocation(
 				function,
 				interference,
-				allocation);
+				allocation,
+				instructionLiveness);
 			if (allocation.SpilledValues.Count == 0)
 			{
 				var safepoints = M68kSafepointPlanner.Create(
@@ -999,6 +1184,22 @@ internal static class M68kGraphColoringAllocator
 				out var registers)
 					? registers
 					: M68kRegisterSet.None;
+			if (value.PrecoloredRegister is null)
+			{
+				foreach (var neighborId in graph.Neighbors(value.Id))
+				{
+					var neighbor = function.Values[neighborId];
+					if (neighbor.PrecoloredRegister is not { } fixedRegister)
+					{
+						continue;
+					}
+					var occupied = neighbor.IsRegisterPair
+						? M68kRegisterSet.From(fixedRegister, fixedRegister + 1)
+						: M68kRegisterSet.From(fixedRegister);
+					forbidden = new M68kRegisterSet(
+						(ushort)(forbidden.Bits | occupied.Bits));
+				}
+			}
 			var group = new AllocationGroup
 			{
 				Id = value.Id,
@@ -1086,11 +1287,7 @@ internal static class M68kGraphColoringAllocator
 		if (left.Width != right.Width ||
 			(left.PrecoloredRegister is { } leftRegister &&
 			 right.PrecoloredRegister is { } rightRegister &&
-			 leftRegister != rightRegister) ||
-			left.PreferAddressRegisters != right.PreferAddressRegisters &&
-				(left.PreferAddressRegisters
-					? !right.AllowedRegisters.Overlaps(M68kRegisterSet.Address)
-					: !left.AllowedRegisters.Overlaps(M68kRegisterSet.Address)))
+			 leftRegister != rightRegister))
 		{
 			return false;
 		}
@@ -1151,7 +1348,8 @@ internal static class M68kGraphColoringAllocator
 	public static void VerifyAllocation(
 		M68kMachineFunction function,
 		M68kInterferenceGraph graph,
-		M68kAllocationResult allocation)
+		M68kAllocationResult allocation,
+		M68kInstructionLiveness? instructionLiveness = null)
 	{
 		foreach (var (valueId, location) in allocation.Registers)
 		{
@@ -1174,7 +1372,108 @@ internal static class M68kGraphColoringAllocator
 					location.OccupiedRegisters.Overlaps(other.OccupiedRegisters))
 				{
 					throw new InvalidOperationException(
-						$"Interfering values v{valueId} and v{neighbor} share a register.");
+						$"{function.DisplayName}: interfering values v{valueId} " +
+						$"({value.Kind}, {value.Width}) and v{neighbor} " +
+						$"({function.Values[neighbor].Kind}, {function.Values[neighbor].Width}) " +
+						$"share {location.Register}; precolored=" +
+						$"{value.PrecoloredRegister?.ToString() ?? "none"}/" +
+						$"{function.Values[neighbor].PrecoloredRegister?.ToString() ?? "none"}.");
+				}
+			}
+		}
+
+		VerifySimultaneouslyLiveLocations(
+			function,
+			allocation,
+			instructionLiveness ?? M68kLivenessAnalysis.AnalyzeInstructions(
+				function,
+				M68kLivenessAnalysis.Analyze(function)));
+	}
+
+	private static void VerifySimultaneouslyLiveLocations(
+		M68kMachineFunction function,
+		M68kAllocationResult allocation,
+		M68kInstructionLiveness liveness)
+	{
+		var equivalentParent = function.Values.Keys.ToDictionary(
+			static value => value,
+			static value => value);
+
+		int Find(int value)
+		{
+			var parent = equivalentParent[value];
+			if (parent != value)
+			{
+				equivalentParent[value] = Find(parent);
+			}
+			return equivalentParent[value];
+		}
+
+		void Union(int left, int right)
+		{
+			left = Find(left);
+			right = Find(right);
+			if (left != right)
+			{
+				equivalentParent[Math.Max(left, right)] = Math.Min(left, right);
+			}
+		}
+
+		foreach (var copy in function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.Where(static instruction =>
+				instruction.Operation == M68kMachineOperation.Copy &&
+				instruction.AllowCopyCoalescing &&
+				instruction.Uses.Length == 1 &&
+				instruction.Definitions.Length == 1))
+		{
+			var source = function.Values[copy.Uses[0]];
+			var destination = function.Values[copy.Definitions[0]];
+			if (source.Kind == destination.Kind && source.Width == destination.Width)
+			{
+				Union(source.Id, destination.Id);
+			}
+		}
+
+		foreach (var block in function.Blocks)
+		{
+			foreach (var instruction in block.Instructions)
+			{
+				VerifySet(instruction, liveness.LiveBefore[instruction.Id], "before");
+				VerifySet(instruction, liveness.LiveAfter[instruction.Id], "after");
+			}
+		}
+
+		void VerifySet(
+			M68kMachineInstruction instruction,
+			IReadOnlySet<int> live,
+			string position)
+		{
+			var allocated = live
+				.Where(allocation.Registers.ContainsKey)
+				.Order()
+				.ToArray();
+			for (var leftIndex = 0; leftIndex < allocated.Length; leftIndex++)
+			{
+				var left = allocated[leftIndex];
+				var leftLocation = allocation.Registers[left];
+				for (var rightIndex = leftIndex + 1;
+					rightIndex < allocated.Length;
+					rightIndex++)
+				{
+					var right = allocated[rightIndex];
+					var rightLocation = allocation.Registers[right];
+					if (Find(left) == Find(right) ||
+						!leftLocation.OccupiedRegisters.Overlaps(
+							rightLocation.OccupiedRegisters))
+					{
+						continue;
+					}
+					throw new InvalidOperationException(
+						$"{function.DisplayName}: non-equivalent values v{left} and " +
+						$"v{right} are simultaneously live {position} instruction " +
+						$"{instruction.Id} ({instruction.Operation}) and share " +
+						$"{leftLocation.Register}.");
 				}
 			}
 		}
