@@ -11,6 +11,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using CopperSharp.Compiler.Framework;
 
 namespace CopperSharp.Compiler.Metadata;
@@ -26,7 +27,7 @@ internal sealed class CompilationModule : IDisposable
 
 	private readonly FileStream _stream;
 	private readonly PEReader _peReader;
-	private readonly CilSignatureTypeProvider _signatureProvider = new();
+	private readonly CilSignatureTypeProvider _signatureProvider;
 	private readonly Dictionary<(MethodDefinitionHandle Handle, string Construction), CilMethod> _methodCache = new();
 	private readonly Dictionary<(TypeDefinitionHandle Handle, string Construction), CilMethod?> _typeInitializerCache = new();
 	private readonly Dictionary<FieldDefinitionHandle, CilField> _fieldCache = new();
@@ -54,11 +55,50 @@ internal sealed class CompilationModule : IDisposable
 		IReadOnlyList<string>? managedAssemblyPaths = null)
 		: this(assemblyPath, externalCallResolvers, root: null)
 	{
-		_managedAssemblyPaths = (managedAssemblyPaths ?? Array.Empty<string>())
-			.ToDictionary(
-				path => Path.GetFileNameWithoutExtension(path),
-				Path.GetFullPath,
-				StringComparer.Ordinal);
+		_managedAssemblyPaths = CreateManagedAssemblyPathMap(
+			managedAssemblyPaths ?? Array.Empty<string>());
+	}
+
+	private static IReadOnlyDictionary<string, string> CreateManagedAssemblyPathMap(
+		IReadOnlyList<string> paths)
+	{
+		var result = new Dictionary<string, string>(StringComparer.Ordinal);
+		foreach (var candidate in paths)
+		{
+			var path = Path.GetFullPath(candidate);
+			var name = Path.GetFileNameWithoutExtension(path);
+			if (!result.TryGetValue(name, out var previousPath))
+			{
+				result.Add(name, path);
+				continue;
+			}
+			if (FilesHaveEqualContent(previousPath, path))
+			{
+				continue;
+			}
+
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidInput,
+				$"Managed assembly identity '{name}' is supplied by different files '{previousPath}' and '{path}'.");
+		}
+		return result;
+	}
+
+	private static bool FilesHaveEqualContent(string leftPath, string rightPath)
+	{
+		if (string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+		var leftInfo = new FileInfo(leftPath);
+		var rightInfo = new FileInfo(rightPath);
+		if (leftInfo.Length != rightInfo.Length)
+		{
+			return false;
+		}
+		using var left = File.OpenRead(leftPath);
+		using var right = File.OpenRead(rightPath);
+		return SHA256.HashData(left).AsSpan().SequenceEqual(SHA256.HashData(right));
 	}
 
 	private CompilationModule(
@@ -74,6 +114,7 @@ internal sealed class CompilationModule : IDisposable
 			new Dictionary<CilMethodIdentity, FrameworkVirtualFallback>();
 		_managedAssemblyPaths = root?._managedAssemblyPaths ??
 			new Dictionary<string, string>(StringComparer.Ordinal);
+		_signatureProvider = new CilSignatureTypeProvider(ResolveReferencedEnumType);
 		try
 		{
 			_stream = File.OpenRead(assemblyPath);
@@ -1015,11 +1056,33 @@ internal sealed class CompilationModule : IDisposable
 
 	public CilInterfaceImplementation? TryGetInterfaceImplementation(
 		CilTypeLayout layout,
-		CilInterfaceDefinition interfaceDefinition) =>
-		GetModule(layout.ModuleName).TryGetInterfaceImplementation(
+		CilInterfaceDefinition interfaceDefinition)
+	{
+		// Private shadow interfaces have a single compiler-owned implementation in
+		// Runtime.Managed. Other reachable user/framework layouts cannot implement
+		// them and must not trigger the deliberately unsupported general
+		// cross-module interface-map path.
+		if (!string.Equals(
+				layout.ModuleName,
+				interfaceDefinition.Identity.ModuleName,
+				StringComparison.Ordinal) &&
+			IsPrivateShadowInterface(interfaceDefinition))
+		{
+			return null;
+		}
+
+		return GetModule(layout.ModuleName).TryGetInterfaceImplementation(
 			layout.Handle,
 			layout.ConstructedType,
 			interfaceDefinition);
+	}
+
+	private static bool IsPrivateShadowInterface(
+		CilInterfaceDefinition interfaceDefinition) =>
+		interfaceDefinition.Identity.ModuleName == "CopperSharp.Runtime.Managed" &&
+		interfaceDefinition.DisplayName.StartsWith(
+			"CopperSharp.Runtime.IShadowEqualityComparer`1<",
+			StringComparison.Ordinal);
 
 	public CilMethod ResolveConstrainedInterfaceImplementation(
 		CilMethod caller,
@@ -1591,7 +1654,10 @@ internal sealed class CompilationModule : IDisposable
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedPolymorphism,
-				"Cross-module interface implementation maps are not supported yet.");
+				$"Cross-module interface implementation map from " +
+				$"'{_assemblyName}:{GetTypeName(Reader.GetTypeDefinition(typeHandle))}' " +
+				$"to '{interfaceDefinition.DisplayName}' in " +
+				$"'{interfaceDefinition.Identity.ModuleName}' is not supported yet.");
 		}
 
 		var identity = new CilInterfaceImplementationIdentity(
@@ -2276,7 +2342,8 @@ internal sealed class CompilationModule : IDisposable
 		{
 			try
 			{
-				var reflectionType = Assembly.LoadFrom(path).GetType(type.DisplayName, throwOnError: false);
+				var reflectionName = type.DisplayName.Replace('/', '+');
+				var reflectionType = Assembly.LoadFrom(path).GetType(reflectionName, throwOnError: false);
 				if (reflectionType is null)
 				{
 					continue;
@@ -2331,7 +2398,9 @@ internal sealed class CompilationModule : IDisposable
 	public bool IsSupportedStructType(CilType type)
 	{
 		if (IsSupportedSpanLikeType(type) ||
-			IsDefaultInterpolatedStringHandler(type))
+			IsSupportedMemoryLikeType(type) ||
+			IsDefaultInterpolatedStringHandler(type) ||
+			IsListEnumeratorType(type))
 		{
 			return true;
 		}
@@ -2341,6 +2410,19 @@ internal sealed class CompilationModule : IDisposable
 			return false;
 		}
 
+		foreach (var module in _root._modules.Values)
+		{
+			if (module.HasSupportedStructDefinition(type))
+			{
+				return true;
+			}
+		}
+
+		return TryGetReflectionStructSlotLongs(type.DisplayName, out _);
+	}
+
+	private bool HasSupportedStructDefinition(CilType type)
+	{
 		foreach (var handle in Reader.TypeDefinitions)
 		{
 			var definition = Reader.GetTypeDefinition(handle);
@@ -2356,7 +2438,7 @@ internal sealed class CompilationModule : IDisposable
 			return fields.Length != 0;
 		}
 
-		return TryGetReflectionStructSlotLongs(type.DisplayName, out _);
+		return false;
 	}
 
 	public static bool IsSupportedSpanLikeType(CilType type) =>
@@ -2367,17 +2449,48 @@ internal sealed class CompilationModule : IDisposable
 			StringComparison.Ordinal)) &&
 		type.GenericArguments.Length == 1;
 
+	public static bool IsSupportedMemoryLikeType(CilType type) =>
+		type.Kind == CilTypeKind.ValueType &&
+		(type.DisplayName.StartsWith("System.Memory`1<", StringComparison.Ordinal) ||
+		 type.DisplayName.StartsWith(
+			"System.ReadOnlyMemory`1<",
+			StringComparison.Ordinal)) &&
+		type.GenericArguments.Length == 1;
+
 	public static bool IsDefaultInterpolatedStringHandler(CilType type) =>
 		type.Kind == CilTypeKind.ValueType &&
 		type.DisplayName ==
 			"System.Runtime.CompilerServices.DefaultInterpolatedStringHandler";
 
-		public bool TryGetReferenceFreeStructLayout(
+	public static bool IsListEnumeratorType(CilType type) =>
+		type.Kind == CilTypeKind.ValueType &&
+		!type.GenericArguments.IsDefault &&
+		type.GenericArguments.Length == 1 &&
+		(type.DisplayName.StartsWith(
+			"System.Collections.Generic.List`1/Enumerator<",
+			StringComparison.Ordinal) ||
+		 type.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowListEnumerator`1<",
+			StringComparison.Ordinal));
+
+	public bool TryGetReferenceFreeStructLayout(
 		CilType type,
 		string preferredModuleName,
 		out CilTypeLayout layout)
 	{
 			layout = null!;
+			if (IsListEnumeratorType(type))
+			{
+				// Direct List<T> enumeration is a deliberately admitted
+				// reference-bearing aggregate transport. Its hidden return buffer
+				// is a precisely described frame root and the shadow/public layouts
+				// are identical, so no general reference-bearing copy surface is
+				// opened here.
+				return TryGetListEnumeratorLayout(
+					type,
+					preferredModuleName,
+					out layout);
+			}
 			if (IsSupportedSpanLikeType(type))
 			{
 				// The language-visible payload is the allocation-free (data, length)
@@ -2388,6 +2501,20 @@ internal sealed class CompilationModule : IDisposable
 					type.DisplayName,
 					12,
 					1u << 2,
+					new Dictionary<FieldDefinitionHandle, int>(),
+					preferredModuleName,
+					type);
+				return true;
+			}
+			if (IsSupportedMemoryLikeType(type))
+			{
+				// The admitted array-backed value is (owner, start, length). Word
+				// zero is a precise GC root; no data pointer is retained across a move.
+				layout = new CilTypeLayout(
+					default,
+					type.DisplayName,
+					12,
+					1u,
 					new Dictionary<FieldDefinitionHandle, int>(),
 					preferredModuleName,
 					type);
@@ -2414,12 +2541,31 @@ internal sealed class CompilationModule : IDisposable
 			return layout.ReferenceBitmap == 0;
 		}
 
-		public bool TryGetStructLayout(
-			CilType type,
-			string preferredModuleName,
-			out CilTypeLayout layout)
+			public bool TryGetStructLayout(
+				CilType type,
+				string preferredModuleName,
+				out CilTypeLayout layout)
 			{
 				layout = null!;
+				if (IsListEnumeratorType(type))
+				{
+					return TryGetListEnumeratorLayout(
+						type,
+						preferredModuleName,
+						out layout);
+				}
+				if (IsSupportedMemoryLikeType(type))
+				{
+					layout = new CilTypeLayout(
+						default,
+						type.DisplayName,
+						12,
+						1u,
+						new Dictionary<FieldDefinitionHandle, int>(),
+						preferredModuleName,
+						type);
+					return true;
+				}
 				if (IsDefaultInterpolatedStringHandler(type))
 				{
 					// Pinned .NET 10 field order: provider, pooled array, Span<char>,
@@ -2454,7 +2600,9 @@ internal sealed class CompilationModule : IDisposable
 		CilType type,
 		string preferredModuleName,
 		out CilTypeLayout layout) =>
-		IsSupportedSpanLikeType(type)
+		IsSupportedSpanLikeType(type) ||
+		IsSupportedMemoryLikeType(type) ||
+		IsSupportedNullableType(type)
 			? TryGetReferenceFreeStructLayout(
 				type,
 				preferredModuleName,
@@ -2510,17 +2658,22 @@ internal sealed class CompilationModule : IDisposable
 		{
 			return 3;
 		}
+		if (IsSupportedMemoryLikeType(type))
+		{
+			return 3;
+		}
 		if (IsDefaultInterpolatedStringHandler(type))
 		{
 			return 7;
 		}
-		foreach (var handle in Reader.TypeDefinitions)
+		if (IsListEnumeratorType(type) &&
+			TryGetListEnumeratorLayout(type, _assemblyName, out var enumeratorLayout))
 		{
-			var definition = Reader.GetTypeDefinition(handle);
-			if (TypeNameMatches(definition, type.DisplayName))
-			{
-				return checked((GetTypeLayout(handle).Size + 3) / 4);
-			}
+			return checked((enumeratorLayout.Size + 3) / 4);
+		}
+		if (TryGetStructLayout(type, _assemblyName, out var layout))
+		{
+			return checked((layout.Size + 3) / 4);
 		}
 
 		if (TryGetReflectionStructSlotLongs(type.DisplayName, out var slotLongs))
@@ -2533,7 +2686,41 @@ internal sealed class CompilationModule : IDisposable
 			$"Unsupported value type '{type.DisplayName}'.");
 	}
 
+	private bool TryGetListEnumeratorLayout(
+		CilType type,
+		string preferredModuleName,
+		out CilTypeLayout layout)
+	{
+		layout = null!;
+		if (!IsListEnumeratorType(type) ||
+			type.GenericArguments is not [var element] ||
+			!element.IsSupportedScalar ||
+			element.Kind is CilTypeKind.ManagedPointer or CilTypeKind.GenericParameter)
+		{
+			return false;
+		}
+
+		var currentBytes = Math.Max(4, element.Size);
+		var referenceBitmap = 1u;
+		if (element.IsReference)
+		{
+			referenceBitmap |= 1u << 3;
+		}
+		layout = new CilTypeLayout(
+			default,
+			type.DisplayName,
+			12 + currentBytes,
+			referenceBitmap,
+			new Dictionary<FieldDefinitionHandle, int>(),
+			preferredModuleName,
+			type);
+		return true;
+	}
+
 	public bool IsTransparentScalarConstructor(CilMethod method) =>
+		GetModule(method.ModuleName).IsTransparentScalarConstructorCore(method);
+
+	private bool IsTransparentScalarConstructorCore(CilMethod method) =>
 		method.Signature.Header.IsInstance &&
 		method.Name == ".ctor" &&
 		method.Signature.ParameterTypes.Length == 1 &&
@@ -2911,21 +3098,26 @@ internal sealed class CompilationModule : IDisposable
 					new CilGenericContext(
 						constructedType.GenericArguments,
 						ImmutableArray<CilType>.Empty));
-			if (!TryFindConstructedGenericDefinition(baseType, out var baseTarget) ||
-				baseTarget.Handle.Kind != HandleKind.TypeDefinition)
+			if ((!TryFindConstructedGenericDefinition(baseType, out var baseTarget) ||
+				baseTarget.Handle.Kind != HandleKind.TypeDefinition) &&
+				!IsShadowEqualityComparerFrameworkBase(constructedType, baseType))
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedSignature,
 					$"Constructed base layout '{baseType.DisplayName}' for '{constructedType.DisplayName}' cannot be resolved to an in-module generic definition.");
 			}
-			var baseLayout = GetConstructedTypeLayout(
-				(TypeDefinitionHandle)baseTarget.Handle,
-				baseType);
-			inheritedSize = baseLayout.Size;
-			inheritedBitmap = baseLayout.ReferenceBitmap;
-			foreach (var item in baseLayout.FieldOffsets)
+			if (baseTarget is not null &&
+				baseTarget.Handle.Kind == HandleKind.TypeDefinition)
 			{
-				fieldOffsets.Add(item.Key, item.Value);
+				var baseLayout = GetConstructedTypeLayout(
+					(TypeDefinitionHandle)baseTarget.Handle,
+					baseType);
+				inheritedSize = baseLayout.Size;
+				inheritedBitmap = baseLayout.ReferenceBitmap;
+				foreach (var item in baseLayout.FieldOffsets)
+				{
+					fieldOffsets.Add(item.Key, item.Value);
+				}
 			}
 		}
 
@@ -2958,13 +3150,17 @@ internal sealed class CompilationModule : IDisposable
 				continue;
 			}
 			if ((!fieldType.IsSupportedScalar && !IsTransparentScalarType(fieldType)) ||
-				fieldType.Size > 4)
+				fieldType.Size > 8)
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedSignature,
 					$"Constructed field '{constructedType.DisplayName}::{Reader.GetString(Reader.GetFieldDefinition(fieldHandle).Name)}' has unsupported type '{fieldType.DisplayName}'.");
 			}
 
+			var fieldStorageSize =
+				fieldType.IsSupportedScalar && fieldType.Size == 8
+					? 8
+					: 4;
 			var fieldIndex = (size - (isValueType ? 0 : 8)) / 4;
 			if (fieldType.Kind == CilTypeKind.ManagedReference &&
 				fieldIndex is >= 0 and < 32)
@@ -2972,7 +3168,7 @@ internal sealed class CompilationModule : IDisposable
 				bitmap |= 1u << fieldIndex;
 			}
 			fieldOffsets.Add(fieldHandle, size);
-			size += 4;
+			size = checked(size + fieldStorageSize);
 		}
 
 		var layout = new CilTypeLayout(
@@ -2986,6 +3182,18 @@ internal sealed class CompilationModule : IDisposable
 		_constructedLayoutCache.Add(key, layout);
 		return layout;
 	}
+
+	private static bool IsShadowEqualityComparerFrameworkBase(
+		CilType constructedType,
+		CilType baseType) =>
+		constructedType.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowEqualityComparer`1<",
+			StringComparison.Ordinal) &&
+		baseType.DisplayName.StartsWith(
+			"System.Collections.Generic.EqualityComparer`1<",
+			StringComparison.Ordinal) &&
+		constructedType.GenericArguments.SequenceEqual(
+			baseType.GenericArguments);
 
 	public CilInterfaceDefinition GetRuntimeInterfaceDefinition(
 		CilRuntimeTypeTarget target)
@@ -3480,7 +3688,9 @@ internal sealed class CompilationModule : IDisposable
 					typeName,
 					memberSignature,
 					constructedDeclaringType,
-					arguments) is { } registered)
+					arguments,
+					caller,
+					ilOffset) is { } registered)
 			{
 				return registered;
 			}
@@ -3691,14 +3901,23 @@ internal sealed class CompilationModule : IDisposable
 
 		var assembly = Assembly.LoadFrom(path);
 		var type = assembly.GetType(typeName, throwOnError: false);
-		var candidates = type?
-			.GetMethods(BindingFlags.Public | BindingFlags.NonPublic |
-				BindingFlags.Static | BindingFlags.Instance)
-			.Where(method =>
-				method.Name == methodName &&
-				method.IsStatic == isStatic &&
-				ParametersMatch(method, signature))
-			.ToArray() ?? Array.Empty<MethodInfo>();
+		var flags = BindingFlags.Public | BindingFlags.NonPublic |
+			BindingFlags.Static | BindingFlags.Instance;
+		var candidates = methodName == ".ctor"
+			? type?
+				.GetConstructors(flags)
+				.Where(constructor =>
+					!isStatic && ParametersMatch(constructor, signature))
+				.Cast<MethodBase>()
+				.ToArray() ?? Array.Empty<MethodBase>()
+			: type?
+				.GetMethods(flags)
+				.Where(method =>
+					method.Name == methodName &&
+					method.IsStatic == isStatic &&
+					ParametersMatch(method, signature))
+				.Cast<MethodBase>()
+				.ToArray() ?? Array.Empty<MethodBase>();
 		if (candidates.Length != 1)
 		{
 			throw new M68kCompilationException(
@@ -3719,10 +3938,12 @@ internal sealed class CompilationModule : IDisposable
 				.Select(parameter => (IReadOnlyList<M68kMetadataAttribute>)
 					DecodeReflectionAttributes(parameter.CustomAttributes))
 				.ToArray(),
-			DecodeReflectionAttributes(declaration.ReturnParameter.CustomAttributes));
+			declaration is MethodInfo methodInfo
+				? DecodeReflectionAttributes(methodInfo.ReturnParameter.CustomAttributes)
+				: Array.Empty<M68kMetadataAttribute>());
 	}
 
-	private static bool ParametersMatch(MethodInfo method, MethodSignature<CilType> signature)
+	private static bool ParametersMatch(MethodBase method, MethodSignature<CilType> signature)
 	{
 		var parameters = method.GetParameters();
 		if (parameters.Length != signature.ParameterTypes.Length)
@@ -3743,6 +3964,13 @@ internal sealed class CompilationModule : IDisposable
 
 	private static bool ParameterMatches(Type reflectionType, CilType cilType)
 	{
+		if (reflectionType.IsByRef)
+		{
+			return cilType.Kind == CilTypeKind.ManagedPointer &&
+				cilType.ElementType is not null &&
+				ParameterMatches(reflectionType.GetElementType()!, cilType.ElementType);
+		}
+
 		if (reflectionType.IsArray)
 		{
 			return reflectionType.GetArrayRank() == 1 &&
@@ -3853,10 +4081,6 @@ internal sealed class CompilationModule : IDisposable
 			}
 				var displayName = $"{typeName}::{name}";
 				var assemblyName = GetReferencedAssemblyName(parent.ResolutionScope);
-				if (TryResolveManagedMethod(assemblyName, typeName, name, signature) is { } managedMethod)
-				{
-					return MethodReference.ForDefinition(managedMethod);
-				}
 				var externalMethod = LoadExternalMethod(
 				assemblyName,
 				typeName,
@@ -3865,6 +4089,11 @@ internal sealed class CompilationModule : IDisposable
 				!signature.Header.IsInstance);
 			var importName = TryGetExternalImportName(externalMethod.MethodAttributes);
 			var convention = ResolveExternalCall(externalMethod);
+			if (convention is null &&
+				TryResolveManagedMethod(assemblyName, typeName, name, signature) is { } managedMethod)
+			{
+				return MethodReference.ForDefinition(managedMethod);
+			}
 			if (importName is not null)
 			{
 				if (convention is not null)
@@ -4154,19 +4383,79 @@ internal sealed class CompilationModule : IDisposable
 		{
 			return false;
 		}
-		if (SubstituteTypeArguments(definition.ReturnType, typeArguments) != reference.ReturnType)
+		var substitutedReturn =
+			SubstituteTypeArguments(definition.ReturnType, typeArguments);
+		var substitutedReferenceReturn =
+			SubstituteTypeArguments(reference.ReturnType, typeArguments);
+		if (substitutedReturn.DisplayName != substitutedReferenceReturn.DisplayName &&
+			!AreListEnumeratorShadowTypes(
+				substitutedReturn,
+				substitutedReferenceReturn) &&
+			!AreDictionaryValueCollectionShadowTypes(
+				substitutedReturn,
+				substitutedReferenceReturn))
 		{
 			return false;
 		}
 		for (var index = 0; index < definition.ParameterTypes.Length; index++)
 		{
-			if (SubstituteTypeArguments(definition.ParameterTypes[index], typeArguments) !=
-				reference.ParameterTypes[index])
+			if (SubstituteTypeArguments(
+					definition.ParameterTypes[index],
+					typeArguments).DisplayName !=
+				SubstituteTypeArguments(
+					reference.ParameterTypes[index],
+					typeArguments).DisplayName)
 			{
 				return false;
 			}
 		}
 		return true;
+	}
+
+	private static bool AreListEnumeratorShadowTypes(CilType left, CilType right)
+	{
+		if (!IsListEnumeratorType(left) ||
+			!IsListEnumeratorType(right) ||
+			!left.GenericArguments.SequenceEqual(right.GenericArguments))
+		{
+			return false;
+		}
+
+		var leftIsShadow = left.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowListEnumerator`1<",
+			StringComparison.Ordinal);
+		var rightIsShadow = right.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowListEnumerator`1<",
+			StringComparison.Ordinal);
+		return leftIsShadow != rightIsShadow;
+	}
+
+	private static bool AreDictionaryValueCollectionShadowTypes(
+		CilType left,
+		CilType right)
+	{
+		if (left.Kind != CilTypeKind.ManagedReference ||
+			right.Kind != CilTypeKind.ManagedReference ||
+			left.GenericArguments.Length != 2 ||
+			!left.GenericArguments.SequenceEqual(right.GenericArguments))
+		{
+			return false;
+		}
+
+		var leftIsPublic = left.DisplayName.StartsWith(
+			"System.Collections.Generic.Dictionary`2/ValueCollection<",
+			StringComparison.Ordinal);
+		var rightIsPublic = right.DisplayName.StartsWith(
+			"System.Collections.Generic.Dictionary`2/ValueCollection<",
+			StringComparison.Ordinal);
+		var leftIsShadow = left.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowDictionaryValueCollection`2<",
+			StringComparison.Ordinal);
+		var rightIsShadow = right.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowDictionaryValueCollection`2<",
+			StringComparison.Ordinal);
+		return (leftIsPublic && rightIsShadow) ||
+			(leftIsShadow && rightIsPublic);
 	}
 
 	private static CilType SubstituteTypeArguments(
@@ -4278,12 +4567,34 @@ internal sealed class CompilationModule : IDisposable
 				constructedDeclaringType is not null &&
 					IsSupportedNullableType(constructedDeclaringType),
 				methodTypeArguments,
-				methodTypeArguments?
-					.Select(TypeContainsManagedReferences)
-					.ToArray()));
+					methodTypeArguments?
+						.Select(TypeContainsManagedReferences)
+						.ToArray(),
+					ResolveDefaultEqualityKind(
+						member,
+						constructedDeclaringType,
+						methodTypeArguments),
+					constructedDeclaringType?.GenericArguments
+						.Select(TypeContainsManagedReferences)
+						.ToArray()));
 		if (binding is null)
 		{
 			return null;
+		}
+		if (caller is not null &&
+			ilOffset >= 0 &&
+			IsConstrainedListEnumeratorDispose(binding, caller, ilOffset))
+		{
+			var disposeBinding =
+				FrameworkBindingRegistry.BindListEnumeratorDispose(binding.Member);
+			return MethodReference.ForBinding(disposeBinding, signature);
+		}
+		if (caller is not null &&
+			ilOffset >= 0 &&
+			IsOrderedEnumeratorDispose(binding, caller, ilOffset))
+		{
+			binding = FrameworkBindingRegistry.BindOrderedEnumeratorDispose(
+				binding.Member);
 		}
 		if (binding.Kind == FrameworkBindingKind.ManagedBody)
 		{
@@ -4300,20 +4611,188 @@ internal sealed class CompilationModule : IDisposable
 				signature);
 			return MethodReference.ForManagedBinding(binding, implementation, signature);
 		}
-		if (binding.Kind == FrameworkBindingKind.ShadowMethod)
+		if (binding.Kind is
+			FrameworkBindingKind.ShadowMethod or
+			FrameworkBindingKind.PlatformOperation)
 		{
 			var shadowTarget = binding.ShadowMethod ??
 				throw new InvalidOperationException(
-					$"Shadow binding '{binding.Member.DisplayName}' has no managed target.");
+					$"Managed framework binding '{binding.Member.DisplayName}' has no target.");
+			var shadowMethodName = shadowTarget.MethodName;
+			if (shadowTarget is
+				{
+					TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+					MethodName: "ToArray"
+				})
+			{
+				shadowMethodName = ResolveShadowEnumerableMaterializer(
+					binding,
+					caller,
+					ilOffset);
+			}
+			else if (shadowTarget is
+				{
+					TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+					MethodName: "Select"
+				})
+			{
+				if (caller is null || ilOffset < 0 ||
+					EnumerableSourceProvenanceAnalyzer.Analyze(
+						this,
+						caller,
+						ilOffset,
+						argumentFromTop: 1) != EnumerableSourceProvenance.Range)
+				{
+					throw EnumerableSourceDiagnostic(
+						binding,
+						caller,
+						ilOffset,
+						"the selected Select slice requires exact Range source provenance");
+				}
+				shadowMethodName = "SelectInt32";
+			}
+			else if (shadowTarget is
+				{
+					TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+					MethodName: "Where"
+				})
+			{
+				if (caller is null || ilOffset < 0)
+				{
+					throw EnumerableSourceDiagnostic(
+						binding,
+						caller,
+						ilOffset,
+						"call-site context is unavailable");
+				}
+				shadowMethodName = EnumerableSourceProvenanceAnalyzer.Analyze(
+					this,
+					caller,
+					ilOffset,
+					argumentFromTop: 1) switch
+				{
+					EnumerableSourceProvenance.Range => "RangeWhereInt32",
+					EnumerableSourceProvenance.RangeSelect => "SelectWhereInt32",
+					_ => throw EnumerableSourceDiagnostic(
+						binding,
+						caller,
+						ilOffset,
+						"the selected Where slice requires exact Range or Range.Select source provenance")
+				};
+			}
+			else if (shadowTarget is
+				{
+					TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+					MethodName: "Any" or "AnyPredicate"
+				})
+			{
+				shadowMethodName = ResolveShadowEnumerableAny(
+					binding,
+					caller,
+					ilOffset,
+					withPredicate: shadowTarget.MethodName == "AnyPredicate");
+			}
+		else if (shadowTarget is
+			{
+				TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+				MethodName: "Take"
+				})
+			{
+				shadowMethodName = ResolveShadowEnumerableTake(
+					binding,
+				caller,
+				ilOffset);
+		}
+		else if (shadowTarget is
+		{
+			TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+			MethodName: "Sum" or "SumSelector"
+			})
+		{
+			shadowMethodName = ResolveShadowEnumerableSum(
+				binding,
+				caller,
+				ilOffset,
+				withSelector: shadowTarget.MethodName == "SumSelector",
+				methodTypeArguments);
+		}
+		else if (shadowTarget is
+		{
+			TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+			MethodName: "OrderBy" or "ThenBy"
+		})
+		{
+			shadowMethodName = ResolveShadowEnumerableOrdering(
+				binding,
+				caller,
+				ilOffset,
+				isThenBy: shadowTarget.MethodName == "ThenBy");
+		}
+		else if (shadowTarget is
+		{
+			TypeName: "CopperSharp.Runtime.ShadowOrderedEnumerable`1",
+			MethodName: "GetEnumerator"
+		})
+		{
+			RequireEnumerableProvenance(
+				binding,
+				caller,
+				ilOffset,
+				EnumerableSourceProvenance.OrderedPrimarySecondary,
+				"the selected ordered foreach slice requires an exact OrderBy-ThenBy receiver");
+		}
+		else if (shadowTarget is
+		{
+			TypeName: "CopperSharp.Runtime.ShadowOrderedEnumerator`1",
+			MethodName: "get_Current"
+		} or
+		{
+			TypeName: "CopperSharp.Runtime.ShadowOrderedEnumeratorBase",
+			MethodName: "MoveNext" or "Dispose"
+		})
+		{
+			if (shadowTarget.MethodName != "Dispose" || caller is null ||
+				!HasExactOrderedEnumeratorLocalReceiver(caller, ilOffset))
+			{
+				RequireEnumerableProvenance(
+					binding,
+					caller,
+					ilOffset,
+					EnumerableSourceProvenance.OrderedEnumerator,
+					"the selected ordered foreach slice requires an exact private ordered enumerator");
+			}
+		}
+			IReadOnlyList<CilType>? shadowMethodTypeArguments =
+				shadowTarget.TypeName == "CopperSharp.Runtime.ShadowEnumerable" &&
+				shadowMethodName is "Repeat" or "RepeatToArray" or "ArraySumSelector" or
+					"DictionaryUInt32ValuesOrderBy" or "DictionaryUInt32ValuesThenBy"
+					? methodTypeArguments
+					: null;
+			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowObject" &&
+				(shadowTarget.MethodName.StartsWith(
+					"DefaultEquals",
+					StringComparison.Ordinal) ||
+				 shadowTarget.MethodName == "DefaultHashCodeObject"))
+			{
+				shadowMethodTypeArguments =
+					shadowTarget.MethodName == "DefaultEqualsNullable" &&
+					methodTypeArguments is
+					[
+						{ NullableElementType: { } nullableElement }
+					]
+						? [nullableElement]
+						: methodTypeArguments;
+			}
 			var shadowMethod = TryResolveManagedMethod(
 				shadowTarget.AssemblyName,
 				shadowTarget.TypeName,
-				shadowTarget.MethodName,
-				signature,
-				constructedDeclaringType) ??
+				shadowMethodName,
+					signature,
+					constructedDeclaringType,
+					shadowMethodTypeArguments) ??
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.InvalidInput,
-					$"Shadow binding target '{binding.Target}' could not be resolved from the managed runtime.");
+					$"Managed framework binding target '{binding.Target}' could not be resolved from the supplied target runtime assemblies.");
 			if (binding.PreservesVirtualDispatch)
 			{
 				RegisterFrameworkVirtualFallback(binding, shadowMethod);
@@ -4331,14 +4810,549 @@ internal sealed class CompilationModule : IDisposable
 			constructedDeclaringType);
 	}
 
+	private string ResolveShadowEnumerableMaterializer(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int callOffset)
+	{
+		if (caller is null || callOffset < 0)
+		{
+			throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"call-site context is unavailable");
+		}
+
+		return EnumerableSourceProvenanceAnalyzer.Analyze(this, caller, callOffset) switch
+		{
+			EnumerableSourceProvenance.Range => "RangeToArray",
+			EnumerableSourceProvenance.Repeat => "RepeatToArray",
+			EnumerableSourceProvenance.RangeSelect => "SelectInt32ToArray",
+			EnumerableSourceProvenance.RangeWhere => "RangeWhereInt32ToArray",
+			EnumerableSourceProvenance.RangeSelectWhere => "SelectWhereInt32ToArray",
+			EnumerableSourceProvenance.RangeWhereTake => "RangeWhereInt32ToArray",
+			EnumerableSourceProvenance.RangeSelectWhereTake => "SelectWhereInt32ToArray",
+			_ => throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"the source provenance is unknown or merges different iterator families")
+		};
+	}
+
+	private string ResolveShadowEnumerableAny(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int callOffset,
+		bool withPredicate)
+	{
+		if (caller is null || callOffset < 0)
+		{
+			throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"call-site context is unavailable");
+		}
+
+		var source = EnumerableSourceProvenanceAnalyzer.Analyze(
+			this,
+			caller,
+			callOffset,
+			argumentFromTop: withPredicate ? 1 : 0);
+		var suffix = withPredicate ? "AnyPredicate" : "Any";
+		return source switch
+		{
+			EnumerableSourceProvenance.Range => "Range" + suffix,
+			EnumerableSourceProvenance.Repeat => "RepeatInt32" + suffix,
+			EnumerableSourceProvenance.RangeSelect => "SelectInt32" + suffix,
+			EnumerableSourceProvenance.RangeWhere => "RangeWhereInt32" + suffix,
+			EnumerableSourceProvenance.RangeSelectWhere => "SelectWhereInt32" + suffix,
+			EnumerableSourceProvenance.RangeWhereTake => withPredicate
+				? "RangeWhereInt32TakeAnyPredicate"
+				: "RangeWhereInt32Any",
+			EnumerableSourceProvenance.RangeSelectWhereTake => withPredicate
+				? "SelectWhereInt32TakeAnyPredicate"
+				: "SelectWhereInt32Any",
+			_ => throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"the selected Any slice requires exact private int iterator provenance")
+		};
+	}
+
+	private string ResolveShadowEnumerableTake(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int callOffset)
+	{
+		if (caller is null || callOffset < 0)
+		{
+			throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"call-site context is unavailable");
+		}
+
+		return EnumerableSourceProvenanceAnalyzer.Analyze(
+			this,
+			caller,
+			callOffset,
+			argumentFromTop: 1) switch
+		{
+			EnumerableSourceProvenance.Null => "RangeTakeInt32",
+			EnumerableSourceProvenance.Range => "RangeTakeInt32",
+			EnumerableSourceProvenance.Repeat => "RepeatInt32TakeInt32",
+			EnumerableSourceProvenance.RangeSelect => "SelectInt32TakeInt32",
+			EnumerableSourceProvenance.RangeWhere => "RangeWhereInt32TakeInt32",
+			EnumerableSourceProvenance.RangeSelectWhere => "SelectWhereInt32TakeInt32",
+			EnumerableSourceProvenance.RangeWhereTake => "RangeWhereInt32TakeInt32",
+			EnumerableSourceProvenance.RangeSelectWhereTake => "SelectWhereInt32TakeInt32",
+			_ => throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"the selected Take slice requires exact private int iterator provenance")
+		};
+	}
+
+	private string ResolveShadowEnumerableSum(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int callOffset,
+		bool withSelector,
+		IReadOnlyList<CilType>? methodTypeArguments)
+	{
+		if (caller is null || callOffset < 0)
+		{
+			throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"call-site context is unavailable");
+		}
+
+		var source = EnumerableSourceProvenanceAnalyzer.Analyze(
+			this,
+			caller,
+			callOffset,
+			argumentFromTop: withSelector ? 1 : 0);
+		var isReferenceFreeStructSelector =
+			withSelector &&
+			methodTypeArguments is [{ Kind: CilTypeKind.ValueType } sourceElement] &&
+			TypeContainsManagedReferences(sourceElement) == false;
+		if (isReferenceFreeStructSelector &&
+			source is EnumerableSourceProvenance.Null or EnumerableSourceProvenance.Array)
+		{
+			return "ArraySumSelector";
+		}
+		var suffix = withSelector ? "SumSelector" : "Sum";
+		return source switch
+		{
+			EnumerableSourceProvenance.Null => "Range" + suffix,
+			EnumerableSourceProvenance.Range => "Range" + suffix,
+			EnumerableSourceProvenance.Repeat => "RepeatInt32" + suffix,
+			EnumerableSourceProvenance.RangeSelect => "SelectInt32" + suffix,
+			EnumerableSourceProvenance.RangeWhere => "RangeWhereInt32" + suffix,
+			EnumerableSourceProvenance.RangeSelectWhere => "SelectWhereInt32" + suffix,
+			EnumerableSourceProvenance.RangeWhereTake =>
+				"RangeWhereInt32Take" + suffix,
+			EnumerableSourceProvenance.RangeSelectWhereTake =>
+				"SelectWhereInt32Take" + suffix,
+			_ => throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"the selected Sum slice requires exact private int iterator provenance or a one-dimensional array of reference-free structs")
+		};
+	}
+
+	private string ResolveShadowEnumerableOrdering(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int callOffset,
+		bool isThenBy)
+	{
+		if (caller is null || callOffset < 0)
+		{
+			throw EnumerableSourceDiagnostic(
+				binding,
+				caller,
+				callOffset,
+				"call-site context is unavailable");
+		}
+
+		var source = EnumerableSourceProvenanceAnalyzer.Analyze(
+			this,
+			caller,
+			callOffset,
+			argumentFromTop: 1);
+		if (!isThenBy && source is (
+			EnumerableSourceProvenance.DictionaryUInt32Values or
+			EnumerableSourceProvenance.Null))
+		{
+			return "DictionaryUInt32ValuesOrderBy";
+		}
+		if (isThenBy && source is (
+			EnumerableSourceProvenance.OrderedPrimary or
+			EnumerableSourceProvenance.Null))
+		{
+			return "DictionaryUInt32ValuesThenBy";
+		}
+		throw EnumerableSourceDiagnostic(
+			binding,
+			caller,
+			callOffset,
+			isThenBy
+				? "the selected ThenBy slice requires one exact Dictionary<uint,T>.Values OrderBy source and rejects additional ThenBy stages"
+				: "the selected OrderBy slice requires exact Dictionary<uint,T>.Values source provenance");
+	}
+
+	private void RequireEnumerableProvenance(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int callOffset,
+		EnumerableSourceProvenance required,
+		string detail)
+	{
+		if (caller is null || callOffset < 0 ||
+			EnumerableSourceProvenanceAnalyzer.Analyze(
+				this,
+				caller,
+				callOffset) != required)
+		{
+			throw EnumerableSourceDiagnostic(binding, caller, callOffset, detail);
+		}
+	}
+
+	private static M68kCompilationException EnumerableSourceDiagnostic(
+		FrameworkBinding binding,
+		CilMethod? caller,
+		int ilOffset,
+		string detail) =>
+		new(
+			M68kDiagnosticIds.UnsupportedPolymorphism,
+			$"Framework member '{binding.Member.DisplayName}' is admitted only when " +
+			"closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; " +
+			$"{detail}.",
+			caller?.DisplayName,
+			ilOffset >= 0 ? ilOffset : null);
+
+	private FrameworkDefaultEqualityKind ResolveDefaultEqualityKind(
+		FrameworkMemberId member,
+		CilType? constructedDeclaringType,
+		IReadOnlyList<CilType>? methodTypeArguments)
+	{
+		CilType? element = null;
+		if (member.Name is "DefaultEquals" or "DefaultHashCode" &&
+			methodTypeArguments is [var methodElement])
+		{
+			element = methodElement;
+		}
+		else if (member.DeclaringType is
+			{
+				Kind: FrameworkTypeKind.GenericInstantiation,
+				ElementType: { } declaringDefinition
+			} &&
+			IsDefaultEqualityDeclaringType(declaringDefinition) &&
+			constructedDeclaringType is { GenericArguments: [var declaringElement] })
+		{
+			element = declaringElement;
+		}
+
+		if (element is not
+			{
+				Kind: CilTypeKind.ManagedReference,
+				GenericArguments.IsDefaultOrEmpty: true,
+				ElementType: null
+			} ||
+			string.Equals(element.DisplayName, "string", StringComparison.Ordinal))
+		{
+			return FrameworkDefaultEqualityKind.Unsupported;
+		}
+
+		var matches = new List<(CompilationModule Module, TypeDefinitionHandle Handle)>();
+		var modules = new List<CompilationModule> { _root };
+		foreach (var assemblyName in _root._managedAssemblyPaths.Keys
+			.OrderBy(static name => name, StringComparer.Ordinal))
+		{
+			var module = GetOrLoadModule(assemblyName);
+			if (module is not null && !modules.Contains(module))
+			{
+				modules.Add(module);
+			}
+		}
+		foreach (var module in modules)
+		{
+			foreach (var handle in module.Reader.TypeDefinitions)
+			{
+				if (string.Equals(
+						module._signatureProvider
+							.GetTypeFromDefinition(module.Reader, handle, 0x12)
+							.DisplayName,
+						element.DisplayName,
+						StringComparison.Ordinal))
+				{
+					matches.Add((module, handle));
+				}
+			}
+		}
+		if (matches.Count != 1)
+		{
+			return FrameworkDefaultEqualityKind.Unsupported;
+		}
+		return matches[0].Module.ClassifySealedReferenceEquality(matches[0].Handle);
+	}
+
+	private static bool IsDefaultEqualityDeclaringType(
+		FrameworkTypeId declaringDefinition) =>
+		(declaringDefinition.AssemblyName == "System.Collections" &&
+		 declaringDefinition.MetadataName is
+			"System.Collections.Generic.List`1" or
+			"System.Collections.Generic.EqualityComparer`1") ||
+		(declaringDefinition.AssemblyName == "System.Runtime" &&
+		 declaringDefinition.MetadataName ==
+			"System.Collections.Generic.IEqualityComparer`1");
+
+	private FrameworkDefaultEqualityKind ClassifySealedReferenceEquality(
+		TypeDefinitionHandle receiverHandle)
+	{
+		var receiverDefinition = Reader.GetTypeDefinition(receiverHandle);
+		if ((receiverDefinition.Attributes & TypeAttributes.Sealed) == 0 ||
+			(receiverDefinition.Attributes & TypeAttributes.Interface) != 0 ||
+			receiverDefinition.GetGenericParameters().Count != 0)
+		{
+			return FrameworkDefaultEqualityKind.Unsupported;
+		}
+
+		var provider = new FrameworkSignatureTypeProvider(this);
+		var receiverType = provider.GetTypeFromDefinition(Reader, receiverHandle, 0x12);
+		var current = receiverHandle;
+		while (!current.IsNil)
+		{
+			var definition = Reader.GetTypeDefinition(current);
+			foreach (var implementationHandle in definition.GetInterfaceImplementations())
+			{
+				var implemented = Reader
+					.GetInterfaceImplementation(implementationHandle)
+					.Interface;
+				var implementedType = implemented.Kind switch
+				{
+					HandleKind.TypeDefinition => provider.GetTypeFromDefinition(
+						Reader,
+						(TypeDefinitionHandle)implemented,
+						0x12),
+					HandleKind.TypeReference => provider.GetTypeFromReference(
+						Reader,
+						(TypeReferenceHandle)implemented,
+						0x12),
+					HandleKind.TypeSpecification => Reader
+						.GetTypeSpecification((TypeSpecificationHandle)implemented)
+						.DecodeSignature(provider, FrameworkGenericContext.Empty),
+					_ => null
+				};
+				if (implementedType is
+					{
+						Kind: FrameworkTypeKind.GenericInstantiation,
+						ElementType:
+						{
+							MetadataName: "System.IEquatable`1",
+							AssemblyName: "System.Runtime" or "System.Private.CoreLib"
+						},
+						GenericArguments: [var implementedElement]
+					} &&
+					implementedElement.Equals(receiverType))
+				{
+					return FrameworkDefaultEqualityKind.SealedIEquatable;
+				}
+			}
+
+			if (definition.BaseType.Kind == HandleKind.TypeDefinition)
+			{
+				current = (TypeDefinitionHandle)definition.BaseType;
+				continue;
+			}
+			if (definition.BaseType.Kind == HandleKind.TypeReference)
+			{
+				var baseType = provider.GetTypeFromReference(
+					Reader,
+					(TypeReferenceHandle)definition.BaseType,
+					0x12);
+				return baseType is
+				{
+					MetadataName: "System.Object",
+					AssemblyName: "System.Runtime" or "System.Private.CoreLib"
+				}
+					? FrameworkDefaultEqualityKind.SealedObjectEquals
+					: FrameworkDefaultEqualityKind.Unsupported;
+			}
+			return FrameworkDefaultEqualityKind.Unsupported;
+		}
+		return FrameworkDefaultEqualityKind.Unsupported;
+	}
+	private bool IsConstrainedListEnumeratorDispose(
+		FrameworkBinding binding,
+		CilMethod caller,
+		int ilOffset)
+	{
+		if (binding.Member.DeclaringType.Kind != FrameworkTypeKind.Named ||
+			!string.Equals(
+				binding.Member.DeclaringType.AssemblyName,
+				"System.Runtime",
+				StringComparison.Ordinal) ||
+			!string.Equals(
+				binding.Member.DeclaringType.MetadataName,
+				"System.IDisposable",
+				StringComparison.Ordinal) ||
+			!string.Equals(binding.Member.Name, "Dispose", StringComparison.Ordinal))
+		{
+			return false;
+		}
+
+		foreach (var instruction in caller.Instructions)
+		{
+			if (instruction.Offset != ilOffset ||
+				instruction.ConstrainedTypeToken is not { } constrainedTypeToken)
+			{
+				continue;
+			}
+			return IsListEnumeratorType(
+				ResolveTypeToken(
+					constrainedTypeToken,
+					caller,
+					ilOffset));
+		}
+		return false;
+	}
+
+	private bool IsOrderedEnumeratorDispose(
+		FrameworkBinding binding,
+		CilMethod caller,
+		int ilOffset) =>
+		binding.Member.DeclaringType.Kind == FrameworkTypeKind.Named &&
+		string.Equals(
+			binding.Member.DeclaringType.AssemblyName,
+			"System.Runtime",
+			StringComparison.Ordinal) &&
+		string.Equals(
+			binding.Member.DeclaringType.MetadataName,
+			"System.IDisposable",
+			StringComparison.Ordinal) &&
+		string.Equals(binding.Member.Name, "Dispose", StringComparison.Ordinal) &&
+		(EnumerableSourceProvenanceAnalyzer.Analyze(this, caller, ilOffset) ==
+			EnumerableSourceProvenance.OrderedEnumerator ||
+		 HasExactOrderedEnumeratorLocalReceiver(caller, ilOffset));
+
+	private bool HasExactOrderedEnumeratorLocalReceiver(
+		CilMethod caller,
+		int callOffset)
+	{
+		var callIndex = -1;
+		for (var index = 0; index < caller.Instructions.Count; index++)
+		{
+			if (caller.Instructions[index].Offset == callOffset)
+			{
+				callIndex = index;
+				break;
+			}
+		}
+		var receiverIndex = callIndex - 1;
+		while (receiverIndex >= 0 &&
+			caller.Instructions[receiverIndex].OpCode == OpCodes.Nop)
+		{
+			receiverIndex--;
+		}
+		if (receiverIndex < 0 ||
+			!TryGetDirectLocalIndex(
+				caller.Instructions[receiverIndex],
+				out var receiverLocal))
+		{
+			return false;
+		}
+
+		var foundAssignment = false;
+		for (var index = 0; index < caller.Instructions.Count; index++)
+		{
+			if (!TryGetDirectStoreLocalIndex(
+					caller.Instructions[index],
+					out var storedLocal) ||
+				storedLocal != receiverLocal)
+			{
+				continue;
+			}
+			var producerIndex = index - 1;
+			while (producerIndex >= 0 &&
+				caller.Instructions[producerIndex].OpCode == OpCodes.Nop)
+			{
+				producerIndex--;
+			}
+			if (producerIndex < 0)
+			{
+				return false;
+			}
+			var producer = caller.Instructions[producerIndex];
+			if ((producer.OpCode != OpCodes.Call &&
+				 producer.OpCode != OpCodes.Callvirt) ||
+				producer.Operand is not int token ||
+				DescribeMethodToken(token, caller, producer.Offset) is not
+				{
+					TypeName: var typeName,
+					Name: "GetEnumerator"
+				} ||
+				!typeName.StartsWith(
+					"System.Collections.Generic.IEnumerable`1<",
+					StringComparison.Ordinal) ||
+				EnumerableSourceProvenanceAnalyzer.Analyze(
+					this,
+					caller,
+					producer.Offset) !=
+					EnumerableSourceProvenance.OrderedPrimarySecondary)
+			{
+				return false;
+			}
+			foundAssignment = true;
+		}
+		return foundAssignment;
+	}
+
+	private static bool TryGetDirectStoreLocalIndex(
+		CilInstruction instruction,
+		out int index)
+	{
+		var op = instruction.OpCode;
+		if (op.Value >= OpCodes.Stloc_0.Value && op.Value <= OpCodes.Stloc_3.Value)
+		{
+			index = op.Value - OpCodes.Stloc_0.Value;
+			return true;
+		}
+		if (op == OpCodes.Stloc || op == OpCodes.Stloc_S)
+		{
+			index = Convert.ToInt32(instruction.Operand);
+			return true;
+		}
+		index = default;
+		return false;
+	}
+
 	private CilMethod ResolveClosedWorldSealedInterfaceCall(
 		FrameworkBinding binding,
 		CilMethod caller,
 		int ilOffset,
 		MethodSignature<CilType> signature)
 	{
-		if (signature.ParameterTypes.Length != 0 ||
-			!TryGetDirectCallReceiver(caller, ilOffset, out var receiverType))
+		var isEquatable = string.Equals(
+			binding.Target,
+			"managed:closed-world-sealed-equatable-dispatch",
+			StringComparison.Ordinal);
+		var receiverResolved = isEquatable
+			? TryGetConstrainedCallReceiver(caller, ilOffset, out var receiverType)
+			: TryGetDirectCallReceiver(caller, ilOffset, out receiverType);
+		if ((!isEquatable && signature.ParameterTypes.Length != 0) ||
+			(isEquatable && signature.ParameterTypes.Length != 1) ||
+			!receiverResolved)
 		{
 			throw ClosedWorldInterfaceDiagnostic(
 				binding,
@@ -4392,9 +5406,14 @@ internal sealed class CompilationModule : IDisposable
 				ilOffset,
 				$"receiver '{receiverType.DisplayName}' is not sealed");
 		}
-		if (!receiverModule.ImplementsFrameworkInterface(
+		var implementsInterface = isEquatable
+			? receiverModule.ImplementsExactEquatableInterface(
 				receiverHandle,
-				binding.Member.DeclaringType))
+				binding.Member.DeclaringType)
+			: receiverModule.ImplementsFrameworkInterface(
+				receiverHandle,
+				binding.Member.DeclaringType);
+		if (!implementsInterface)
 		{
 			throw ClosedWorldInterfaceDiagnostic(
 				binding,
@@ -4420,6 +5439,47 @@ internal sealed class CompilationModule : IDisposable
 				$"receiver '{receiverType.DisplayName}' matched {implementations.Length} managed implementations");
 		}
 		return implementations[0];
+	}
+
+	private bool ImplementsExactEquatableInterface(
+		TypeDefinitionHandle receiverHandle,
+		FrameworkTypeId frameworkInterface)
+	{
+		return frameworkInterface is
+			{
+				Kind: FrameworkTypeKind.GenericInstantiation,
+				ElementType:
+				{
+					AssemblyName: "System.Runtime" or "System.Private.CoreLib",
+					MetadataName: "System.IEquatable`1"
+				}
+			} &&
+			ClassifySealedReferenceEquality(receiverHandle) ==
+				FrameworkDefaultEqualityKind.SealedIEquatable;
+	}
+
+	private bool TryGetConstrainedCallReceiver(
+		CilMethod caller,
+		int callOffset,
+		out CilType receiverType)
+	{
+		foreach (var instruction in caller.Instructions)
+		{
+			if (instruction.Offset != callOffset ||
+				instruction.ConstrainedTypeToken is not { } constrainedTypeToken)
+			{
+				continue;
+			}
+			receiverType = ResolveTypeToken(constrainedTypeToken, caller, callOffset);
+			return receiverType.Kind == CilTypeKind.ManagedReference;
+		}
+		if (caller.GenericContext.MethodArguments is [var methodTypeArgument])
+		{
+			receiverType = methodTypeArgument;
+			return receiverType.Kind == CilTypeKind.ManagedReference;
+		}
+		receiverType = default!;
+		return false;
 	}
 
 	private bool ImplementsFrameworkInterface(
@@ -4546,7 +5606,8 @@ internal sealed class CompilationModule : IDisposable
 		string typeName,
 		string methodName,
 		MethodSignature<CilType> signature,
-		CilType? constructedDeclaringType = null)
+		CilType? constructedDeclaringType = null,
+		IReadOnlyList<CilType>? methodTypeArguments = null)
 	{
 		var module = GetOrLoadModule(assemblyName);
 		if (module is null)
@@ -4554,6 +5615,8 @@ internal sealed class CompilationModule : IDisposable
 			return null;
 		}
 
+		var methodArguments = methodTypeArguments?.ToImmutableArray() ??
+			ImmutableArray<CilType>.Empty;
 		foreach (var typeHandle in module.Reader.TypeDefinitions)
 		{
 			var type = module.Reader.GetTypeDefinition(typeHandle);
@@ -4564,7 +5627,17 @@ internal sealed class CompilationModule : IDisposable
 
 			foreach (var methodHandle in type.GetMethods())
 			{
-				var candidate = module.GetMethod(methodHandle);
+				var definition = module.Reader.GetMethodDefinition(methodHandle);
+				if (definition.GetGenericParameters().Count != methodArguments.Length)
+				{
+					continue;
+				}
+				var candidate = methodArguments.Length == 0
+					? module.GetMethod(methodHandle)
+					: module.GetConstructedMethod(
+						methodHandle,
+						constructedDeclaringType: null,
+						methodArguments);
 				var signatureMatches = constructedDeclaringType is null
 					? SignaturesMatch(candidate.Signature, signature)
 					: ConstructedSignaturesMatch(
@@ -4573,7 +5646,29 @@ internal sealed class CompilationModule : IDisposable
 						constructedDeclaringType.GenericArguments);
 				if (candidate.Name == methodName && signatureMatches)
 				{
-					return constructedDeclaringType is null
+					if (constructedDeclaringType is not null &&
+						methodArguments.Length == 0 &&
+							UsesPrivateShadowConstruction(typeName))
+					{
+						var definitionType = module._signatureProvider
+							.GetTypeFromDefinition(
+								module.Reader,
+								typeHandle,
+								0x12);
+						var shadowConstruction = definitionType with
+						{
+							DisplayName =
+								$"{definitionType.DisplayName}<" +
+								$"{string.Join(",", constructedDeclaringType.GenericArguments.Select(static argument => argument.DisplayName))}>",
+							GenericArguments =
+								constructedDeclaringType.GenericArguments
+						};
+						return module.GetConstructedMethod(
+							methodHandle,
+							shadowConstruction,
+							ImmutableArray<CilType>.Empty);
+					}
+					return constructedDeclaringType is null || methodArguments.Length != 0
 						? candidate
 						: module.GetConstructedMethod(
 							methodHandle,
@@ -4585,6 +5680,15 @@ internal sealed class CompilationModule : IDisposable
 
 		return null;
 	}
+
+	private static bool UsesPrivateShadowConstruction(string typeName) =>
+		typeName is
+			"CopperSharp.Runtime.ShadowEqualityComparer`1" or
+			"CopperSharp.Runtime.IShadowEqualityComparer`1" or
+			"CopperSharp.Runtime.ShadowDictionary`2" or
+			"CopperSharp.Runtime.ShadowPrimaryOrderedEnumerable`1" or
+			"CopperSharp.Runtime.ShadowOrderedEnumerable`1" or
+			"CopperSharp.Runtime.ShadowOrderedEnumerator`1";
 
 	private CompilationModule GetCallerModule(CilMethod caller, int ilOffset)
 	{
@@ -4619,6 +5723,32 @@ internal sealed class CompilationModule : IDisposable
 
 		return File.Exists(path)
 			? new CompilationModule(path, _externalCallResolvers, _root)
+			: null;
+	}
+
+	private CilType? ResolveReferencedEnumType(
+		MetadataReader reader,
+		TypeReference reference,
+		string displayName)
+	{
+		EntityHandle scope = reference.ResolutionScope;
+		while (scope.Kind == HandleKind.TypeReference)
+		{
+			scope = reader.GetTypeReference((TypeReferenceHandle)scope).ResolutionScope;
+		}
+		if (scope.Kind != HandleKind.AssemblyReference)
+		{
+			return null;
+		}
+
+		var assembly = reader.GetAssemblyReference((AssemblyReferenceHandle)scope);
+		var module = GetOrLoadModule(reader.GetString(assembly.Name));
+		return module is not null &&
+			module._signatureProvider.TryGetDefinedEnumType(
+				module.Reader,
+				displayName,
+				out var enumType)
+			? enumType
 			: null;
 	}
 
@@ -4841,6 +5971,39 @@ internal sealed class CompilationModule : IDisposable
 		var typeName = GetTypeName(reference);
 		var fieldName = Reader.GetString(member.Name);
 		var fieldType = member.DecodeFieldSignature(_signatureProvider, CilGenericContext.Empty);
+		if (FrameworkBindingRegistry.TryBindReadOnlyStaticField(
+				assemblyName,
+				typeName,
+				fieldName,
+				fieldType) is { } fieldBinding &&
+			GetOrLoadModule(fieldBinding.ShadowAssemblyName) is not null)
+		{
+			var instruction = caller.Instructions.FirstOrDefault(
+				candidate => candidate.Offset == ilOffset);
+			if (instruction?.OpCode != System.Reflection.Emit.OpCodes.Ldsfld)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedInstruction,
+					$"Framework field '{typeName}::{fieldName}' is admitted as a read-only static field.",
+					caller.DisplayName,
+					ilOffset);
+			}
+
+			var shadowField = TryResolveManagedField(
+				fieldBinding.ShadowAssemblyName,
+				fieldBinding.ShadowTypeName,
+				fieldBinding.ShadowFieldName,
+				fieldType);
+			if (shadowField is null || !shadowField.IsStatic)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidInput,
+					$"Managed framework field target '{fieldBinding.ShadowTypeName}::{fieldBinding.ShadowFieldName}' could not be resolved from the supplied target runtime assemblies.",
+					caller.DisplayName,
+					ilOffset);
+			}
+			return shadowField;
+		}
 		if (TryResolveManagedField(assemblyName, typeName, fieldName, fieldType) is { } managedField)
 		{
 			return managedField;

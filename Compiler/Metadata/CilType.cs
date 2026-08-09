@@ -32,7 +32,8 @@ internal sealed record CilType(
 	string DisplayName,
 	CilType? ElementType = null,
 	ImmutableArray<CilType> GenericArguments = default,
-	bool IsReadOnly = false)
+	bool IsReadOnly = false,
+	bool IsEnum = false)
 {
 	public bool IsVoid => Kind == CilTypeKind.Void;
 
@@ -74,6 +75,13 @@ internal readonly record struct CilGenericContext(
 internal sealed class CilSignatureTypeProvider :
 	ISignatureTypeProvider<CilType, CilGenericContext>
 {
+	private readonly Func<MetadataReader, TypeReference, string, CilType?>?
+		_referencedEnumResolver;
+
+	public CilSignatureTypeProvider(
+		Func<MetadataReader, TypeReference, string, CilType?>? referencedEnumResolver = null) =>
+		_referencedEnumResolver = referencedEnumResolver;
+
 	public CilType GetArrayType(CilType elementType, ArrayShape shape) =>
 		new(CilTypeKind.ManagedReference, 4, $"{elementType.DisplayName}[{new string(',', Math.Max(0, shape.Rank - 1))}]", elementType);
 
@@ -156,6 +164,14 @@ internal sealed class CilSignatureTypeProvider :
 	{
 		var definition = reader.GetTypeDefinition(handle);
 		var name = QualifiedName(reader, handle, definition);
+		if (TryGetEnumUnderlyingType(reader, definition, out var underlying))
+		{
+			return underlying with
+			{
+				DisplayName = name,
+				IsEnum = true
+			};
+		}
 		return rawTypeKind == 0x11
 			? new(CilTypeKind.ValueType, name == "Amiga.CString" ? 4 : 0, name)
 			: new(CilTypeKind.ManagedReference, 4, name);
@@ -168,6 +184,18 @@ internal sealed class CilSignatureTypeProvider :
 	{
 		var reference = reader.GetTypeReference(handle);
 		var name = QualifiedName(reader, reference);
+		if (TryGetDefinedEnumType(reader, name, out var definedEnum))
+		{
+			return definedEnum;
+		}
+		if (TryGetKnownFrameworkEnumType(name, out var frameworkEnum))
+		{
+			return frameworkEnum;
+		}
+		if (_referencedEnumResolver?.Invoke(reader, reference, name) is { } referencedEnum)
+		{
+			return referencedEnum;
+		}
 		return rawTypeKind == 0x11
 			? new(CilTypeKind.ValueType, name == "Amiga.CString" ? 4 : 0, name)
 			: new(CilTypeKind.ManagedReference, 4, name);
@@ -179,6 +207,83 @@ internal sealed class CilSignatureTypeProvider :
 		TypeSpecificationHandle handle,
 		byte rawTypeKind) =>
 		reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+
+	public bool TryGetDefinedEnumType(
+		MetadataReader reader,
+		string displayName,
+		out CilType enumType)
+	{
+		foreach (var definitionHandle in reader.TypeDefinitions)
+		{
+			var definition = reader.GetTypeDefinition(definitionHandle);
+			if (QualifiedName(reader, definitionHandle, definition) == displayName &&
+				TryGetEnumUnderlyingType(reader, definition, out var underlying))
+			{
+				enumType = underlying with
+				{
+					DisplayName = displayName,
+					IsEnum = true
+				};
+				return true;
+			}
+		}
+		enumType = null!;
+		return false;
+	}
+
+	private static bool TryGetKnownFrameworkEnumType(
+		string displayName,
+		out CilType enumType)
+	{
+		if (displayName is "System.StringComparison" or "System.IO.FileAttributes")
+		{
+			enumType = new CilType(
+				CilTypeKind.SignedInteger,
+				4,
+				displayName,
+				IsEnum: true);
+			return true;
+		}
+
+		enumType = null!;
+		return false;
+	}
+
+	private bool TryGetEnumUnderlyingType(
+		MetadataReader reader,
+		TypeDefinition definition,
+		out CilType underlying)
+	{
+		underlying = null!;
+		if (definition.BaseType.Kind != HandleKind.TypeReference ||
+			QualifiedName(
+				reader,
+				reader.GetTypeReference((TypeReferenceHandle)definition.BaseType)) !=
+			"System.Enum")
+		{
+			return false;
+		}
+
+		foreach (var fieldHandle in definition.GetFields())
+		{
+			var field = reader.GetFieldDefinition(fieldHandle);
+			if ((field.Attributes & System.Reflection.FieldAttributes.Static) != 0 ||
+				reader.GetString(field.Name) != "value__")
+			{
+				continue;
+			}
+
+			var candidate = field.DecodeSignature(this, CilGenericContext.Empty);
+			if (candidate.Kind is
+				CilTypeKind.SignedInteger or
+				CilTypeKind.UnsignedInteger)
+			{
+				underlying = candidate;
+				return true;
+			}
+		}
+		return false;
+	}
 
 	private static string QualifiedName(
 		MetadataReader reader,
