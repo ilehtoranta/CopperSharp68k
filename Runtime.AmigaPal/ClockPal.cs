@@ -17,6 +17,7 @@ public static class ClockPal
 	private static ClockMsgPort _cachedPort;
 	private static ClockIORequest _cachedRequest;
 	private static uint _cachedDeviceBase;
+	private static uint _cachedFrequency;
 	private static bool _applicationLifetimeActive;
 
 	/// <summary>Enables lazy application-lifetime timer.device ownership.</summary>
@@ -39,6 +40,10 @@ public static class ClockPal
 
 	public static long GetFrequency()
 	{
+		if (_cachedFrequency != 0)
+		{
+			return _cachedFrequency;
+		}
 		var frequency = ReadClock(out _, out _);
 		return frequency;
 	}
@@ -66,6 +71,7 @@ public static class ClockPal
 			M68kRuntime.ThrowInvalidOperationException();
 			return 0;
 		}
+		_cachedFrequency = frequency;
 		return frequency;
 	}
 
@@ -140,7 +146,112 @@ public static class ClockPal
 			M68kRuntime.ThrowInvalidOperationException();
 			return 0;
 		}
+		_cachedFrequency = frequency;
 		return frequency;
+	}
+
+	/// <summary>Converts raw EClock ticks to 100-nanosecond TimeSpan ticks.</summary>
+	public static long ScaleToTimeSpanTicks(long value)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		var negative = (high & 0x8000_0000u) != 0;
+		if (negative)
+		{
+			Negate(ref high, ref low);
+		}
+
+		var frequency = _cachedFrequency;
+		if (frequency == 0)
+		{
+			frequency = (uint)GetFrequency();
+		}
+		Divide(high, low, frequency, out var quotientHigh, out var quotientLow, out var remainder);
+		Multiply(quotientHigh, quotientLow, 10_000_000u, out var resultHigh, out var resultLow);
+		Multiply(0, remainder, 10_000_000u, out var fractionHigh, out var fractionLow);
+		Divide(fractionHigh, fractionLow, frequency, out _, out var fraction, out _);
+		Add(ref resultHigh, ref resultLow, 0, fraction);
+		if (negative)
+		{
+			Negate(ref resultHigh, ref resultLow);
+		}
+		return M68kRuntime.CombineInt64(resultHigh, resultLow);
+	}
+
+	/// <summary>Converts raw EClock ticks to whole elapsed milliseconds.</summary>
+	public static long ScaleToMilliseconds(long value)
+	{
+		var ticksLow = M68kRuntime.SplitInt64(ScaleToTimeSpanTicks(value), out var ticksHigh);
+		var negative = (ticksHigh & 0x8000_0000u) != 0;
+		if (negative)
+		{
+			Negate(ref ticksHigh, ref ticksLow);
+		}
+		Divide(ticksHigh, ticksLow, 10_000u, out var high, out var low, out _);
+		if (negative)
+		{
+			Negate(ref high, ref low);
+		}
+		return M68kRuntime.CombineInt64(high, low);
+	}
+
+	private static void Divide(uint high, uint low, uint divisor, out uint quotientHigh, out uint quotientLow, out uint remainder)
+	{
+		quotientHigh = 0;
+		quotientLow = 0;
+		remainder = 0;
+		for (var bit = 63; bit >= 0; bit--)
+		{
+			var inputBit = bit >= 32
+				? (high >> (bit - 32)) & 1u
+				: (low >> bit) & 1u;
+			var overflow = (remainder & 0x8000_0000u) != 0;
+			remainder = (remainder << 1) | inputBit;
+			if (!overflow && remainder < divisor)
+			{
+				continue;
+			}
+			remainder -= divisor;
+			if (bit >= 32)
+			{
+				quotientHigh |= 1u << (bit - 32);
+			}
+			else
+			{
+				quotientLow |= 1u << bit;
+			}
+		}
+	}
+
+	private static void Multiply(uint high, uint low, uint factor, out uint resultHigh, out uint resultLow)
+	{
+		resultHigh = 0;
+		resultLow = 0;
+		var currentHigh = high;
+		var currentLow = low;
+		var currentFactor = factor;
+		while (currentFactor != 0)
+		{
+			if ((currentFactor & 1u) != 0)
+			{
+				Add(ref resultHigh, ref resultLow, currentHigh, currentLow);
+			}
+			currentFactor >>= 1;
+			currentHigh = (currentHigh << 1) | (currentLow >> 31);
+			currentLow <<= 1;
+		}
+	}
+
+	private static void Add(ref uint high, ref uint low, uint addHigh, uint addLow)
+	{
+		var previousLow = low;
+		low += addLow;
+		high += addHigh + (low < previousLow ? 1u : 0u);
+	}
+
+	private static void Negate(ref uint high, ref uint low)
+	{
+		low = ~low + 1u;
+		high = ~high + (low == 0 ? 1u : 0u);
 	}
 
 	private static uint ReadOpenedClock(

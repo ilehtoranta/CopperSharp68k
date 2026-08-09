@@ -116,6 +116,46 @@ public sealed class ShadowStopwatch
 		return M68kRuntime.CombineInt64(high, low);
 	}
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public long GetElapsedMilliseconds() =>
+		ClockPal.ScaleToMilliseconds(GetElapsedTicks());
+
+	[MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+	public TimeSpan GetElapsed()
+	{
+		TimeSpan result = default;
+		InitializeTimeSpan(
+			ref result,
+			ClockPal.ScaleToTimeSpanTicks(GetElapsedTicks()));
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static TimeSpan GetElapsedTime(long startingTimestamp) =>
+		GetElapsedTime(startingTimestamp, ClockPal.GetTimestamp());
+
+	[MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+	public static TimeSpan GetElapsedTime(long startingTimestamp, long endingTimestamp)
+	{
+		TimeSpan result = default;
+		InitializeTimeSpan(
+			ref result,
+			ClockPal.ScaleToTimeSpanTicks(endingTimestamp - startingTimestamp));
+		return result;
+	}
+
+	private static void InitializeTimeSpan(ref TimeSpan value, long ticks)
+	{
+		var low = M68kRuntime.SplitInt64(ticks, out var high);
+		var address = AddressOf(ref value);
+		Amiga.APTR.WriteUInt32(address, 0, high);
+		Amiga.APTR.WriteUInt32(address, 4, low);
+	}
+
+	private static Amiga.APTR AddressOf(ref TimeSpan value) =>
+		throw new NotSupportedException(
+			"ShadowStopwatch.AddressOf is lowered by CopperSharp.");
+
 	private void AccumulateElapsed(uint nowHigh, uint nowLow)
 	{
 		var high = _elapsedHigh;

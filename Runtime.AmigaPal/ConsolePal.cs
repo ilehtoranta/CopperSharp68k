@@ -615,30 +615,18 @@ public static class ConsolePal
 		uint word2,
 		int length)
 	{
-		var byteSize = ((uint)length + 3u) & ~3u;
-		var pointer = Exec.AllocMem(byteSize, Exec.MemoryFlags.Public);
-		if (pointer == 0)
+		ConsoleWriteBuffer buffer = default;
+		var pointer = APTR.ToUInt32(AddressOf(ref buffer));
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 0, word0);
+		if (length > 4)
 		{
-			M68kRuntime.ThrowOutOfMemoryException();
+			APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
 		}
-
-		try
+		if (length > 8)
 		{
-			APTR.WriteUInt32(APTR.FromPointer(pointer), 0, word0);
-			if (length > 4)
-			{
-				APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
-			}
-			if (length > 8)
-			{
-				APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
-			}
-			return DOS.Write(BPTR.FromRaw(output), pointer, length);
+			APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
 		}
-		finally
-		{
-			Exec.FreeMem(pointer, byteSize);
-		}
+		return DOS.Write(BPTR.FromRaw(output), pointer, length);
 	}
 
 	private static void WritePackedInt64Bytes(
@@ -708,48 +696,35 @@ public static class ConsolePal
 		uint word4,
 		int length)
 	{
-		var byteSize = ((uint)length + 3u) & ~3u;
-		var pointer = Exec.AllocMem(byteSize, Exec.MemoryFlags.Public);
-		if (pointer == 0)
-		{
-			M68kRuntime.ThrowOutOfMemoryException();
-		}
-
-		try
-		{
-			APTR.WriteUInt32(APTR.FromPointer(pointer), 0, word0);
-			if (length > 4) APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
-			if (length > 8) APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
-			if (length > 12) APTR.WriteUInt32(APTR.FromPointer(pointer), 12, word3);
-			if (length > 16) APTR.WriteUInt32(APTR.FromPointer(pointer), 16, word4);
-			return DOS.Write(BPTR.FromRaw(output), pointer, length);
-		}
-		finally
-		{
-			Exec.FreeMem(pointer, byteSize);
-		}
+		ConsoleWriteBuffer buffer = default;
+		var pointer = APTR.ToUInt32(AddressOf(ref buffer));
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 0, word0);
+		if (length > 4) APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
+		if (length > 8) APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
+		if (length > 12) APTR.WriteUInt32(APTR.FromPointer(pointer), 12, word3);
+		if (length > 16) APTR.WriteUInt32(APTR.FromPointer(pointer), 16, word4);
+		return DOS.Write(BPTR.FromRaw(output), pointer, length);
 	}
 
 	private static int WriteManagedString(uint output, string value)
 	{
-		var byteSize = ((uint)value.Length + 3u) & ~3u;
-		var pointer = Exec.AllocMem(byteSize, Exec.MemoryFlags.Public);
-		if (pointer == 0)
+		ConsoleWriteBuffer buffer = default;
+		var pointer = APTR.ToUInt32(AddressOf(ref buffer));
+		var characterIndex = 0;
+		while (characterIndex < value.Length)
 		{
-			M68kRuntime.ThrowOutOfMemoryException();
-		}
-
-		try
-		{
-			var characterIndex = 0;
-			for (var offset = 0; (uint)offset < byteSize; offset += 4)
+			var remaining = value.Length - characterIndex;
+			var chunkLength = remaining < 20 ? remaining : 20;
+			var chunkIndex = 0;
+			for (var offset = 0; offset < chunkLength; offset += 4)
 			{
 				uint packed = 0;
 				for (var shift = 24; shift >= 0; shift -= 8)
 				{
-					if (characterIndex < value.Length)
+					if (chunkIndex < chunkLength)
 					{
 						var character = (uint)value[characterIndex++] & 0xffffu;
+						chunkIndex++;
 						var encoded = character & 0xffu;
 						if ((character & 0xff00u) != 0)
 						{
@@ -760,13 +735,29 @@ public static class ConsolePal
 				}
 				APTR.WriteUInt32(APTR.FromPointer(pointer), offset, packed);
 			}
+			var actual = DOS.Write(BPTR.FromRaw(output), pointer, chunkLength);
+			if (actual != chunkLength)
+			{
+				return actual;
+			}
+		}
+		return value.Length;
+	}
 
-			return DOS.Write(BPTR.FromRaw(output), pointer, value.Length);
-		}
-		finally
-		{
-			Exec.FreeMem(pointer, byteSize);
-		}
+	private static APTR AddressOf(ref ConsoleWriteBuffer buffer) =>
+		throw new System.NotSupportedException(
+			"ConsolePal.AddressOf is lowered by CopperSharp.");
+
+	[System.Runtime.InteropServices.StructLayout(
+		System.Runtime.InteropServices.LayoutKind.Sequential,
+		Pack = 2)]
+	private struct ConsoleWriteBuffer
+	{
+		public uint Word0;
+		public uint Word1;
+		public uint Word2;
+		public uint Word3;
+		public uint Word4;
 	}
 
 	private static void RequireCompleteWrite(int actual, int expected)

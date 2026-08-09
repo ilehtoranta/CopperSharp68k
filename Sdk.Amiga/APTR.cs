@@ -28,9 +28,25 @@ public readonly struct APTR
 		throw new System.NotSupportedException(
 			"APTR.ExportAddress is lowered by CopperSharp.");
 
+	public static byte ReadUInt8(APTR address, int offset) =>
+		throw new System.NotSupportedException(
+			"APTR.ReadUInt8 is lowered by CopperSharp.");
+
+	public static ushort ReadUInt16(APTR address, int offset) =>
+		throw new System.NotSupportedException(
+			"APTR.ReadUInt16 is lowered by CopperSharp.");
+
 	public static uint ReadUInt32(APTR address, int offset) =>
 		throw new System.NotSupportedException(
 			"APTR.ReadUInt32 is lowered by CopperSharp.");
+
+	public static void WriteUInt8(APTR address, int offset, byte value) =>
+		throw new System.NotSupportedException(
+			"APTR.WriteUInt8 is lowered by CopperSharp.");
+
+	public static void WriteUInt16(APTR address, int offset, ushort value) =>
+		throw new System.NotSupportedException(
+			"APTR.WriteUInt16 is lowered by CopperSharp.");
 
 	public static void WriteUInt32(APTR address, int offset, uint value) =>
 		throw new System.NotSupportedException(
