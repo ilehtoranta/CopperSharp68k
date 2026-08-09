@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageType>MSBuildSdk</PackageType>
+    <PackageId>CopperSharp.Sdk</PackageId>
+    <Title>CopperSharp MSBuild SDK</Title>
+    <Description>MSBuild SDK and amiga-m68k restore policy for CopperSharp .NET 10 AOT applications.</Description>
+    <PackageTags>msbuild-sdk;compiler;aot;amiga;m68k;net10</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectCopperSharpCompilerTool</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Compiler.Cli\CopperSharp.Compiler.Cli.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="Sdk\Sdk.props" Pack="true" PackagePath="Sdk\Sdk.props" />
+    <None Include="Sdk\Sdk.targets" Pack="true" PackagePath="Sdk\Sdk.targets" />
+    <None Include="Sdk\amiga-m68k.runtime.json"
+          Pack="true"
+          PackagePath="Sdk\amiga-m68k.runtime.json" />
+  </ItemGroup>
+
+  <Target Name="CollectCopperSharpCompilerTool"
+          DependsOnTargets="Build"
+          Returns="@(TfmSpecificPackageFile)">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="..\Compiler.Cli\bin\$(Configuration)\net10.0\**\*"
+                              Exclude="..\Compiler.Cli\bin\$(Configuration)\net10.0\publish\**\*;..\Compiler.Cli\bin\$(Configuration)\net10.0\**\*.pdb;..\Compiler.Cli\bin\$(Configuration)\net10.0\**\*.xml">
+        <PackagePath>tools\net10.0\any\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+</Project>
