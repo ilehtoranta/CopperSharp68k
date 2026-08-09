@@ -3725,16 +3725,6 @@ public sealed class CompilerExecutionTests
 				bus,
 				model,
 				HunkLoadAddress + result.EntryPoint,
-				beforeInstruction: (cpu, _) =>
-				{
-					if (cpu.State.ProgramCounter < 0x0000_1000 &&
-						cpu.State.ProgramCounter != ReturnSentinel)
-					{
-						throw new Xunit.Sdk.XunitException(
-							$"IFF control escaped to ${cpu.State.ProgramCounter:X8}; " +
-							$"SP=${cpu.State.A[7]:X8}; events={string.Join(",", events)}");
-					}
-				},
 				initialize: state =>
 				{
 					state.D[0] = 1;
@@ -3747,6 +3737,138 @@ public sealed class CompilerExecutionTests
 			["open-file", "alloc-iff", "init-iff", "open-iff", "parse-iff",
 				"close-iff", "free-iff", "close-file", "put-valid"],
 			events);
+	}
+
+	[Theory]
+	[InlineData(0)]
+	[InlineData(2)]
+	public void IffInspectSampleEarlyFailuresPreserveCleanupOrder(int failureStage)
+	{
+		const uint execBase = 0x0000_3000;
+		const uint dosBase = 0x0000_3800;
+		const uint iffBase = 0x0000_4000;
+		const uint path = 0x0000_0800;
+		const uint file = 0x0000_1234;
+		const uint iff = 0x0002_0000;
+		const uint allocator = 0x000F_0000;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = typeof(IFFInspect.Program).Assembly.Location,
+			EntryPoint = "IFFInspect.Program::Main",
+			Cpu = M68kCpuTarget.M68000,
+			ExceptionMode = M68kExceptionMode.Full,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Application,
+			Imports = new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = allocator
+			}
+		});
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		System.Text.Encoding.ASCII.GetBytes("fixture.iff\0").CopyTo(
+			bus.Memory.AsSpan(checked((int)path)));
+		var events = new List<string>();
+		var heap = 0x0003_0000u;
+		bus.RegisterGateway(allocator, state =>
+		{
+			var size = state.D[0];
+			state.D[0] = heap;
+			heap += (size + 3) & ~3u;
+		});
+		bus.RegisterGateway(execBase - 552, state =>
+		{
+			var name = ReadCString(bus, state.A[1]);
+			events.Add(name == "dos.library" ? "open-lib:dos" : "open-lib:iff");
+			state.D[0] = name switch
+			{
+				"dos.library" when failureStage == 0 => 0,
+				"dos.library" => dosBase,
+				"iffparse.library" when failureStage == 1 => 0,
+				"iffparse.library" => iffBase,
+				_ => 0
+			};
+		});
+		bus.RegisterGateway(execBase - 414, state =>
+			events.Add(state.A[1] == iffBase ? "close-lib:iff" : "close-lib:dos"));
+		bus.RegisterGateway(dosBase - 30, state =>
+		{
+			events.Add("open-file");
+			state.D[0] = failureStage == 2 ? 0 : file;
+		});
+		bus.RegisterGateway(dosBase - 132, state =>
+		{
+			events.Add("ioerr");
+			state.D[0] = (uint)global::Amiga.DOS.Error.ObjectNotFound;
+		});
+		bus.RegisterGateway(dosBase - 36, state =>
+		{
+			Assert.Equal(file, state.D[1]);
+			events.Add("close-file");
+			state.D[0] = 1;
+		});
+		bus.RegisterGateway(dosBase - 948, state =>
+		{
+			var text = ReadCString(bus, state.D[1]);
+			events.Add(text == "Cannot open iffparse.library\n" ? "put:no-iff" : "put:failed");
+			state.D[0] = 1;
+		});
+		bus.RegisterGateway(iffBase - 30, state =>
+		{
+			events.Add("alloc-iff");
+			state.D[0] = failureStage == 3 ? 0 : iff;
+		});
+		bus.RegisterGateway(iffBase - 234, state =>
+		{
+			Assert.Equal(file, bus.ReadLong(iff));
+			events.Add("init-iff");
+		});
+		bus.RegisterGateway(iffBase - 36, state =>
+		{
+			events.Add("open-iff");
+			state.D[0] = failureStage == 4 ? unchecked((uint)-99) : 0;
+		});
+		bus.RegisterGateway(iffBase - 42, state =>
+		{
+			events.Add("parse-iff");
+			state.D[0] = failureStage == 5
+				? unchecked((uint)-99)
+				: unchecked((uint)(int)global::Amiga.IffError.Eof);
+		});
+		bus.RegisterGateway(iffBase - 48, _ => events.Add("close-iff"));
+		bus.RegisterGateway(iffBase - 54, _ => events.Add("free-iff"));
+
+		var actual = Execute(
+			bus,
+			M68kCpuModel.M68000,
+			HunkLoadAddress + result.EntryPoint,
+			initialize: state =>
+			{
+				state.D[0] = 1;
+				state.A[0] = path;
+			},
+			maxInstructions: 1_000_000);
+		var expected = failureStage switch
+		{
+			0 => new[] { "open-lib:dos" },
+			1 => ["open-lib:dos", "open-lib:iff", "put:no-iff", "close-lib:dos"],
+			2 => ["open-lib:dos", "open-lib:iff", "open-file", "ioerr", "put:failed",
+				"close-lib:iff", "close-lib:dos"],
+			3 => ["open-lib:dos", "open-lib:iff", "open-file", "alloc-iff", "close-file",
+				"put:failed", "close-lib:iff", "close-lib:dos"],
+			4 => ["open-lib:dos", "open-lib:iff", "open-file", "alloc-iff", "init-iff",
+				"open-iff", "free-iff", "close-file", "put:failed", "close-lib:iff",
+				"close-lib:dos"],
+			_ => new[] { "open-lib:dos", "open-lib:iff", "open-file", "alloc-iff",
+				"init-iff", "open-iff", "parse-iff", "close-iff", "free-iff",
+				"close-file", "put:failed", "close-lib:iff", "close-lib:dos" }
+		};
+		Assert.Equal(expected, events);
+		Assert.Equal(
+			failureStage is 0 or 1 or 3
+				? (uint)global::Amiga.DOS.RETURN_FAIL
+				: (uint)global::Amiga.DOS.RETURN_ERROR,
+			actual);
 	}
 
 	[Theory]

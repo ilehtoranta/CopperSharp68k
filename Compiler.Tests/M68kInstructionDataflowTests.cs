@@ -36,6 +36,28 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void RelocatableStackStoreDoesNotReuseZeroRegister()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x2F7C); // MOVE.L #symbol,8(A7)
+		assembler.EmitAddress("symbol");
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("symbol");
+		assembler.EmitWord(0);
+
+		assembler.OptimizeForM68000();
+
+		Assert.Contains(
+			assembler.GetInstructionStream(),
+			static instruction => instruction.Opcode == 0x2F7C && instruction.Length == 8);
+		Assert.DoesNotContain(
+			assembler.GetInstructionStream(),
+			static instruction => instruction.Opcode == 0x2F40);
+	}
+
+	[Fact]
 	public void ClassifiesExtLongAsRegisterUnaryRatherThanMovem()
 	{
 		var assembler = new M68kAssembler();

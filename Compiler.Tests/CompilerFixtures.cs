@@ -7,6 +7,28 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class CompilerFixtures
 {
+	private enum ListByteState : byte
+	{
+		First = 0xA5,
+		Second = 0x5A,
+		Missing = 0x3C
+	}
+
+	private enum ListIntState
+	{
+		First = 0x1122_3344,
+		Second = 0x5566_7788,
+		Missing = 0x1234_5678
+	}
+
+	private enum ListLongState : long
+	{
+		First = 0x0000_0001_0000_0002L,
+		HighDiffers = 0x0000_0003_0000_0002L,
+		LowDiffers = 0x0000_0001_0000_0004L,
+		Missing = 0x0000_0003_0000_0004L
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int MultiModuleEntry() => ExternalMethods.AddAndDouble(12, 9);
 
@@ -33,6 +55,29 @@ public static class CompilerFixtures
 		var left = 9;
 		var right = 5;
 		return Arithmetic(left, right) + LoopAndBranch(6);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AllocatedDenseSwitchEntry()
+	{
+		var sum = DenseSwitch(-1) + DenseSwitch(0) + DenseSwitch(1) +
+			DenseSwitch(2) + DenseSwitch(3) + DenseSwitch(4);
+		return sum == 209 ? 42 : sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int DenseSwitch(int value)
+	{
+		int result;
+		switch (value)
+		{
+			case 0: result = 10; break;
+			case 1: result = 20; break;
+			case 2: result = 30; break;
+			case 3: result = 40; break;
+			default: result = 50; break;
+		}
+		return result + value;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -169,6 +214,67 @@ public static class CompilerFixtures
 	public static int ArithmeticEntry() => Arithmetic(9, 5);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint DivisionDifferentialCorpusEntry()
+	{
+		var hash = 0x811C_9DC5u;
+		hash = MixUnsignedDivision(hash, 0, 1);
+		hash = MixUnsignedDivision(hash, 1, 1);
+		hash = MixUnsignedDivision(hash, uint.MaxValue, 1);
+		hash = MixUnsignedDivision(hash, uint.MaxValue, uint.MaxValue);
+		hash = MixUnsignedDivision(hash, uint.MaxValue, 0x8000_0000u);
+		hash = MixUnsignedDivision(hash, 0x8000_0000u, uint.MaxValue);
+		hash = MixUnsignedDivision(hash, 0xFFFF_0000u, 0x0000_FFFFu);
+
+		var state = 0xC001_D00Du;
+		for (var index = 0; index < 48; index++)
+		{
+			state = unchecked((state * 1_664_525u) + 1_013_904_223u);
+			var dividend = state ^ (state << 13) ^ (state >> 9);
+			state = unchecked((state * 22_695_477u) + 1u);
+			var divisor = state | 1u;
+			hash = MixUnsignedDivision(hash, dividend, divisor);
+		}
+
+		hash = MixSignedDivision(hash, 0, 1);
+		hash = MixSignedDivision(hash, int.MaxValue, 1);
+		hash = MixSignedDivision(hash, int.MinValue, 1);
+		hash = MixSignedDivision(hash, int.MinValue, int.MinValue);
+		hash = MixSignedDivision(hash, int.MaxValue, -1);
+		hash = MixSignedDivision(hash, -17, 5);
+		hash = MixSignedDivision(hash, 17, -5);
+		hash = MixSignedDivision(hash, -17, -5);
+		for (var index = 0; index < 32; index++)
+		{
+			state = unchecked((state * 1_103_515_245u) + 12_345u);
+			var dividend = unchecked((int)(state ^ (state >> 11)));
+			state = unchecked((state * 214_013u) + 2_531_011u);
+			var divisor = unchecked((int)(state | 1u));
+			hash = MixSignedDivision(hash, dividend, divisor);
+		}
+
+		return hash;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint MixUnsignedDivision(uint hash, uint dividend, uint divisor)
+	{
+		var quotient = dividend / divisor;
+		var remainder = dividend % divisor;
+		return unchecked((hash * 16_777_619u) ^ quotient ^
+			((remainder << 7) | (remainder >> 25)));
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint MixSignedDivision(uint hash, int dividend, int divisor)
+	{
+		var quotient = dividend / divisor;
+		var remainder = dividend % divisor;
+		var bits = unchecked((uint)remainder);
+		return unchecked((hash * 16_777_619u) ^ (uint)quotient ^
+			((bits << 11) | (bits >> 21)));
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int ForwardStackArgumentEntry() =>
 		ForwardStackArgumentTarget("ok", 1, 2, 3, 4);
 
@@ -180,6 +286,44 @@ public static class CompilerFixtures
 		int third,
 		int fourth) =>
 		(marker.Length * 10_000) + (first * 1_000) + (second * 100) + (third * 10) + fourth;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IncomingDataOverlapEntry() =>
+		IncomingDataOverlap(1, 2, 3, 4, 5, 6, 7);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IncomingDataOverlap(
+		int first,
+		int second,
+		int third,
+		int fourth,
+		int fifth,
+		int sixth,
+		int seventh) =>
+		first +
+		(second * 3) +
+		(third * 5) +
+		(fourth * 7) +
+		(fifth * 11) +
+		(sixth * 13) +
+		(seventh * 17);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IncomingInt64OverlapEntry() =>
+		IncomingInt64Overlap(1, 2, 0x1122_3344_5566_7788L, 3, 4);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IncomingInt64Overlap(
+		int first,
+		int second,
+		long wide,
+		int third,
+		int fourth)
+	{
+		var low = M68kRuntime.SplitInt64(wide, out var high);
+		return first + second + third + fourth +
+			(int)(low & 0xFF) + (int)(high & 0xFF);
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TryCatchEntry()
@@ -275,6 +419,19 @@ public static class CompilerFixtures
 		try
 		{
 			return 84 / _counter;
+		}
+		catch (DivideByZeroException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint UnsignedDivideByZeroCatchEntry()
+	{
+		try
+		{
+			return uint.MaxValue / unchecked((uint)_counter);
 		}
 		catch (DivideByZeroException)
 		{
@@ -982,6 +1139,66 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBaseSameMergeEntry()
+	{
+		var first = PlatformBaseStateSelector() != 0
+			? PlatformBaseStateA()
+			: PlatformBaseStateAAlias();
+		return first + PlatformBaseStateAHelper();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBaseDifferentMergeEntry()
+	{
+		var first = PlatformBaseStateSelector() != 0
+			? PlatformBaseStateA()
+			: PlatformBaseStateB();
+		return first + PlatformBaseStateAHelper();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBaseUnknownMergeEntry()
+	{
+		var first = PlatformBaseStateSelector() != 0
+			? PlatformBaseStateA()
+			: 1u;
+		return first + PlatformBaseStateAHelper();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBasePreservedAcrossInternalCallEntry()
+	{
+		var first = PlatformBaseStateA();
+		var middle = PlatformBaseNeutralHelper();
+		return first + middle + PlatformBaseStateA();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBaseTailCallEntry()
+	{
+		_ = PlatformBaseStateA();
+		return PlatformBaseStateAHelper();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint PlatformBaseStateAHelper() => PlatformBaseStateA();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint PlatformBaseNeutralHelper() => 7;
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern uint PlatformBaseStateA();
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern uint PlatformBaseStateAAlias();
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern uint PlatformBaseStateB();
+
+	[MethodImpl(MethodImplOptions.InternalCall)]
+	public static extern uint PlatformBaseStateSelector();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint NullableUIntValueEntry()
 	{
 		uint? value = 37u;
@@ -1037,6 +1254,13 @@ public static class CompilerFixtures
 	public static uint CallSdkOpenLibrary()
 	{
 		var library = global::Amiga.Exec.OpenLibrary(0x0000_1800, 37);
+		return library.HasValue ? library.Value.Raw : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallSdkOpenLibraryLiteral()
+	{
+		var library = global::Amiga.Exec.OpenLibrary("fixture.library", 37);
 		return library.HasValue ? library.Value.Raw : 0u;
 	}
 
@@ -1927,6 +2151,63 @@ public static class CompilerFixtures
 			: 0;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int Int64ToStringEntry()
+	{
+		var zero = 0L;
+		var positive = 42L;
+		var negative = -42L;
+		var signedMinimum = long.MinValue;
+		var signedMaximum = long.MaxValue;
+		var unsignedInt32HighBit = 2_147_483_648UL;
+		var unsignedHighLane = 4_294_967_296UL;
+		var unsignedMaximum = ulong.MaxValue;
+		if (zero.ToString() != "0") return 1;
+		if (positive.ToString() != "42") return 2;
+		if (negative.ToString() != "-42") return 3;
+		if (signedMinimum.ToString() != "-9223372036854775808") return 4;
+		if (signedMaximum.ToString() != "9223372036854775807") return 5;
+		if (unsignedInt32HighBit.ToString() != "2147483648") return 6;
+		if (unsignedHighLane.ToString() != "4294967296") return 7;
+		if (unsignedMaximum.ToString() != "18446744073709551615") return 8;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DirectWidenedInt64ArgumentEntry()
+	{
+		if (ReadInt64Low(42L) != 42) return 1;
+		if (ReadInt64Low(-42L) != -42) return 2;
+		if (ReadUInt64Low(2_147_483_648UL) != 0x8000_0000u) return 3;
+		if (ReadUInt64Low(ulong.MaxValue) != uint.MaxValue) return 4;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadInt64Low(long value) => unchecked((int)value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ReadUInt64Low(ulong value) => unchecked((uint)value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int SplitInt64IntrinsicEntry()
+	{
+		var signedLow = M68kRuntime.SplitInt64(-42L, out var signedHigh);
+		if (signedHigh != uint.MaxValue || signedLow != 0xffff_ffd6u) return 1;
+		var unsignedLow = M68kRuntime.SplitUInt64(
+			ulong.MaxValue,
+			out var unsignedHigh);
+		if (unsignedHigh != uint.MaxValue || unsignedLow != uint.MaxValue) return 2;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UInt64LaneFormatterEntry() =>
+		CopperSharp.Runtime.ShadowIntegerFormatter.FormatUInt64(1, 42) ==
+			"4294967338"
+				? 42
+				: 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int IntegerFormatStringEntry() =>
 		42.ToString((string?)null) == "42" &&
 		42.ToString("") == "42" &&
@@ -2249,6 +2530,75 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CheckedInt32AddEntry()
+	{
+		if (CheckedInt32Add(19, 23) != 42)
+		{
+			return 1;
+		}
+		return CheckedInt32Add(-20, -22) == -42 ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CheckedInt32AddOverflowCatchEntry()
+	{
+		var caught = 0;
+		try
+		{
+			_ = CheckedInt32Add(int.MaxValue, 1);
+		}
+		catch (OverflowException)
+		{
+			caught |= 1;
+		}
+
+		try
+		{
+			_ = CheckedInt32Add(int.MinValue, -1);
+		}
+		catch (OverflowException)
+		{
+			caught |= 2;
+		}
+
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CheckedInt32Add(int left, int right) => checked(left + right);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CheckedUInt32ToInt32Entry()
+	{
+		if (CheckedUInt32ToInt32(int.MaxValue) != int.MaxValue)
+		{
+			return 1;
+		}
+
+		var caught = 0;
+		try
+		{
+			_ = CheckedUInt32ToInt32(0x8000_0000u);
+		}
+		catch (OverflowException)
+		{
+			caught |= 1;
+		}
+		try
+		{
+			_ = CheckedUInt32ToInt32(uint.MaxValue);
+		}
+		catch (OverflowException)
+		{
+			caught |= 2;
+		}
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CheckedUInt32ToInt32(uint value) => checked((int)value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint ShadowBitConverterEntry()
 	{
 		var bytes = BitConverter.GetBytes(0x01020304);
@@ -2372,6 +2722,669 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DictionaryInt32Entry()
+	{
+		var values = new Dictionary<int, int>();
+		values.Add(1, 1);
+		values.Add(5, 5);
+		values.Add(9, 9);
+		values.Add(13, 13);
+		values.Add(17, 17);
+		if (values.Count != 5 || values[1] != 1 || values[17] != 17) return 1;
+		if (!values.TryGetValue(13, out var thirteen) || thirteen != 13) return 2;
+		if (values.TryGetValue(2, out var missing) || missing != 0) return 3;
+		values[9] = 11;
+		try
+		{
+			values.Add(5, 0);
+			return 4;
+		}
+		catch (ArgumentException)
+		{
+		}
+		try
+		{
+			_ = values[2];
+			return 5;
+		}
+		catch (KeyNotFoundException)
+		{
+		}
+		return values[1] + values[5] + values[9] + values[13] + values[17] - 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DictionaryInt32ReferenceGcEntry()
+	{
+		var values = new Dictionary<int, string>();
+		values.Add(1, "x1234567x".Substring(1, 7));
+		values.Add(5, "x12345678x".Substring(1, 8));
+		values.Add(9, "x123456789x".Substring(1, 9));
+		values.Add(13, "x1234567890x".Substring(1, 10));
+		values.Add(17, "x12345678x".Substring(1, 8));
+		M68kRuntime.Collect();
+		return values[1].Length + values[5].Length + values[9].Length +
+			values[13].Length + values[17].Length + values.Count - 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DictionaryStringGcEntry()
+	{
+		var values = new Dictionary<string, string>();
+		values.Add("a", "1234567");
+		values.Add("e", "12345678");
+		values.Add("i", "123456789");
+		values.Add("m", "1234567890");
+		values.Add("q", "12345678");
+		var equalKey = "xix".Substring(1, 1);
+		if (!values.TryGetValue(equalKey, out var found) || found.Length != 9) return 1;
+		if (values.TryGetValue("I", out var missing) || missing is not null) return 2;
+		return found.Length + values["a"].Length + values["e"].Length +
+			values["m"].Length + values["q"].Length + values.Count - 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DictionaryStringNullKeyEntry()
+	{
+		var values = new Dictionary<string, int>();
+		try
+		{
+			values.Add(null!, 1);
+			return 1;
+		}
+		catch (ArgumentNullException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DictionaryReferenceFreeStructValueEntry()
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		var one = new DictionaryImageDescriptor(1);
+		var five = new DictionaryImageDescriptor(5);
+		var nine = new DictionaryImageDescriptor(9);
+		var thirteenValue = new DictionaryImageDescriptor(13);
+		var seventeen = new DictionaryImageDescriptor(17);
+		var replacement = new DictionaryImageDescriptor(19);
+		values.Add(1, one);
+		values.Add(5, five);
+		values.Add(9, nine);
+		values.Add(13, thirteenValue);
+		values[17] = seventeen;
+		values[9] = replacement;
+
+		if (values.Count != 5 || !values[1].Matches(1) ||
+			!values[9].Matches(19) || !values[17].Matches(17))
+		{
+			return 1;
+		}
+		if (!values.TryGetValue(13, out var thirteen) || !thirteen.Matches(13))
+		{
+			return 2;
+		}
+		if (values.TryGetValue(2, out var missing) || !missing.IsDefault())
+		{
+			return 3;
+		}
+		return values[5].Matches(5) ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedDictionaryReferenceStructValueEntry()
+	{
+		var values = new Dictionary<uint, DictionaryReferenceValue>();
+		values.Add(1, new DictionaryReferenceValue(null));
+		return values.Count;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DictionaryReferenceFreeStructValuesIdentityEntry()
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		var descriptor = new DictionaryImageDescriptor(1);
+		values.Add(1, descriptor);
+		var first = values.Values;
+		var second = values.Values;
+		return ReferenceEquals(first, second) ? 42 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedDictionaryReferenceFreeStructKeysEntry()
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		return ReferenceEquals(values.Keys, null) ? 1 : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int GenericStringLookupResultEntry()
+	{
+		var buckets = new int[4];
+		var hashes = new int[4];
+		var keys = new string[4];
+		var key = "i";
+		var hash = M68kRuntime.DefaultHashCode(key) & int.MaxValue;
+		var bucket = hash & 3;
+		buckets[bucket] = 1;
+		hashes[0] = hash;
+		keys[0] = key;
+		var equalKey = "xix".Substring(1, 1);
+		return FindGenericCandidate(buckets, hashes, keys, equalKey) == 0 ? 42 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int FindGenericCandidate<TKey>(
+		int[] buckets,
+		int[] hashes,
+		TKey[] keys,
+		TKey key)
+	{
+		var hash = M68kRuntime.DefaultHashCode(key) & int.MaxValue;
+		var bucket = hash & (buckets.Length - 1);
+		for (var probes = 0; probes < buckets.Length; probes++)
+		{
+			var entry = buckets[bucket];
+			if (entry == 0)
+			{
+				return -1;
+			}
+			var index = entry - 1;
+			if (hashes[index] == hash)
+			{
+				if (M68kRuntime.DefaultEquals(keys[index], key))
+				{
+					return index;
+				}
+			}
+			bucket = (bucket + 1) & (buckets.Length - 1);
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListCapacityMutationEntry()
+	{
+		try
+		{
+			_ = new List<int>(-1);
+			return 1;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		var values = new List<int>(2);
+		if (values.Capacity != 2)
+		{
+			return 2;
+		}
+		values.Add(10);
+		values.Add(20);
+		values.Add(30);
+		if (values.Capacity != 4)
+		{
+			return 3;
+		}
+		values.Capacity = 6;
+		values.RemoveAt(1);
+		var copy = values.ToArray();
+		copy[0] = 0;
+		if (values.Count != 2 ||
+			values.Capacity != 6 ||
+			values[0] != 10 ||
+			values[1] != 30 ||
+			copy.Length != 2 ||
+			copy[1] != 30)
+		{
+			return 4;
+		}
+		values.Clear();
+		if (values.Count != 0 || values.Capacity != 6 || values.ToArray().Length != 0)
+		{
+			return 5;
+		}
+		values.Capacity = 0;
+		return values.Capacity == 0 ? 42 : 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListMutationRangeExceptionEntry()
+	{
+		var values = new List<int>(1);
+		values.Add(42);
+		try
+		{
+			values.Capacity = 0;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			try
+			{
+				values.RemoveAt(-1);
+			}
+			catch (ArgumentOutOfRangeException)
+			{
+				try
+				{
+					values.RemoveAt(values.Count);
+				}
+				catch (ArgumentOutOfRangeException)
+				{
+					return values[0];
+				}
+			}
+		}
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListMutationMetricEntry()
+	{
+		var values = new List<int>(2);
+		values.Add(10);
+		values.Add(20);
+		values.Add(30);
+		values.Capacity = 6;
+		values.RemoveAt(1);
+		var copy = values.ToArray();
+		values.Clear();
+		return copy[0] + copy[1] + values.Count + 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListDirectEnumerationEntry()
+	{
+		var values = new List<int>(3);
+		values.Add(10);
+		values.Add(12);
+		values.Add(20);
+		var sum = 0;
+		foreach (var value in values)
+		{
+			sum += value;
+		}
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListEmptyEnumerationEntry()
+	{
+		var values = new List<int>();
+		var enumerator = values.GetEnumerator();
+		if (enumerator.MoveNext() || enumerator.Current != 0)
+		{
+			return 1;
+		}
+		enumerator.Dispose();
+		return enumerator.MoveNext() ? 2 : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListEnumerationMutationEntry()
+	{
+		var values = new List<int>(2);
+		values.Add(19);
+		values.Add(23);
+		var enumerator = values.GetEnumerator();
+		if (!enumerator.MoveNext() || enumerator.Current != 19)
+		{
+			return 1;
+		}
+		values[0] = 1;
+		try
+		{
+			_ = enumerator.MoveNext();
+		}
+		catch (InvalidOperationException)
+		{
+			return 42;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListEnumerationCapacityEntry()
+	{
+		var values = new List<int>(2);
+		values.Add(19);
+		values.Add(23);
+		var enumerator = values.GetEnumerator();
+		values.Capacity = 8;
+		var sum = 0;
+		while (enumerator.MoveNext())
+		{
+			sum += enumerator.Current;
+		}
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListNarrowEnumerationEntry()
+	{
+		var bytes = new List<byte>(2);
+		bytes.Add(7);
+		bytes.Add(12);
+		var words = new List<short>(2);
+		words.Add(10);
+		words.Add(13);
+		var sum = 0;
+		foreach (var value in bytes)
+		{
+			sum += value;
+		}
+		foreach (var value in words)
+		{
+			sum += value;
+		}
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListInt64EnumerationEntry()
+	{
+		const long expected = 0x0000_002A_0000_002AL;
+		var values = new List<long>(2);
+		values.Add(0x0000_0001_0000_0002L);
+		values.Add(expected);
+		var result = expected;
+		var count = 0;
+		foreach (var value in values)
+		{
+			result = value;
+			count++;
+		}
+		return count == 2 ? (int)result : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListReferenceEnumerationGcEntry()
+	{
+		var values = new List<ListReferenceValue>(2);
+		values.Add(new ListReferenceValue(19));
+		values.Add(new ListReferenceValue(23));
+		var sum = 0;
+		foreach (var value in values)
+		{
+			M68kRuntime.Collect();
+			sum += value.Value;
+		}
+		M68kRuntime.Collect();
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListEnumerationMetricEntry()
+	{
+		var values = new List<int>(3);
+		values.Add(10);
+		values.Add(12);
+		values.Add(20);
+		var sum = 0;
+		foreach (var value in values)
+		{
+			sum += value;
+		}
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListInterfaceEnumerationEntry()
+	{
+		IEnumerable<int> values = new List<int> { 10, 12, 20 };
+		var sum = 0;
+		foreach (var value in values)
+		{
+			sum += value;
+		}
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListNarrowMutationEntry()
+	{
+		var bytes = new List<byte>(3);
+		bytes.Add(5);
+		bytes.Add(7);
+		bytes.Add(9);
+		bytes.RemoveAt(1);
+		if (bytes.Count != 2 || bytes[0] != 5 || bytes[1] != 9)
+		{
+			return 1;
+		}
+		bytes.Clear();
+		bytes.Add(10);
+
+		var words = new List<short>(2);
+		words.Add(12);
+		words.Add(15);
+		words.RemoveAt(0);
+		if (words.Count != 1 || words[0] != 15)
+		{
+			return 2;
+		}
+		words.Clear();
+		words.Add(32);
+		return bytes[0] + words[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long ListInt64MutationEntry()
+	{
+		const long expected = 0x0000_002A_5566_7788L;
+		var values = new List<long>(2);
+		values.Add(0x0000_0001_0000_0002L);
+		values.Add(expected);
+		values.Add(0x0000_0003_0000_0004L);
+		values.RemoveAt(0);
+		var copy = values.ToArray();
+		values.Clear();
+		return copy[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long TypedInt64ArrayEntry()
+	{
+		const long expected = 0x0000_002A_5566_7788L;
+		var values = new long[2];
+		values[0] = 0x0000_0001_0000_0002L;
+		values[1] = expected;
+		return values[1];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListReferenceMutationGcEntry()
+	{
+		var values = new List<ListReferenceValue>(3);
+		values.Add(new ListReferenceValue(19));
+		values.Add(new ListReferenceValue(1));
+		values.Add(new ListReferenceValue(23));
+		values.RemoveAt(1);
+		M68kRuntime.Collect();
+		var copy = values.ToArray();
+		M68kRuntime.Collect();
+		var result = copy[0].Value + copy[1].Value;
+		values.Clear();
+		M68kRuntime.Collect();
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableEnvironmentEntry()
+	{
+		var newLine = Environment.NewLine;
+		return newLine.Length == 1 &&
+			newLine[0] == '\n' &&
+			Environment.ProcessorCount == 1
+			? 42
+			: newLine.Length + Environment.ProcessorCount;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableEnvironmentNewLineEntry()
+	{
+		var newLine = Environment.NewLine;
+		return newLine.Length == 1 && newLine[0] == '\n' ? 42 : newLine.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableEnvironmentProcessorCountEntry() =>
+		Environment.ProcessorCount == 1 ? 42 : Environment.ProcessorCount;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableStopwatchEntry()
+	{
+		var frequencyLow = M68kRuntime.SplitInt64(
+			System.Diagnostics.Stopwatch.Frequency,
+			out var frequencyHigh);
+		_ = System.Diagnostics.Stopwatch.GetTimestamp();
+		_ = System.Diagnostics.Stopwatch.GetTimestamp();
+		return System.Diagnostics.Stopwatch.IsHighResolution &&
+			frequencyHigh == 0 &&
+			frequencyLow != 0
+			? 42
+			: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long PortableStopwatchTimestampEntry() =>
+		System.Diagnostics.Stopwatch.GetTimestamp();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableStopwatchTwoTimestampEntry()
+	{
+		_ = System.Diagnostics.Stopwatch.GetTimestamp();
+		_ = System.Diagnostics.Stopwatch.GetTimestamp();
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long PortableStopwatchFrequencyEntry() =>
+		System.Diagnostics.Stopwatch.Frequency;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableStopwatchHighResolutionEntry() =>
+		System.Diagnostics.Stopwatch.IsHighResolution ? 42 : 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableStopwatchInstanceEntry()
+	{
+		var stopwatch = new System.Diagnostics.Stopwatch();
+		if (stopwatch.IsRunning)
+		{
+			return 1;
+		}
+		var low = M68kRuntime.SplitInt64(stopwatch.ElapsedTicks, out var high);
+		if (high != 0 || low != 0)
+		{
+			return 2;
+		}
+
+		stopwatch.Start();
+		stopwatch.Start();
+		low = M68kRuntime.SplitInt64(stopwatch.ElapsedTicks, out high);
+		if (!stopwatch.IsRunning || high != 0 || low != 30)
+		{
+			return 3;
+		}
+
+		stopwatch.Stop();
+		stopwatch.Stop();
+		low = M68kRuntime.SplitInt64(stopwatch.ElapsedTicks, out high);
+		if (stopwatch.IsRunning || high != 0 || low != 60)
+		{
+			return 4;
+		}
+
+		stopwatch.Start();
+		stopwatch.Stop();
+		low = M68kRuntime.SplitInt64(stopwatch.ElapsedTicks, out high);
+		if (high != 0 || low != 102)
+		{
+			return 5;
+		}
+
+		stopwatch.Restart();
+		if (!stopwatch.IsRunning)
+		{
+			return 6;
+		}
+		stopwatch.Reset();
+		low = M68kRuntime.SplitInt64(stopwatch.ElapsedTicks, out high);
+		if (stopwatch.IsRunning || high != 0 || low != 0)
+		{
+			return 7;
+		}
+
+		var started = System.Diagnostics.Stopwatch.StartNew();
+		started.Stop();
+		low = M68kRuntime.SplitInt64(started.ElapsedTicks, out high);
+		return !started.IsRunning && high == 0 && low == 42 ? 42 : 8;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableStopwatchResetOnlyEntry()
+	{
+		var stopwatch = new System.Diagnostics.Stopwatch();
+		stopwatch.Reset();
+		return stopwatch.IsRunning ? 0 : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableStopwatchInvalidOperationEntry()
+	{
+		try
+		{
+			_ = System.Diagnostics.Stopwatch.GetTimestamp();
+			return 1;
+		}
+		catch (InvalidOperationException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListReferenceClearReclaimsEntry()
+	{
+		var values = new List<ListReferenceValue>(1);
+		values.Add(new ListReferenceValue(1));
+		values.Clear();
+		M68kRuntime.Collect();
+		values.Add(new ListReferenceValue(42));
+		return values[0].Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListReferenceRemoveAtReclaimsEntry()
+	{
+		var values = new List<ListReferenceValue>(2);
+		values.Add(new ListReferenceValue(19));
+		values.Add(new ListReferenceValue(1));
+		values.RemoveAt(1);
+		M68kRuntime.Collect();
+		values.Add(new ListReferenceValue(23));
+		return values[0].Value + values[1].Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListReferenceRetentionControlEntry()
+	{
+		try
+		{
+			var values = new List<ListReferenceValue>(1);
+			values.Add(new ListReferenceValue(1));
+			M68kRuntime.Collect();
+			values.Add(new ListReferenceValue(42));
+			return 0;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int UnsupportedListStructEntry()
 	{
 		var values = new List<ListPair>();
@@ -2381,11 +3394,1238 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static int UnsupportedListRemoveEntry()
+	public static int ListFloatingEqualityEntry()
 	{
-		var values = new List<int>();
-		values.Add(1);
-		return values.Remove(1) ? 42 : 0;
+		var singles = new List<float>(3);
+		singles.Add(float.NaN);
+		singles.Add(0.0f);
+		singles.Add(1.5f);
+		if (!singles.Contains(-float.NaN) ||
+			!singles.Contains(-0.0f) ||
+			singles.IndexOf(-0.0f) != 1 ||
+			singles.Contains(float.PositiveInfinity) ||
+			!singles.Remove(-float.NaN) ||
+			singles.Count != 2)
+		{
+			return 1;
+		}
+
+		var doubles = new List<double>(3);
+		doubles.Add(double.NaN);
+		doubles.Add(0.0d);
+		doubles.Add(1.5d);
+		if (!doubles.Contains(-double.NaN) ||
+			!doubles.Contains(-0.0d) ||
+			doubles.IndexOf(-0.0d) != 1 ||
+			doubles.Contains(double.NegativeInfinity) ||
+			!doubles.Remove(-double.NaN) ||
+			doubles.Count != 2)
+		{
+			return 2;
+		}
+
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListInt32EqualityEntry()
+	{
+		var values = new List<int>(4);
+		values.Add(10);
+		values.Add(20);
+		values.Add(10);
+		values.Add(12);
+		if (!values.Contains(20) || values.Contains(99) || values.IndexOf(10) != 0)
+		{
+			return 1;
+		}
+
+		var stable = values.GetEnumerator();
+		if (!stable.MoveNext() || values.Remove(99) ||
+			!stable.MoveNext() || stable.Current != 20)
+		{
+			return 2;
+		}
+
+		var invalidated = values.GetEnumerator();
+		if (!invalidated.MoveNext() || !values.Remove(10))
+		{
+			return 3;
+		}
+		try
+		{
+			invalidated.MoveNext();
+			return 4;
+		}
+		catch (InvalidOperationException)
+		{
+		}
+
+		return values.Count == 3 && values.IndexOf(10) == 1 &&
+			values.Contains(12) ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListInt64EqualityEntry()
+	{
+		const long first = 0x0000_0001_0000_0002L;
+		const long highDiffers = 0x0000_0003_0000_0002L;
+		const long lowDiffers = 0x0000_0001_0000_0004L;
+		var values = new List<long>(3);
+		values.Add(first);
+		values.Add(highDiffers);
+		values.Add(lowDiffers);
+		if (!values.Contains(highDiffers))
+		{
+			return 1;
+		}
+		if (values.IndexOf(lowDiffers) != 2)
+		{
+			return 2;
+		}
+		if (values.Contains(0x0000_0003_0000_0004L))
+		{
+			return 3;
+		}
+		if (!values.Remove(first))
+		{
+			return 4;
+		}
+		if (values.Count != 2)
+		{
+			return 5;
+		}
+		if (values.IndexOf(highDiffers) != 0)
+		{
+			return 6;
+		}
+		return values.IndexOf(lowDiffers) == 1 ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListNarrowIntegralEqualityEntry()
+	{
+		var bytes = new List<byte>(1);
+		bytes.Add(0xA5);
+		var signed = new List<sbyte>(1);
+		signed.Add(-42);
+		var chars = new List<char>(1);
+		chars.Add('\u03A9');
+		var shorts = new List<short>(1);
+		shorts.Add(-1234);
+		var ushorts = new List<ushort>(1);
+		ushorts.Add(54321);
+		var booleans = new List<bool>(1);
+		booleans.Add(true);
+		return bytes.Contains(0xA5) && signed.IndexOf(-42) == 0 &&
+			chars.Contains('\u03A9') && shorts.Remove(-1234) &&
+			ushorts.Contains(54321) && booleans.Contains(true) ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListIntegralEqualityMetricEntry()
+	{
+		var values = new List<int>(4);
+		values.Add(10);
+		values.Add(20);
+		values.Add(10);
+		return values.Contains(20) && values.IndexOf(10) == 0 &&
+			values.Remove(10) && values.Count == 2 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListNullableIntEqualityEntry()
+	{
+		var values = new List<int?>(4);
+		values.Add(null);
+		values.Add(42);
+		values.Add(null);
+		values.Add(-7);
+		if (!values.Contains(null))
+		{
+			return 1;
+		}
+		if (values.IndexOf(null) != 0)
+		{
+			return 2;
+		}
+		if (!values.Contains(42))
+		{
+			return 3;
+		}
+		if (values.Contains(7))
+		{
+			return 4;
+		}
+		if (!values.Remove(null))
+		{
+			return 5;
+		}
+		if (values.IndexOf(null) != 1)
+		{
+			return 6;
+		}
+		if (!values.Remove(42))
+		{
+			return 7;
+		}
+		return values.Count == 2 ? 42 : 8;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListByteEnumEqualityEntry()
+	{
+		var values = new List<ListByteState>(3);
+		values.Add(ListByteState.First);
+		values.Add(ListByteState.Second);
+		values.Add(ListByteState.First);
+		return values.Contains(ListByteState.Second) &&
+			!values.Contains(ListByteState.Missing) &&
+			values.IndexOf(ListByteState.First) == 0 &&
+			values.Remove(ListByteState.First) &&
+			values.IndexOf(ListByteState.First) == 1 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListIntEnumEqualityEntry()
+	{
+		var values = new List<ListIntState>(3);
+		values.Add(ListIntState.First);
+		values.Add(ListIntState.Second);
+		values.Add(ListIntState.First);
+		return values.Contains(ListIntState.Second) &&
+			!values.Contains(ListIntState.Missing) &&
+			values.IndexOf(ListIntState.First) == 0 &&
+			values.Remove(ListIntState.First) &&
+			values.IndexOf(ListIntState.First) == 1 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListLongEnumEqualityEntry()
+	{
+		var values = new List<ListLongState>(3);
+		values.Add(ListLongState.First);
+		values.Add(ListLongState.HighDiffers);
+		values.Add(ListLongState.LowDiffers);
+		if (!values.Contains(ListLongState.HighDiffers))
+		{
+			return 1;
+		}
+		if (values.Contains(ListLongState.Missing))
+		{
+			return 2;
+		}
+		if (values.IndexOf(ListLongState.LowDiffers) != 2)
+		{
+			return 3;
+		}
+		if (!values.Remove(ListLongState.First))
+		{
+			return 4;
+		}
+		return values.IndexOf(ListLongState.HighDiffers) == 0 &&
+			values.IndexOf(ListLongState.LowDiffers) == 1 ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListExternalEnumEqualityEntry()
+	{
+		var values = new List<ExternalListState>(2);
+		values.Add(ExternalListState.First);
+		values.Add(ExternalListState.Second);
+		return values.Contains(ExternalListState.Second) &&
+			!values.Contains(ExternalListState.Missing) &&
+			values.Remove(ExternalListState.First) &&
+			values.IndexOf(ExternalListState.Second) == 0 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListStringEqualityEntry()
+	{
+		var equalContent = "xAmigax".Substring(1, 5);
+		var values = new List<string?>(4);
+		values.Add("Amiga");
+		values.Add(null);
+		values.Add("Amiga");
+		values.Add("Workbench");
+		if (!values.Contains(equalContent))
+		{
+			return 1;
+		}
+		if (values.IndexOf(equalContent) != 0)
+		{
+			return 2;
+		}
+		if (!values.Contains(null))
+		{
+			return 3;
+		}
+		if (values.Contains("amiga"))
+		{
+			return 4;
+		}
+		if (values.Contains("missing"))
+		{
+			return 5;
+		}
+		if (!values.Remove(equalContent))
+		{
+			return 6;
+		}
+		if (values.IndexOf("Amiga") != 1)
+		{
+			return 7;
+		}
+		if (!values.Remove(null))
+		{
+			return 8;
+		}
+		if (values.Contains(null))
+		{
+			return 9;
+		}
+		return values.Count == 2 ? 42 : 10;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListStringEqualityMetricEntry()
+	{
+		var values = new List<string?>(4);
+		values.Add("alpha");
+		values.Add("beta");
+		values.Add(null);
+		return values.Contains("beta") && values.IndexOf("alpha") == 0 &&
+			values.Remove(null) && values.Count == 2 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListSealedReferenceFallbackEqualityEntry()
+	{
+		var first = new RuntimeObjectEqualsFallbackSource();
+		var same = first;
+		var different = new RuntimeObjectEqualsFallbackSource();
+		var values = new List<RuntimeObjectEqualsFallbackSource?>(4);
+		values.Add(first);
+		values.Add(null);
+		values.Add(same);
+		if (!values.Contains(same))
+		{
+			return 1;
+		}
+		if (values.IndexOf(same) != 0)
+		{
+			return 2;
+		}
+		if (values.Contains(different))
+		{
+			return 3;
+		}
+		if (!values.Contains(null))
+		{
+			return 4;
+		}
+		if (!values.Remove(same))
+		{
+			return 5;
+		}
+		if (values.IndexOf(same) != 1)
+		{
+			return 6;
+		}
+		if (!values.Remove(null))
+		{
+			return 7;
+		}
+		if (values.Contains(null))
+		{
+			return 8;
+		}
+		return values.Count == 1 ? 42 : 9;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListSealedReferenceOverrideEqualityEntry()
+	{
+		var first = new RuntimeObjectEqualsDerived { Value = 7 };
+		var equal = new RuntimeObjectEqualsDerived { Value = 7 };
+		var different = new RuntimeObjectEqualsDerived { Value = 8 };
+		var values = new List<RuntimeObjectEqualsDerived?>(4);
+		values.Add(first);
+		values.Add(null);
+		values.Add(first);
+		if (!values.Contains(equal))
+		{
+			return 1;
+		}
+		if (values.IndexOf(equal) != 0)
+		{
+			return 2;
+		}
+		if (values.Contains(different))
+		{
+			return 3;
+		}
+		if (!values.Contains(null))
+		{
+			return 4;
+		}
+		if (!values.Remove(equal))
+		{
+			return 5;
+		}
+		if (values.IndexOf(first) != 1)
+		{
+			return 6;
+		}
+		return values.Count == 2 ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ListSealedEquatableReferenceEntry()
+	{
+		var first = new RuntimeEquatableOnly(42);
+		var equal = new RuntimeEquatableOnly(42);
+		var different = new RuntimeEquatableOnly(7);
+		var values = new List<RuntimeEquatableOnly?>(3);
+		values.Add(first);
+		values.Add(null);
+		if (!values.Contains(equal))
+		{
+			return 1;
+		}
+		if (values.Contains(different))
+		{
+			return 2;
+		}
+		if (!values.Contains(null))
+		{
+			return 3;
+		}
+		if (!values.Remove(equal))
+		{
+			return 4;
+		}
+		if (!values.Remove(null))
+		{
+			return 5;
+		}
+		return values.Count == 0 ? 42 : 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedListNonSealedReferenceEntry()
+	{
+		var values = new List<RuntimeObjectEqualsBase>();
+		values.Add(new RuntimeObjectEqualsBase());
+		return values.Contains(new RuntimeObjectEqualsBase()) ? 1 : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PublicIntegralEqualityComparerEntry()
+	{
+		var firstInt = EqualityComparer<int>.Default;
+		var collectionTrigger = new int[1];
+		collectionTrigger[0] = 42;
+		var secondInt = EqualityComparer<int>.Default;
+		if (collectionTrigger[0] != 42) return 1;
+		if (!ReferenceEquals(firstInt, secondInt)) return 2;
+		var longs = EqualityComparer<long>.Default;
+		var bytes = EqualityComparer<byte>.Default;
+		var longEnums = EqualityComparer<ListLongState>.Default;
+		var thirdInt = EqualityComparer<int>.Default;
+		if (!ReferenceEquals(firstInt, thirdInt)) return 10;
+		IEqualityComparer<int> throughInterface = firstInt;
+		if (!throughInterface.Equals(31, 31) ||
+			throughInterface.Equals(31, 32) ||
+			throughInterface.GetHashCode(31) != 31) return 14;
+		if (ReferenceEquals(firstInt, longs)) return 3;
+		if (!firstInt.Equals(19, 19)) return 4;
+		if (firstInt.Equals(19, 23)) return 5;
+		if (firstInt.GetHashCode(19) != 19) return 11;
+		if (!longs.Equals(0x0000_002A_5566_7788L, 0x0000_002A_5566_7788L)) return 6;
+		if (longs.Equals(0x0000_002A_5566_7788L, 0x0000_002B_5566_7788L)) return 7;
+		if (longs.GetHashCode(0x0000_002A_5566_7788L) !=
+			unchecked((int)0x5566_77A2)) return 12;
+		if (!bytes.Equals(0x7B, 0x7B)) return 8;
+		if (bytes.Equals(0x7B, 0x7C)) return 9;
+		if (bytes.GetHashCode(0x7B) != 0x7B) return 13;
+		return longEnums.Equals(ListLongState.First, ListLongState.First) &&
+			!longEnums.Equals(ListLongState.First, ListLongState.HighDiffers) &&
+			longEnums.GetHashCode(ListLongState.First) == 3
+			? 42
+			: 15;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PublicFloatingEqualityComparerEntry()
+	{
+		var singles = EqualityComparer<float>.Default;
+		var doubles = EqualityComparer<double>.Default;
+		if (!ReferenceEquals(singles, EqualityComparer<float>.Default)) return 1;
+		if (!singles.Equals(float.NaN, -float.NaN)) return 2;
+		if (!singles.Equals(0.0f, -0.0f)) return 3;
+		if (singles.GetHashCode(float.NaN) != singles.GetHashCode(-float.NaN)) return 4;
+		if (singles.GetHashCode(0.0f) != singles.GetHashCode(-0.0f)) return 5;
+		if (singles.GetHashCode(1.5f) != unchecked((int)0x3FC0_0000)) return 6;
+		if (!doubles.Equals(double.NaN, -double.NaN)) return 7;
+		if (!doubles.Equals(0.0d, -0.0d)) return 8;
+		if (doubles.GetHashCode(double.NaN) != doubles.GetHashCode(-double.NaN)) return 9;
+		if (doubles.GetHashCode(0.0d) != doubles.GetHashCode(-0.0d)) return 10;
+		if (doubles.GetHashCode(1.5d) != 0x3FF8_0000) return 11;
+		IEqualityComparer<double> throughInterface = doubles;
+		return throughInterface.Equals(1.5d, 1.5d) &&
+			throughInterface.GetHashCode(1.5d) == 0x3FF8_0000
+			? 42
+			: 12;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PublicStringEqualityComparerEntry()
+	{
+		var comparer = EqualityComparer<string?>.Default;
+		var equalContent = "xAmigax".Substring(1, 5);
+		if (!ReferenceEquals(comparer, EqualityComparer<string?>.Default)) return 1;
+		if (!comparer.Equals("Amiga", equalContent)) return 2;
+		if (comparer.Equals("Amiga", "amiga")) return 3;
+		if (comparer.GetHashCode("Amiga") != comparer.GetHashCode(equalContent)) return 4;
+		if (comparer.GetHashCode(null!) != 0) return 5;
+		IEqualityComparer<string?> throughInterface = comparer;
+		return throughInterface.Equals("Amiga", equalContent) &&
+			throughInterface.GetHashCode("Amiga") == comparer.GetHashCode(equalContent)
+			? 42
+			: 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PublicNullableIntEqualityComparerEntry()
+	{
+		var comparer = EqualityComparer<int?>.Default;
+		int? empty = null;
+		int? first = 19;
+		int? second = 19;
+		int? different = 23;
+		if (!ReferenceEquals(comparer, EqualityComparer<int?>.Default)) return 1;
+		if (!comparer.Equals(empty, empty)) return 2;
+		if (comparer.Equals(empty, first)) return 3;
+		if (!comparer.Equals(first, second)) return 4;
+		if (comparer.Equals(first, different)) return 5;
+		if (comparer.GetHashCode(empty!) != 0) return 6;
+		if (comparer.GetHashCode(first) != 19) return 7;
+		IEqualityComparer<int?> throughInterface = comparer;
+		return throughInterface.Equals(first, second) &&
+			throughInterface.GetHashCode(first) == 19
+			? 42
+			: 8;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PublicSealedReferenceEqualityComparerEntry()
+	{
+		var comparer = EqualityComparer<RuntimeObjectEqualsDerived?>.Default;
+		var collectionTrigger = new int[1];
+		collectionTrigger[0] = 42;
+		var secondComparer = EqualityComparer<RuntimeObjectEqualsDerived?>.Default;
+		var first = new RuntimeObjectEqualsDerived { Value = 19 };
+		var equal = new RuntimeObjectEqualsDerived { Value = 19 };
+		var different = new RuntimeObjectEqualsDerived { Value = 23 };
+		if (collectionTrigger[0] != 42) return 1;
+		if (!ReferenceEquals(comparer, secondComparer)) return 2;
+		if (!comparer.Equals(first, equal)) return 3;
+		if (comparer.Equals(first, different)) return 4;
+		if (!comparer.Equals(null, null)) return 5;
+		if (comparer.Equals(first, null)) return 6;
+		if (comparer.Equals(null, first)) return 6;
+		if (comparer.GetHashCode(null!) != 0) return 7;
+		if (comparer.GetHashCode(first) != 19) return 8;
+		if (comparer.GetHashCode(equal) != 19) return 8;
+		IEqualityComparer<RuntimeObjectEqualsDerived?> throughInterface = comparer;
+		if (!throughInterface.Equals(first, equal)) return 9;
+		return throughInterface.GetHashCode(first) == 19 ? 42 : 10;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PublicSealedEquatableEqualityComparerEntry()
+	{
+		var comparer = EqualityComparer<RuntimeEquatableOnly?>.Default;
+		var collectionTrigger = new int[1];
+		collectionTrigger[0] = 42;
+		var secondComparer = EqualityComparer<RuntimeEquatableOnly?>.Default;
+		var first = new RuntimeEquatableOnly(19);
+		var equal = new RuntimeEquatableOnly(19);
+		var different = new RuntimeEquatableOnly(23);
+		if (collectionTrigger[0] != 42) return 1;
+		if (!ReferenceEquals(comparer, secondComparer)) return 2;
+		if (!comparer.Equals(first, equal)) return 3;
+		if (comparer.Equals(first, different)) return 4;
+		if (!comparer.Equals(null, null)) return 5;
+		if (comparer.Equals(first, null)) return 6;
+		if (comparer.Equals(null, first)) return 6;
+		if (comparer.GetHashCode(null!) != 0) return 7;
+		if (comparer.GetHashCode(first) != 19) return 8;
+		if (comparer.GetHashCode(equal) != 19) return 8;
+		IEqualityComparer<RuntimeEquatableOnly?> throughInterface = comparer;
+		if (!throughInterface.Equals(first, equal)) return 9;
+		return throughInterface.GetHashCode(first) == 19 ? 42 : 10;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedNonSealedReferenceEqualityComparerEntry()
+	{
+		var comparer = EqualityComparer<RuntimeObjectEqualsBase?>.Default;
+		return comparer.Equals(null, null) ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleWriteEntry()
+	{
+		Console.Write("A\0");
+		Console.WriteLine("B\u00E4");
+		Console.WriteLine((string?)null);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsolePrimitiveEntry()
+	{
+		Console.Write(int.MinValue);
+		Console.Write("|");
+		Console.WriteLine(uint.MaxValue);
+		Console.WriteLine(-42);
+		Console.Write(42u);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleInt64Entry()
+	{
+		Console.Write(long.MinValue);
+		Console.Write("|");
+		Console.WriteLine(ulong.MaxValue);
+		Console.WriteLine(-42L);
+		Console.Write(42UL);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleBooleanEntry()
+	{
+		Console.Write(true);
+		Console.WriteLine(false);
+		Console.WriteLine(true);
+		Console.Write(false);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleCharacterEntry()
+	{
+		Console.Write('\0');
+		Console.Write('\u00e4');
+		Console.WriteLine('\u0100');
+		Console.Write('A');
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleReadEntry()
+	{
+		if (Console.Read() != 'A') return 1;
+		if (Console.Read() != 0) return 2;
+		if (Console.Read() != '\u00e4') return 3;
+		return Console.Read() == -1 ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleReadLineEntry()
+	{
+		if (Console.ReadLine() != "A\0\u00e4") return 1;
+		if (Console.ReadLine() != "B") return 2;
+		if (Console.ReadLine() != "") return 3;
+		if (Console.ReadLine() != "C") return 4;
+		return Console.ReadLine() is null ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleInputIOExceptionEntry()
+	{
+		try
+		{
+			_ = Console.Read();
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleInputAllocationFailureEntry()
+	{
+		try
+		{
+			_ = Console.Read();
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemExistsEntry()
+	{
+		if (!File.Exists(".coppersharp-portable-file")) return 1;
+		if (File.Exists(".coppersharp-portable-directory")) return 2;
+		if (Directory.Exists(".coppersharp-portable-file")) return 3;
+		if (!Directory.Exists(".coppersharp-portable-directory")) return 4;
+		if (File.Exists(null)) return 5;
+		if (Directory.Exists("")) return 6;
+		if (File.Exists("bad\0path")) return 7;
+		if (Directory.Exists("bad\u0100path")) return 8;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemExistsAllocationFailureEntry()
+	{
+		try
+		{
+			_ = File.Exists(".coppersharp-portable-file");
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemMissingEntry() =>
+		File.Exists(".coppersharp-portable-missing") ? 1 : 42;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteEntry()
+	{
+		File.Delete(".coppersharp-portable-file");
+		Directory.Delete(".coppersharp-portable-directory");
+		File.Delete(".coppersharp-portable-missing");
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteUnhandledDirectoryNotFoundEntry()
+	{
+		Directory.Delete(".coppersharp-portable-missing");
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteUnhandledUnauthorizedEntry()
+	{
+		File.Delete(".coppersharp-portable-directory");
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteUnhandledIOExceptionEntry()
+	{
+		Directory.Delete(".coppersharp-portable-file");
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteInvalidPathEntry()
+	{
+		var caught = 0;
+		try { File.Delete(null!); }
+		catch (ArgumentNullException) { caught++; }
+		try { Directory.Delete(""); }
+		catch (ArgumentException) { caught++; }
+		try { File.Delete("bad\0path"); }
+		catch (ArgumentException) { caught++; }
+		try { Directory.Delete("bad\u0100path"); }
+		catch (ArgumentException) { caught++; }
+		return caught == 4 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteDirectoryNotFoundEntry()
+	{
+		var caught = 0;
+		try { Directory.Delete(".coppersharp-portable-missing"); }
+		catch (DirectoryNotFoundException) { caught++; }
+		try { Directory.Delete(".coppersharp-portable-missing"); }
+		catch (IOException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteUnauthorizedEntry()
+	{
+		var caught = 0;
+		try { File.Delete(".coppersharp-portable-directory"); }
+		catch (UnauthorizedAccessException) { caught++; }
+		try { File.Delete(".coppersharp-portable-directory"); }
+		catch (SystemException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteIOExceptionEntry()
+	{
+		try
+		{
+			Directory.Delete(".coppersharp-portable-directory");
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteProtectedEntry()
+	{
+		try
+		{
+			File.Delete(".coppersharp-portable-file");
+			return 1;
+		}
+		catch (UnauthorizedAccessException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSystemDeleteAllocationFailureEntry()
+	{
+		try
+		{
+			File.Delete(".coppersharp-portable-file");
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveEntry()
+	{
+		Directory.Move(
+			".coppersharp-portable-directory-source",
+			".coppersharp-portable-directory-destination");
+		Directory.Move(
+			".coppersharp-portable-file-source",
+			".coppersharp-portable-file-destination");
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveInvalidPathEntry()
+	{
+		var caught = 0;
+		try { Directory.Move(null!, "destination"); }
+		catch (ArgumentNullException) { caught++; }
+		try { Directory.Move("source", null!); }
+		catch (ArgumentNullException) { caught++; }
+		try { Directory.Move("", "destination"); }
+		catch (ArgumentException) { caught++; }
+		try { Directory.Move("source", "bad\0path"); }
+		catch (ArgumentException) { caught++; }
+		try { Directory.Move("bad\u0100path", "destination"); }
+		catch (ArgumentException) { caught++; }
+		return caught == 5 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveSamePathEntry()
+	{
+		try
+		{
+			Directory.Move("same", "same");
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveDirectoryNotFoundEntry()
+	{
+		var caught = 0;
+		try { Directory.Move("missing", "destination"); }
+		catch (DirectoryNotFoundException) { caught++; }
+		try { Directory.Move("missing", "destination"); }
+		catch (IOException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveUnauthorizedEntry()
+	{
+		var caught = 0;
+		try { Directory.Move("source", "destination"); }
+		catch (UnauthorizedAccessException) { caught++; }
+		try { Directory.Move("source", "destination"); }
+		catch (SystemException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveIOExceptionEntry()
+	{
+		try
+		{
+			Directory.Move("source", "destination");
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableDirectoryMoveOutOfMemoryEntry()
+	{
+		try
+		{
+			Directory.Move("source", "destination");
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesEntry()
+	{
+		var file = File.GetAttributes(".coppersharp-portable-file");
+		var directory = File.GetAttributes(".coppersharp-portable-directory");
+		return file == (FileAttributes.ReadOnly | FileAttributes.Archive) &&
+			directory == FileAttributes.Directory
+			? 42
+			: (int)file + (int)directory;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesInvalidPathEntry()
+	{
+		var caught = 0;
+		try { _ = File.GetAttributes((string)null!); }
+		catch (ArgumentNullException) { caught++; }
+		try { _ = File.GetAttributes(""); }
+		catch (ArgumentException) { caught++; }
+		try { _ = File.GetAttributes("bad\0path"); }
+		catch (ArgumentException) { caught++; }
+		try { _ = File.GetAttributes("bad\u0100path"); }
+		catch (ArgumentException) { caught++; }
+		return caught == 4 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesFileNotFoundEntry()
+	{
+		var caught = 0;
+		try { _ = File.GetAttributes(".coppersharp-portable-missing"); }
+		catch (FileNotFoundException) { caught++; }
+		try { _ = File.GetAttributes(".coppersharp-portable-missing"); }
+		catch (IOException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesDirectoryNotFoundEntry()
+	{
+		var caught = 0;
+		try { _ = File.GetAttributes("missing/file"); }
+		catch (DirectoryNotFoundException) { caught++; }
+		try { _ = File.GetAttributes("missing/file"); }
+		catch (IOException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesUnauthorizedEntry()
+	{
+		var caught = 0;
+		try { _ = File.GetAttributes(".coppersharp-portable-file"); }
+		catch (UnauthorizedAccessException) { caught++; }
+		try { _ = File.GetAttributes(".coppersharp-portable-file"); }
+		catch (SystemException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesIOExceptionEntry()
+	{
+		try
+		{
+			_ = File.GetAttributes(".coppersharp-portable-file");
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesOutOfMemoryEntry()
+	{
+		try
+		{
+			_ = File.GetAttributes(".coppersharp-portable-file");
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileGetAttributesUnhandledFileNotFoundEntry()
+	{
+		_ = File.GetAttributes(".coppersharp-portable-missing");
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesEntry()
+	{
+		File.SetAttributes(
+			".coppersharp-portable-file",
+			FileAttributes.ReadOnly | FileAttributes.Archive);
+		File.SetAttributes(
+			".coppersharp-portable-file",
+			FileAttributes.Normal);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesInvalidEntry()
+	{
+		var caught = 0;
+		try { File.SetAttributes((string)null!, FileAttributes.Normal); }
+		catch (ArgumentNullException) { caught++; }
+		try { File.SetAttributes("", FileAttributes.Normal); }
+		catch (ArgumentException) { caught++; }
+		try { File.SetAttributes("bad\0path", FileAttributes.Normal); }
+		catch (ArgumentException) { caught++; }
+		try { File.SetAttributes("bad\u0100path", FileAttributes.Normal); }
+		catch (ArgumentException) { caught++; }
+		try { File.SetAttributes("valid", (FileAttributes)8); }
+		catch (ArgumentException) { caught++; }
+		return caught == 5 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesKnownUnsupportedFlagsEntry()
+	{
+		File.SetAttributes(
+			".coppersharp-portable-file",
+			FileAttributes.Hidden |
+				FileAttributes.System |
+				FileAttributes.Directory |
+				FileAttributes.ReparsePoint);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesFileNotFoundEntry()
+	{
+		var caught = 0;
+		try { File.SetAttributes(".coppersharp-portable-missing", FileAttributes.Normal); }
+		catch (FileNotFoundException) { caught++; }
+		try { File.SetAttributes(".coppersharp-portable-missing", FileAttributes.Normal); }
+		catch (IOException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesDirectoryNotFoundEntry()
+	{
+		var caught = 0;
+		try { File.SetAttributes("missing/file", FileAttributes.Normal); }
+		catch (DirectoryNotFoundException) { caught++; }
+		try { File.SetAttributes("missing/file", FileAttributes.Normal); }
+		catch (IOException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesUnauthorizedEntry()
+	{
+		var caught = 0;
+		try { File.SetAttributes(".coppersharp-portable-file", FileAttributes.ReadOnly); }
+		catch (UnauthorizedAccessException) { caught++; }
+		try { File.SetAttributes(".coppersharp-portable-file", FileAttributes.ReadOnly); }
+		catch (SystemException) { caught += 2; }
+		return caught == 3 ? 42 : caught;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesIOExceptionEntry()
+	{
+		try
+		{
+			File.SetAttributes(".coppersharp-portable-file", FileAttributes.ReadOnly);
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableFileSetAttributesOutOfMemoryEntry()
+	{
+		try
+		{
+			File.SetAttributes(".coppersharp-portable-file", FileAttributes.ReadOnly);
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedFileMoveEntry()
+	{
+		File.Move(".coppersharp-portable-file", ".coppersharp-portable-file-moved");
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedDirectoryCreateEntry()
+	{
+		_ = Directory.CreateDirectory(".coppersharp-portable-directory");
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedConsoleInEntry() => Console.In.Read();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedConsoleOutEntry()
+	{
+		Console.Out.WriteLine("unsupported");
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedConsoleErrorEntry()
+	{
+		Console.Error.WriteLine("unsupported");
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedConsoleInputEncodingEntry() =>
+		Console.InputEncoding.CodePage;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedConsoleOutputEncodingEntry() =>
+		Console.OutputEncoding.CodePage;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleCharacterAllocationFailureEntry()
+	{
+		try
+		{
+			Console.Write('A');
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleBooleanShortWriteEntry()
+	{
+		try
+		{
+			Console.Write(true);
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsolePrimitiveAllocationFailureEntry()
+	{
+		try
+		{
+			Console.WriteLine(42);
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleInt64AllocationFailureEntry()
+	{
+		try
+		{
+			Console.WriteLine(ulong.MaxValue);
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleOpenFailureEntry()
+	{
+		try
+		{
+			Console.WriteLine("unavailable");
+			return 1;
+		}
+		catch (IOException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleStartupArgsEntry(
+		int argLength,
+		global::Amiga.CONST_STRPTR argText)
+	{
+		Console.WriteLine((string?)null);
+		return argLength == 17 && argText.Raw == 0x0000_1800 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PortableConsoleUnhandledFailureEntry()
+	{
+		Console.WriteLine("unhandled");
+		return 1;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -2505,6 +4745,199 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsignedWordNormalizationChainEntry()
+	{
+		var first = (ushort)DirtyUnsignedWordSource();
+		var second = first;
+		var third = second;
+		if (DirtyNarrowCondition() != 0)
+		{
+			third = 7;
+		}
+
+		ushort increment = 3;
+		return (ushort)(third + increment);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint DirtyUnsignedWordSource() => 0xABCD_FFFEu;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsignedByteNormalizationChainEntry()
+	{
+		var first = (byte)DirtyUnsignedByteSource();
+		var second = first;
+		var third = second;
+		if (DirtyNarrowCondition() != 0)
+		{
+			third = 7;
+		}
+
+		byte increment = 3;
+		return (byte)(third + increment);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int SignedByteNormalizationChainEntry()
+	{
+		var first = (sbyte)DirtySignedByteSource();
+		var second = first;
+		var third = second;
+		if (DirtyNarrowCondition() != 0)
+		{
+			third = 7;
+		}
+
+		sbyte increment = -1;
+		return (sbyte)(third + increment);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int SignedWordNormalizationChainEntry()
+	{
+		var first = (short)DirtySignedWordSource();
+		var second = first;
+		var third = second;
+		if (DirtyNarrowCondition() != 0)
+		{
+			third = 7;
+		}
+
+		short increment = -1;
+		return (short)(third + increment);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint DirtyUnsignedByteSource() => 0xABCD_00FEu;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint DirtySignedByteSource() => 0x1234_0080u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint DirtySignedWordSource() => 0xABCD_8000u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int DirtyNarrowCondition() => 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowArrayNormalizationEntry()
+	{
+		var bytes = new byte[1];
+		var words = new ushort[1];
+		var signedBytes = new sbyte[1];
+		var signedWords = new short[1];
+
+		bytes[0] = (byte)DirtyUnsignedByteSource();
+		words[0] = (ushort)DirtyUnsignedWordSource();
+		signedBytes[0] = (sbyte)DirtySignedByteSource();
+		signedWords[0] = (short)DirtySignedWordSource();
+
+		byte byteIncrement = 3;
+		ushort wordIncrement = 3;
+		sbyte signedByteIncrement = -1;
+		short signedWordIncrement = -1;
+		bytes[0] = (byte)(bytes[0] + byteIncrement);
+		words[0] = (ushort)(words[0] + wordIncrement);
+		signedBytes[0] = (sbyte)(signedBytes[0] + signedByteIncrement);
+		signedWords[0] = (short)(signedWords[0] + signedWordIncrement);
+
+		return bytes[0] + words[0] + signedBytes[0] + signedWords[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowFrameAndSpillNormalizationEntry()
+	{
+		var a = (ushort)DirtySpillSource(1);
+		var b = (ushort)DirtySpillSource(2);
+		var c = (ushort)DirtySpillSource(3);
+		var d = (ushort)DirtySpillSource(4);
+		var e = (ushort)DirtySpillSource(5);
+		var f = (ushort)DirtySpillSource(6);
+		var g = (ushort)DirtySpillSource(7);
+		var h = (ushort)DirtySpillSource(8);
+
+		var ab = (ushort)(a + b);
+		var cd = (ushort)(c + d);
+		var ef = (ushort)(e + f);
+		var gh = (ushort)(g + h);
+		return (ushort)((ushort)(ab + cd) + (ushort)(ef + gh));
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint DirtySpillSource(int value) =>
+		0xABCD_0000u | (uint)value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowCallBoundaryEntry() =>
+		AcceptUnsignedWord((ushort)DirtyUnsignedWordSource());
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int AcceptUnsignedWord(ushort value) => value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowStackArgumentBoundaryEntry() =>
+		AcceptStackUnsignedWord(
+			1,
+			2,
+			3,
+			4,
+			5,
+			6,
+			(ushort)DirtyUnsignedWordSource());
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int AcceptStackUnsignedWord(
+		int first,
+		int second,
+		int third,
+		int fourth,
+		int fifth,
+		int sixth,
+		ushort value) => value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowReturnBoundaryEntry() => ReturnDirtyUnsignedWord();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ushort ReturnDirtyUnsignedWord() =>
+		(ushort)DirtyUnsignedWordSource();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowCheckedConversionBoundaryEntry()
+	{
+		var value = (ushort)DirtyUnsignedWordSource();
+		return checked((int)(uint)value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowLogicalNormalizationEntry()
+	{
+		var value = (ushort)DirtyUnsignedWordSource();
+		ushort one = 1;
+		ushort fifteen = 15;
+		ushort xorMask = 0x00FF;
+		ushort andMask = 0x0FFF;
+		ushort orMask = 0x1000;
+		ushort multiplier = 3;
+		value = (ushort)((value << one) | (value >> fifteen));
+		value = (ushort)(value ^ xorMask);
+		value = (ushort)(value & andMask);
+		value = (ushort)(value | orMask);
+		value = (ushort)~value;
+		value = (ushort)(value * multiplier);
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NarrowCompareNormalizationEntry()
+	{
+		var unsignedValue = (ushort)DirtyUnsignedWordSource();
+		var signedValue = (sbyte)DirtySignedByteSource();
+		return (unsignedValue > 65000 ? 1 : 0) +
+			(signedValue < -1 ? 2 : 0);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int NarrowArithmeticOperationsEntry()
 	{
 		sbyte signedLeft = -120;
@@ -2541,6 +4974,58 @@ public static class CompilerFixtures
 		byte right = 17;
 		return (byte)(left * right);
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ConstantMultiplyEntry() =>
+		MultiplyByFnvPrime(0xFEDCBA98u);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint MultiplyByFnvPrime(uint value) =>
+		value * 0x01000193u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint MultiplyByFnvPrimeArgument(uint value) =>
+		value * 0x01000193u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ConstantMultiplyDifferentialEntry()
+	{
+		static uint Mix(uint checksum, uint value) =>
+			unchecked(((checksum << 1) | (checksum >> 31)) ^
+				MultiplyByFnvPrimeArgument(value));
+
+		var checksum = 0u;
+		checksum = Mix(checksum, 0);
+		checksum = Mix(checksum, 1);
+		checksum = Mix(checksum, 0x7FFF_FFFFu);
+		checksum = Mix(checksum, 0x8000_0000u);
+		checksum = Mix(checksum, uint.MaxValue);
+		var random = 0x6800_C0DEu;
+		for (var index = 0; index < 32; index++)
+		{
+			random ^= random << 13;
+			random ^= random >> 17;
+			random ^= random << 5;
+			checksum = Mix(checksum, random);
+		}
+		return checksum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint DenseConstantMultiplyEntry() =>
+		MultiplyByDenseConstant(0x12345678u);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint MultiplyByDenseConstant(uint value) =>
+		value * 0x55555555u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint SubtractConstantMultiplyEntry() =>
+		MultiplyBySubtractConstant(0x12345678u);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint MultiplyBySubtractConstant(uint value) =>
+		value * 0x7FFFFFFFu;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int NarrowShortShiftEntry()
@@ -2599,6 +5084,7 @@ public static class CompilerFixtures
 	{
 		var address = _terminalScalar;
 		return FileInfoBlock.GetDirEntryType(address) +
+			(int)FileInfoBlock.GetProtection(address) +
 			FileInfoBlock.GetSize(address) +
 			FileInfoBlock.GetDateDays(address) +
 			FileInfoBlock.GetDateMinute(address) +
@@ -2796,6 +5282,14 @@ public static class CompilerFixtures
 		return 42;
 	}
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TransparentScalarInstanceReceiverEntry()
+	{
+		var left = new TransparentScalarWrapper(19);
+		var right = new TransparentScalarWrapper(23);
+		return left.Add(right);
+	}
+
 	[M68kExport("fixture.add")]
 	[return: M68kRegister(M68kRegister.D0)]
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -2850,6 +5344,16 @@ public static class CompilerFixtures
 	{
 		public ManagedBox? Reference;
 		public int Scalar;
+	}
+
+	public readonly struct TransparentScalarWrapper
+	{
+		public TransparentScalarWrapper(uint raw) => Raw = raw;
+
+		public uint Raw { get; }
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public uint Add(TransparentScalarWrapper other) => Raw + other.Raw;
 	}
 
 	public sealed class ConstructedBox
@@ -3166,6 +5670,23 @@ public static class CompilerFixtures
 		catch (ArrayTypeMismatchException)
 		{
 			return values[0].GetValue() == 42 ? 42 : 0;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringArrayStoreTypeCheckEntry()
+	{
+		var strings = new string[2];
+		strings[0] = "Amiga";
+		object[] values = strings;
+		try
+		{
+			values[1] = new object();
+			return 0;
+		}
+		catch (ArrayTypeMismatchException)
+		{
+			return strings[0].Length == 5 ? 42 : 0;
 		}
 	}
 
@@ -3640,6 +6161,1820 @@ public static class CompilerFixtures
 		{
 			return 42;
 		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryArraySliceAndSpanEntry()
+	{
+		var values = new int[5];
+		values[0] = 10;
+		values[1] = 20;
+		values[2] = 30;
+		values[3] = 40;
+		values[4] = 50;
+		Memory<int> memory = new(values, 1, 3);
+		Memory<int> whole = new Memory<int>(values);
+		Memory<int> slice = memory.Slice(1, 2);
+		Span<int> writable = slice.Span;
+		writable[0]++;
+		ReadOnlyMemory<int> readOnly = memory;
+		ReadOnlySpan<int> tail = readOnly.Slice(1).Span;
+		ReadOnlyMemory<int> implicitReadOnly = values;
+		ReadOnlyMemory<int> fullReadOnly = new ReadOnlyMemory<int>(values);
+		ReadOnlyMemory<int> readOnlyRange =
+			new ReadOnlyMemory<int>(values, 0, 4).Slice(2, 2);
+		return memory.Length == 3 &&
+			!memory.IsEmpty &&
+			whole.Length == 5 &&
+			slice.Length == 2 &&
+			readOnly.Length == 3 &&
+			!readOnly.IsEmpty &&
+			tail.Length == 2 &&
+			tail[0] == 31 &&
+			tail[1] == 40 &&
+			implicitReadOnly.Length == 5 &&
+			fullReadOnly.Length == 5 &&
+			readOnlyRange.Span[0] == 31 &&
+			readOnlyRange.Span[1] == 40 &&
+			values[2] == 31
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryNullAndBoundsEntry()
+	{
+		int[] source = null!;
+		Memory<int> empty = source;
+		ReadOnlyMemory<int> readOnlyEmpty = new(source, 0, 0);
+		if (!empty.IsEmpty || empty.Length != 0 ||
+			!readOnlyEmpty.IsEmpty || readOnlyEmpty.Length != 0)
+		{
+			return 0;
+		}
+
+		try
+		{
+			_ = new Memory<int>(source, 1, 0);
+			return 0;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		Memory<int> values = new int[2];
+		try
+		{
+			_ = values.Slice(-1);
+			return 0;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		try
+		{
+			_ = values.Slice(1, 2);
+			return 0;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		try
+		{
+			_ = new ReadOnlyMemory<int>(source, 0, 1);
+			return 0;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		ReadOnlyMemory<int> readOnlyValues = new int[2];
+		try
+		{
+			_ = readOnlyValues.Slice(1, int.MaxValue);
+			return 0;
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryReferenceOwnerSurvivesCollectionEntry()
+	{
+		var values = new ManagedBox[2];
+		values[1] = new ManagedBox { Value = 41 };
+		Memory<ManagedBox> memory = new(values, 1, 1);
+		ReadOnlyMemory<ManagedBox> readOnly = memory;
+		values = null!;
+		memory = default;
+		M68kRuntime.Collect();
+		var replacement = new ManagedBox[2];
+		replacement[1] = new ManagedBox { Value = 100 };
+		return readOnly.Span[0].Value + readOnly.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryScalarWidthAndEndianEntry()
+	{
+		var bytes = new byte[3];
+		bytes[1] = 7;
+		Memory<byte> byteMemory = new(bytes, 1, 1);
+		var chars = new char[2];
+		chars[1] = 'Z';
+		ReadOnlyMemory<char> charMemory = new(chars, 1, 1);
+		var states = new ListByteState[2];
+		states[1] = ListByteState.Second;
+		Memory<ListByteState> enumMemory = new(states, 1, 1);
+		return byteMemory.Span[0] == 7 &&
+			charMemory.Span[0] == 'Z' &&
+			enumMemory.Span[0] == ListByteState.Second
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long MemoryLongSpanEntry()
+	{
+		var values = new long[2];
+		values[1] = 0x1122334455667788L;
+		ReadOnlyMemory<long> memory = new(values, 1, 1);
+		return memory.Span[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryLongSpanLowWordEntry()
+	{
+		var values = new long[2];
+		values[1] = 0x1122334455667788L;
+		ReadOnlyMemory<long> memory = new(values, 1, 1);
+		return unchecked((int)memory.Span[0]);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static float MemoryFloatSpanEntry()
+	{
+		var values = new float[2];
+		Memory<float> memory = new(values, 1, 1);
+		memory.Span[0] = 21.5f;
+		return memory.Span[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryCopyOperationsEntry()
+	{
+		var values = new int[6];
+		values[0] = 1;
+		values[1] = 2;
+		values[2] = 3;
+		values[3] = 4;
+		values[4] = 5;
+		values[5] = 6;
+		Memory<int> whole = values;
+		whole.Slice(0, 5).CopyTo(whole.Slice(1, 5));
+		if (values[0] != 1 || values[1] != 1 || values[2] != 2 ||
+			values[3] != 3 || values[4] != 4 || values[5] != 5)
+		{
+			return 0;
+		}
+
+		ReadOnlyMemory<int> backwardSource = whole.Slice(1, 5);
+		backwardSource.CopyTo(whole.Slice(0, 5));
+		if (values[0] != 1 || values[1] != 2 || values[2] != 3 ||
+			values[3] != 4 || values[4] != 5 || values[5] != 5)
+		{
+			return 0;
+		}
+
+		var destinationValues = new int[7];
+		Memory<int> destination = new(destinationValues, 1, 6);
+		if (!whole.TryCopyTo(destination))
+		{
+			return 0;
+		}
+		ReadOnlyMemory<int> readOnlyWhole = whole;
+		Memory<int> oversizedDestination = destinationValues;
+		if (!readOnlyWhole.TryCopyTo(oversizedDestination))
+		{
+			return 0;
+		}
+		Memory<int> emptySource = default;
+		Memory<int> emptyDestination = default;
+		emptySource.CopyTo(emptyDestination);
+		return emptySource.TryCopyTo(emptyDestination) &&
+			destinationValues[0] == 1 && destinationValues[1] == 2 &&
+			destinationValues[5] == 5 &&
+			destinationValues[6] == 5
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryCopyShortDestinationEntry()
+	{
+		var sourceValues = new int[2];
+		sourceValues[0] = 11;
+		sourceValues[1] = 13;
+		var destinationValues = new int[1];
+		destinationValues[0] = 29;
+		Memory<int> source = sourceValues;
+		Memory<int> destination = destinationValues;
+		var caught = false;
+		try
+		{
+			source.CopyTo(destination);
+		}
+		catch (ArgumentException)
+		{
+			caught = true;
+		}
+		if (!caught || destinationValues[0] != 29 || source.TryCopyTo(destination) ||
+			destinationValues[0] != 29)
+		{
+			return 0;
+		}
+		ReadOnlyMemory<int> readOnly = source;
+		return !readOnly.TryCopyTo(destination) && destinationValues[0] == 29
+			? 42
+			: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryCopyScalarWidthsEntry()
+	{
+		var bytes = new byte[2];
+		bytes[1] = 7;
+		var byteDestination = new byte[1];
+		new ReadOnlyMemory<byte>(bytes, 1, 1).CopyTo(byteDestination);
+		var chars = new char[1];
+		chars[0] = 'Z';
+		var charDestination = new char[1];
+		new Memory<char>(chars).CopyTo(charDestination);
+		var states = new ListByteState[1];
+		states[0] = ListByteState.Second;
+		var stateDestination = new ListByteState[1];
+		new Memory<ListByteState>(states).CopyTo(stateDestination);
+		var floats = new float[1];
+		Memory<float> floatSource = floats;
+		floatSource.Span[0] = 21.5f;
+		var floatDestination = new float[1];
+		Memory<float> floatDestinationMemory = floatDestination;
+		floatSource.CopyTo(floatDestinationMemory);
+		return byteDestination[0] == 7 && charDestination[0] == 'Z' &&
+			stateDestination[0] == ListByteState.Second &&
+			floatDestinationMemory.Span[0] == 21.5f
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long MemoryCopyLongEntry()
+	{
+		var source = new long[1];
+		source[0] = 0x1122334455667788L;
+		var destination = new long[1];
+		new ReadOnlyMemory<long>(source).CopyTo(destination);
+		return destination[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryCopyLongLowWordEntry()
+	{
+		var source = new long[1];
+		source[0] = 0x1122334455667788L;
+		var destination = new long[1];
+		new ReadOnlyMemory<long>(source).CopyTo(destination);
+		return unchecked((int)destination[0]);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MemoryReferenceCopySurvivesCollectionEntry()
+	{
+		var sourceValues = new ManagedBox[1];
+		sourceValues[0] = new ManagedBox { Value = 41 };
+		var destinationValues = new ManagedBox[1];
+		ReadOnlyMemory<ManagedBox> source = sourceValues;
+		Memory<ManagedBox> destination = destinationValues;
+		source.CopyTo(destination);
+		source = default;
+		sourceValues = null!;
+		M68kRuntime.Collect();
+		var replacement = new ManagedBox[1];
+		replacement[0] = new ManagedBox { Value = 100 };
+		return destination.Span[0].Value + destination.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedMemoryToArrayEntry()
+	{
+		Memory<int> memory = new int[1];
+		return memory.ToArray().Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeToArrayEntry()
+	{
+		var values = Enumerable.Range(-2, 5).ToArray();
+		var empty = Enumerable.Range(42, 0).ToArray();
+		return values.Length == 5 &&
+			values[0] == -2 && values[1] == -1 && values[2] == 0 &&
+			values[3] == 1 && values[4] == 2 && empty.Length == 0
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeValidatesArgumentsAtFactoryCallEntry()
+	{
+		var caught = 0;
+		try
+		{
+			_ = Enumerable.Range(0, -1);
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			caught |= 1;
+		}
+		try
+		{
+			_ = Enumerable.Range(int.MaxValue, 2);
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			caught |= 2;
+		}
+		return caught == 3 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeLocalRepeatedToArrayEntry()
+	{
+		IEnumerable<int> source = Enumerable.Range(40, 2);
+		var first = source.ToArray();
+		var second = source.ToArray();
+		return !ReferenceEquals(first, second) &&
+			first[0] == 40 && first[1] == 41 &&
+			second[0] == 40 && second[1] == 41
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSameFamilyMergeToArrayEntry() =>
+		LinqRangeSameFamilyMergeToArray(true) +
+		LinqRangeSameFamilyMergeToArray(false) == 82
+			? 42
+			: 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqRangeSameFamilyMergeToArray(bool first)
+	{
+		IEnumerable<int> source;
+		if (first)
+		{
+			source = Enumerable.Range(39, 2);
+		}
+		else
+		{
+			source = Enumerable.Range(40, 1);
+		}
+		var values = source.ToArray();
+		return values[0] + values.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqMixedFactoryMergeEntry() =>
+		UnsupportedLinqMixedFactoryMerge(false).Length;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int[] UnsupportedLinqMixedFactoryMerge(bool range)
+	{
+		IEnumerable<int> source;
+		if (range)
+		{
+			source = Enumerable.Range(0, 1);
+		}
+		else
+		{
+			source = Enumerable.Repeat(0, 1);
+		}
+		return source.ToArray();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectToArrayEntry()
+	{
+		var calls = 0;
+		var selected = Enumerable.Range(1, 3).Select(value =>
+		{
+			calls++;
+			return value * 2;
+		});
+		if (calls != 0)
+		{
+			return 0;
+		}
+		var first = selected.ToArray();
+		var second = selected.ToArray();
+		return calls == 6 && !ReferenceEquals(first, second) &&
+			first[0] == 2 && first[1] == 4 && first[2] == 6 &&
+			second[0] == 2 && second[1] == 4 && second[2] == 6
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectStaticToArrayEntry()
+	{
+		var values = Enumerable.Range(1, 3).Select(LinqSelectDouble).ToArray();
+		return values[0] == 2 && values[1] == 4 && values[2] == 6 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqSelectDouble(int value) => value * 2;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectDefersSelectorExceptionEntry()
+	{
+		var selected = Enumerable.Range(1, 3).Select(LinqSelectThrowOnTwo);
+		try
+		{
+			_ = selected.ToArray();
+			return 0;
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqSelectThrowOnTwo(int value)
+	{
+		if (value == 2)
+		{
+			throw null!;
+		}
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectCaptureSurvivesCollectionEntry()
+	{
+		var box = new ManagedBox { Value = 39 };
+		var selected = Enumerable.Range(1, 2).Select(value => box.Value + value);
+		M68kRuntime.Collect();
+		var values = selected.ToArray();
+		return values[0] == 40 && values[1] == 41 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectNullSelectorEntry()
+	{
+		try
+		{
+			_ = Enumerable.Select(
+				Enumerable.Range(0, 1),
+				(Func<int, int>)null!);
+			return 0;
+		}
+		catch (ArgumentNullException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqRepeatSelectEntry() =>
+		Enumerable.Repeat(1, 1).Select(static value => value + 1).ToArray()[0];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqIndexedSelectEntry() =>
+		Enumerable.Range(1, 1).Select(static (value, index) => value + index).ToArray()[0];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereToArrayEntry()
+	{
+		var calls = 0;
+		var filtered = Enumerable.Range(1, 4).Where(value =>
+		{
+			calls++;
+			return (value & 1) == 0;
+		});
+		if (calls != 0)
+		{
+			return 0;
+		}
+		var first = filtered.ToArray();
+		var second = filtered.ToArray();
+		return calls == 8 && !ReferenceEquals(first, second) &&
+			first.Length == 2 && first[0] == 2 && first[1] == 4 &&
+			second.Length == 2 && second[0] == 2 && second[1] == 4
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereAllNoneEmptyEntry()
+	{
+		var all = Enumerable.Range(39, 3).Where(LinqWhereAlways).ToArray();
+		var none = Enumerable.Range(1, 3).Where(LinqWhereNever).ToArray();
+		var empty = Enumerable.Range(1, 0).Where(LinqWhereAlways).ToArray();
+		return all.Length == 3 && all[0] == 39 && all[1] == 40 && all[2] == 41 &&
+			none.Length == 0 && empty.Length == 0
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqWhereAlways(int value) => true;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqWhereNever(int value) => false;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectWhereToArrayEntry()
+	{
+		var selectorCalls = 0;
+		var predicateCalls = 0;
+		var values = Enumerable.Range(1, 4)
+			.Select(value =>
+			{
+				selectorCalls++;
+				return value * 2;
+			})
+			.Where(value =>
+			{
+				predicateCalls++;
+				return value > 4;
+			})
+			.ToArray();
+		return selectorCalls == 4 && predicateCalls == 4 &&
+			values.Length == 2 && values[0] == 6 && values[1] == 8
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectWhereStaticToArrayEntry()
+	{
+		var values = Enumerable.Range(1, 4)
+			.Select(LinqSelectDouble)
+			.Where(LinqWhereGreaterThanFour)
+			.ToArray();
+		return values.Length == 2 && values[0] == 6 && values[1] == 8 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqWhereGreaterThanFour(int value) => value > 4;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereCaptureSurvivesCollectionEntry()
+	{
+		var box = new ManagedBox { Value = 2 };
+		var filtered = Enumerable.Range(1, 3).Where(value => value > box.Value);
+		M68kRuntime.Collect();
+		var values = filtered.ToArray();
+		return values.Length == 1 && values[0] == 3 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereNullPredicateEntry()
+	{
+		try
+		{
+			_ = Enumerable.Where(
+				Enumerable.Range(0, 1),
+				(Func<int, bool>)null!);
+			return 0;
+		}
+		catch (ArgumentNullException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereDefersPredicateExceptionEntry()
+	{
+		var filtered = Enumerable.Range(1, 3).Where(LinqWhereThrowOnTwo);
+		try
+		{
+			_ = filtered.ToArray();
+			return 0;
+		}
+		catch (NullReferenceException)
+		{
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqWhereThrowOnTwo(int value)
+	{
+		if (value == 2)
+		{
+			throw null!;
+		}
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqRepeatWhereEntry() =>
+		Enumerable.Repeat(1, 1).Where(static value => value != 0).ToArray()[0];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqIndexedWhereEntry() =>
+		Enumerable.Range(1, 1).Where(static (value, index) => value != index).ToArray()[0];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqAnyWithoutPredicateEntry()
+	{
+		if (Enumerable.Range(0, 0).Any() || !Enumerable.Range(0, 1).Any() ||
+			Enumerable.Repeat(1, 0).Any() || !Enumerable.Repeat(1, 1).Any())
+		{
+			return 0;
+		}
+
+		var selectCalls = 0;
+		var selected = Enumerable.Range(1, 2).Select(value =>
+		{
+			selectCalls++;
+			return value * 2;
+		});
+		if (!selected.Any() || selectCalls != 0)
+		{
+			return 0;
+		}
+
+		var whereCalls = 0;
+		var filtered = Enumerable.Range(1, 4).Where(value =>
+		{
+			whereCalls++;
+			return value == 3;
+		});
+		if (!filtered.Any() || whereCalls != 3)
+		{
+			return 0;
+		}
+
+		var projectedCalls = 0;
+		var projectedPredicateCalls = 0;
+		var projectedFiltered = Enumerable.Range(1, 4)
+			.Select(value =>
+			{
+				projectedCalls++;
+				return value * 2;
+			})
+			.Where(value =>
+			{
+				projectedPredicateCalls++;
+				return value > 4;
+			});
+		return projectedFiltered.Any() && projectedCalls == 3 &&
+			projectedPredicateCalls == 3
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqAnyPredicateEntry()
+	{
+		var rangeCalls = 0;
+		var rangeFound = Enumerable.Range(1, 5).Any(value =>
+		{
+			rangeCalls++;
+			return value == 3;
+		});
+
+		var repeatCalls = 0;
+		var repeatFound = Enumerable.Repeat(1, 4).Any(value =>
+		{
+			repeatCalls++;
+			return repeatCalls == 3;
+		});
+
+		var selectCalls = 0;
+		var selectPredicateCalls = 0;
+		var selectFound = Enumerable.Range(1, 5)
+			.Select(value =>
+			{
+				selectCalls++;
+				return value * 2;
+			})
+			.Any(value =>
+			{
+				selectPredicateCalls++;
+				return value >= 6;
+			});
+
+		var whereCalls = 0;
+		var wherePredicateCalls = 0;
+		var whereFound = Enumerable.Range(1, 4)
+			.Where(value =>
+			{
+				whereCalls++;
+				return (value & 1) == 0;
+			})
+			.Any(value =>
+			{
+				wherePredicateCalls++;
+				return value > 2;
+			});
+
+		var projectedCalls = 0;
+		var projectedWhereCalls = 0;
+		var projectedAnyCalls = 0;
+		var projectedFound = Enumerable.Range(1, 5)
+			.Select(value =>
+			{
+				projectedCalls++;
+				return value * 2;
+			})
+			.Where(value =>
+			{
+				projectedWhereCalls++;
+				return (value & 3) == 0;
+			})
+			.Any(value =>
+			{
+				projectedAnyCalls++;
+				return value > 4;
+			});
+
+		return rangeFound && rangeCalls == 3 &&
+			repeatFound && repeatCalls == 3 &&
+			selectFound && selectCalls == 3 && selectPredicateCalls == 3 &&
+			whereFound && whereCalls == 4 && wherePredicateCalls == 2 &&
+			projectedFound && projectedCalls == 4 &&
+			projectedWhereCalls == 4 && projectedAnyCalls == 2
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqAnyExceptionTimingEntry()
+	{
+		var caught = 0;
+		try
+		{
+			_ = Enumerable.Range(1, 1).Any((Func<int, bool>)null!);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 1;
+		}
+		try
+		{
+			_ = Enumerable.Range(1, 3).Any(LinqAnyThrowOnTwo);
+		}
+		catch (NullReferenceException)
+		{
+			caught |= 2;
+		}
+		try
+		{
+			if (Enumerable.Range(1, 3).Any(LinqAnyTrueThenThrow))
+			{
+				caught |= 4;
+			}
+		}
+		catch (NullReferenceException)
+		{
+			return 0;
+		}
+		return caught == 7 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqAnyThrowOnTwo(int value)
+	{
+		if (value == 2)
+		{
+			throw null!;
+		}
+		return false;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqAnyTrueThenThrow(int value)
+	{
+		if (value != 1)
+		{
+			throw null!;
+		}
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqAnyCaptureSurvivesCollectionEntry()
+	{
+		var whereBox = new ManagedBox { Value = 2 };
+		var anyBox = new ManagedBox { Value = 3 };
+		var filtered = Enumerable.Range(1, 4).Where(value => value > whereBox.Value);
+		Func<int, bool> predicate = value => value == anyBox.Value;
+		M68kRuntime.Collect();
+		return filtered.Any(predicate) ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectWhereAnyStaticEntry() =>
+		Enumerable.Range(1, 4)
+			.Select(LinqSelectDouble)
+			.Where(LinqWhereGreaterThanFour)
+			.Any(LinqAnyGreaterThanSix)
+				? 42
+				: 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool LinqAnyGreaterThanSix(int value) => value > 6;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqArrayAnyEntry() => new[] { 42 }.Any() ? 42 : 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqByteAnyEntry() =>
+		Enumerable.Repeat((byte)1, 1).Any() ? 42 : 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqTakeToArrayEntry()
+	{
+		var range = Enumerable.Range(3, 5).Take(2).ToArray();
+		var empty = Enumerable.Range(3, 5).Take(-1).ToArray();
+		var repeat = Enumerable.Repeat(7, 3).Take(8).ToArray();
+
+		var selectCalls = 0;
+		var selected = Enumerable.Range(1, 5)
+			.Select(value =>
+			{
+				selectCalls++;
+				return value * 10;
+			})
+			.Take(2);
+		if (selectCalls != 0)
+		{
+			return 0;
+		}
+		var selectedValues = selected.ToArray();
+
+		var whereCalls = 0;
+		var filtered = Enumerable.Range(1, 8)
+			.Where(value =>
+			{
+				whereCalls++;
+				return (value & 1) == 0;
+			})
+			.Take(2)
+			.ToArray();
+
+		var projectedCalls = 0;
+		var projectedWhereCalls = 0;
+		var projected = Enumerable.Range(1, 6)
+			.Select(value =>
+			{
+				projectedCalls++;
+				return value * 3;
+			})
+			.Where(value =>
+			{
+				projectedWhereCalls++;
+				return (value & 1) == 0;
+			})
+			.Take(2)
+			.ToArray();
+
+		var repeated = Enumerable.Range(1, 5).Take(4).Take(2).ToArray();
+		if (range.Length != 2)
+		{
+			return 10 + range.Length;
+		}
+		if (range[0] != 3)
+		{
+			return 20 + range[0];
+		}
+		if (range[1] != 4)
+		{
+			return 30 + range[1];
+		}
+		if (empty.Length != 0)
+		{
+			return 40 + empty.Length;
+		}
+		if (repeat.Length != 3 || repeat[0] != 7 || repeat[2] != 7)
+		{
+			return 2;
+		}
+		if (selectedValues.Length != 2 || selectedValues[0] != 10 ||
+			selectedValues[1] != 20 || selectCalls != 2)
+		{
+			return 3;
+		}
+		if (filtered.Length != 2 || filtered[0] != 2 || filtered[1] != 4 ||
+			whereCalls != 4)
+		{
+			return 4;
+		}
+		if (projected.Length != 2 || projected[0] != 6 || projected[1] != 12 ||
+			projectedCalls != 4 || projectedWhereCalls != 4)
+		{
+			return 5;
+		}
+		if (repeated.Length != 2 || repeated[0] != 1 || repeated[1] != 2)
+		{
+			return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqTakeAnyEntry()
+	{
+		var zeroCalls = 0;
+		var zero = Enumerable.Range(1, 4)
+			.Where(value =>
+			{
+				zeroCalls++;
+				return true;
+			})
+			.Take(0)
+			.Any();
+
+		var selectCalls = 0;
+		var selected = Enumerable.Range(1, 4)
+			.Select(value =>
+			{
+				selectCalls++;
+				return value * 2;
+			})
+			.Take(2)
+			.Any();
+
+		var whereCalls = 0;
+		var terminalCalls = 0;
+		var filtered = Enumerable.Range(1, 8)
+			.Where(value =>
+			{
+				whereCalls++;
+				return (value & 1) == 0;
+			})
+			.Take(2)
+			.Any(value =>
+			{
+				terminalCalls++;
+				return false;
+			});
+
+		var projectedCalls = 0;
+		var projectedWhereCalls = 0;
+		var projectedTerminalCalls = 0;
+		var projected = Enumerable.Range(1, 6)
+			.Select(value =>
+			{
+				projectedCalls++;
+				return value * 3;
+			})
+			.Where(value =>
+			{
+				projectedWhereCalls++;
+				return (value & 1) == 0;
+			})
+			.Take(2)
+			.Any(value =>
+			{
+				projectedTerminalCalls++;
+				return value == 12;
+			});
+
+		if (zero || zeroCalls != 0)
+		{
+			return 1;
+		}
+		if (!selected || selectCalls != 0)
+		{
+			return 2;
+		}
+		if (filtered || whereCalls != 4 || terminalCalls != 2)
+		{
+			return 3;
+		}
+		if (!projected || projectedCalls != 4 || projectedWhereCalls != 4 ||
+			projectedTerminalCalls != 2)
+		{
+			return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqTakeExceptionTimingEntry()
+	{
+		var caught = 0;
+		try
+		{
+			_ = Enumerable.Take<int>(null!, 1);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 1;
+		}
+
+		try
+		{
+			var safe = Enumerable.Range(1, 3).Select(LinqTakeThrowOnTwo).Take(1);
+			var values = safe.ToArray();
+			if (values.Length != 1)
+			{
+				return 10 + values.Length;
+			}
+			if (values[0] != 1)
+			{
+				return 20 + values[0];
+			}
+			caught |= 2;
+		}
+		catch (NullReferenceException)
+		{
+			return 0;
+		}
+
+		try
+		{
+			_ = Enumerable.Range(1, 3).Select(LinqTakeThrowOnTwo).Take(2).ToArray();
+		}
+		catch (NullReferenceException)
+		{
+			caught |= 4;
+		}
+		if (caught == 7)
+		{
+			return 42;
+		}
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqTakeThrowOnTwo(int value)
+	{
+		if (value == 2)
+		{
+			throw null!;
+		}
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqTakeCaptureSurvivesCollectionEntry()
+	{
+		var whereBox = new ManagedBox { Value = 1 };
+		var anyBox = new ManagedBox { Value = 4 };
+		var values = Enumerable.Range(1, 8)
+			.Where(value => value > whereBox.Value)
+			.Take(3);
+		Func<int, bool> predicate = value => value == anyBox.Value;
+		M68kRuntime.Collect();
+		return values.Any(predicate) ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectWhereTakeAnyStaticEntry() =>
+		Enumerable.Range(1, 8)
+			.Select(LinqSelectDouble)
+			.Where(LinqWhereGreaterThanFour)
+			.Take(2)
+			.Any(LinqAnyGreaterThanSix)
+				? 42
+				: 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeTakeStaticToArrayEntry()
+	{
+		var values = Enumerable.Range(3, 5).Take(2).ToArray();
+		return values.Length * 100 + values[0] * 10 + values[1];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeRepeatTakeEntry()
+	{
+		var range = Enumerable.Range(3, 5).Take(2).ToArray();
+		var empty = Enumerable.Range(3, 5).Take(-1).ToArray();
+		var repeat = Enumerable.Repeat(7, 3).Take(8).ToArray();
+		var repeated = Enumerable.Range(1, 5).Take(4).Take(2).ToArray();
+		if (range.Length != 2 || range[0] != 3 || range[1] != 4 ||
+			empty.Length != 0)
+		{
+			return 0;
+		}
+		if (repeat.Length != 3 || repeat[0] != 7 || repeat[2] != 7)
+		{
+			return 0;
+		}
+		return repeated.Length == 2 && repeated[0] == 1 && repeated[1] == 2
+			? 42
+			: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSelectTakeEntry()
+	{
+		var calls = 0;
+		var selected = Enumerable.Range(1, 5)
+			.Select(value =>
+			{
+				calls++;
+				return value * 10;
+			})
+			.Take(2);
+		if (calls != 0)
+		{
+			return 0;
+		}
+		var values = selected.ToArray();
+		return values.Length == 2 && values[0] == 10 && values[1] == 20 &&
+			calls == 2
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereTakeEntry()
+	{
+		var calls = 0;
+		var values = Enumerable.Range(1, 8)
+			.Where(value =>
+			{
+				calls++;
+				return (value & 1) == 0;
+			})
+			.Take(2)
+			.ToArray();
+		return values.Length == 2 && values[0] == 2 && values[1] == 4 &&
+			calls == 4
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSelectWhereTakeEntry()
+	{
+		var selectCalls = 0;
+		var whereCalls = 0;
+		var values = Enumerable.Range(1, 6)
+			.Select(value =>
+			{
+				selectCalls++;
+				return value * 3;
+			})
+			.Where(value =>
+			{
+				whereCalls++;
+				return (value & 1) == 0;
+			})
+			.Take(2)
+			.ToArray();
+		return values.Length == 2 && values[0] == 6 && values[1] == 12 &&
+			selectCalls == 4 && whereCalls == 4
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeRepeatSumEntry()
+	{
+		if (Enumerable.Range(1, 4).Sum() != 10)
+		{
+			return 1;
+		}
+		if (Enumerable.Range(1, 0).Sum() != 0)
+		{
+			return 2;
+		}
+		if (Enumerable.Repeat(3, 4).Sum() != 12)
+		{
+			return 3;
+		}
+		if (Enumerable.Range(1, 4).Sum(static value => value * 2) != 20)
+		{
+			return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSelectSumEntry()
+	{
+		var selected = Enumerable.Range(1, 3).Select(static value => value * 3);
+		if (selected.Sum() != 18)
+		{
+			return 1;
+		}
+		if (selected.Sum(static value => value + 1) != 21)
+		{
+			return 2;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeWhereSumEntry()
+	{
+		var filtered = Enumerable.Range(1, 6).Where(static value => (value & 1) == 0);
+		if (filtered.Sum() != 12)
+		{
+			return 1;
+		}
+		if (filtered.Sum(static value => value * 2) != 24)
+		{
+			return 2;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSelectWhereTakeSumEntry()
+	{
+		var values = Enumerable.Range(1, 8)
+			.Select(static value => value * 2)
+			.Where(static value => value > 4)
+			.Take(2);
+		if (values.Sum() != 14)
+		{
+			return 1;
+		}
+		if (values.Sum(static value => value + 1) != 16)
+		{
+			return 2;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSumEveryPrivateTargetEntry()
+	{
+		var range = Enumerable.Range(1, 3);
+		var repeat = Enumerable.Repeat(2, 3);
+		var select = Enumerable.Range(1, 3).Select(static value => value * 2);
+		var rangeWhere = Enumerable.Range(1, 4).Where(static value => value > 1);
+		var rangeWhereTake = Enumerable.Range(1, 4)
+			.Where(static value => value > 1)
+			.Take(2);
+		var selectWhere = Enumerable.Range(1, 4)
+			.Select(static value => value * 2)
+			.Where(static value => value > 2);
+		var selectWhereTake = Enumerable.Range(1, 4)
+			.Select(static value => value * 2)
+			.Where(static value => value > 2)
+			.Take(2);
+		return range.Sum() + range.Sum(static value => value) +
+			repeat.Sum() + repeat.Sum(static value => value) +
+			select.Sum() + select.Sum(static value => value) +
+			rangeWhere.Sum() + rangeWhere.Sum(static value => value) +
+			rangeWhereTake.Sum() + rangeWhereTake.Sum(static value => value) +
+			selectWhere.Sum() + selectWhere.Sum(static value => value) +
+			selectWhereTake.Sum() + selectWhereTake.Sum(static value => value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSumExceptionTimingEntry()
+	{
+		var caught = 0;
+		try
+		{
+			_ = Enumerable.Sum((IEnumerable<int>)null!);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 1;
+		}
+
+		try
+		{
+			_ = Enumerable.Sum<int>(null!, static value => value);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 2;
+		}
+
+		try
+		{
+			_ = Enumerable.Range(1, 1).Sum((Func<int, int>)null!);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 4;
+		}
+
+		try
+		{
+			_ = Enumerable.Range(int.MaxValue - 1, 2).Sum();
+		}
+		catch (OverflowException)
+		{
+			caught |= 8;
+		}
+
+		try
+		{
+			_ = Enumerable.Range(1, 3).Sum(LinqSumThrowOnTwo);
+		}
+		catch (NullReferenceException)
+		{
+			caught |= 16;
+		}
+
+		if (caught == 31)
+		{
+			return 42;
+		}
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqSumThrowOnTwo(int value)
+	{
+		if (value == 2)
+		{
+			throw null!;
+		}
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqSumCaptureSurvivesCollectionEntry()
+	{
+		var selectBox = new ManagedBox { Value = 3 };
+		var whereBox = new ManagedBox { Value = 3 };
+		var sumBox = new ManagedBox { Value = 1 };
+		var values = Enumerable.Range(1, 5)
+			.Select(value => value * selectBox.Value)
+			.Where(value => value > whereBox.Value)
+			.Take(2);
+		Func<int, int> selector = value => value + sumBox.Value;
+		M68kRuntime.Collect();
+		return values.Sum(selector) == 17 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRangeSelectWhereTakeSumStaticEntry() =>
+		Enumerable.Range(1, 8)
+			.Select(LinqSelectDouble)
+			.Where(LinqWhereGreaterThanFour)
+			.Take(2)
+			.Sum(LinqSumTriple);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqSumTriple(int value) => value * 3;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryValuesOrderByThenByEntry()
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		var first = new DictionaryImageDescriptor(2, 1, 1);
+		var second = new DictionaryImageDescriptor(1, 2, 2);
+		var third = new DictionaryImageDescriptor(1, 1, 3);
+		var fourth = new DictionaryImageDescriptor(1, 1, 4);
+		var fifth = new DictionaryImageDescriptor(2, 0, 5);
+		values.Add(10, first);
+		values.Add(11, second);
+		values.Add(12, third);
+		values.Add(13, fourth);
+		values.Add(14, fifth);
+		var ordered = values.Values
+			.OrderBy(LinqOrderCylinder)
+			.ThenBy(LinqOrderHead);
+		var deferred = new DictionaryImageDescriptor(0, 9, 6);
+		values.Add(15, deferred);
+
+		var encoded = 0;
+		foreach (var descriptor in ordered)
+		{
+			encoded = encoded * 10 + (int)descriptor.DataId;
+		}
+		return encoded;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqOrderCylinder(DictionaryImageDescriptor descriptor) =>
+		descriptor.Cylinder;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqOrderHead(DictionaryImageDescriptor descriptor) =>
+		descriptor.Head;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryOrderingStatefulRepeatedEntry()
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		var first = new DictionaryImageDescriptor(2, 2, 1);
+		var second = new DictionaryImageDescriptor(1, 2, 2);
+		var third = new DictionaryImageDescriptor(1, 1, 3);
+		values.Add(10, first);
+		values.Add(11, second);
+		values.Add(12, third);
+		var primaryCalls = 0;
+		var secondaryCalls = 0;
+		var ordered = values.Values
+			.OrderBy(value =>
+			{
+				primaryCalls++;
+				return value.Cylinder;
+			})
+			.ThenBy(value =>
+			{
+				secondaryCalls++;
+				return value.Head;
+			});
+
+		var encoded = 0;
+		foreach (var value in ordered)
+		{
+			encoded = encoded * 10 + (int)value.DataId;
+		}
+		foreach (var value in ordered)
+		{
+			encoded = encoded * 10 + (int)value.DataId;
+		}
+		return encoded == 321321 && primaryCalls == 6 && secondaryCalls == 6
+			? 42
+			: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryOrderingExceptionTimingEntry()
+	{
+		var caught = 0;
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		var descriptor = new DictionaryImageDescriptor(1, 1, 1);
+		values.Add(1, descriptor);
+		try
+		{
+			_ = Enumerable.OrderBy<DictionaryImageDescriptor, int>(
+				null!,
+				LinqOrderCylinder);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 1;
+		}
+		try
+		{
+			_ = values.Values.OrderBy(
+				(Func<DictionaryImageDescriptor, int>)null!);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 2;
+		}
+
+		var primary = values.Values.OrderBy(LinqOrderCylinder);
+		try
+		{
+			_ = primary.ThenBy((Func<DictionaryImageDescriptor, int>)null!);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 4;
+		}
+		try
+		{
+			_ = Enumerable.ThenBy<DictionaryImageDescriptor, int>(
+				null!,
+				LinqOrderHead);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 8;
+		}
+
+		var throwingPrimary = values.Values
+			.OrderBy(LinqOrderThrow)
+			.ThenBy(LinqOrderHead);
+		try
+		{
+			foreach (var value in throwingPrimary)
+			{
+				_ = value.DataId;
+			}
+		}
+		catch (NullReferenceException)
+		{
+			caught |= 16;
+		}
+		var throwingSecondary = values.Values
+			.OrderBy(LinqOrderCylinder)
+			.ThenBy(LinqOrderThrow);
+		try
+		{
+			foreach (var value in throwingSecondary)
+			{
+				_ = value.DataId;
+			}
+		}
+		catch (NullReferenceException)
+		{
+			caught |= 32;
+		}
+		return caught == 63 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqOrderThrow(DictionaryImageDescriptor descriptor) =>
+		throw null!;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryOrderingSize0Entry() =>
+		LinqDictionaryOrderingSize(0);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryOrderingSize1Entry() =>
+		LinqDictionaryOrderingSize(1);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryOrderingSize16Entry() =>
+		LinqDictionaryOrderingSize(16);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqDictionaryOrderingSize168Entry() =>
+		LinqDictionaryOrderingSize(168);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqDictionaryOrderingSize(int count)
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		for (var index = 0; index < count; index++)
+		{
+			var reverse = count - index - 1;
+			var descriptor =
+				new DictionaryImageDescriptor(reverse / 2, reverse % 2, index + 1);
+			values.Add(
+				(uint)(index + 1),
+				descriptor);
+		}
+		var ordered = values.Values
+			.OrderBy(LinqOrderCylinder)
+			.ThenBy(LinqOrderHead);
+		var seen = 0;
+		var previousCylinder = -1;
+		var previousHead = -1;
+		foreach (var value in ordered)
+		{
+			if (value.Cylinder < previousCylinder ||
+				(value.Cylinder == previousCylinder && value.Head < previousHead))
+			{
+				return 0;
+			}
+			previousCylinder = value.Cylinder;
+			previousHead = value.Head;
+			seen++;
+		}
+		return seen == count ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StablePermutationSortEntry()
+	{
+		var permutation = new int[6];
+		permutation[0] = 0;
+		permutation[1] = 1;
+		permutation[2] = 2;
+		permutation[3] = 3;
+		permutation[4] = 4;
+		permutation[5] = 5;
+		var primary = new int[6];
+		primary[0] = 2;
+		primary[1] = 1;
+		primary[2] = 1;
+		primary[3] = 1;
+		primary[4] = 2;
+		primary[5] = 0;
+		var secondary = new int[6];
+		secondary[0] = 1;
+		secondary[1] = 2;
+		secondary[2] = 1;
+		secondary[3] = 1;
+		secondary[4] = 0;
+		secondary[5] = 9;
+		CopperSharp.Runtime.ShadowInt32StablePermutationSort.Sort(
+			permutation,
+			primary,
+			secondary);
+		var encoded = 0;
+		for (var index = 0; index < permutation.Length; index++)
+		{
+			encoded = encoded * 10 + permutation[index] + 1;
+		}
+		return encoded;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqArrayOrderByEntry() =>
+		new[] { 2, 1 }.OrderBy(static value => value) is null ? 0 : 42;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqAdditionalThenByEntry()
+	{
+		var values = new Dictionary<uint, DictionaryImageDescriptor>();
+		var descriptor = new DictionaryImageDescriptor(1, 2, 3);
+		values.Add(1, descriptor);
+		var ordered = values.Values
+			.OrderBy(LinqOrderCylinder)
+			.ThenBy(LinqOrderHead)
+			.ThenBy(static value => value.StartBit);
+		return ordered is null ? 0 : 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqArrayImageBlockSumSelectorEntry()
+	{
+		var values = CreateLinqImageBlocks();
+		if (values.Sum(StaticImageBlockDelegateTarget) != 42)
+		{
+			return 1;
+		}
+		return new DelegateImageBlock[0].Sum(StaticImageBlockDelegateTarget) == 0
+			? 42
+			: 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqArrayImageBlockSumStaticEntry() =>
+		CreateLinqIpfDescriptorBlocks().Sum(LinqIpfDescriptorBits);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static DelegateImageBlock[] CreateLinqIpfDescriptorBlocks()
+	{
+		var block = new DelegateImageBlock(19, 23, 0, 0, 0, 0, 0);
+		var values = new DelegateImageBlock[1];
+		values[0] = block;
+		return values;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqIpfDescriptorBits(DelegateImageBlock block) =>
+		checked((int)block.BlockBits + (int)block.GapBits);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static DelegateImageBlock[] CreateLinqImageBlocks()
+	{
+		var block = new DelegateImageBlock(1, 2, 3, 4, 5, 6, 21);
+		var values = new DelegateImageBlock[1];
+		values[0] = block;
+		return values;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqArrayImageBlockSumExceptionTimingEntry()
+	{
+		var caught = 0;
+		try
+		{
+			_ = Enumerable.Sum<DelegateImageBlock>(
+				null!,
+				StaticImageBlockDelegateTarget);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 1;
+		}
+
+		try
+		{
+			_ = CreateLinqImageBlocks().Sum(
+				(Func<DelegateImageBlock, int>)null!);
+		}
+		catch (ArgumentNullException)
+		{
+			caught |= 2;
+		}
+
+		try
+		{
+			_ = CreateLinqImageBlockOverflowValues().Sum(
+				static value => (int)value.BlockBits);
+		}
+		catch (OverflowException)
+		{
+			caught |= 4;
+		}
+
+		try
+		{
+			_ = CreateLinqImageBlocks().Sum(LinqImageBlockThrow);
+		}
+		catch (NullReferenceException)
+		{
+			caught |= 8;
+		}
+
+		try
+		{
+			_ = CreateLinqImageBlockConversionOverflowValues().Sum(
+				LinqIpfDescriptorBits);
+		}
+		catch (OverflowException)
+		{
+			caught |= 16;
+		}
+
+		return caught == 31 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static DelegateImageBlock[] CreateLinqImageBlockOverflowValues()
+	{
+		var first = new DelegateImageBlock(int.MaxValue, 0, 0, 0, 0, 0, 0);
+		var second = new DelegateImageBlock(1, 0, 0, 0, 0, 0, 0);
+		var values = new DelegateImageBlock[2];
+		values[0] = first;
+		values[1] = second;
+		return values;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static DelegateImageBlock[] CreateLinqImageBlockConversionOverflowValues()
+	{
+		var block = new DelegateImageBlock(0x8000_0000u, 0, 0, 0, 0, 0, 0);
+		var values = new DelegateImageBlock[1];
+		values[0] = block;
+		return values;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LinqImageBlockThrow(DelegateImageBlock value) => throw null!;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqArrayImageBlockSumCaptureSurvivesCollectionEntry()
+	{
+		var block = new DelegateImageBlock(0, 0, 0, 0, 0, 0, 41);
+		var values = new DelegateImageBlock[1];
+		values[0] = block;
+		var box = new ManagedBox { Value = 1 };
+		Func<DelegateImageBlock, int> selector =
+			value => (int)value.DataOffset + box.Value;
+		M68kRuntime.Collect();
+		return values.Sum(selector) == 42 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqArraySumEntry() =>
+		new[] { 1, 2 }.Sum();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqArraySumSelectorEntry() =>
+		new[] { 1, 2 }.Sum(static value => value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqReferenceStructArraySumSelectorEntry()
+	{
+		var value = new ReferenceDelegateBlock(null);
+		var values = new ReferenceDelegateBlock[1];
+		values[0] = value;
+		return values.Sum(static item => item.Value is null ? 0 : 1);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long UnsupportedLinqLongSumEntry() =>
+		Enumerable.Repeat(1L, 2).Sum();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqArrayTakeEntry() =>
+		new[] { 42 }.Take(1).ToArray()[0];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedLinqByteTakeEntry() =>
+		Enumerable.Repeat((byte)1, 1).Take(1).ToArray()[0];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRepeatByteToArrayEntry()
+	{
+		var values = Enumerable.Repeat((byte)7, 4).ToArray();
+		return values.Length == 4 && values[0] == 7 && values[1] == 7 &&
+			values[2] == 7 && values[3] == 7
+				? 42
+				: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LinqRepeatReferenceSurvivesCollectionEntry()
+	{
+		var value = new ManagedBox { Value = 40 };
+		var values = Enumerable.Repeat(value, 2).ToArray();
+		value = null!;
+		M68kRuntime.Collect();
+		var replacement = new ManagedBox { Value = 100 };
+		return ReferenceEquals(values[0], values[1])
+			? values[0].Value + values.Length
+			: 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedEnumerableArrayToArrayEntry()
+	{
+		var source = new[] { 42 };
+		return Enumerable.ToArray(source)[0];
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -4475,6 +8810,125 @@ public static class CompilerFixtures
 		public readonly int Sum() => First + Second;
 	}
 
+	private readonly struct DelegateImageBlock
+	{
+		public DelegateImageBlock(
+			uint blockBits,
+			uint gapBits,
+			uint gapOffset,
+			uint encoderType,
+			uint flags,
+			uint gapValue,
+			uint dataOffset)
+		{
+			BlockBits = blockBits;
+			GapBits = gapBits;
+			GapOffset = gapOffset;
+			EncoderType = encoderType;
+			Flags = flags;
+			GapValue = gapValue;
+			DataOffset = dataOffset;
+		}
+
+		public readonly uint BlockBits;
+		public readonly uint GapBits;
+		public readonly uint GapOffset;
+		public readonly uint EncoderType;
+		public readonly uint Flags;
+		public readonly uint GapValue;
+		public readonly uint DataOffset;
+	}
+
+	private struct ReferenceDelegateBlock
+	{
+		public ReferenceDelegateBlock(object? value) => Value = value;
+
+		public object? Value;
+	}
+
+	private readonly struct DictionaryImageDescriptor
+	{
+		public DictionaryImageDescriptor(int seed)
+		{
+			Cylinder = seed;
+			Head = seed + 1;
+			DensityType = (uint)(seed + 2);
+			SignalType = (uint)(seed + 3);
+			TrackSize = (uint)(seed + 4);
+			StartPosition = (uint)(seed + 5);
+			StartBit = seed + 6;
+			DataBits = (uint)(seed + 7);
+			GapBits = (uint)(seed + 8);
+			TrackBits = (uint)(seed + 9);
+			BlockCount = seed + 10;
+			Process = (uint)(seed + 11);
+			Flags = (uint)(seed + 12);
+			DataId = (uint)(seed + 13);
+		}
+
+		public DictionaryImageDescriptor(int cylinder, int head, int id)
+		{
+			Cylinder = cylinder;
+			Head = head;
+			DensityType = (uint)(id + 2);
+			SignalType = (uint)(id + 3);
+			TrackSize = (uint)(id + 4);
+			StartPosition = (uint)(id + 5);
+			StartBit = id + 6;
+			DataBits = (uint)(id + 7);
+			GapBits = (uint)(id + 8);
+			TrackBits = (uint)(id + 9);
+			BlockCount = id + 10;
+			Process = (uint)(id + 11);
+			Flags = (uint)(id + 12);
+			DataId = (uint)id;
+		}
+
+		public readonly int Cylinder;
+		public readonly int Head;
+		public readonly uint DensityType;
+		public readonly uint SignalType;
+		public readonly uint TrackSize;
+		public readonly uint StartPosition;
+		public readonly int StartBit;
+		public readonly uint DataBits;
+		public readonly uint GapBits;
+		public readonly uint TrackBits;
+		public readonly int BlockCount;
+		public readonly uint Process;
+		public readonly uint Flags;
+		public readonly uint DataId;
+
+		public readonly bool Matches(int seed) =>
+			Cylinder == seed &&
+			Head == seed + 1 &&
+			DensityType == (uint)(seed + 2) &&
+			SignalType == (uint)(seed + 3) &&
+			TrackSize == (uint)(seed + 4) &&
+			StartPosition == (uint)(seed + 5) &&
+			StartBit == seed + 6 &&
+			DataBits == (uint)(seed + 7) &&
+			GapBits == (uint)(seed + 8) &&
+			TrackBits == (uint)(seed + 9) &&
+			BlockCount == seed + 10 &&
+			Process == (uint)(seed + 11) &&
+			Flags == (uint)(seed + 12) &&
+			DataId == (uint)(seed + 13);
+
+		public readonly bool IsDefault() =>
+			Cylinder == 0 && Head == 0 && DensityType == 0 && SignalType == 0 &&
+			TrackSize == 0 && StartPosition == 0 && StartBit == 0 &&
+			DataBits == 0 && GapBits == 0 && TrackBits == 0 && BlockCount == 0 &&
+			Process == 0 && Flags == 0 && DataId == 0;
+	}
+
+	private struct DictionaryReferenceValue
+	{
+		public DictionaryReferenceValue(object? value) => Value = value;
+
+		public object? Value;
+	}
+
 	private sealed class MultiwordFieldHolder
 	{
 		public BoxedPair Value;
@@ -5193,6 +9647,54 @@ public static class CompilerFixtures
 	private static int StaticDelegateTarget(int value) => value + 7;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StaticMultiwordDelegateEntry()
+	{
+		var transform = new Func<BoxedPair, int>(StaticMultiwordDelegateTarget);
+		var value = new BoxedPair(19, 23);
+		return transform(value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int StaticMultiwordDelegateTarget(BoxedPair value) => value.Sum();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ArrayImageBlockDelegateEntry()
+	{
+		var block = new DelegateImageBlock(1, 2, 3, 4, 5, 6, 21);
+		var values = new DelegateImageBlock[1];
+		values[0] = block;
+		Func<DelegateImageBlock, int> selector = StaticImageBlockDelegateTarget;
+		M68kRuntime.Collect();
+		return selector(values[0]);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ArrayDictionaryImageDescriptorDelegateEntry()
+	{
+		var descriptor = new DictionaryImageDescriptor(1);
+		var values = new DictionaryImageDescriptor[1];
+		values[0] = descriptor;
+		Func<DictionaryImageDescriptor, int> selector =
+			StaticDictionaryImageDescriptorDelegateTarget;
+		M68kRuntime.Collect();
+		return selector(values[0]);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int StaticDictionaryImageDescriptorDelegateTarget(
+		DictionaryImageDescriptor value) => value.Matches(1) ? 42 : 1;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int StaticImageBlockDelegateTarget(DelegateImageBlock value) =>
+		(int)value.BlockBits +
+		(int)value.GapBits +
+		(int)value.GapOffset +
+		(int)value.EncoderType +
+		(int)value.Flags +
+		(int)value.GapValue +
+		(int)value.DataOffset;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int NonCapturingLambdaEntry()
 	{
 		Func<int, int> transform = static value => value + 7;
@@ -5827,6 +10329,29 @@ public static class CompilerFixtures
 		public override bool Equals(object? other) =>
 			other is RuntimeObjectEqualsDerived candidate &&
 			candidate.Value == Value;
+
+		public override int GetHashCode() => Value;
+	}
+
+	private sealed class RuntimeEquatableOnly : IEquatable<RuntimeEquatableOnly>
+	{
+		public RuntimeEquatableOnly(int value) => Value = value;
+
+		public int Value;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public bool Equals(RuntimeEquatableOnly? other)
+		{
+			if (other is null)
+			{
+				return false;
+			}
+			return other.Value == Value;
+		}
+
+		// Deliberately differs from typed equality so the comparer-precedence test
+		// cannot accidentally pass through object.Equals.
+		public override bool Equals(object? other) => false;
 
 		public override int GetHashCode() => Value;
 	}
