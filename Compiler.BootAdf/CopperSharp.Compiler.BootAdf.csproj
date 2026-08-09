@@ -8,6 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Hst.Amiga" Version="0.6.236" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
     <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using CopperSharp.Compiler;
+using CopperSharp.Targets.Amiga;
 using Xunit.Sdk;
 
 namespace CopperSharp.Compiler.Tests;
@@ -239,6 +240,77 @@ public sealed class CopperScreenHeadlessIntegrationTests
             "JitM68040",
             floatingPoint: M68kFloatingPointMode.M68040);
 
+    [Theory]
+    [Trait("Category", "Emulator")]
+    [InlineData("DOS", "DOSExample.Program::Main", "missing", 20u, "AMIGA_BOOT_DOS_LOCK_MISSING")]
+    [InlineData("FileStats", "FileStatsExample.Program::Main", "", 10u, "AMIGA_BOOT_DOS_GENERIC")]
+    public async Task DosExamplesRunThroughAmigaApplicationAbiInCopperScreen(
+        string example,
+        string entryPoint,
+        string arguments,
+        uint expectedReturnValue,
+        string expectedDosDiagnostic)
+    {
+        var cliPath = FindHeadlessCli();
+        if (cliPath is null)
+        {
+            throw SkipException.ForSkip(
+                $"Set {HeadlessCliEnvironmentVariable} to CopperScreen.Headless.Cli.exe or its DLL to run emulator integration tests.");
+        }
+
+        var assemblyPath = Path.Combine(AppContext.BaseDirectory, example + ".dll");
+        Assert.True(File.Exists(assemblyPath), $"Example assembly was not built: '{assemblyPath}'.");
+        var compilation = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+        {
+            AssemblyPath = assemblyPath,
+            EntryPoint = entryPoint,
+            Cpu = M68kCpuTarget.M68000,
+            OutputFormat = M68kOutputFormat.Hunk,
+            RuntimeProfile = M68kRuntimeProfile.Application,
+            ExceptionMode = M68kExceptionMode.Yolo
+        });
+        var temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "coppersharp-dos-example-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(temporaryDirectory);
+        try
+        {
+            var hunkPath = Path.Combine(temporaryDirectory, example);
+            await File.WriteAllBytesAsync(hunkPath, compilation.Image);
+            var result = await RunHeadlessAsync(
+                cliPath,
+                hunkPath,
+                "AccurateM68000",
+                expectedReturnValue,
+                arguments);
+            var failureContext = FormatFailureContext(
+                cliPath,
+                entryPoint,
+                M68kCpuTarget.M68000,
+                "AccurateM68000",
+                result);
+            Assert.True(result.ExitCode == 0, failureContext);
+
+            using var json = JsonDocument.Parse(result.StandardOutput);
+            var root = json.RootElement;
+            Assert.True(root.GetProperty("success").GetBoolean(), failureContext);
+            var run = root.GetProperty("result");
+            Assert.Equal(expectedReturnValue, run.GetProperty("ReturnValue").GetUInt32());
+            Assert.Equal(0, run.GetProperty("StopReason").GetInt32());
+            var diagnostics = run.GetProperty("Snapshot").GetProperty("Diagnostics");
+            Assert.Contains(
+                diagnostics.EnumerateArray(),
+                diagnostic => diagnostic.GetProperty("Code").GetString() == "AMIGA_BOOT_OPEN_LIBRARY");
+            Assert.Contains(
+                diagnostics.EnumerateArray(),
+                diagnostic => diagnostic.GetProperty("Code").GetString() == expectedDosDiagnostic);
+        }
+        finally
+        {
+            Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
     private static async Task RunFixtureAsync(
         string entryPoint,
         uint expectedReturnValue,
@@ -304,7 +376,8 @@ public sealed class CopperScreenHeadlessIntegrationTests
         string cliPath,
         string hunkPath,
         string cpuBackend,
-        uint expectedReturnValue)
+        uint expectedReturnValue,
+        string arguments = "")
     {
         var isManagedDll = Path.GetExtension(cliPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
         var startInfo = new ProcessStartInfo
@@ -324,6 +397,10 @@ public sealed class CopperScreenHeadlessIntegrationTests
         AddOption(startInfo, "--expect-d0", expectedReturnValue.ToString(CultureInfo.InvariantCulture));
         AddOption(startInfo, "--profile", "A500Pal512K");
         AddOption(startInfo, "--cpu", cpuBackend);
+        if (arguments.Length > 0)
+        {
+            AddOption(startInfo, "--arguments", arguments);
+        }
         AddOption(startInfo, "--max-frames", "20");
         AddOption(startInfo, "--max-instructions", "1000000");
         startInfo.ArgumentList.Add("--json");
