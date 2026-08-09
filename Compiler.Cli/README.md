@@ -4,7 +4,7 @@ Command-line driver for the optional `CopperSharp.Compiler` CIL-to-Motorola 68k
 ahead-of-time compiler.
 
 ```text
-dotnet tool install CopperSharp.Compiler.Cli
+dotnet tool install --global CopperSharp.Compiler.Cli --version 0.1.0-preview.1
 copper68kc Firmware.dll --entry Firmware.Boot::Main --cpu 68000 \
   --format hunk --output Firmware.hunk
 copper68kc Application.dll --entry Application.Program::Main \
@@ -24,6 +24,12 @@ the reachable graph contains a `deferred` or `unsupported` member.
 
 `--platform amiga` enables Amiga SDK library-vector resolution and automatic
 library-base handling. The default `generic` platform remains freestanding.
+`--managed-assemblies <file>` adds resolved dependency assemblies from one
+UTF-8 path per line. `@response-manifest` accepts the versioned SDK `key=value`
+format, including repeated `managed-assembly` entries, so dependency paths and
+publish settings do not expand the shell command.
+`--compatibility-report` writes the exact framework analysis already produced
+by a successful compilation; it does not run a second reachability pass.
 
 Run `copper68kc --help` for ROM layout and fixed-address import options.
 Use `--fpu disabled|040|68882|soft` to select floating-point generation. `040`

@@ -8,10 +8,9 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>copper68kc</ToolCommandName>
     <PackageId>CopperSharp.Compiler.Cli</PackageId>
-    <PackageVersion>0.1.0-preview.1</PackageVersion>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Authors>Ilkka Lehtoranta</Authors>
+    <Title>CopperSharp Compiler CLI</Title>
     <Description>Command-line driver for the CopperSharp CIL-to-68k compiler.</Description>
+    <PackageTags>compiler;dotnet-tool;aot;cil;amiga;m68k</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <NoWarn>1701;1702;NU1900</NoWarn>
   </PropertyGroup>

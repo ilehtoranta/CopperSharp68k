@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk;CopperSharp.Sdk/0.1.0-preview.1">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>amiga-m68k</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <CopperSharpEntry>CopperSharp.PackageConsumer.Program::Main</CopperSharpEntry>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CopperSharp.Compiler.Tests.PackageDependency" Version="0.1.0-preview.1" />
+    <PackageReference Include="CopperSharp.Sdk.Amiga" Version="0.1.0-preview.1" />
+  </ItemGroup>
+</Project>
