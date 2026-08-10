@@ -39,6 +39,8 @@ public sealed class ExecLayoutTests
 	[InlineData(typeof(ExecNotifyMessage), 16u)]
 	[InlineData(typeof(Amiga.ExecBase), 632u)]
 	[InlineData(typeof(MorphOSExecBase), 632u)]
+	[InlineData(typeof(TagItem), 8u)]
+	[InlineData(typeof(ClockData), 14u)]
 	public void StructuresMatchExpectedM68kSizes(Type type, uint expectedSize)
 	{
 		Assert.Equal(expectedSize, (uint)Marshal.SizeOf(type));
@@ -288,6 +290,72 @@ public sealed class ExecLayoutTests
 		}
 	}
 
+	[Theory]
+	[InlineData(nameof(DOS.Open), DosLvo.Open)]
+	[InlineData(nameof(DOS.Close), DosLvo.Close)]
+	[InlineData(nameof(DOS.Read), DosLvo.Read)]
+	[InlineData(nameof(DOS.Write), DosLvo.Write)]
+	[InlineData(nameof(DOS.Lock), DosLvo.Lock)]
+	[InlineData(nameof(DOS.Examine), DosLvo.Examine)]
+	[InlineData(nameof(DOS.CurrentDir), DosLvo.CurrentDir)]
+	[InlineData(nameof(DOS.IoErr), DosLvo.IoErr)]
+	[InlineData(nameof(DOS.ReadArgs), DosLvo.ReadArgs)]
+	[InlineData(nameof(DOS.Seek64), DosLvo.Seek64)]
+	public void PublicDosLvoConstantsMatchPortableAndMorphOsDeclarations(string methodName, short expected)
+	{
+		var field = typeof(DosLvo).GetField(methodName,
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+		Assert.NotNull(field); Assert.True(field!.IsLiteral);
+		Assert.Equal(expected, (short)field.GetRawConstantValue()!);
+		AssertLvo(methodName, expected, typeof(DOS));
+	}
+
+	[Fact]
+	public void PublicUtilityLvoConstantsMatchEveryUtilityDeclaration()
+	{
+		var methods = typeof(Utility).GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+			.Where(method => method.GetCustomAttributes(false).OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any());
+		foreach (var method in methods)
+		{
+			var field = typeof(UtilityLvo).GetField(method.Name, BindingFlags.Public | BindingFlags.Static);
+			Assert.NotNull(field); Assert.True(field!.IsLiteral);
+			AssertLvo(method.Name, (short)field.GetRawConstantValue()!, typeof(Utility));
+		}
+	}
+
+	[Theory]
+	[InlineData(typeof(Expansion), typeof(ExpansionLvo), 21)]
+	[InlineData(typeof(Icon), typeof(IconLvo), 21)]
+	public void PublicExpansionAndIconLvoConstantsMatchDeclarations(Type library, Type constants, int expectedCount)
+	{
+		var methods = library.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+			.Where(method => method.GetCustomAttributes(false).OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any()).ToArray();
+		Assert.Equal(expectedCount, methods.Length);
+		foreach (var method in methods)
+		{
+			var field = constants.GetField(method.Name, BindingFlags.Public | BindingFlags.Static);
+			Assert.NotNull(field); Assert.True(field!.IsLiteral);
+			AssertLvo(method.Name, (short)field.GetRawConstantValue()!, library);
+		}
+	}
+
+	[Theory]
+	[InlineData(nameof(Intuition.OpenScreen), IntuitionLvo.OpenScreen)]
+	[InlineData(nameof(Intuition.OpenScreenTagList), IntuitionLvo.OpenScreenTagList)]
+	[InlineData(nameof(Intuition.OpenWindow), IntuitionLvo.OpenWindow)]
+	[InlineData(nameof(Intuition.ModifyIDCMP), IntuitionLvo.ModifyIDCMP)]
+	[InlineData(nameof(Intuition.RethinkDisplay), IntuitionLvo.RethinkDisplay)]
+	public void PublicIntuitionLvoConstantsMatchPortableDeclarations(string methodName, short expected) => AssertLvo(methodName, expected, typeof(Intuition));
+
+	[Fact]
+	public void PublicWorkbenchLvoConstantsMatchEveryDeclaration()
+	{
+		var methods = typeof(Workbench).GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+			.Where(method => method.GetCustomAttributes(false).OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any()).ToArray();
+		Assert.Equal(15, methods.Length);
+		foreach (var method in methods) { var field = typeof(WorkbenchLvo).GetField(method.Name, BindingFlags.Public | BindingFlags.Static); Assert.NotNull(field); Assert.True(field!.IsLiteral); AssertLvo(method.Name, (short)field.GetRawConstantValue()!, typeof(Workbench)); }
+	}
+
 	[Fact]
 	public void ExecDeclarationsHaveCompleteRegisterContracts()
 	{
@@ -379,13 +447,24 @@ public sealed class ExecLayoutTests
 		Assert.Equal(28, Marshal.OffsetOf<DriveGeometry>(nameof(DriveGeometry.DeviceType)).ToInt32());
 		Assert.Equal((ushort)22, (ushort)TrackDiskCommand.GetGeometry);
 		Assert.Equal((byte)28, (byte)TrackDiskError.WriteProtected);
-		Assert.Equal(76, Marshal.SizeOf<IOAudio>());
-		Assert.Equal(40, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.AllocationKey)).ToInt32());
-		Assert.Equal(42, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.Data)).ToInt32());
-		Assert.Equal(56, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.WriteMessage)).ToInt32());
+		Assert.Equal(68, Marshal.SizeOf<IOAudio>());
+		Assert.Equal(32, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.AllocationKey)).ToInt32());
+		Assert.Equal(34, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.Data)).ToInt32());
+		Assert.Equal(48, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.WriteMessage)).ToInt32());
 		Assert.Equal((ushort)32, (ushort)AudioCommand.Allocate);
 		Assert.Equal((sbyte)-11, (sbyte)AudioIoError.AllocationFailed);
 		Assert.Equal((byte)0xE0, (byte)(AudioIoFlags.SyncCycle | AudioIoFlags.NoWait | AudioIoFlags.WriteMessage));
+		Assert.Equal((ushort)9, (ushort)ConsoleCommand.AskKeyMap);
+		Assert.Equal(-1, (int)ConsoleUnit.Library);
+		Assert.Equal(3, (int)ConsoleUnit.SnipMap);
+		Assert.Equal(-42, ConsoleDevice.CDInputHandler);
+		Assert.Equal(-48, ConsoleDevice.RawKeyConvert);
+		Assert.Equal(52, Marshal.SizeOf<IOClipReq>());
+		Assert.Equal(48, Marshal.OffsetOf<IOClipReq>(nameof(IOClipReq.ClipId)).ToInt32());
+		Assert.Equal(44, IOClipReqLayout.Offset);
+		Assert.Equal(26, Marshal.SizeOf<SatisfyMessage>());
+		Assert.Equal(12, Marshal.SizeOf<ClipHookMessage>());
+		Assert.Equal((ushort)12, (ushort)ClipboardCommand.ChangeHook);
 		Assert.Equal(9u, (uint)KeyboardCommand.ReadEvent);
 		Assert.Equal(11u, (uint)InputDeviceCommand.WriteEvent);
 		Assert.Equal(13u, (uint)GamePortCommand.SetTrigger);
@@ -401,9 +480,9 @@ public sealed class ExecLayoutTests
 		}
 	}
 
-	private static void AssertLvo(string methodName, int expected)
+	private static void AssertLvo(string methodName, int expected, Type? declaringType = null)
 	{
-		var method = typeof(Exec).GetMethod(methodName)!;
+		var method = (declaringType ?? typeof(Exec)).GetMethod(methodName)!;
 		var attribute = method.GetCustomAttributes(false)
 			.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>()
 			.Single();
