@@ -114,7 +114,7 @@ internal static class M68kManagedByrefEscapeValidator
 
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
-				$"Managed byref v{storedValue} cannot escape through '{source.OpCode.Name}'. Phase 5C does not permit managed byref values in heap, static, array, or indirect storage; keep the byref in SSA/ref locals or pass it to a scoped managed callee.",
+				$"Managed byref v{storedValue} cannot escape through '{source.OpCode.Name}'. The managed-byref profile does not permit byref values in heap, static, array, or indirect storage; keep the byref in SSA/ref locals or pass it to a scoped managed callee.",
 				function.DisplayName,
 				instruction.IlOffset);
 		}
@@ -852,7 +852,7 @@ internal static class M68kByrefOwnerRooting
 				var valueId = returning.Uses[0];
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedInstruction,
-					$"Managed byref return v{valueId} with {provenance[valueId].Kind} provenance requires a Phase 5C return-owner/lifetime summary.",
+					$"Managed byref return v{valueId} with {provenance[valueId].Kind} provenance requires a return-owner/lifetime summary.",
 					function.DisplayName,
 					returning.IlOffset);
 			}
@@ -1100,7 +1100,7 @@ internal static class M68kByrefOwnerRooting
 		M68kByrefProvenance provenance) =>
 		new(
 			M68kDiagnosticIds.UnsupportedInstruction,
-			$"Managed byref v{valueId} with {provenance.Kind} provenance is live at a GC safepoint. Phase 5C requires a transported owner root; frame, static, directly-owned interior, and caller-borrowed byrefs are supported.",
+			$"Managed byref v{valueId} with {provenance.Kind} provenance is live at a GC safepoint. The managed-byref profile requires a transported owner root; frame, static, directly-owned interior, and caller-borrowed byrefs are supported.",
 			function.DisplayName,
 			instruction.IlOffset);
 }
