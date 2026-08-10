@@ -1145,7 +1145,7 @@ internal sealed class CompilationModule : IDisposable
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedPolymorphism,
-				"Phase 5D constrained dispatch currently supports interface methods on closed value types; constrained object and non-interface virtual methods are not supported yet.",
+				"Constrained dispatch currently supports interface methods on closed value types; constrained object and non-interface virtual methods are not supported yet.",
 				caller.DisplayName,
 				ilOffset);
 		}

@@ -20,9 +20,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Baselines\net10.0-phase0.json"
-          CopyToOutputDirectory="PreserveNewest" />
-	<None Update="Baselines\net10.0-phase11-ledger.json"
+	<None Update="Baselines\net10.0-profile-baseline.json"
+	      CopyToOutputDirectory="PreserveNewest" />
+	<None Update="Baselines\net10.0-compatibility-ledger.json"
 	      CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

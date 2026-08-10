@@ -23,4 +23,4 @@ Related runtime specifications remain separate because they are useful beyond th
 
 The exact supported member set is machine-readable in [`net10.0-10.0.9.json`](net10.0-10.0.9.json). Documentation describes the policy and architecture; the manifest, implementation-pack manifest, compiler validation, and tests decide whether a particular member is accepted.
 
-Compatibility corpus expectations live in [`net10.0-phase11-ledger.json`](../../Compiler.Tests/Baselines/net10.0-phase11-ledger.json). The historical filename is retained because tests and release evidence refer to it; it does not mean that the profile is still a work in progress.
+Compatibility corpus expectations live in [`net10.0-compatibility-ledger.json`](../../Compiler.Tests/Baselines/net10.0-compatibility-ledger.json).

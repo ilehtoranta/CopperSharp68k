@@ -1,0 +1,123 @@
+[
+  {
+    "Name": "fixture:ArithmeticEntry",
+    "ImageBytes": 1720,
+    "CodeBytes": 1236,
+    "CompiledMethods": 3,
+    "SpilledValues": 1,
+    "MaximumSpillFrameBytes": 4,
+    "StackMemoryInstructions": 9,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": 4974,
+    "RuntimeFeatures": [
+      "exceptions"
+    ]
+  },
+  {
+    "Name": "fixture:QuickArithmeticEntry",
+    "ImageBytes": 472,
+    "CodeBytes": 70,
+    "CompiledMethods": 5,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 4,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": 106,
+    "RuntimeFeatures": []
+  },
+  {
+    "Name": "fixture:BranchAssignedLocalsEntry",
+    "ImageBytes": 284,
+    "CodeBytes": 76,
+    "CompiledMethods": 2,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 2,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": 76,
+    "RuntimeFeatures": []
+  },
+  {
+    "Name": "fixture:NarrowByteArithmeticEntry",
+    "ImageBytes": 268,
+    "CodeBytes": 58,
+    "CompiledMethods": 2,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 2,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": 44,
+    "RuntimeFeatures": []
+  },
+  {
+    "Name": "fixture:NarrowShortArithmeticEntry",
+    "ImageBytes": 272,
+    "CodeBytes": 62,
+    "CompiledMethods": 2,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 2,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": 52,
+    "RuntimeFeatures": []
+  },
+  {
+    "Name": "fixture:StringLiteralEntry",
+    "ImageBytes": 356,
+    "CodeBytes": 126,
+    "CompiledMethods": 2,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 2,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": null,
+    "RuntimeFeatures": [
+      "managed-strings"
+    ]
+  },
+  {
+    "Name": "fixture:NullableUIntDefaultEntry",
+    "ImageBytes": 344,
+    "CodeBytes": 136,
+    "CompiledMethods": 2,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 6,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": null,
+    "RuntimeFeatures": []
+  },
+  {
+    "Name": "example:IFFInspect",
+    "ImageBytes": 8040,
+    "CodeBytes": 5646,
+    "CompiledMethods": 24,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 227,
+    "ManagedAllocationSites": 5,
+    "Mc68000Cycles": null,
+    "RuntimeFeatures": [
+      "native-cstrings",
+      "exceptions",
+      "managed-gc",
+      "runtime-type-metadata"
+    ]
+  },
+  {
+    "Name": "example:MUITaskList",
+    "ImageBytes": 5672,
+    "CodeBytes": 4212,
+    "CompiledMethods": 15,
+    "SpilledValues": 12,
+    "MaximumSpillFrameBytes": 20,
+    "StackMemoryInstructions": 191,
+    "ManagedAllocationSites": 7,
+    "Mc68000Cycles": null,
+    "RuntimeFeatures": [
+      "native-cstrings",
+      "exceptions",
+      "runtime-type-metadata"
+    ]
+  }
+]

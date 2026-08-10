@@ -15190,7 +15190,7 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void PortableConsoleMetricsStayWithinPhase9BMc68000Budgets()
+	public void PortableConsoleStringMetricsStayWithinMc68000Budgets()
 	{
 		const uint execBase = 0x0000_3000;
 		const uint dosBase = 0x0000_5000;
@@ -15239,7 +15239,7 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void PortableConsolePrimitiveMetricsStayWithinPhase9CMc68000Budgets()
+	public void PortableConsolePrimitiveMetricsStayWithinMc68000Budgets()
 	{
 		const uint execBase = 0x0000_3000;
 		const uint dosBase = 0x0000_5000;
@@ -15289,7 +15289,7 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void PortableConsoleBooleanMetricsStayWithinPhase9C3Mc68000Budgets()
+	public void PortableConsoleBooleanMetricsStayWithinMc68000Budgets()
 	{
 		var measurement = MeasurePortableConsolePrimitive(
 			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableConsoleBooleanEntry");
@@ -15309,7 +15309,7 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void PortableConsoleCharacterMetricsStayWithinPhase9C3Mc68000Budgets()
+	public void PortableConsoleCharacterMetricsStayWithinMc68000Budgets()
 	{
 		var measurement = MeasurePortableConsolePrimitive(
 			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableConsoleCharacterEntry");
@@ -15329,7 +15329,7 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void PortableConsoleInt64MetricsStayWithinPhase9C4Mc68000Budgets()
+	public void PortableConsoleInt64MetricsStayWithinMc68000Budgets()
 	{
 		var measurement = MeasurePortableConsolePrimitive(
 			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableConsoleInt64Entry");

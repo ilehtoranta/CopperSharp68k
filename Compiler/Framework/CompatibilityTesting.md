@@ -21,9 +21,9 @@ The suite is divided by responsibility so a profile change can identify which co
 
 The exact current contract is [`net10.0-10.0.9.json`](net10.0-10.0.9.json).
 
-The baseline fixture and metric format are retained in [`net10.0-phase0.json`](../../Compiler.Tests/Baselines/net10.0-phase0.json). Its historical filename is stable test data, not a project-status label.
+The profile baseline and metric format are retained in [`net10.0-profile-baseline.json`](../../Compiler.Tests/Baselines/net10.0-profile-baseline.json).
 
-The compatibility corpus is recorded in [`net10.0-phase11-ledger.json`](../../Compiler.Tests/Baselines/net10.0-phase11-ledger.json). It contains application roots, reachable framework occurrences, expected acceptance, and diagnostic evidence. Its filename is likewise retained for test stability.
+The compatibility corpus is recorded in [`net10.0-compatibility-ledger.json`](../../Compiler.Tests/Baselines/net10.0-compatibility-ledger.json). It contains application roots, reachable framework occurrences, expected acceptance, and diagnostic evidence.
 
 ## Baseline metrics
 
