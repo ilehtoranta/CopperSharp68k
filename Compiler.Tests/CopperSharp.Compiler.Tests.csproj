@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
+	<ProjectReference Include="..\Compiler.Tests.PackageDependency\CopperSharp.Compiler.Tests.PackageDependency.csproj" />
     <ProjectReference Include="..\Compiler.Tests.MultiModule\CopperSharp.Compiler.Tests.MultiModule.csproj" />
     <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
     <ProjectReference Include="..\Runtime.AmigaPal\CopperSharp.Runtime.AmigaPal.csproj" />

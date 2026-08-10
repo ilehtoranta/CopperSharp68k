@@ -117,19 +117,67 @@ public sealed class FrameworkImplementationPackTests
 	}
 
 	[Fact]
-	public void UnallowlistedStopwatchMemberDoesNotFallBackToShadowWhenPackIsConfigured()
+	public void StopwatchElapsedValuesUseTargetOwnedScalingWhenPackIsConfigured()
 	{
 		using var pack = CoreLibPack.Create();
 		var request = Request(
 			pack.ManifestPath,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableStopwatchUnallowlistedElapsedMillisecondsEntry");
+			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableStopwatchElapsedValuesEntry");
 		var analysis = AmigaM68kCompiler.AnalyzeFramework(request);
 
 		var elapsed = Assert.Single(analysis.Members, static member =>
 			member.Member.TypeName == "System.Diagnostics.Stopwatch" &&
 			member.Member.Name == "get_ElapsedMilliseconds");
-		Assert.NotEqual(M68kFrameworkCompatibilityStatus.Implemented, elapsed.Status);
-		Assert.DoesNotContain("ShadowStopwatch", elapsed.Binding ?? string.Empty, StringComparison.Ordinal);
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, elapsed.Status);
+		Assert.Equal("platform:amiga-stopwatch-elapsed-milliseconds", elapsed.Binding);
+		var result = AmigaM68kCompiler.Compile(request);
+		Assert.DoesNotContain(
+			result.Symbols,
+			static symbol => symbol.Name == "System.Diagnostics.Stopwatch::.cctor");
+	}
+
+	[Fact]
+	public void ValidCoreLibPackSelectsPinnedTimeSpanLeafBodies()
+	{
+		using var pack = CoreLibPack.Create();
+		var request = Request(
+			pack.ManifestPath,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::PortablePinnedTimeSpanEntry");
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(request);
+
+		var members = analysis.Members
+			.Where(static member => member.Member.TypeName == "System.TimeSpan")
+			.ToArray();
+		Assert.Equal(7, members.Length);
+		var ticks = Assert.Single(members, static member => member.Member.Name == "get_Ticks");
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, ticks.Status);
+		Assert.Equal("pinned:[System.Private.CoreLib]System.TimeSpan::get_Ticks", ticks.Binding);
+		Assert.All(
+			members.Where(static member => member.Member.Name != "get_Ticks"),
+			static member => Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status));
+
+		var result = AmigaM68kCompiler.Compile(request);
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name == "System.TimeSpan::get_Ticks");
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name.Contains("ShadowTimeSpan", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name == "System.TimeSpan::.cctor");
+	}
+
+	[Fact]
+	public void UnallowlistedTimeSpanMemberFailsClosedWhenPackIsConfigured()
+	{
+		using var pack = CoreLibPack.Create();
+		var request = Request(
+			pack.ManifestPath,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableUnallowlistedTimeSpanTotalMillisecondsEntry");
+		var analysis = AmigaM68kCompiler.AnalyzeFramework(request);
+
+		var member = Assert.Single(analysis.Members, static candidate =>
+			candidate.Member.TypeName == "System.TimeSpan" &&
+			candidate.Member.Name == "get_TotalMilliseconds");
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
 		Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(request));
 	}
 

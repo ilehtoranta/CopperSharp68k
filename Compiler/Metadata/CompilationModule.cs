@@ -1174,7 +1174,13 @@ internal sealed class CompilationModule : IDisposable
 				$"Constrained receiver '{constrainedType.DisplayName}' does not implement '{interfaceDefinition.DisplayName}'.",
 				caller.DisplayName,
 				ilOffset);
-		return implementation.Methods[GetInterfaceSlot(declaration)];
+		var implementationMethod = implementation.Methods[GetInterfaceSlot(declaration)];
+		return declaration.MethodTypeArguments.IsDefaultOrEmpty
+			? implementationMethod
+			: GetModule(implementationMethod.ModuleName).GetConstructedMethod(
+				implementationMethod.Handle,
+				implementationMethod.ConstructedDeclaringType,
+				declaration.MethodTypeArguments);
 	}
 
 	public EntityHandle GetBaseType(CilTypeLayout layout) =>
@@ -1575,7 +1581,13 @@ internal sealed class CompilationModule : IDisposable
 			method.ConstructedDeclaringType);
 		for (var index = 0; index < interfaceDefinition.Slots.Length; index++)
 		{
-			if (interfaceDefinition.Slots[index].Identity == method.Identity)
+			var slot = interfaceDefinition.Slots[index];
+			if (slot.Handle == method.Handle &&
+				string.Equals(slot.ModuleName, method.ModuleName, StringComparison.Ordinal) &&
+				string.Equals(
+					slot.ConstructedDeclaringType?.DisplayName,
+					method.ConstructedDeclaringType?.DisplayName,
+					StringComparison.Ordinal))
 			{
 				return index;
 			}
@@ -2444,6 +2456,21 @@ internal sealed class CompilationModule : IDisposable
 		return method.Name == ".ctor" &&
 			!method.DeclaringType.IsNil &&
 			IsValueTypeDefinition(Reader.GetTypeDefinition(method.DeclaringType));
+	}
+
+	public CilType GetMethodDeclaringType(CilMethod method)
+	{
+		if (!string.IsNullOrEmpty(method.ModuleName) &&
+			!string.Equals(method.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(method, 0).GetMethodDeclaringType(method);
+		}
+		if (method.DeclaringType.IsNil)
+			throw new InvalidOperationException($"Method '{method.DisplayName}' has no declaring type.");
+		return _signatureProvider.GetTypeFromDefinition(
+			Reader,
+			method.DeclaringType,
+			IsValueTypeDefinition(Reader.GetTypeDefinition(method.DeclaringType)) ? (byte)0x11 : (byte)0x12);
 	}
 
 	public bool IsSupportedStructType(CilType type)
@@ -3475,6 +3502,35 @@ internal sealed class CompilationModule : IDisposable
 		};
 	}
 
+	public string? DescribeMethodTokenName(
+		int token,
+		CilMethod caller,
+		int ilOffset)
+	{
+		if (!string.IsNullOrEmpty(caller.ModuleName) &&
+			!string.Equals(caller.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(caller, ilOffset)
+				.DescribeMethodTokenName(token, caller, ilOffset);
+		}
+		var handle = MetadataTokens.EntityHandle(token);
+		return MethodName(handle);
+
+		string? MethodName(EntityHandle methodHandle) => methodHandle.Kind switch
+		{
+			HandleKind.MethodDefinition => Reader.GetString(
+				Reader.GetMethodDefinition(
+					(MethodDefinitionHandle)methodHandle).Name),
+			HandleKind.MemberReference => Reader.GetString(
+				Reader.GetMemberReference(
+					(MemberReferenceHandle)methodHandle).Name),
+			HandleKind.MethodSpecification => MethodName(
+				Reader.GetMethodSpecification(
+					(MethodSpecificationHandle)methodHandle).Method),
+			_ => null
+		};
+	}
+
 	public FrameworkMemberId DescribeFrameworkMethodToken(
 		int token,
 		CilMethod caller,
@@ -3689,6 +3745,22 @@ internal sealed class CompilationModule : IDisposable
 		int ilOffset)
 	{
 		var specification = Reader.GetMethodSpecification(handle);
+		if (specification.Method.Kind == HandleKind.MethodDefinition &&
+			Reader.GetString(Reader.GetMethodDefinition(
+				(MethodDefinitionHandle)specification.Method).Name) is
+				"InlineArrayElementRef" or "InlineArrayAsReadOnlySpan" &&
+			caller.Instructions.Any(instruction =>
+				instruction.OpCode == OpCodes.Call &&
+				EphemeralParamsArrayAnalyzer.AnalyzeReadOnlySpanParams(
+					this,
+					caller,
+					instruction.Offset)?.SuppressedCallOffsets.Contains(ilOffset) == true))
+		{
+			var scaffold = GetMethod((MethodDefinitionHandle)specification.Method);
+			return MethodReference.ForIntrinsic(
+				"intrinsic:ephemeral-inline-array-scaffolding",
+				scaffold.Signature);
+		}
 		var arguments = specification.DecodeSignature(
 			_signatureProvider,
 			caller.GenericContext);
@@ -3750,6 +3822,23 @@ internal sealed class CompilationModule : IDisposable
 					ilOffset) is { } registered)
 			{
 				return registered;
+			}
+
+			var managedIdentity = DescribeMemberReference(
+				memberHandle,
+				arguments.Select(static argument => argument.DisplayName).ToImmutableArray());
+			if (managedIdentity is not null &&
+				TryResolveManagedMethod(
+					managedIdentity.AssemblyName,
+					typeName,
+					Reader.GetString(member.Name),
+					memberSignature,
+					constructedDeclaringType,
+					arguments) is { } managedMethod)
+			{
+				return MethodReference.ForDefinition(
+					managedMethod,
+					constructedDeclaringType);
 			}
 
 			if (!localDeclaringType.IsNil)
@@ -4702,10 +4791,61 @@ internal sealed class CompilationModule : IDisposable
 				throw new InvalidOperationException(
 					$"Managed framework binding '{binding.Member.DisplayName}' has no target.");
 			var shadowMethodName = shadowTarget.MethodName;
-			if (shadowTarget is
+			IReadOnlyList<CilType>? shadowMethodTypeArguments = null;
+			MethodSignature<CilType>? shadowResolutionSignature = null;
+			if (shadowTarget.TypeName ==
+					"CopperSharp.Runtime.ShadowStringFormat" &&
+				shadowTarget.MethodName is
+					"FormatParams" or "FormatArguments" or "FormatSpanParams")
+			{
+				var elementTypes = caller is not null && ilOffset >= 0
+					? shadowTarget.MethodName == "FormatParams"
+						? EphemeralParamsArrayAnalyzer.AnalyzeBoxedValueArray(
+							this,
+							caller,
+							ilOffset,
+							minimumLength: 1,
+							maximumLength: 8)?.ElementTypes
+						: shadowTarget.MethodName == "FormatSpanParams"
+							? EphemeralParamsArrayAnalyzer.AnalyzeReadOnlySpanParams(
+								this,
+								caller,
+								ilOffset)?.ElementTypes
+						: EphemeralParamsArrayAnalyzer.AnalyzeImmediateBoxedArguments(
+							this,
+							caller,
+							ilOffset,
+							signature.ParameterTypes.Length - 1)
+					: null;
+				if (elementTypes is null)
 				{
-					TypeName: "CopperSharp.Runtime.ShadowEnumerable",
-					MethodName: "ToArray"
+					var provenanceRequirement = shadowTarget.MethodName switch
+					{
+						"FormatParams" =>
+							"an immediate fresh object array containing one to eight unaliased boxed Int32 values",
+						"FormatSpanParams" =>
+							"an immediate compiler-generated ReadOnlySpan containing one to eight unaliased boxed Int32 values",
+						_ =>
+							"one to eight immediate, unaliased boxed Int32 values"
+					};
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.UnsupportedInstruction,
+						$"The admitted string.Format slice requires {provenanceRequirement} and no control-flow entries.",
+						caller?.DisplayName,
+						ilOffset >= 0 ? ilOffset : null);
+				}
+				shadowMethodName = $"Format{elementTypes.Count}";
+				shadowResolutionSignature = new MethodSignature<CilType>(
+					signature.Header,
+					signature.ReturnType,
+					requiredParameterCount: 1 + elementTypes.Count,
+					genericParameterCount: 0,
+					[signature.ParameterTypes[0], .. elementTypes]);
+			}
+			else if (shadowTarget is
+			{
+				TypeName: "CopperSharp.Runtime.ShadowEnumerable",
+				MethodName: "ToArray"
 				})
 			{
 				shadowMethodName = ResolveShadowEnumerableMaterializer(
@@ -4845,7 +4985,6 @@ internal sealed class CompilationModule : IDisposable
 					"the selected ordered foreach slice requires an exact private ordered enumerator");
 			}
 		}
-			IReadOnlyList<CilType>? shadowMethodTypeArguments = null;
 			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowArray" ||
 				(shadowTarget.TypeName == "CopperSharp.Runtime.ShadowEnumerable" &&
 				 shadowMethodName is "Repeat" or "RepeatToArray" or "ArraySumSelector" or
@@ -4872,7 +5011,7 @@ internal sealed class CompilationModule : IDisposable
 				shadowTarget.AssemblyName,
 				shadowTarget.TypeName,
 				shadowMethodName,
-					signature,
+					shadowResolutionSignature ?? signature,
 					constructedDeclaringType,
 					shadowMethodTypeArguments) ??
 				throw new M68kCompilationException(

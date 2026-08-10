@@ -32,6 +32,14 @@ internal static class FrameworkBindingRegistry
 		FrameworkTypeId.Primitive("System.Void");
 	private static readonly FrameworkTypeId Boolean =
 		FrameworkTypeId.Primitive("System.Boolean");
+	private static readonly FrameworkTypeId Byte =
+		FrameworkTypeId.Primitive("System.Byte");
+	private static readonly FrameworkTypeId SByte =
+		FrameworkTypeId.Primitive("System.SByte");
+	private static readonly FrameworkTypeId Int16 =
+		FrameworkTypeId.Primitive("System.Int16");
+	private static readonly FrameworkTypeId UInt16 =
+		FrameworkTypeId.Primitive("System.UInt16");
 	private static readonly FrameworkTypeId Int32 =
 		FrameworkTypeId.Primitive("System.Int32");
 	private static readonly FrameworkTypeId UInt32 =
@@ -40,18 +48,32 @@ internal static class FrameworkBindingRegistry
 		FrameworkTypeId.Primitive("System.Int64");
 	private static readonly FrameworkTypeId UInt64 =
 		FrameworkTypeId.Primitive("System.UInt64");
+	private static readonly FrameworkTypeId IntPtr =
+		FrameworkTypeId.Primitive("System.IntPtr");
+	private static readonly FrameworkTypeId UIntPtr =
+		FrameworkTypeId.Primitive("System.UIntPtr");
+	private static readonly FrameworkTypeId Single =
+		FrameworkTypeId.Primitive("System.Single");
+	private static readonly FrameworkTypeId Double =
+		FrameworkTypeId.Primitive("System.Double");
+	private static readonly FrameworkTypeId MidpointRounding =
+		Named("System.Runtime", "System.MidpointRounding");
 	private static readonly FrameworkTypeId Char =
 		FrameworkTypeId.Primitive("System.Char");
 	private static readonly FrameworkTypeId Object =
 		FrameworkTypeId.Primitive("System.Object");
 	private static readonly FrameworkTypeId String =
 		FrameworkTypeId.Primitive("System.String");
+	private static readonly FrameworkTypeId ArrayDefinition =
+		Named("System.Runtime", "System.Array");
 	private static readonly FrameworkTypeId FrameworkStringComparison =
 		Named("System.Runtime", "System.StringComparison");
 	private static readonly FrameworkTypeId FileAttributes =
 		Named("System.Runtime", "System.IO.FileAttributes");
 	private static readonly FrameworkTypeId Stopwatch =
 		Named("System.Runtime", "System.Diagnostics.Stopwatch");
+	private static readonly FrameworkTypeId TimeSpan =
+		Named("System.Runtime", "System.TimeSpan");
 	private static readonly FrameworkTypeId GenericType0 =
 		FrameworkTypeId.GenericTypeParameter(0);
 	private static readonly FrameworkTypeId GenericType1 =
@@ -132,6 +154,8 @@ internal static class FrameworkBindingRegistry
 			[GenericMethod0, Int32]);
 	private static readonly FrameworkTypeId ReadOnlySpanOfChar =
 		FrameworkTypeId.GenericInstantiation(ReadOnlySpanDefinition, [Char]);
+	private static readonly FrameworkTypeId ReadOnlySpanOfObject =
+		FrameworkTypeId.GenericInstantiation(ReadOnlySpanDefinition, [Object]);
 	private static readonly FrameworkTypeId ReadOnlySpanOfGenericMethod0 =
 		FrameworkTypeId.GenericInstantiation(
 			ReadOnlySpanDefinition,
@@ -176,6 +200,11 @@ internal static class FrameworkBindingRegistry
 		if (TryBindEqualityComparer(member, context) is { } equalityComparer)
 		{
 			return equalityComparer;
+		}
+
+		if (TryBindArray(member, context) is { } array)
+		{
+			return array;
 		}
 
 		if (TryBindList(member, context) is { } list)
@@ -389,6 +418,89 @@ internal static class FrameworkBindingRegistry
 
 		return null;
 	}
+
+	private static FrameworkBinding? TryBindArray(
+		FrameworkMemberId member,
+		FrameworkBindingContext context)
+	{
+		if (!member.DeclaringType.Equals(ArrayDefinition) ||
+			member.MethodTypeArguments is not [_] ||
+			context.MethodTypeArguments is not [var element] ||
+			!IsSupportedArrayElement(element, context))
+		{
+			return null;
+		}
+
+		var array = FrameworkTypeId.SzArray(GenericMethod0);
+		var shadowName = member.Name switch
+		{
+			"Empty" when GenericStaticSignatureEquals(member, array) => "Empty",
+			"Fill" when GenericStaticSignatureEquals(
+				member, Void, array, GenericMethod0) => "Fill",
+			"Fill" when GenericStaticSignatureEquals(
+				member, Void, array, GenericMethod0, Int32, Int32) => "Fill",
+			"IndexOf" when IsSupportedListEqualityElement(element, context) &&
+				GenericStaticSignatureEquals(
+					member, Int32, array, GenericMethod0) => "IndexOf",
+			"IndexOf" when IsSupportedListEqualityElement(element, context) &&
+				GenericStaticSignatureEquals(
+					member, Int32, array, GenericMethod0, Int32) => "IndexOf",
+			"IndexOf" when IsSupportedListEqualityElement(element, context) &&
+				GenericStaticSignatureEquals(
+					member, Int32, array, GenericMethod0, Int32, Int32) => "IndexOf",
+			"LastIndexOf" when IsSupportedListEqualityElement(element, context) &&
+				GenericStaticSignatureEquals(
+					member, Int32, array, GenericMethod0) => "LastIndexOf",
+			"LastIndexOf" when IsSupportedListEqualityElement(element, context) &&
+				GenericStaticSignatureEquals(
+					member, Int32, array, GenericMethod0, Int32) => "LastIndexOf",
+			"LastIndexOf" when IsSupportedListEqualityElement(element, context) &&
+				GenericStaticSignatureEquals(
+					member, Int32, array, GenericMethod0, Int32, Int32) => "LastIndexOf",
+			"Reverse" when GenericStaticSignatureEquals(
+				member, Void, array) => "Reverse",
+			"Reverse" when GenericStaticSignatureEquals(
+				member, Void, array, Int32, Int32) => "Reverse",
+			_ => null
+		};
+		if (shadowName is null)
+		{
+			return null;
+		}
+
+		var effects = member.Name == "Empty"
+			? FrameworkEffects.MayAllocate |
+				FrameworkEffects.MayThrow |
+				FrameworkEffects.MayCollect |
+				FrameworkEffects.ReadsManagedMemory |
+				FrameworkEffects.WritesManagedMemory
+			: member.Name is "Fill" or "Reverse"
+				? FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory
+				: FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsManagedMemory;
+		return Shadow(
+			member,
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowArray",
+				shadowName),
+			Effects(
+				effects,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedGc));
+	}
+
+	private static bool IsSupportedArrayElement(
+		CilType element,
+		FrameworkBindingContext context) =>
+		(element.IsSupportedScalar &&
+		 element.Kind is not (CilTypeKind.ManagedPointer or
+			CilTypeKind.UnmanagedPointer or CilTypeKind.GenericParameter)) ||
+		IsSupportedNullableListEqualityElement(element) ||
+		(element.Kind == CilTypeKind.ValueType &&
+		 context.MethodTypeArgumentContainsReferences is [false]);
 
 	private static FrameworkBinding? TryBindEqualityComparerInterface(
 		FrameworkMemberId member,
@@ -1489,6 +1601,121 @@ internal static class FrameworkBindingRegistry
 				FrameworkFeature.AmigaInterop,
 				FrameworkFeature.AmigaClock,
 				FrameworkFeature.ManagedExceptions));
+		foreach (var (memberName, targetName, shadowName, returnType) in new[]
+		{
+			("get_ElapsedMilliseconds", "platform:amiga-stopwatch-elapsed-milliseconds", "GetElapsedMilliseconds", Int64),
+			("get_Elapsed", "platform:amiga-stopwatch-elapsed", "GetElapsed", TimeSpan)
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					"System.Diagnostics.Stopwatch",
+					memberName,
+					isInstance: true,
+					returnType),
+				targetName,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+					shadowName),
+				Effects(
+					FrameworkEffects.MayThrow |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.ReadsNativeMemory |
+						FrameworkEffects.WritesNativeMemory,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.NativeMemory,
+					FrameworkFeature.AmigaInterop,
+					FrameworkFeature.AmigaClock,
+					FrameworkFeature.ManagedExceptions));
+		}
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"GetElapsedTime",
+				isInstance: false,
+				TimeSpan,
+				Int64),
+			"platform:amiga-stopwatch-get-elapsed-time",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"GetElapsedTime"),
+			Effects(
+				FrameworkEffects.MayThrow |
+					FrameworkEffects.ReadsNativeMemory |
+					FrameworkEffects.WritesNativeMemory,
+				FrameworkFeature.NativeMemory,
+				FrameworkFeature.AmigaInterop,
+				FrameworkFeature.AmigaClock,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.Diagnostics.Stopwatch",
+				"GetElapsedTime",
+				isInstance: false,
+				TimeSpan,
+				Int64,
+				Int64),
+			"platform:amiga-stopwatch-get-elapsed-time",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowStopwatch",
+				"GetElapsedTime"),
+			Effects(
+				FrameworkEffects.MayThrow,
+				FrameworkFeature.ManagedExceptions));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.TimeSpan",
+				"get_Ticks",
+				isInstance: true,
+				Int64),
+			"platform:amiga-timespan-ticks",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowTimeSpan",
+				"GetTicks"),
+			Effects(
+				FrameworkEffects.ReadsManagedMemory,
+				FrameworkFeature.NativeMemory));
+		foreach (var (memberName, targetName, shadowName) in new[]
+		{
+			("op_Equality", "platform:amiga-timespan-equality", "Equal"),
+			("op_Inequality", "platform:amiga-timespan-inequality", "NotEqual"),
+			("op_LessThan", "platform:amiga-timespan-less-than", "LessThan"),
+			("op_LessThanOrEqual", "platform:amiga-timespan-less-than-or-equal", "LessThanOrEqual"),
+			("op_GreaterThan", "platform:amiga-timespan-greater-than", "GreaterThan"),
+			("op_GreaterThanOrEqual", "platform:amiga-timespan-greater-than-or-equal", "GreaterThanOrEqual")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					"System.TimeSpan",
+					memberName,
+					isInstance: false,
+					Boolean,
+					TimeSpan,
+					TimeSpan),
+				targetName,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ShadowTimeSpan",
+					shadowName),
+				Effects(
+					FrameworkEffects.ReadsManagedMemory,
+					FrameworkFeature.NativeMemory));
+		}
 		AddManagedBody(
 			bindings,
 			Member(
@@ -1668,6 +1895,84 @@ internal static class FrameworkBindingRegistry
 			Effects(
 				FrameworkEffects.WritesManagedMemory,
 				FrameworkFeature.ManagedArrays));
+		AddShadow(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.String",
+				"Format",
+				isInstance: false,
+				String,
+				String,
+				FrameworkTypeId.SzArray(Object)),
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowStringFormat",
+				"FormatParams"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.MayCollect |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory,
+				FrameworkFeature.IntegerFormatting,
+				FrameworkFeature.ManagedArrays,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.StringInterpolation));
+		foreach (var formatArguments in new[]
+		{
+			new[] { Object },
+			new[] { Object, Object },
+			new[] { Object, Object, Object }
+		})
+		{
+			AddShadow(
+				bindings,
+				Member(
+					"System.Runtime",
+					"System.String",
+					"Format",
+					isInstance: false,
+					String,
+					[String, .. formatArguments]),
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.Managed",
+					"CopperSharp.Runtime.ShadowStringFormat",
+					"FormatArguments"),
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.MayCollect |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.WritesManagedMemory,
+					FrameworkFeature.IntegerFormatting,
+					FrameworkFeature.ManagedStrings,
+					FrameworkFeature.StringInterpolation));
+		}
+		AddShadow(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.String",
+				"Format",
+				isInstance: false,
+				String,
+				String,
+				ReadOnlySpanOfObject),
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.Managed",
+				"CopperSharp.Runtime.ShadowStringFormat",
+				"FormatSpanParams"),
+			Effects(
+				FrameworkEffects.MayAllocate |
+					FrameworkEffects.MayThrow |
+					FrameworkEffects.MayCollect |
+					FrameworkEffects.ReadsManagedMemory |
+					FrameworkEffects.WritesManagedMemory,
+				FrameworkFeature.IntegerFormatting,
+				FrameworkFeature.ManagedStrings,
+				FrameworkFeature.Spans,
+				FrameworkFeature.StringInterpolation));
 		Add(
 			bindings,
 			Member(
@@ -1884,23 +2189,134 @@ internal static class FrameworkBindingRegistry
 				FrameworkEffects.ReadsManagedMemory,
 				FrameworkFeature.ManagedStrings,
 				FrameworkFeature.Spans));
+		var mathShadow = new FrameworkShadowMethod(
+			"CopperSharp.Runtime.Managed",
+			"CopperSharp.Runtime.ShadowMath",
+			string.Empty);
+		foreach (var type in new[] { SByte, Int16, Int32, Int64, IntPtr })
+		{
+			AddShadow(
+				bindings,
+				Member("System.Runtime", "System.Math", "Abs", false, type, type),
+				mathShadow with { MethodName = "Abs" },
+				Effects(
+					FrameworkEffects.MayThrow,
+					FrameworkFeature.ManagedExceptions,
+					FrameworkFeature.Numerics));
+			AddShadow(
+				bindings,
+				Member("System.Runtime", "System.Math", "Sign", false, Int32, type),
+				mathShadow with { MethodName = "Sign" },
+				Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		}
+		foreach (var type in new[]
+		{
+			Byte, SByte, Int16, UInt16, Int32, UInt32, Int64, UInt64, IntPtr, UIntPtr
+		})
+		{
+			foreach (var name in new[] { "Min", "Max" })
+			{
+				AddShadow(
+					bindings,
+					Member("System.Runtime", "System.Math", name, false, type, type, type),
+					mathShadow with { MethodName = name },
+					Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+			}
+			AddShadow(
+				bindings,
+				Member("System.Runtime", "System.Math", "Clamp", false, type, type, type, type),
+				mathShadow with { MethodName = "Clamp" },
+				Effects(
+					FrameworkEffects.MayThrow,
+					FrameworkFeature.ManagedExceptions,
+					FrameworkFeature.Numerics));
+		}
 		AddShadow(
 			bindings,
-			Member(
-				"System.Runtime",
-				"System.Math",
-				"Abs",
-				isInstance: false,
-				Int32,
-				Int32),
-			new FrameworkShadowMethod(
-				"CopperSharp.Runtime.Managed",
-				"CopperSharp.Runtime.ShadowMath",
-				"Abs"),
+			Member("System.Runtime", "System.Math", "BigMul", false, Int64, Int32, Int32),
+			mathShadow with { MethodName = "BigMul" },
+			Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		AddShadow(
+			bindings,
+			Member("System.Runtime", "System.Math", "BigMul", false, UInt64, UInt32, UInt32),
+			mathShadow with { MethodName = "BigMul" },
+			Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		foreach (var type in new[] { Single, Double })
+		{
+			foreach (var name in new[] { "Abs", "Min", "Max", "Clamp", "Sign" })
+			{
+				var parameters = name switch
+				{
+					"Abs" or "Sign" => new[] { type },
+					"Min" or "Max" => new[] { type, type },
+					_ => new[] { type, type, type }
+				};
+				AddShadow(
+					bindings,
+					Member(
+						"System.Runtime",
+						"System.Math",
+						name,
+						false,
+						name == "Sign" ? Int32 : type,
+						parameters),
+					mathShadow with { MethodName = name },
+					name is "Clamp" or "Sign"
+						? Effects(
+							FrameworkEffects.MayThrow,
+							FrameworkFeature.ManagedExceptions,
+							FrameworkFeature.Numerics)
+						: Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+			}
+		}
+		AddShadow(
+			bindings,
+			Member("System.Runtime", "System.Math", "CopySign", false, Double, Double, Double),
+			mathShadow with { MethodName = "CopySign" },
+			Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		foreach (var name in new[] { "Floor", "Ceiling", "Truncate", "Sqrt" })
+		{
+			AddShadow(
+				bindings,
+				Member("System.Runtime", "System.Math", name, false, Double, Double),
+				mathShadow with { MethodName = name },
+				Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		}
+		AddShadow(
+			bindings,
+			Member("System.Runtime", "System.Math", "Round", false, Double, Double),
+			mathShadow with { MethodName = "Round" },
+			Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		AddShadow(
+			bindings,
+			Member("System.Runtime", "System.Math", "Round", false, Double, Double, MidpointRounding),
+			mathShadow with { MethodName = "Round" },
 			Effects(
 				FrameworkEffects.MayThrow,
 				FrameworkFeature.ManagedExceptions,
 				FrameworkFeature.Numerics));
+		foreach (var (typeName, type, shadowType) in new[]
+		{
+			("System.Double", Double, "CopperSharp.Runtime.ShadowDouble"),
+			("System.Single", Single, "CopperSharp.Runtime.ShadowSingle")
+		})
+		{
+			foreach (var name in new[]
+			{
+				"IsFinite", "IsInfinity", "IsNaN", "IsNegative",
+				"IsNegativeInfinity", "IsPositiveInfinity", "IsNormal", "IsSubnormal"
+			})
+			{
+				AddShadow(
+					bindings,
+					Member("System.Runtime", typeName, name, false, Boolean, type),
+					new FrameworkShadowMethod(
+						"CopperSharp.Runtime.Managed",
+						shadowType,
+						name),
+					Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+			}
+		}
 		foreach (var (typeName, shadowType) in new[]
 		{
 			("System.Int32", "CopperSharp.Runtime.ShadowInt32"),
@@ -3066,7 +3482,7 @@ internal static class FrameworkBindingRegistry
 		}
 
 		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
-			name is "SplitInt64" or "SplitUInt64" &&
+			name is "SplitInt64" or "SplitUInt64" or "SplitDouble" &&
 			signature is
 			{
 				Header.IsInstance: false,
@@ -3087,11 +3503,11 @@ internal static class FrameworkBindingRegistry
 		}
 
 		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
-			name == "CombineInt64" &&
+			name is "CombineInt64" or "CombineDouble" &&
 			signature is
 			{
 				Header.IsInstance: false,
-				ReturnType.DisplayName: "long",
+				ReturnType: { Size: 8, IsSupportedScalar: true },
 				ParameterTypes:
 				[
 					{ DisplayName: "uint" },
@@ -3102,6 +3518,20 @@ internal static class FrameworkBindingRegistry
 			return Intrinsic(
 				member,
 				"intrinsic:runtime-int64-combine",
+				Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name is "SingleToUInt32Bits" or "UInt32BitsToSingle" &&
+			signature is
+			{
+				Header.IsInstance: false,
+				ParameterTypes: [{ Size: 4, IsSupportedScalar: true }]
+			})
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-bitcast-32",
 				Effects(FrameworkEffects.None, FrameworkFeature.Numerics));
 		}
 
@@ -3143,6 +3573,17 @@ internal static class FrameworkBindingRegistry
 			return Intrinsic(
 				member,
 				"intrinsic:runtime-throw-overflow",
+				Effects(
+					FrameworkEffects.MayThrow,
+					FrameworkFeature.ManagedExceptions));
+		}
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "ThrowArithmeticException" &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-throw-arithmetic",
 				Effects(
 					FrameworkEffects.MayThrow,
 					FrameworkFeature.ManagedExceptions));
@@ -3430,6 +3871,34 @@ internal static class FrameworkBindingRegistry
 			}
 
 			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
+				name == "ReadUInt8" &&
+				signature.ParameterTypes.Length == 2 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int")
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:aptr-read-uint8",
+					Effects(
+						FrameworkEffects.ReadsNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
+			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
+				name == "ReadUInt16" &&
+				signature.ParameterTypes.Length == 2 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int")
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:aptr-read-uint16",
+					Effects(
+						FrameworkEffects.ReadsNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
+			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
 				name == "ReadUInt32" &&
 				signature.ParameterTypes.Length == 2 &&
 				signature.ParameterTypes[0].DisplayName == typeName &&
@@ -3440,6 +3909,36 @@ internal static class FrameworkBindingRegistry
 					"intrinsic:aptr-read-uint32",
 					Effects(
 						FrameworkEffects.ReadsNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
+			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
+				name == "WriteUInt8" &&
+				signature.ParameterTypes.Length == 3 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int" &&
+				signature.ParameterTypes[2].DisplayName == "byte")
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:aptr-write-uint8",
+					Effects(
+						FrameworkEffects.WritesNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
+			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
+				name == "WriteUInt16" &&
+				signature.ParameterTypes.Length == 3 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int" &&
+				signature.ParameterTypes[2].DisplayName == "ushort")
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:aptr-write-uint16",
+					Effects(
+						FrameworkEffects.WritesNativeMemory,
 						FrameworkFeature.NativeMemory));
 			}
 

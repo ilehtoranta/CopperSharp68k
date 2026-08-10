@@ -26,6 +26,37 @@ public sealed class FrameworkCompatibilityTests
 		Assert.Equal(1, result.Contract.ManifestSchemaVersion);
 	}
 
+	[Theory]
+	[InlineData("schemaVersion", "2")]
+	[InlineData("targetFramework", "net9.0")]
+	[InlineData("referencePack", "Other.Reference.Pack")]
+	[InlineData("referencePackVersion", "10.0.8")]
+	public void LedgerRejectsContractCoordinateDrift(string property, string replacement)
+	{
+		var schemaVersion = property == "schemaVersion" ? replacement : "1";
+		var targetFramework = property == "targetFramework" ? replacement : "net10.0";
+		var referencePack = property == "referencePack"
+			? replacement
+			: "Microsoft.NETCore.App.Ref";
+		var referencePackVersion = property == "referencePackVersion"
+			? replacement
+			: "10.0.9";
+		var ledger = $$"""
+			{
+			  "schemaVersion": {{schemaVersion}},
+			  "targetFramework": "{{targetFramework}}",
+			  "referencePack": "{{referencePack}}",
+			  "referencePackVersion": "{{referencePackVersion}}",
+			  "assemblies": ["System.Runtime"],
+			  "bindings": []
+			}
+			""";
+
+		var exception = Assert.Throws<InvalidOperationException>(
+			() => Net10FrameworkContract.ValidateManifestJson(ledger));
+		Assert.Contains("invalid or unsupported", exception.Message, StringComparison.Ordinal);
+	}
+
 	[Fact]
 	public void LedgerRejectsDuplicateMemberIdentities()
 	{
@@ -162,6 +193,34 @@ public sealed class FrameworkCompatibilityTests
 		Assert.Equal("ManagedBox", objectSite.AllocatedType);
 
 		Assert.Empty(Analyze("NullableUIntDefaultEntry").ManagedAllocationSites);
+	}
+
+	[Fact]
+	public void GenericArrayAlgorithmsUseExactOfficialShadowBindings()
+	{
+		var analysis = Analyze("ArrayAlgorithmsEntry");
+		var members = analysis.Members
+			.Where(member => member.Member.TypeName == "System.Array")
+			.ToArray();
+
+		Assert.Equal(11, members.Length);
+		Assert.Equal(
+			new[] { "Empty", "Fill", "IndexOf", "LastIndexOf", "Reverse" },
+			members
+				.Select(member => member.Member.Name)
+				.Distinct(StringComparer.Ordinal)
+				.Order()
+				.ToArray());
+		Assert.All(members, member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.Equal(
+				$"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowArray::{member.Member.Name}",
+				member.Binding);
+			Assert.Contains("managed-arrays", member.RequiredFeatures);
+			Assert.Contains("managed-gc", member.RequiredFeatures);
+		});
+		Assert.True(analysis.IsCompatible);
 	}
 
 	[Fact]
@@ -1432,34 +1491,6 @@ public sealed class FrameworkCompatibilityTests
 				formatter.RequiredFeatures);
 		});
 		Assert.True(analysis.IsCompatible);
-
-		var referenceValues = Analyze("DictionaryInt32ReferenceGcEntry");
-		Assert.True(referenceValues.IsCompatible);
-		Assert.Contains(
-			referenceValues.Members,
-			member => member.Member.TypeName.StartsWith(
-				"System.Collections.Generic.Dictionary`2<int,string>",
-				StringComparison.Ordinal) &&
-				member.Status == M68kFrameworkCompatibilityStatus.Implemented);
-
-		var unrelated = Analyze("IntegerToStringEntry");
-		Assert.DoesNotContain(
-			unrelated.Members,
-			member => member.Member.TypeName.StartsWith(
-				"System.Collections.Generic.Dictionary`2",
-				StringComparison.Ordinal));
-		var unrelatedAssembly = M68kCompiler.Compile(Request("IntegerToStringEntry") with
-		{
-			OutputFormat = M68kOutputFormat.Assembly,
-			Imports = new Dictionary<string, uint>
-			{
-				[M68kRuntimeImports.Allocate] = 0x0000_2800
-			}
-		});
-		Assert.DoesNotContain(
-			"ShadowDictionary",
-			unrelatedAssembly.Text,
-			StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -1500,6 +1531,182 @@ public sealed class FrameworkCompatibilityTests
 			unrelated.Members,
 			member => member.Member.TypeName ==
 				"System.Runtime.CompilerServices.DefaultInterpolatedStringHandler");
+	}
+
+	[Fact]
+	public void StringFormatErasesImmediateFourIntegerParamsArrayAndBoxes()
+	{
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowStringFormat).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::StringFormatParamsIntegerEntry");
+		var machine = CilMachineIrBuilder.Build(entry, module);
+		var instructions = machine.Blocks
+			.SelectMany(block => block.Instructions)
+			.ToArray();
+
+		Assert.DoesNotContain(
+			instructions,
+			instruction => instruction.Operation is
+				M68kMachineOperation.ArrayAllocate or
+				M68kMachineOperation.ArrayStore or
+				M68kMachineOperation.Box);
+		var formatCall = Assert.Single(instructions.Where(instruction =>
+			instruction.Operation == M68kMachineOperation.Call &&
+			instruction.SourceInstruction is { Operand: int token } &&
+			module.ResolveMethodToken(
+				token,
+				entry,
+				instruction.SourceInstruction.Offset).FrameworkBinding?.Member is
+				{
+					Name: "Format",
+					DeclaringType.MetadataName: "System.String"
+				}));
+		Assert.Equal(
+			5,
+			formatCall.Uses.Length + instructions.Count(instruction =>
+				instruction.Operation == M68kMachineOperation.OutgoingArgumentPush));
+		var target = module.ResolveMethodToken(
+			(int)formatCall.SourceInstruction!.Operand!,
+			entry,
+			formatCall.SourceInstruction.Offset);
+		Assert.Equal("Format4", target.Definition?.Name);
+		Assert.Equal(5, target.Definition?.Signature.ParameterTypes.Length);
+	}
+
+	[Fact]
+	public void StringFormatKeepsSharedComputedArgumentDefinitionAlive()
+	{
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowStringFormat).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::StringFormatSharedComputedParamsEntry");
+		var machine = CilMachineIrBuilder.Build(entry, module);
+		var instructions = machine.Blocks
+			.SelectMany(block => block.Instructions)
+			.ToArray();
+
+		Assert.DoesNotContain(
+			instructions,
+			instruction => instruction.Operation is
+				M68kMachineOperation.ArrayAllocate or
+				M68kMachineOperation.ArrayStore or
+				M68kMachineOperation.Box);
+		var definitions = instructions
+			.SelectMany(static instruction => instruction.Definitions)
+			.Concat(machine.Blocks.SelectMany(static block =>
+				block.Phis.Select(static phi => phi.Definition)))
+			.ToHashSet();
+		Assert.All(
+			instructions.SelectMany(static instruction => instruction.Uses)
+				.Concat(machine.Blocks.SelectMany(static block =>
+					block.Phis.SelectMany(static phi => phi.Inputs.Values))),
+			use => Assert.True(
+				definitions.Contains(use),
+				$"Machine SSA value v{use} has no surviving definition."));
+	}
+
+	[Fact]
+	public void StringFormatFixedObjectOverloadsEraseBoxes()
+	{
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowStringFormat).Assembly.Location]);
+		var entry = module.ResolveManagedMethod(
+			"CopperSharp.Compiler.Tests",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::StringFormatFixedArgumentsEntry");
+		var machine = CilMachineIrBuilder.Build(entry, module);
+		var instructions = machine.Blocks
+			.SelectMany(block => block.Instructions)
+			.ToArray();
+
+		Assert.DoesNotContain(
+			instructions,
+			instruction => instruction.Operation == M68kMachineOperation.Box);
+		var targets = instructions
+			.Where(instruction =>
+				instruction.Operation == M68kMachineOperation.Call &&
+				instruction.SourceInstruction is { Operand: int token } &&
+				module.ResolveMethodToken(
+					token,
+					entry,
+					instruction.SourceInstruction.Offset).FrameworkBinding?.Member is
+					{
+						Name: "Format",
+						DeclaringType.MetadataName: "System.String"
+					})
+			.Select(instruction => module.ResolveMethodToken(
+				(int)instruction.SourceInstruction!.Operand!,
+				entry,
+				instruction.SourceInstruction.Offset).Definition?.Name)
+			.ToArray();
+		Assert.Equal(["Format1", "Format3"], targets);
+	}
+
+	[Fact]
+	public void StringFormatReadOnlySpanParamsErasesInlineArrayAndBoxes()
+	{
+		using var module = new CompilationModule(
+			Assembly.GetExecutingAssembly().Location,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowStringFormat).Assembly.Location]);
+		foreach (var (entryName, shadowName, parameterCount) in new[]
+		{
+			("StringFormatSpanParamsEntry", "Format4", 5),
+			("StringFormatSpanEightParamsEntry", "Format8", 9)
+		})
+		{
+			var analysis = Analyze(entryName);
+			Assert.True(
+				analysis.IsCompatible,
+				string.Join(
+					Environment.NewLine,
+					analysis.Members.Select(member =>
+						$"{member.Member.DisplayName}: {member.Status} {member.Reason}")));
+			var entry = module.ResolveManagedMethod(
+				"CopperSharp.Compiler.Tests",
+				$"CopperSharp.Compiler.Tests.CompilerFixtures::{entryName}");
+			var machine = CilMachineIrBuilder.Build(entry, module);
+			var instructions = machine.Blocks
+				.SelectMany(static block => block.Instructions)
+				.ToArray();
+			Assert.DoesNotContain(
+				instructions,
+				instruction => instruction.Operation == M68kMachineOperation.Box);
+			var formatCall = Assert.Single(instructions.Where(instruction =>
+				instruction.Operation == M68kMachineOperation.Call &&
+				instruction.SourceInstruction is { Operand: int token } &&
+				module.ResolveMethodToken(
+					token,
+					entry,
+					instruction.SourceInstruction.Offset).FrameworkBinding?.Member is
+					{
+						Name: "Format",
+						DeclaringType.MetadataName: "System.String"
+					}));
+			var target = module.ResolveMethodToken(
+				(int)formatCall.SourceInstruction!.Operand!,
+				entry,
+				formatCall.SourceInstruction.Offset);
+			Assert.Equal(shadowName, target.Definition?.Name);
+			Assert.Equal(
+				parameterCount,
+				target.Definition?.Signature.ParameterTypes.Length);
+		}
+	}
+
+	[Fact]
+	public void StringFormatRejectsParamsArraysThatFlowThroughLocals()
+	{
+		var analysis = Analyze("UnsupportedEscapingStringFormatParamsEntry");
+		Assert.False(analysis.IsCompatible);
+		var format = Assert.Single(analysis.Members.Where(member =>
+			member.Member is { TypeName: "System.String", Name: "Format" }));
+		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, format.Status);
+		Assert.False(string.IsNullOrWhiteSpace(format.Reason));
 	}
 
 	[Fact]
@@ -1787,6 +1994,13 @@ public sealed class FrameworkCompatibilityTests
 			linked.FrameworkFeatures);
 		Assert.Contains("FRAMEWORK FEATURES", linked.Map, StringComparison.Ordinal);
 		Assert.Contains("numerics", linked.Map, StringComparison.Ordinal);
+		Assert.Contains(
+			$"METRICS artifact-bytes={linked.Image.Length} code-bytes={linked.Code.Length} " +
+			$"symbols={linked.Symbols.Count} relocations={linked.Relocations.Count} " +
+			$"loops={linked.LoopFootprints.Count} framework-features=2 " +
+			$"managed-allocation-sites={linked.FrameworkAnalysis.ManagedAllocationSites.Count}",
+			linked.Map,
+			StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			unrelated.Symbols,
 			symbol => symbol.Name.Contains("ShadowMath", StringComparison.Ordinal));
@@ -1794,6 +2008,42 @@ public sealed class FrameworkCompatibilityTests
 		Assert.DoesNotContain(
 			Analyze("StringLiteralEntry").Members,
 			candidate => candidate.RequiredFeatures.Contains("numerics"));
+	}
+
+	[Fact]
+	public void ExactMathSurfaceIsAdmittedByTheCompatibilityLedger()
+	{
+		var integral = Analyze("ShadowMathIntegralSurfaceEntry");
+		Assert.True(integral.IsCompatible);
+		Assert.Equal(
+			42,
+			integral.Members.Count(candidate =>
+				candidate.Member.TypeName == "System.Math" &&
+				candidate.Status == M68kFrameworkCompatibilityStatus.Implemented));
+
+		var ieee = M68kCompiler.AnalyzeFramework(
+			Request("ShadowMathIeeeSurfaceEntry") with
+			{
+				FloatingPoint = M68kFloatingPointMode.SoftFloat
+			});
+		Assert.True(ieee.IsCompatible);
+		Assert.Equal(
+			27,
+			ieee.Members.Count(candidate =>
+				(candidate.Member.TypeName is "System.Math" or "System.Double" or "System.Single") &&
+				candidate.Status == M68kFrameworkCompatibilityStatus.Implemented));
+
+		var rounding = M68kCompiler.AnalyzeFramework(
+			Request("ShadowMathSoftwareRoundingEntry") with
+			{
+				FloatingPoint = M68kFloatingPointMode.SoftFloat
+			});
+		Assert.True(rounding.IsCompatible);
+		Assert.Equal(
+			6,
+			rounding.Members.Count(candidate =>
+				candidate.Member.TypeName == "System.Math" &&
+				candidate.Status == M68kFrameworkCompatibilityStatus.Implemented));
 	}
 
 	[Fact]
@@ -2196,6 +2446,34 @@ public sealed class FrameworkCompatibilityTests
 			Assert.Contains("managed-arrays", member.RequiredFeatures);
 		});
 		Assert.True(analysis.IsCompatible);
+
+		var referenceValues = Analyze("DictionaryInt32ReferenceGcEntry");
+		Assert.True(referenceValues.IsCompatible);
+		Assert.Contains(
+			referenceValues.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2<int,string>",
+				StringComparison.Ordinal) &&
+				member.Status == M68kFrameworkCompatibilityStatus.Implemented);
+
+		var unrelated = Analyze("IntegerToStringEntry");
+		Assert.DoesNotContain(
+			unrelated.Members,
+			member => member.Member.TypeName.StartsWith(
+				"System.Collections.Generic.Dictionary`2",
+				StringComparison.Ordinal));
+		var unrelatedAssembly = M68kCompiler.Compile(Request("IntegerToStringEntry") with
+		{
+			OutputFormat = M68kOutputFormat.Assembly,
+			Imports = new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = 0x0000_2800
+			}
+		});
+		Assert.DoesNotContain(
+			"ShadowDictionary",
+			unrelatedAssembly.Text,
+			StringComparison.Ordinal);
 	}
 
 	[Fact]

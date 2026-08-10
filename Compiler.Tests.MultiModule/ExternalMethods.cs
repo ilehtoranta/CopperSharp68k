@@ -19,4 +19,7 @@ public static class ExternalMethods
 		_lastResult = (left + right) * 2;
 		return _lastResult;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AddOne<T>(int value) where T : struct => value + 1;
 }

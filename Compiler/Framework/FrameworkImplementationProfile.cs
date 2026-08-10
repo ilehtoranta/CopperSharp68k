@@ -16,6 +16,7 @@ internal static class FrameworkImplementationProfile
 	private const string ContractAssembly = "System.Runtime";
 	private const string ImplementationAssembly = "System.Private.CoreLib";
 	private const string StopwatchType = "System.Diagnostics.Stopwatch";
+	private const string TimeSpanType = "System.TimeSpan";
 	private const string ObjectType = "System.Object";
 
 	private static readonly HashSet<string> StopwatchMembers = new(StringComparer.Ordinal)
@@ -28,6 +29,29 @@ internal static class FrameworkImplementationProfile
 		"Restart",
 		"get_IsRunning",
 		"get_ElapsedTicks"
+	};
+
+	private static readonly HashSet<string> StopwatchTargetOverrides = new(StringComparer.Ordinal)
+	{
+		"GetTimestamp",
+		"GetElapsedTime",
+		"get_Elapsed",
+		"get_ElapsedMilliseconds"
+	};
+
+	private static readonly HashSet<string> TimeSpanMembers = new(StringComparer.Ordinal)
+	{
+		"get_Ticks"
+	};
+
+	private static readonly HashSet<string> TimeSpanTargetOverrides = new(StringComparer.Ordinal)
+	{
+		"op_Equality",
+		"op_Inequality",
+		"op_LessThan",
+		"op_LessThanOrEqual",
+		"op_GreaterThan",
+		"op_GreaterThanOrEqual"
 	};
 
 	public static FrameworkMemberId Canonicalize(FrameworkMemberId member)
@@ -55,7 +79,7 @@ internal static class FrameworkImplementationProfile
 	{
 		var member = Canonicalize(referencedMember);
 		if (fallback is null ||
-			!IsPinnedStopwatchMember(member) ||
+			!IsPinnedMember(member) ||
 			!fallback.Member.Equals(member))
 		{
 			binding = null!;
@@ -65,7 +89,7 @@ internal static class FrameworkImplementationProfile
 		binding = new FrameworkBinding(
 			member,
 			FrameworkBindingKind.PinnedManagedBody,
-			$"pinned:[{ImplementationAssembly}]{StopwatchType}::{member.Name}",
+			$"pinned:[{ImplementationAssembly}]{member.DeclaringType.MetadataName}::{member.Name}",
 			fallback.EffectSummary,
 			ShadowMethod: fallback.ShadowMethod,
 			TypeInitializerPolicy: FrameworkTypeInitializerPolicy.TargetOwned);
@@ -74,10 +98,10 @@ internal static class FrameworkImplementationProfile
 
 	public static bool IsPinnedBinding(FrameworkBinding binding) =>
 		binding.Kind == FrameworkBindingKind.PinnedManagedBody &&
-		IsPinnedStopwatchMember(binding.Member) &&
+		IsPinnedMember(binding.Member) &&
 		string.Equals(
 			binding.Target,
-			$"pinned:[{ImplementationAssembly}]{StopwatchType}::{binding.Member.Name}",
+			$"pinned:[{ImplementationAssembly}]{binding.Member.DeclaringType.MetadataName}::{binding.Member.Name}",
 			StringComparison.Ordinal) &&
 		binding.TypeInitializerPolicy == FrameworkTypeInitializerPolicy.TargetOwned;
 
@@ -95,7 +119,10 @@ internal static class FrameworkImplementationProfile
 			string.Equals(member.Name, ".ctor", StringComparison.Ordinal) &&
 			binding.Kind == FrameworkBindingKind.Intrinsic) ||
 			(string.Equals(typeName, StopwatchType, StringComparison.Ordinal) &&
-			 string.Equals(member.Name, "GetTimestamp", StringComparison.Ordinal) &&
+			 StopwatchTargetOverrides.Contains(member.Name) &&
+			 binding.Kind == FrameworkBindingKind.PlatformOperation) ||
+			(string.Equals(typeName, TimeSpanType, StringComparison.Ordinal) &&
+			 TimeSpanTargetOverrides.Contains(member.Name) &&
 			 binding.Kind == FrameworkBindingKind.PlatformOperation);
 	}
 
@@ -104,10 +131,7 @@ internal static class FrameworkImplementationProfile
 		var member = Canonicalize(referencedMember);
 		return string.Equals(member.AssemblyName, ContractAssembly, StringComparison.Ordinal) &&
 			member.DeclaringType.Kind == FrameworkTypeKind.Named &&
-			string.Equals(
-				member.DeclaringType.MetadataName,
-				StopwatchType,
-				StringComparison.Ordinal);
+			(member.DeclaringType.MetadataName is StopwatchType or TimeSpanType);
 	}
 
 	private static bool IsPinnedStopwatchMember(FrameworkMemberId member)
@@ -135,6 +159,26 @@ internal static class FrameworkImplementationProfile
 				member.Signature.IsInstance && IsPrimitive(member.Signature.ReturnType, "System.Int64"),
 			_ => false
 		};
+	}
+
+	private static bool IsPinnedMember(FrameworkMemberId member) =>
+		IsPinnedStopwatchMember(member) || IsPinnedTimeSpanMember(member);
+
+	private static bool IsPinnedTimeSpanMember(FrameworkMemberId member)
+	{
+		if (!string.Equals(member.AssemblyName, ContractAssembly, StringComparison.Ordinal) ||
+			member.DeclaringType.Kind != FrameworkTypeKind.Named ||
+			!string.Equals(member.DeclaringType.MetadataName, TimeSpanType, StringComparison.Ordinal) ||
+			!TimeSpanMembers.Contains(member.Name) ||
+			member.MethodTypeArguments.Length != 0 ||
+			member.Signature.GenericParameterCount != 0)
+		{
+			return false;
+		}
+
+		return member.Signature.IsInstance &&
+			member.Signature.ParameterTypes.Length == 0 &&
+			IsPrimitive(member.Signature.ReturnType, "System.Int64");
 	}
 
 	private static bool IsPrimitive(FrameworkTypeId type, string metadataName) =>

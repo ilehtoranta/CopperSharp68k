@@ -34,9 +34,9 @@ internal sealed class FrameworkImplementationPackCatalog
 internal static class FrameworkImplementationPackLoader
 {
 	public const int SchemaVersion = 1;
-	public const string TargetFramework = "net10.0";
-	public const string ReferencePack = "Microsoft.NETCore.App.Ref";
-	public const string ReferencePackVersion = "10.0.9";
+	public const string TargetFramework = Net10FrameworkContract.SupportedTargetFramework;
+	public const string ReferencePack = Net10FrameworkContract.SupportedReferencePack;
+	public const string ReferencePackVersion = Net10FrameworkContract.SupportedReferencePackVersion;
 	public const string CoreLibProfile = "corelib-common-il-v1";
 	private const string CoreLibAssembly = "System.Private.CoreLib";
 

@@ -16,6 +16,7 @@ internal static class FrameworkReachabilityAnalyzer
 		CilMethod entry,
 		IReadOnlyList<CilExport> exports,
 		ManagedPoolRuntimeModule? managedPoolRuntime,
+		M68kFloatingPointMode floatingPoint,
 		IEnumerable<CilMethod>? additionalRoots = null)
 	{
 		var contract = Net10FrameworkContract.Default;
@@ -52,6 +53,16 @@ internal static class FrameworkReachabilityAnalyzer
 			{
 				continue;
 			}
+			var suppressedEphemeralSpanCalls = method.Instructions
+				.Where(static instruction => instruction.OpCode == OpCodes.Call)
+				.Select(instruction =>
+					EphemeralParamsArrayAnalyzer.AnalyzeReadOnlySpanParams(
+						module,
+						method,
+						instruction.Offset))
+				.OfType<EphemeralSpanParams>()
+				.SelectMany(static format => format.SuppressedCallOffsets)
+				.ToHashSet();
 
 			foreach (var instruction in method.Instructions)
 			{
@@ -108,6 +119,10 @@ internal static class FrameworkReachabilityAnalyzer
 				}
 
 				if (!IsCallInstruction(instruction))
+				{
+					continue;
+				}
+				if (suppressedEphemeralSpanCalls.Contains(instruction.Offset))
 				{
 					continue;
 				}
@@ -218,6 +233,7 @@ internal static class FrameworkReachabilityAnalyzer
 					module,
 					instruction,
 					target,
+					floatingPoint,
 					candidate => EnqueueChild(candidate, reachable.RootPath));
 			}
 		}
@@ -287,6 +303,7 @@ internal static class FrameworkReachabilityAnalyzer
 		CompilationModule module,
 		CilInstruction instruction,
 		MethodReference target,
+		M68kFloatingPointMode floatingPoint,
 		Action<CilMethod> enqueue)
 	{
 		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
@@ -310,9 +327,22 @@ internal static class FrameworkReachabilityAnalyzer
 
 		if (target.Definition is { IsImport: false } directDefinition)
 		{
-			enqueue(directDefinition);
+			if (!IsNativeShadowMathLeaf(directDefinition, floatingPoint))
+			{
+				enqueue(directDefinition);
+			}
 		}
 	}
+
+	private static bool IsNativeShadowMathLeaf(
+		CilMethod method,
+		M68kFloatingPointMode floatingPoint) =>
+		floatingPoint is M68kFloatingPointMode.M68040 or M68kFloatingPointMode.M68882 &&
+		method.DisplayName is
+			"CopperSharp.Runtime.ShadowMath::Sqrt" or
+			"CopperSharp.Runtime.ShadowMath::Truncate" &&
+		method.Signature.ParameterTypes is [{ IsFloatingPoint: true, Size: 8 }] &&
+		method.Signature.ReturnType is { IsFloatingPoint: true, Size: 8 };
 
 	private static void AddObservation(
 		IDictionary<MemberObservationKey, MemberAccumulator> members,

@@ -152,9 +152,255 @@ public class ShadowObject
 	public override int GetHashCode() => 0;
 }
 
+/// <summary>
+/// Per-closed-element cache used to preserve the singleton contract of
+/// <see cref="Array.Empty{T}"/> without importing the CoreLib cache graph.
+/// </summary>
+internal static class ShadowEmptyArray<T>
+{
+	internal static readonly T[] Value = new T[0];
+}
+
+/// <summary>
+/// Compact target implementations of the admitted generic
+/// <see cref="Array"/> algorithms.
+/// </summary>
+public static class ShadowArray
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static T[] Empty<T>() => ShadowEmptyArray<T>.Value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void Fill<T>(T[] array, T value)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		for (var index = 0; index < array.Length; index++)
+		{
+			array[index] = value;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void Fill<T>(T[] array, T value, int startIndex, int count)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		if ((uint)startIndex > (uint)array.Length ||
+			(uint)count > (uint)(array.Length - startIndex))
+		{
+			M68kRuntime.ThrowArgumentOutOfRangeException();
+		}
+		var endIndex = startIndex + count;
+		for (var index = startIndex; index < endIndex; index++)
+		{
+			array[index] = value;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IndexOf<T>(T[] array, T value)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		for (var index = 0; index < array.Length; index++)
+		{
+			if (M68kRuntime.DefaultEquals(array[index], value))
+			{
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IndexOf<T>(T[] array, T value, int startIndex)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		if ((uint)startIndex > (uint)array.Length)
+		{
+			M68kRuntime.ThrowArgumentOutOfRangeException();
+		}
+		for (var index = startIndex; index < array.Length; index++)
+		{
+			if (M68kRuntime.DefaultEquals(array[index], value))
+			{
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IndexOf<T>(T[] array, T value, int startIndex, int count)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		if ((uint)startIndex > (uint)array.Length ||
+			(uint)count > (uint)(array.Length - startIndex))
+		{
+			M68kRuntime.ThrowArgumentOutOfRangeException();
+		}
+		var endIndex = startIndex + count;
+		for (var index = startIndex; index < endIndex; index++)
+		{
+			if (M68kRuntime.DefaultEquals(array[index], value))
+			{
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LastIndexOf<T>(T[] array, T value)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		for (var index = array.Length - 1; index >= 0; index--)
+		{
+			if (M68kRuntime.DefaultEquals(array[index], value))
+			{
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LastIndexOf<T>(T[] array, T value, int startIndex)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		if (array.Length == 0)
+		{
+			if (startIndex != -1 && startIndex != 0)
+			{
+				M68kRuntime.ThrowArgumentOutOfRangeException();
+			}
+			return -1;
+		}
+		if ((uint)startIndex >= (uint)array.Length)
+		{
+			M68kRuntime.ThrowArgumentOutOfRangeException();
+		}
+		for (var index = startIndex; index >= 0; index--)
+		{
+			if (M68kRuntime.DefaultEquals(array[index], value))
+			{
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LastIndexOf<T>(T[] array, T value, int startIndex, int count)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		if (array.Length == 0)
+		{
+			if ((startIndex != -1 && startIndex != 0) || count != 0)
+			{
+				M68kRuntime.ThrowArgumentOutOfRangeException();
+			}
+			return -1;
+		}
+		if ((uint)startIndex >= (uint)array.Length ||
+			count < 0 ||
+			startIndex - count + 1 < 0)
+		{
+			M68kRuntime.ThrowArgumentOutOfRangeException();
+		}
+		var endIndex = startIndex - count;
+		for (var index = startIndex; index > endIndex; index--)
+		{
+			if (M68kRuntime.DefaultEquals(array[index], value))
+			{
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void Reverse<T>(T[] array)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		var first = 0;
+		var last = array.Length - 1;
+		while (first < last)
+		{
+			var temporary = array[first];
+			array[first++] = array[last];
+			array[last--] = temporary;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void Reverse<T>(T[] array, int index, int length)
+	{
+		if (array is null)
+		{
+			M68kRuntime.ThrowArgumentNullException();
+		}
+		if (index < 0 || length < 0)
+		{
+			M68kRuntime.ThrowArgumentOutOfRangeException();
+		}
+		if (array.Length - index < length)
+		{
+			M68kRuntime.ThrowArgumentException();
+		}
+		var first = index;
+		var last = index + length - 1;
+		while (first < last)
+		{
+			var temporary = array[first];
+			array[first++] = array[last];
+			array[last--] = temporary;
+		}
+	}
+}
+
 /// <summary>Compact target implementations for supported <see cref="Math"/> members.</summary>
 public static class ShadowMath
 {
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static sbyte Abs(sbyte value)
+	{
+		if (value == sbyte.MinValue) M68kRuntime.ThrowOverflowException();
+		return value < 0 ? (sbyte)-value : value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static short Abs(short value)
+	{
+		if (value == short.MinValue) M68kRuntime.ThrowOverflowException();
+		return value < 0 ? (short)-value : value;
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int Abs(int value)
 	{
@@ -163,11 +409,583 @@ public static class ShadowMath
 			M68kRuntime.ThrowOverflowException();
 		}
 
-		return Identity(value < 0 ? -value : value);
+		return value < 0 ? -value : value;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static T Identity<T>(T value) => value;
+	public static long Abs(long value)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		if ((high & 0x8000_0000u) == 0) return value;
+		if (high == 0x8000_0000u && low == 0) M68kRuntime.ThrowOverflowException();
+		Negate64(ref high, ref low);
+		return M68kRuntime.CombineInt64(high, low);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static nint Abs(nint value)
+	{
+		if (value == unchecked((nint)(-2147483647 - 1))) M68kRuntime.ThrowOverflowException();
+		return value < 0 ? -value : value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)] public static byte Min(byte x, byte y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static sbyte Min(sbyte x, sbyte y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static short Min(short x, short y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static ushort Min(ushort x, ushort y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Min(int x, int y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static uint Min(uint x, uint y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static long Min(long x, long y) => CompareInt64(x, y) < 0 ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static ulong Min(ulong x, ulong y) => CompareUInt64(x, y) < 0 ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static nint Min(nint x, nint y) => x < y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static nuint Min(nuint x, nuint y) => x < y ? x : y;
+
+	[MethodImpl(MethodImplOptions.NoInlining)] public static byte Max(byte x, byte y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static sbyte Max(sbyte x, sbyte y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static short Max(short x, short y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static ushort Max(ushort x, ushort y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Max(int x, int y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static uint Max(uint x, uint y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static long Max(long x, long y) => CompareInt64(x, y) > 0 ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static ulong Max(ulong x, ulong y) => CompareUInt64(x, y) > 0 ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static nint Max(nint x, nint y) => x > y ? x : y;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static nuint Max(nuint x, nuint y) => x > y ? x : y;
+
+	[MethodImpl(MethodImplOptions.NoInlining)] public static byte Clamp(byte value, byte min, byte max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)] public static sbyte Clamp(sbyte value, sbyte min, sbyte max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)] public static short Clamp(short value, short min, short max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)] public static ushort Clamp(ushort value, ushort min, ushort max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Clamp(int value, int min, int max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)] public static uint Clamp(uint value, uint min, uint max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long Clamp(long value, long min, long max)
+	{
+		if (CompareInt64(min, max) > 0) M68kRuntime.ThrowArgumentException();
+		if (CompareInt64(value, min) < 0) return min;
+		return CompareInt64(value, max) > 0 ? max : value;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static ulong Clamp(ulong value, ulong min, ulong max)
+	{
+		if (CompareUInt64(min, max) > 0) M68kRuntime.ThrowArgumentException();
+		if (CompareUInt64(value, min) < 0) return min;
+		return CompareUInt64(value, max) > 0 ? max : value;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)] public static nint Clamp(nint value, nint min, nint max) => ClampCore(value, min, max);
+	[MethodImpl(MethodImplOptions.NoInlining)] public static nuint Clamp(nuint value, nuint min, nuint max) => ClampCore(value, min, max);
+
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Sign(sbyte value) => value < 0 ? -1 : value > 0 ? 1 : 0;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Sign(short value) => value < 0 ? -1 : value > 0 ? 1 : 0;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Sign(int value) => value < 0 ? -1 : value > 0 ? 1 : 0;
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int Sign(long value)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		if ((high & 0x8000_0000u) != 0) return -1;
+		return high != 0 || low != 0 ? 1 : 0;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)] public static int Sign(nint value) => value < 0 ? -1 : value > 0 ? 1 : 0;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long BigMul(int first, int second)
+	{
+		var negative = (first < 0) != (second < 0);
+		var firstMagnitude = first < 0 ? (uint)(-(first + 1)) + 1u : (uint)first;
+		var secondMagnitude = second < 0 ? (uint)(-(second + 1)) + 1u : (uint)second;
+		MultiplyUInt32(firstMagnitude, secondMagnitude, out var high, out var low);
+		if (negative) Negate64(ref high, ref low);
+		return M68kRuntime.CombineInt64(high, low);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static ulong BigMul(uint first, uint second)
+	{
+		MultiplyUInt32(first, second, out var high, out var low);
+		return (ulong)M68kRuntime.CombineInt64(high, low);
+	}
+
+	private static byte ClampCore(byte value, byte min, byte max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static sbyte ClampCore(sbyte value, sbyte min, sbyte max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static short ClampCore(short value, short min, short max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static ushort ClampCore(ushort value, ushort min, ushort max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static int ClampCore(int value, int min, int max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static uint ClampCore(uint value, uint min, uint max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static nint ClampCore(nint value, nint min, nint max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+	private static nuint ClampCore(nuint value, nuint min, nuint max) { if (min > max) M68kRuntime.ThrowArgumentException(); return value < min ? min : value > max ? max : value; }
+
+	private static int CompareInt64(long first, long second)
+	{
+		var firstLow = M68kRuntime.SplitInt64(first, out var firstHigh);
+		var secondLow = M68kRuntime.SplitInt64(second, out var secondHigh);
+		var firstSignedHigh = (int)firstHigh;
+		var secondSignedHigh = (int)secondHigh;
+		if (firstSignedHigh < secondSignedHigh) return -1;
+		if (firstSignedHigh > secondSignedHigh) return 1;
+		if (firstLow < secondLow) return -1;
+		return firstLow > secondLow ? 1 : 0;
+	}
+
+	private static int CompareUInt64(ulong first, ulong second)
+	{
+		var firstLow = M68kRuntime.SplitUInt64(first, out var firstHigh);
+		var secondLow = M68kRuntime.SplitUInt64(second, out var secondHigh);
+		if (firstHigh < secondHigh) return -1;
+		if (firstHigh > secondHigh) return 1;
+		if (firstLow < secondLow) return -1;
+		return firstLow > secondLow ? 1 : 0;
+	}
+
+	private static void MultiplyUInt32(uint first, uint second, out uint high, out uint low)
+	{
+		var firstLow = first & 0xffffu;
+		var firstHigh = first >> 16;
+		var secondLow = second & 0xffffu;
+		var secondHigh = second >> 16;
+		var lowProduct = firstLow * secondLow;
+		var middle1 = firstHigh * secondLow;
+		var middle2 = firstLow * secondHigh;
+		var carry = (lowProduct >> 16) + (middle1 & 0xffffu) + (middle2 & 0xffffu);
+		low = (lowProduct & 0xffffu) | (carry << 16);
+		high = firstHigh * secondHigh + (middle1 >> 16) + (middle2 >> 16) + (carry >> 16);
+	}
+
+	private static void Negate64(ref uint high, ref uint low)
+	{
+		low = ~low + 1u;
+		high = ~high + (low == 0 ? 1u : 0u);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Abs(double value)
+	{
+		var low = M68kRuntime.SplitDouble(value, out var high);
+		return M68kRuntime.CombineDouble(high & 0x7fff_ffffu, low);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static float Abs(float value) =>
+		M68kRuntime.UInt32BitsToSingle(
+			M68kRuntime.SingleToUInt32Bits(value) & 0x7fff_ffffu);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double CopySign(double value, double sign)
+	{
+		var valueLow = M68kRuntime.SplitDouble(value, out var valueHigh);
+		_ = M68kRuntime.SplitDouble(sign, out var signHigh);
+		return M68kRuntime.CombineDouble(
+			(valueHigh & 0x7fff_ffffu) | (signHigh & 0x8000_0000u),
+			valueLow);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Min(double first, double second)
+	{
+		if (ShadowDouble.IsNaN(first)) return first;
+		if (ShadowDouble.IsNaN(second)) return second;
+		var comparison = CompareDouble(first, second);
+		if (comparison < 0) return first;
+		if (comparison > 0) return second;
+		return ShadowDouble.IsNegative(first) ? first : second;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Max(double first, double second)
+	{
+		if (ShadowDouble.IsNaN(first)) return first;
+		if (ShadowDouble.IsNaN(second)) return second;
+		var comparison = CompareDouble(first, second);
+		if (comparison > 0) return first;
+		if (comparison < 0) return second;
+		return ShadowDouble.IsNegative(first) ? second : first;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static float Min(float first, float second)
+	{
+		if (ShadowSingle.IsNaN(first)) return first;
+		if (ShadowSingle.IsNaN(second)) return second;
+		var comparison = CompareSingle(first, second);
+		if (comparison < 0) return first;
+		if (comparison > 0) return second;
+		return ShadowSingle.IsNegative(first) ? first : second;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static float Max(float first, float second)
+	{
+		if (ShadowSingle.IsNaN(first)) return first;
+		if (ShadowSingle.IsNaN(second)) return second;
+		var comparison = CompareSingle(first, second);
+		if (comparison > 0) return first;
+		if (comparison < 0) return second;
+		return ShadowSingle.IsNegative(first) ? second : first;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Clamp(double value, double min, double max)
+	{
+		if (!ShadowDouble.IsNaN(min) && !ShadowDouble.IsNaN(max) && CompareDouble(min, max) > 0)
+			M68kRuntime.ThrowArgumentException();
+		if (!ShadowDouble.IsNaN(value) && !ShadowDouble.IsNaN(min) && CompareDouble(value, min) < 0) return min;
+		if (!ShadowDouble.IsNaN(value) && !ShadowDouble.IsNaN(max) && CompareDouble(value, max) > 0) return max;
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static float Clamp(float value, float min, float max)
+	{
+		if (!ShadowSingle.IsNaN(min) && !ShadowSingle.IsNaN(max) && CompareSingle(min, max) > 0)
+			M68kRuntime.ThrowArgumentException();
+		if (!ShadowSingle.IsNaN(value) && !ShadowSingle.IsNaN(min) && CompareSingle(value, min) < 0) return min;
+		if (!ShadowSingle.IsNaN(value) && !ShadowSingle.IsNaN(max) && CompareSingle(value, max) > 0) return max;
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int Sign(double value)
+	{
+		if (ShadowDouble.IsNaN(value)) M68kRuntime.ThrowArithmeticException();
+		var low = M68kRuntime.SplitDouble(value, out var high);
+		if ((high & 0x7fff_ffffu) == 0 && low == 0) return 0;
+		return (high & 0x8000_0000u) != 0 ? -1 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int Sign(float value)
+	{
+		if (ShadowSingle.IsNaN(value)) M68kRuntime.ThrowArithmeticException();
+		var bits = M68kRuntime.SingleToUInt32Bits(value);
+		if ((bits & 0x7fff_ffffu) == 0) return 0;
+		return (bits & 0x8000_0000u) != 0 ? -1 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Truncate(double value) => RoundDirected(value, 0);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Floor(double value) => RoundDirected(value, -1);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Ceiling(double value)
+	{
+		var low = M68kRuntime.SplitDouble(value, out var high);
+		if ((high & 0x7ff0_0000u) == 0x7ff0_0000u &&
+			((high & 0x000f_ffffu) != 0 || low != 0))
+		{
+			return M68kRuntime.CombineDouble(high | 0x0008_0000u, low);
+		}
+		return RoundDirected(value, 1);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Round(double value) => Round(value, MidpointRounding.ToEven);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Round(double value, MidpointRounding mode)
+	{
+		if (mode != MidpointRounding.ToEven &&
+			mode != MidpointRounding.AwayFromZero &&
+			mode != MidpointRounding.ToZero &&
+			mode != MidpointRounding.ToNegativeInfinity &&
+			mode != MidpointRounding.ToPositiveInfinity)
+			M68kRuntime.ThrowArgumentException();
+
+		var low = M68kRuntime.SplitDouble(value, out var high);
+		var exponentBits = (high >> 20) & 0x7ffu;
+		if (exponentBits == 0x7ffu)
+		{
+			return (high & 0x000f_ffffu) != 0 || low != 0
+				? M68kRuntime.CombineDouble(high | 0x0008_0000u, low)
+				: value;
+		}
+		if (mode == MidpointRounding.ToZero) return Truncate(value);
+		if (mode == MidpointRounding.ToNegativeInfinity) return Floor(value);
+		if (mode == MidpointRounding.ToPositiveInfinity) return Ceiling(value);
+		var exponent = (int)exponentBits - 1023;
+		if (exponent >= 52) return value;
+		var negative = (high & 0x8000_0000u) != 0;
+		if (exponent < -1) return M68kRuntime.CombineDouble(negative ? 0x8000_0000u : 0, 0);
+		if (exponent == -1)
+		{
+			var magnitudeHigh = high & 0x7fff_ffffu;
+			var greaterThanHalf = magnitudeHigh > 0x3fe0_0000u ||
+				(magnitudeHigh == 0x3fe0_0000u && low != 0);
+			var exactlyHalf = magnitudeHigh == 0x3fe0_0000u && low == 0;
+			var roundUp = greaterThanHalf ||
+				(exactlyHalf && mode == MidpointRounding.AwayFromZero);
+			return roundUp
+				? M68kRuntime.CombineDouble(negative ? 0xbff0_0000u : 0x3ff0_0000u, 0)
+				: M68kRuntime.CombineDouble(negative ? 0x8000_0000u : 0, 0);
+		}
+
+		var truncatedLow = low;
+		var truncatedHigh = high;
+		bool halfSet;
+		bool lowerSet;
+		bool integerOdd;
+		if (exponent < 20)
+		{
+			var fractionalBits = 20 - exponent;
+			var unit = 1u << fractionalBits;
+			var half = unit >> 1;
+			halfSet = (high & half) != 0;
+			lowerSet = (high & (half - 1u)) != 0 || low != 0;
+			integerOdd = (high & unit) != 0;
+			truncatedHigh &= ~(unit - 1u);
+			truncatedLow = 0;
+		}
+		else if (exponent == 20)
+		{
+			halfSet = (low & 0x8000_0000u) != 0;
+			lowerSet = (low & 0x7fff_ffffu) != 0;
+			integerOdd = (high & 1u) != 0;
+			truncatedLow = 0;
+		}
+		else
+		{
+			var fractionalBits = 52 - exponent;
+			var unit = 1u << fractionalBits;
+			var half = unit >> 1;
+			halfSet = (low & half) != 0;
+			lowerSet = (low & (half - 1u)) != 0;
+			integerOdd = (low & unit) != 0;
+			truncatedLow &= ~(unit - 1u);
+		}
+		if (halfSet && (lowerSet || mode == MidpointRounding.AwayFromZero || integerOdd))
+			IncrementTruncatedMagnitude(ref truncatedHigh, ref truncatedLow, exponent);
+		return M68kRuntime.CombineDouble(truncatedHigh, truncatedLow);
+	}
+
+	/// <summary>
+	/// Correctly-rounded binary64 square root using the freely distributable
+	/// fdlibm bit-by-bit integer algorithm. This is the portable reference path.
+	/// </summary>
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static double Sqrt(double value)
+	{
+		var ix1 = M68kRuntime.SplitDouble(value, out var ix0);
+		if ((ix0 & 0x7ff0_0000u) == 0x7ff0_0000u)
+		{
+			if ((ix0 & 0x8000_0000u) == 0 && (ix0 & 0x000f_ffffu) == 0 && ix1 == 0)
+				return value;
+			// IEEE operations quiet signaling NaNs while retaining their sign and payload.
+			if ((ix0 & 0x000f_ffffu) != 0 || ix1 != 0)
+				return M68kRuntime.CombineDouble(ix0 | 0x0008_0000u, ix1);
+			return M68kRuntime.CombineDouble(0xfff8_0000u, 0);
+		}
+		if ((ix0 & 0x7fff_ffffu) == 0 && ix1 == 0) return value;
+		if ((ix0 & 0x8000_0000u) != 0)
+			return M68kRuntime.CombineDouble(0xfff8_0000u, 0);
+
+		var exponent = PrepareSqrtRadicand(ref ix0, ref ix1);
+		var q = ExtractSqrtHigh(ref ix0, ref ix1, out var s0);
+		var q1 = ExtractSqrtLow(ref ix0, ref ix1, s0);
+		var resultHigh = (q >> 1) + 0x3fe0_0000u;
+		var resultLow = q1 >> 1;
+		if ((q & 1u) != 0) resultLow |= 0x8000_0000u;
+		resultHigh = unchecked(resultHigh + ((uint)exponent << 20));
+		return M68kRuntime.CombineDouble(resultHigh, resultLow);
+	}
+
+	private static int PrepareSqrtRadicand(ref uint ix0, ref uint ix1)
+	{
+		var exponent = (int)(ix0 >> 20);
+		if (exponent == 0)
+		{
+			while (ix0 == 0)
+			{
+				exponent -= 21;
+				ix0 = ix1 >> 11;
+				ix1 <<= 21;
+			}
+			var shift = 0;
+			while ((ix0 & 0x0010_0000u) == 0)
+			{
+				ix0 <<= 1;
+				shift++;
+			}
+			exponent -= shift - 1;
+			if (shift != 0)
+			{
+				ix0 |= ix1 >> (32 - shift);
+				ix1 <<= shift;
+			}
+		}
+		exponent -= 1023;
+		ix0 = (ix0 & 0x000f_ffffu) | 0x0010_0000u;
+		if ((exponent & 1) != 0)
+		{
+			ix0 = ix0 + ix0 + (ix1 >> 31);
+			ix1 += ix1;
+		}
+		exponent >>= 1;
+		ix0 = ix0 + ix0 + (ix1 >> 31);
+		ix1 += ix1;
+		return exponent;
+	}
+
+	private static uint ExtractSqrtHigh(ref uint ix0, ref uint ix1, out uint s0)
+	{
+		var q = 0u;
+		s0 = 0u;
+		var moving = 0x0020_0000u;
+		while (moving != 0)
+		{
+			var trial = s0 + moving;
+			if (trial <= ix0)
+			{
+				s0 = trial + moving;
+				ix0 -= trial;
+				q += moving;
+			}
+			ix0 = ix0 + ix0 + (ix1 >> 31);
+			ix1 += ix1;
+			moving >>= 1;
+		}
+		return q;
+	}
+
+	private static uint ExtractSqrtLow(ref uint ix0, ref uint ix1, uint s0)
+	{
+		var q1 = 0u;
+		var s1 = 0u;
+		var runningHigh = s0;
+		var moving = 0x8000_0000u;
+		while (moving != 0)
+		{
+			var trialLow = s1 + moving;
+			var trialHigh = runningHigh;
+			if (trialHigh < ix0 || (trialHigh == ix0 && trialLow <= ix1))
+			{
+				var nextS1 = trialLow + moving;
+				if ((trialLow & 0x8000_0000u) != 0 && (nextS1 & 0x8000_0000u) == 0) runningHigh++;
+				s1 = nextS1;
+				ix0 -= trialHigh;
+				if (ix1 < trialLow) ix0--;
+				ix1 -= trialLow;
+				q1 += moving;
+			}
+			ix0 = ix0 + ix0 + (ix1 >> 31);
+			ix1 += ix1;
+			moving >>= 1;
+		}
+		if ((ix0 | ix1) != 0) q1 += q1 & 1u;
+		return q1;
+	}
+
+	private static double RoundDirected(double value, int direction)
+	{
+		var low = M68kRuntime.SplitDouble(value, out var high);
+		var exponentBits = (high >> 20) & 0x7ffu;
+		if (exponentBits == 0x7ffu) return value;
+		var exponent = (int)exponentBits - 1023;
+		if (exponent >= 52) return value;
+		var negative = (high & 0x8000_0000u) != 0;
+		var magnitudeNonzero = (high & 0x7fff_ffffu) != 0 || low != 0;
+		if (exponent < 0)
+		{
+			if (!magnitudeNonzero || direction == 0 || (direction < 0 && !negative) || (direction > 0 && negative))
+				return M68kRuntime.CombineDouble(negative ? 0x8000_0000u : 0, 0);
+			return M68kRuntime.CombineDouble(negative ? 0xbff0_0000u : 0x3ff0_0000u, 0);
+		}
+		var truncatedHigh = high;
+		var truncatedLow = low;
+		bool hadFraction;
+		if (exponent <= 20)
+		{
+			var unit = 1u << (20 - exponent);
+			hadFraction = (high & (unit - 1u)) != 0 || low != 0;
+			truncatedHigh &= ~(unit - 1u);
+			truncatedLow = 0;
+		}
+		else
+		{
+			var unit = 1u << (52 - exponent);
+			hadFraction = (low & (unit - 1u)) != 0;
+			truncatedLow &= ~(unit - 1u);
+		}
+		if (hadFraction && ((direction < 0 && negative) || (direction > 0 && !negative)))
+			IncrementTruncatedMagnitude(ref truncatedHigh, ref truncatedLow, exponent);
+		return M68kRuntime.CombineDouble(truncatedHigh, truncatedLow);
+	}
+
+	private static void IncrementTruncatedMagnitude(ref uint high, ref uint low, int exponent)
+	{
+		if (exponent <= 20)
+		{
+			high += 1u << (20 - exponent);
+			return;
+		}
+		var increment = 1u << (52 - exponent);
+		var previous = low;
+		low += increment;
+		if (low < previous) high++;
+	}
+
+	private static int CompareDouble(double first, double second)
+	{
+		var firstLow = M68kRuntime.SplitDouble(first, out var firstHigh);
+		var secondLow = M68kRuntime.SplitDouble(second, out var secondHigh);
+		var firstMagnitudeHigh = firstHigh & 0x7fff_ffffu;
+		var secondMagnitudeHigh = secondHigh & 0x7fff_ffffu;
+		var firstZero = firstMagnitudeHigh == 0 && firstLow == 0;
+		var secondZero = secondMagnitudeHigh == 0 && secondLow == 0;
+		if (firstZero && secondZero) return 0;
+		var firstNegative = (firstHigh & 0x8000_0000u) != 0;
+		var secondNegative = (secondHigh & 0x8000_0000u) != 0;
+		if (firstNegative != secondNegative) return firstNegative ? -1 : 1;
+		var magnitude = CompareLanes(firstMagnitudeHigh, firstLow, secondMagnitudeHigh, secondLow);
+		return firstNegative ? -magnitude : magnitude;
+	}
+
+	private static int CompareSingle(float first, float second)
+	{
+		var firstBits = M68kRuntime.SingleToUInt32Bits(first);
+		var secondBits = M68kRuntime.SingleToUInt32Bits(second);
+		var firstMagnitude = firstBits & 0x7fff_ffffu;
+		var secondMagnitude = secondBits & 0x7fff_ffffu;
+		if (firstMagnitude == 0 && secondMagnitude == 0) return 0;
+		var firstNegative = (firstBits & 0x8000_0000u) != 0;
+		var secondNegative = (secondBits & 0x8000_0000u) != 0;
+		if (firstNegative != secondNegative) return firstNegative ? -1 : 1;
+		var magnitude = firstMagnitude < secondMagnitude ? -1 : firstMagnitude > secondMagnitude ? 1 : 0;
+		return firstNegative ? -magnitude : magnitude;
+	}
+
+	private static int CompareLanes(uint firstHigh, uint firstLow, uint secondHigh, uint secondLow)
+	{
+		if (firstHigh < secondHigh) return -1;
+		if (firstHigh > secondHigh) return 1;
+		if (firstLow < secondLow) return -1;
+		return firstLow > secondLow ? 1 : 0;
+	}
+
+}
+
+/// <summary>Allocation-free IEEE-754 binary64 classification helpers.</summary>
+public static class ShadowDouble
+{
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsFinite(double value) { var low = M68kRuntime.SplitDouble(value, out var high); return (high & 0x7ff0_0000u) != 0x7ff0_0000u; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsInfinity(double value) { var low = M68kRuntime.SplitDouble(value, out var high); return (high & 0x7fff_ffffu) == 0x7ff0_0000u && low == 0; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNaN(double value) { var low = M68kRuntime.SplitDouble(value, out var high); return (high & 0x7fff_ffffu) > 0x7ff0_0000u || ((high & 0x7fff_ffffu) == 0x7ff0_0000u && low != 0); }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNegative(double value) { _ = M68kRuntime.SplitDouble(value, out var high); return (high & 0x8000_0000u) != 0; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNegativeInfinity(double value) { var low = M68kRuntime.SplitDouble(value, out var high); return high == 0xfff0_0000u && low == 0; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsPositiveInfinity(double value) { var low = M68kRuntime.SplitDouble(value, out var high); return high == 0x7ff0_0000u && low == 0; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNormal(double value) { _ = M68kRuntime.SplitDouble(value, out var high); var exponent = high & 0x7ff0_0000u; return exponent != 0 && exponent != 0x7ff0_0000u; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsSubnormal(double value) { var low = M68kRuntime.SplitDouble(value, out var high); return (high & 0x7ff0_0000u) == 0 && ((high & 0x000f_ffffu) != 0 || low != 0); }
+}
+
+/// <summary>Allocation-free IEEE-754 binary32 classification helpers.</summary>
+public static class ShadowSingle
+{
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsFinite(float value) => (M68kRuntime.SingleToUInt32Bits(value) & 0x7f80_0000u) != 0x7f80_0000u;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsInfinity(float value) => (M68kRuntime.SingleToUInt32Bits(value) & 0x7fff_ffffu) == 0x7f80_0000u;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNaN(float value) => (M68kRuntime.SingleToUInt32Bits(value) & 0x7fff_ffffu) > 0x7f80_0000u;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNegative(float value) => (M68kRuntime.SingleToUInt32Bits(value) & 0x8000_0000u) != 0;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNegativeInfinity(float value) => M68kRuntime.SingleToUInt32Bits(value) == 0xff80_0000u;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsPositiveInfinity(float value) => M68kRuntime.SingleToUInt32Bits(value) == 0x7f80_0000u;
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsNormal(float value) { var exponent = M68kRuntime.SingleToUInt32Bits(value) & 0x7f80_0000u; return exponent != 0 && exponent != 0x7f80_0000u; }
+	[MethodImpl(MethodImplOptions.NoInlining)] public static bool IsSubnormal(float value) { var bits = M68kRuntime.SingleToUInt32Bits(value); return (bits & 0x7f80_0000u) == 0 && (bits & 0x007f_ffffu) != 0; }
 }
 
 /// <summary>
@@ -929,6 +1747,200 @@ public static class ShadowIntegerFormatter
 		return remainder;
 	}
 
+}
+
+/// <summary>
+/// Allocation-conscious target for the admitted composite-formatting slice.
+/// The compiler rewrites a fresh one-to-eight-element params array into a
+/// typed Int32 call, so neither the object array nor its boxes survive.
+/// </summary>
+public static class ShadowStringFormat
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format1(string format, int argument0) =>
+		FormatCore(format, 1, argument0.ToString()!, "", "", "", "", "", "", "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format2(string format, int argument0, int argument1) =>
+		FormatCore(format, 2, argument0.ToString()!, argument1.ToString()!, "", "", "", "", "", "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format3(string format, int argument0, int argument1, int argument2) =>
+		FormatCore(format, 3, argument0.ToString()!, argument1.ToString()!, argument2.ToString()!, "", "", "", "", "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format4(string format, int argument0, int argument1, int argument2, int argument3) =>
+		FormatCore(format, 4, argument0.ToString()!, argument1.ToString()!, argument2.ToString()!, argument3.ToString()!, "", "", "", "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format5(string format, int argument0, int argument1, int argument2, int argument3, int argument4) =>
+		FormatCore(format, 5, argument0.ToString()!, argument1.ToString()!, argument2.ToString()!, argument3.ToString()!, argument4.ToString()!, "", "", "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format6(string format, int argument0, int argument1, int argument2, int argument3, int argument4, int argument5) =>
+		FormatCore(format, 6, argument0.ToString()!, argument1.ToString()!, argument2.ToString()!, argument3.ToString()!, argument4.ToString()!, argument5.ToString()!, "", "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format7(string format, int argument0, int argument1, int argument2, int argument3, int argument4, int argument5, int argument6) =>
+		FormatCore(format, 7, argument0.ToString()!, argument1.ToString()!, argument2.ToString()!, argument3.ToString()!, argument4.ToString()!, argument5.ToString()!, argument6.ToString()!, "");
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Format8(string format, int argument0, int argument1, int argument2, int argument3, int argument4, int argument5, int argument6, int argument7) =>
+		FormatCore(format, 8, argument0.ToString()!, argument1.ToString()!, argument2.ToString()!, argument3.ToString()!, argument4.ToString()!, argument5.ToString()!, argument6.ToString()!, argument7.ToString()!);
+
+	private static string FormatCore(
+		string format,
+		int argumentCount,
+		string argument0,
+		string argument1,
+		string argument2,
+		string argument3,
+		string argument4,
+		string argument5,
+		string argument6,
+		string argument7)
+	{
+		var writer = new CompositeFormatWriter(format, argumentCount);
+		while (writer.TryGetNextArgument(out var argumentIndex))
+		{
+			if (argumentIndex < 0 || argumentIndex >= argumentCount)
+			{
+				M68kRuntime.ThrowFormatException();
+			}
+			switch (argumentIndex)
+			{
+				case 0: writer.AppendString(argument0); break;
+				case 1: writer.AppendString(argument1); break;
+				case 2: writer.AppendString(argument2); break;
+				case 3: writer.AppendString(argument3); break;
+				case 4: writer.AppendString(argument4); break;
+				case 5: writer.AppendString(argument5); break;
+				case 6: writer.AppendString(argument6); break;
+				case 7: writer.AppendString(argument7); break;
+				default:
+					M68kRuntime.ThrowFormatException();
+					break;
+			}
+		}
+		return writer.Complete();
+	}
+
+	private ref struct CompositeFormatWriter
+	{
+		private readonly string _format;
+		private char[] _buffer;
+		private int _scan;
+		private int _position;
+
+		public CompositeFormatWriter(string format, int argumentCount)
+		{
+			if (format is null)
+			{
+				M68kRuntime.ThrowArgumentNullException();
+			}
+			_format = format;
+			_buffer = new char[format.Length + argumentCount * 11];
+			_scan = 0;
+			_position = 0;
+		}
+
+		public bool TryGetNextArgument(out int argumentIndex)
+		{
+			var format = _format;
+			while (_scan < format.Length)
+			{
+				var character = format[_scan++];
+				if (character == '{')
+				{
+					if (_scan < format.Length && format[_scan] == '{')
+					{
+						_scan++;
+						AppendCharacter('{');
+						continue;
+					}
+
+					if (_scan >= format.Length ||
+						format[_scan] < '0' || format[_scan] > '9')
+					{
+						M68kRuntime.ThrowFormatException();
+					}
+					var index = 0;
+					while (_scan < format.Length &&
+						format[_scan] >= '0' && format[_scan] <= '9')
+					{
+						var digit = (int)format[_scan] - 48;
+						if (index > 214_748_364 ||
+							index == 214_748_364 && digit > 7)
+						{
+							M68kRuntime.ThrowFormatException();
+						}
+						index = index * 10 + digit;
+						_scan++;
+					}
+					if (_scan >= format.Length || format[_scan++] != '}')
+					{
+						// Alignment, custom format strings, and malformed items are
+						// deliberately outside this first allocation-free slice.
+						M68kRuntime.ThrowFormatException();
+					}
+					argumentIndex = index;
+					return true;
+				}
+
+				if (character == '}')
+				{
+					if (_scan >= format.Length || format[_scan] != '}')
+					{
+						M68kRuntime.ThrowFormatException();
+					}
+					_scan++;
+				}
+				AppendCharacter(character);
+			}
+
+			argumentIndex = 0;
+			return false;
+		}
+
+		public void AppendString(string value)
+		{
+			EnsureCapacity(_position + value.Length);
+			for (var index = 0; index < value.Length; index++)
+			{
+				_buffer[_position++] = value[index];
+			}
+		}
+
+		public string Complete()
+		{
+			var result = M68kRuntime.AllocateString(_position);
+			for (var index = 0; index < _position; index++)
+			{
+				M68kRuntime.SetStringChar(result, index, _buffer[index]);
+			}
+			return result;
+		}
+
+		private void AppendCharacter(char value)
+		{
+			EnsureCapacity(_position + 1);
+			_buffer[_position++] = value;
+		}
+
+		private void EnsureCapacity(int required)
+		{
+			if (required <= _buffer.Length)
+			{
+				return;
+			}
+			var replacement = new char[required];
+			for (var index = 0; index < _position; index++)
+			{
+				replacement[index] = _buffer[index];
+			}
+			_buffer = replacement;
+		}
+	}
 }
 
 /// <summary>

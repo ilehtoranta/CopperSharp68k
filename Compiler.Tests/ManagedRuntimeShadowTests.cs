@@ -10,6 +10,15 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class ManagedRuntimeShadowTests
 {
 	[Fact]
+	public void ShadowStringFormatRejectsOverflowingArgumentIndex()
+	{
+		Assert.Throws<FormatException>(() =>
+			ShadowStringFormat.Format1("{4294967296}", 42));
+		Assert.Throws<FormatException>(() =>
+			ShadowStringFormat.Format1("{2147483648}", 42));
+	}
+
+	[Fact]
 	public void ShadowIntegerFormatterPacksInvariantDecimalWithoutAllocation()
 	{
 		AssertPackedInt32(0, 1, 0x3000_0000, 0, 0);
@@ -172,6 +181,130 @@ public sealed class ManagedRuntimeShadowTests
 	[Fact]
 	public void ShadowMathAbsThrowsForMinimumValue() =>
 		Assert.Throws<OverflowException>(() => ShadowMath.Abs(int.MinValue));
+
+	[Fact]
+	public void ShadowMathIntegralLeafSurfaceMatchesNetContract()
+	{
+		Assert.Equal((sbyte)12, ShadowMath.Abs((sbyte)-12));
+		Assert.Equal((short)1234, ShadowMath.Abs((short)-1234));
+		Assert.Equal(5_000_000_000L, ShadowMath.Abs(-5_000_000_000L));
+		Assert.Equal(3u, ShadowMath.Min(3u, 9u));
+		Assert.Equal(9ul, ShadowMath.Max(3ul, 9ul));
+		Assert.Equal((short)4, ShadowMath.Clamp((short)9, (short)-2, (short)4));
+		Assert.Equal(-1, ShadowMath.Sign(long.MinValue + 1));
+		Assert.Equal(1, ShadowMath.Sign(1L << 40));
+		Assert.Equal(-8_000_000_000L, ShadowMath.BigMul(-100_000, 80_000));
+		Assert.Equal(18_446_744_065_119_617_025UL, ShadowMath.BigMul(uint.MaxValue, uint.MaxValue));
+		Assert.Throws<OverflowException>(() => ShadowMath.Abs(long.MinValue));
+		Assert.Throws<ArgumentException>(() => ShadowMath.Clamp(1, 4, 2));
+	}
+
+	[Fact]
+	public void ShadowMathIeeeLeafSurfacePreservesBitsAndClassification()
+	{
+		var negativeZero = BitConverter.Int64BitsToDouble(unchecked((long)0x8000_0000_0000_0000UL));
+		var payloadNaN = BitConverter.Int64BitsToDouble(unchecked((long)0x7ff8_1234_5678_9abcUL));
+		Assert.Equal(0L, BitConverter.DoubleToInt64Bits(ShadowMath.Abs(negativeZero)));
+		Assert.Equal(
+			unchecked((long)0xfff8_1234_5678_9abcUL),
+			BitConverter.DoubleToInt64Bits(ShadowMath.CopySign(payloadNaN, -1.0)));
+		Assert.True(ShadowDouble.IsNaN(payloadNaN));
+		Assert.True(ShadowDouble.IsNegative(negativeZero));
+		Assert.True(ShadowDouble.IsSubnormal(double.Epsilon));
+		Assert.True(ShadowDouble.IsNormal(1.0));
+		Assert.True(ShadowDouble.IsPositiveInfinity(double.PositiveInfinity));
+		Assert.True(ShadowSingle.IsNegativeInfinity(float.NegativeInfinity));
+		Assert.True(ShadowSingle.IsFinite(42.0f));
+		Assert.Equal(
+			unchecked((long)0x8000_0000_0000_0000UL),
+			BitConverter.DoubleToInt64Bits(ShadowMath.Min(0.0, negativeZero)));
+		Assert.Equal(0L, BitConverter.DoubleToInt64Bits(ShadowMath.Max(negativeZero, 0.0)));
+		Assert.Equal(-1, ShadowMath.Sign(-42.0));
+		Assert.Equal(0, ShadowMath.Sign(negativeZero));
+		Assert.Throws<ArithmeticException>(() => ShadowMath.Sign(payloadNaN));
+	}
+
+	[Theory]
+	[InlineData(0.0)]
+	[InlineData(0.25)]
+	[InlineData(0.5)]
+	[InlineData(1.0)]
+	[InlineData(2.0)]
+	[InlineData(3.0)]
+	[InlineData(4.0)]
+	[InlineData(12345.6789)]
+	[InlineData(double.PositiveInfinity)]
+	public void ShadowMathRoundingAndSquareRootMatchNetContract(double value)
+	{
+		Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Truncate(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Truncate(value)));
+		Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Floor(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Floor(value)));
+		Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Ceiling(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Ceiling(value)));
+		Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Round(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Round(value)));
+		Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Sqrt(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Sqrt(value)));
+	}
+
+	[Fact]
+	public void ShadowMathSquareRootMatchesNetAcrossDeterministicBitPatterns()
+	{
+		var state = 0x1234_5678_9abc_def0UL;
+		for (var index = 0; index < 2_000; index++)
+		{
+			state = state * 6_364_136_223_846_793_005UL + 1_442_695_040_888_963_407UL;
+			var bits = state & 0x7fff_ffff_ffff_ffffUL;
+			var value = BitConverter.Int64BitsToDouble(unchecked((long)bits));
+			Assert.Equal(
+				BitConverter.DoubleToInt64Bits(Math.Sqrt(value)),
+				BitConverter.DoubleToInt64Bits(ShadowMath.Sqrt(value)));
+		}
+	}
+
+	[Fact]
+	public void ShadowMathRoundingMatchesNetAcrossDeterministicBitPatterns()
+	{
+		var state = 0xfedc_ba98_7654_3210UL;
+		for (var index = 0; index < 2_000; index++)
+		{
+			state = state * 2_862_933_555_777_941_757UL + 3_037_000_493UL;
+			var value = BitConverter.Int64BitsToDouble(unchecked((long)state));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Truncate(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Truncate(value)));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Floor(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Floor(value)));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Ceiling(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Ceiling(value)));
+			foreach (var mode in Enum.GetValues<MidpointRounding>())
+			{
+				var expected = BitConverter.DoubleToInt64Bits(Math.Round(value, mode));
+				var actual = BitConverter.DoubleToInt64Bits(ShadowMath.Round(value, mode));
+				if (expected != actual)
+				{
+					Assert.Fail(
+						$"Round mismatch for {mode}, input=0x{state:X16}, " +
+						$"expected=0x{unchecked((ulong)expected):X16}, actual=0x{unchecked((ulong)actual):X16}.");
+				}
+			}
+		}
+	}
+
+	[Fact]
+	public void ShadowMathFloatingLeavesMatchNetAcrossDeterministicBitPatterns()
+	{
+		var state = 0x0ddc_0ffe_e15e_beefUL;
+		for (var index = 0; index < 2_000; index++)
+		{
+			state = state * 6_364_136_223_846_793_005UL + 1_442_695_040_888_963_407UL;
+			var first = BitConverter.Int64BitsToDouble(unchecked((long)state));
+			state = state * 6_364_136_223_846_793_005UL + 1_442_695_040_888_963_407UL;
+			var second = BitConverter.Int64BitsToDouble(unchecked((long)state));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Abs(first)), BitConverter.DoubleToInt64Bits(ShadowMath.Abs(first)));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.CopySign(first, second)), BitConverter.DoubleToInt64Bits(ShadowMath.CopySign(first, second)));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Min(first, second)), BitConverter.DoubleToInt64Bits(ShadowMath.Min(first, second)));
+			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Max(first, second)), BitConverter.DoubleToInt64Bits(ShadowMath.Max(first, second)));
+
+			var firstSingle = BitConverter.Int32BitsToSingle(unchecked((int)state));
+			var secondSingle = BitConverter.Int32BitsToSingle(unchecked((int)(state >> 32)));
+			Assert.Equal(BitConverter.SingleToInt32Bits(Math.Abs(firstSingle)), BitConverter.SingleToInt32Bits(ShadowMath.Abs(firstSingle)));
+			Assert.Equal(BitConverter.SingleToInt32Bits(Math.Min(firstSingle, secondSingle)), BitConverter.SingleToInt32Bits(ShadowMath.Min(firstSingle, secondSingle)));
+			Assert.Equal(BitConverter.SingleToInt32Bits(Math.Max(firstSingle, secondSingle)), BitConverter.SingleToInt32Bits(ShadowMath.Max(firstSingle, secondSingle)));
+		}
+	}
 
 	[Fact]
 	public void ShadowBitConverterUsesTargetBigEndianByteOrder() =>

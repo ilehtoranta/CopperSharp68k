@@ -11,8 +11,13 @@ namespace CopperSharp.Compiler.Framework;
 
 internal sealed class Net10FrameworkContract
 {
+	internal const int SupportedManifestSchemaVersion = 1;
+	internal const string SupportedTargetFramework = "net10.0";
+	internal const string SupportedReferencePack = "Microsoft.NETCore.App.Ref";
+	internal const string SupportedReferencePackVersion = "10.0.9";
 	private const string ResourceName =
-		"CopperSharp.Compiler.Framework.net10.0-10.0.9.json";
+		"CopperSharp.Compiler.Framework." + SupportedTargetFramework + "-" +
+		SupportedReferencePackVersion + ".json";
 
 	private readonly HashSet<string> _assemblies;
 	private readonly FrameworkBindingRule[] _bindings;
@@ -276,13 +281,19 @@ internal sealed class Net10FrameworkContract
 
 	private static void Validate(FrameworkContractManifest manifest)
 	{
-		if (manifest.SchemaVersion != 1 ||
-			!string.Equals(manifest.TargetFramework, "net10.0", StringComparison.Ordinal) ||
+		if (manifest.SchemaVersion != SupportedManifestSchemaVersion ||
+			!string.Equals(
+				manifest.TargetFramework,
+				SupportedTargetFramework,
+				StringComparison.Ordinal) ||
 			!string.Equals(
 				manifest.ReferencePack,
-				"Microsoft.NETCore.App.Ref",
+				SupportedReferencePack,
 				StringComparison.Ordinal) ||
-			string.IsNullOrWhiteSpace(manifest.ReferencePackVersion))
+			!string.Equals(
+				manifest.ReferencePackVersion,
+				SupportedReferencePackVersion,
+				StringComparison.Ordinal))
 		{
 			throw new InvalidOperationException(
 				"The embedded .NET framework contract descriptor is invalid or unsupported.");
