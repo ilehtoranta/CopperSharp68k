@@ -21,7 +21,7 @@ public static class Workbench
 			"WorkbenchLibraryBase is lowered by CopperSharp.");
 	}
 
-	[AmigaLvo(-30)]
+	[AmigaLvo(WorkbenchLvo.UpdateWorkbench)]
 	public static void UpdateWorkbench(
 		[M68kRegister(M68kRegister.A0)] CString name,
 		[M68kRegister(M68kRegister.A1)] uint parentLock,
@@ -29,7 +29,7 @@ public static class Workbench
 	{
 	}
 
-	[AmigaLvo(-48)]
+	[AmigaLvo(WorkbenchLvo.AddAppWindowA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AddAppWindowA(
 		[M68kRegister(M68kRegister.D0)] uint id,
@@ -41,7 +41,7 @@ public static class Workbench
 		return 0;
 	}
 
-	[AmigaLvo(-54)]
+	[AmigaLvo(WorkbenchLvo.RemoveAppWindow)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int RemoveAppWindow(
 		[M68kRegister(M68kRegister.A0)] uint appWindow)
@@ -49,7 +49,7 @@ public static class Workbench
 		return 0;
 	}
 
-	[AmigaLvo(-60)]
+	[AmigaLvo(WorkbenchLvo.AddAppIconA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AddAppIconA(
 		[M68kRegister(M68kRegister.D0)] uint id,
@@ -63,7 +63,7 @@ public static class Workbench
 		return 0;
 	}
 
-	[AmigaLvo(-66)]
+	[AmigaLvo(WorkbenchLvo.RemoveAppIcon)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int RemoveAppIcon(
 		[M68kRegister(M68kRegister.A0)] uint appIcon)
@@ -71,7 +71,7 @@ public static class Workbench
 		return 0;
 	}
 
-	[AmigaLvo(-72)]
+	[AmigaLvo(WorkbenchLvo.AddAppMenuItemA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AddAppMenuItemA(
 		[M68kRegister(M68kRegister.D0)] uint id,
@@ -83,7 +83,7 @@ public static class Workbench
 		return 0;
 	}
 
-	[AmigaLvo(-78)]
+	[AmigaLvo(WorkbenchLvo.RemoveAppMenuItem)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int RemoveAppMenuItem(
 		[M68kRegister(M68kRegister.A0)] uint appMenuItem)
@@ -91,7 +91,7 @@ public static class Workbench
 		return 0;
 	}
 
-	[AmigaLvo(-90)]
+	[AmigaLvo(WorkbenchLvo.WBInfo)]
 	public static void WBInfo(
 		[M68kRegister(M68kRegister.A0)] uint lockPtr,
 		[M68kRegister(M68kRegister.A1)] CString name,
@@ -100,7 +100,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-96)]
+	[AmigaLvo(WorkbenchLvo.OpenWorkbenchObjectA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int OpenWorkbenchObjectA(
 		[M68kRegister(M68kRegister.A0)] CString name,
@@ -110,7 +110,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-102)]
+	[AmigaLvo(WorkbenchLvo.CloseWorkbenchObjectA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int CloseWorkbenchObjectA(
 		[M68kRegister(M68kRegister.A0)] CString name,
@@ -120,7 +120,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-108)]
+	[AmigaLvo(WorkbenchLvo.WorkbenchControlA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int WorkbenchControlA(
 		[M68kRegister(M68kRegister.A0)] CString name,
@@ -130,7 +130,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-114)]
+	[AmigaLvo(WorkbenchLvo.AddAppWindowDropZoneA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AddAppWindowDropZoneA(
 		[M68kRegister(M68kRegister.A0)] uint appWindow,
@@ -142,7 +142,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-120)]
+	[AmigaLvo(WorkbenchLvo.RemoveAppWindowDropZone)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int RemoveAppWindowDropZone(
 		[M68kRegister(M68kRegister.A0)] uint appWindow,
@@ -152,7 +152,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-126)]
+	[AmigaLvo(WorkbenchLvo.ChangeWorkbenchSelectionA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int ChangeWorkbenchSelectionA(
 		[M68kRegister(M68kRegister.A0)] CString name,
@@ -163,7 +163,7 @@ public static class Workbench
 	}
 
 	// MorphOS m68k ABI extension.
-	[AmigaLvo(-132)]
+	[AmigaLvo(WorkbenchLvo.MakeWorkbenchObjectVisibleA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int MakeWorkbenchObjectVisibleA(
 		[M68kRegister(M68kRegister.A0)] CString name,

@@ -48,12 +48,12 @@ public static class Intuition
 	public static extern void ClearPointer(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-66)]
+	[AmigaLvo(IntuitionLvo.CloseScreen)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int CloseScreen(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-72)]
+	[AmigaLvo(IntuitionLvo.CloseWindow)]
 	public static extern void CloseWindow(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
@@ -126,7 +126,7 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.D0)] uint arg1);
 
-	[AmigaLvo(-150)]
+	[AmigaLvo(IntuitionLvo.ModifyIDCMP)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ModifyIDCMP(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
@@ -177,12 +177,12 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.D0)] uint arg1);
 
-	[AmigaLvo(-198)]
+	[AmigaLvo(IntuitionLvo.OpenScreen)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint OpenScreen(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-204)]
+	[AmigaLvo(IntuitionLvo.OpenWindow)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint OpenWindow(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
@@ -210,7 +210,7 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.A1)] uint arg1);
 
-	[AmigaLvo(-234)]
+	[AmigaLvo(IntuitionLvo.ReportMouse)]
 	public static extern void ReportMouse(
 		[M68kRegister(M68kRegister.D0)] int arg0,
 		[M68kRegister(M68kRegister.A0)] uint arg1);
@@ -225,7 +225,7 @@ public static class Intuition
 	public static extern void ScreenToBack(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-252)]
+	[AmigaLvo(IntuitionLvo.ScreenToFront)]
 	public static extern void ScreenToFront(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
@@ -250,13 +250,13 @@ public static class Intuition
 		[M68kRegister(M68kRegister.D2)] int arg4,
 		[M68kRegister(M68kRegister.D3)] int arg5);
 
-	[AmigaLvo(-276)]
+	[AmigaLvo(IntuitionLvo.SetWindowTitles)]
 	public static extern void SetWindowTitles(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.A1)] uint arg1,
 		[M68kRegister(M68kRegister.A2)] uint arg2);
 
-	[AmigaLvo(-282)]
+	[AmigaLvo(IntuitionLvo.ShowTitle)]
 	public static extern void ShowTitle(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.D0)] int arg1);
@@ -267,11 +267,11 @@ public static class Intuition
 		[M68kRegister(M68kRegister.D0)] int arg1,
 		[M68kRegister(M68kRegister.D1)] int arg2);
 
-	[AmigaLvo(-294)]
+	[AmigaLvo(IntuitionLvo.ViewAddress)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint ViewAddress();
 
-	[AmigaLvo(-300)]
+	[AmigaLvo(IntuitionLvo.ViewPortAddress)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint ViewPortAddress(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
@@ -349,27 +349,27 @@ public static class Intuition
 	public static extern void FreeSysRequest(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-378)]
+	[AmigaLvo(IntuitionLvo.MakeScreen)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MakeScreen(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-384)]
+	[AmigaLvo(IntuitionLvo.RemakeDisplay)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RemakeDisplay();
 
-	[AmigaLvo(-390)]
+	[AmigaLvo(IntuitionLvo.RethinkDisplay)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RethinkDisplay();
 
-	[AmigaLvo(-396)]
+	[AmigaLvo(IntuitionLvo.AllocRemember)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AllocRemember(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.D0)] uint arg1,
 		[M68kRegister(M68kRegister.D1)] uint arg2);
 
-	[AmigaLvo(-408)]
+	[AmigaLvo(IntuitionLvo.FreeRemember)]
 	public static extern void FreeRemember(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.D0)] int arg1);
@@ -383,7 +383,7 @@ public static class Intuition
 	public static extern void UnlockIBase(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
-	[AmigaLvo(-426)]
+	[AmigaLvo(IntuitionLvo.GetScreenData)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetScreenData(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
@@ -391,14 +391,14 @@ public static class Intuition
 		[M68kRegister(M68kRegister.D1)] uint arg2,
 		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint arg3);
 
-	[AmigaLvo(-432)]
+	[AmigaLvo(IntuitionLvo.RefreshGList)]
 	public static extern void RefreshGList(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.A1)] uint arg1,
 		[M68kRegister(M68kRegister.A2)] uint arg2,
 		[M68kRegister(M68kRegister.D0)] int arg3);
 
-	[AmigaLvo(-438)]
+	[AmigaLvo(IntuitionLvo.AddGList)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern ushort AddGList(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
@@ -441,7 +441,7 @@ public static class Intuition
 		[M68kRegister(M68kRegister.D4)] uint arg7,
 		[M68kRegister(M68kRegister.D5)] int arg8);
 
-	[AmigaLvo(-474)]
+	[AmigaLvo(IntuitionLvo.QueryOverscan)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int QueryOverscan(
 		[M68kRegister(M68kRegister.A0)] uint arg0,
@@ -562,7 +562,7 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A0)] uint arg0,
 		[M68kRegister(M68kRegister.A1)] uint arg1);
 
-	[AmigaLvo(-612)]
+	[AmigaLvo(IntuitionLvo.OpenScreenTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint OpenScreenTagList(
 		[M68kRegister(M68kRegister.A0)] uint arg0,

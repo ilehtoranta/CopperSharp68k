@@ -99,40 +99,40 @@ public static class DOS
 			"DOSLibraryBase is lowered by CopperSharp.");
 	}
 
-	[AmigaLvo(-30)]
+	[AmigaLvo(DosLvo.Open)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? Open(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] FileMode accessMode);
 
-	[AmigaLvo(-36)]
+	[AmigaLvo(DosLvo.Close)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Close(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-42)]
+	[AmigaLvo(DosLvo.Read)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Read(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
-	[AmigaLvo(-48)]
+	[AmigaLvo(DosLvo.Write)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Write(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] uint buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
-	[AmigaLvo(-54)]
+	[AmigaLvo(DosLvo.Input)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR Input();
 
-	[AmigaLvo(-60)]
+	[AmigaLvo(DosLvo.Output)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR Output();
 
-	[AmigaLvo(-66)]
+	[AmigaLvo(DosLvo.Seek)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Seek(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
@@ -150,22 +150,22 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString oldName,
 		[M68kRegister(M68kRegister.D2)] CString newName);
 
-	[AmigaLvo(-84)]
+	[AmigaLvo(DosLvo.Lock)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? Lock(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] LockMode type);
 
-	[AmigaLvo(-90)]
+	[AmigaLvo(DosLvo.UnLock)]
 	public static extern void UnLock(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
-	[AmigaLvo(-96)]
+	[AmigaLvo(DosLvo.DupLock)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? DupLock(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
-	[AmigaLvo(-102)]
+	[AmigaLvo(DosLvo.Examine)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
@@ -188,12 +188,12 @@ public static class DOS
 	public static extern BPTR? CreateDir(
 		[M68kRegister(M68kRegister.D1)] CString name);
 
-	[AmigaLvo(-126)]
+	[AmigaLvo(DosLvo.CurrentDir)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? CurrentDir(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
-	[AmigaLvo(-132)]
+	[AmigaLvo(DosLvo.IoErr)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern Error IoErr();
 
@@ -235,12 +235,12 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int protect);
 
-	[AmigaLvo(-192)]
+	[AmigaLvo(DosLvo.DateStamp)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint DateStamp(
 		[M68kRegister(M68kRegister.D1)] uint date);
 
-	[AmigaLvo(-198)]
+	[AmigaLvo(DosLvo.Delay)]
 	public static extern void Delay(
 		[M68kRegister(M68kRegister.D1)] int timeout);
 
@@ -520,7 +520,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D2)] int position,
 		[M68kRegister(M68kRegister.D3)] int mode);
 
-	[AmigaLvo(-462)]
+	[AmigaLvo(DosLvo.SetIoErr)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern Error SetIoErr(
 		[M68kRegister(M68kRegister.D1)] Error result);
@@ -825,7 +825,7 @@ public static class DOS
 	public static extern int CheckSignal(
 		[M68kRegister(M68kRegister.D1)] int mask);
 
-	[AmigaLvo(-798)]
+	[AmigaLvo(DosLvo.ReadArgs)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint ReadArgs(
 		[M68kRegister(M68kRegister.D1)] CString template_,

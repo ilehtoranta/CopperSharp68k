@@ -21,13 +21,13 @@ public static class Expansion
 			"ExpansionLibraryBase is lowered by CopperSharp.");
 	}
 
-	[AmigaLvo(-30)]
+	[AmigaLvo(ExpansionLvo.AddConfigDev)]
 	public static void AddConfigDev(
 		[M68kRegister(M68kRegister.A0)] uint configDev)
 	{
 	}
 
-	[AmigaLvo(-36)]
+	[AmigaLvo(ExpansionLvo.AddBootNode)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int AddBootNode(
 		[M68kRegister(M68kRegister.D0)] int bootPri,
@@ -38,20 +38,20 @@ public static class Expansion
 		return 0;
 	}
 
-	[AmigaLvo(-42)]
+	[AmigaLvo(ExpansionLvo.AllocBoardMem)]
 	public static void AllocBoardMem(
 		[M68kRegister(M68kRegister.D0)] uint slotSpec)
 	{
 	}
 
-	[AmigaLvo(-48)]
+	[AmigaLvo(ExpansionLvo.AllocConfigDev)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AllocConfigDev()
 	{
 		return 0;
 	}
 
-	[AmigaLvo(-54)]
+	[AmigaLvo(ExpansionLvo.AllocExpansionMem)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AllocExpansionMem(
 		[M68kRegister(M68kRegister.D0)] uint numSlots,
@@ -60,20 +60,20 @@ public static class Expansion
 		return 0;
 	}
 
-	[AmigaLvo(-60)]
+	[AmigaLvo(ExpansionLvo.ConfigBoard)]
 	public static void ConfigBoard(
 		[M68kRegister(M68kRegister.A0)] uint board,
 		[M68kRegister(M68kRegister.A1)] uint configDev)
 	{
 	}
 
-	[AmigaLvo(-66)]
+	[AmigaLvo(ExpansionLvo.ConfigChain)]
 	public static void ConfigChain(
 		[M68kRegister(M68kRegister.A0)] uint baseAddr)
 	{
 	}
 
-	[AmigaLvo(-72)]
+	[AmigaLvo(ExpansionLvo.FindConfigDev)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint FindConfigDev(
 		[M68kRegister(M68kRegister.A0)] uint oldConfigDev,
@@ -83,27 +83,27 @@ public static class Expansion
 		return 0;
 	}
 
-	[AmigaLvo(-78)]
+	[AmigaLvo(ExpansionLvo.FreeBoardMem)]
 	public static void FreeBoardMem(
 		[M68kRegister(M68kRegister.D0)] uint startSlot,
 		[M68kRegister(M68kRegister.D1)] uint slotSpec)
 	{
 	}
 
-	[AmigaLvo(-84)]
+	[AmigaLvo(ExpansionLvo.FreeConfigDev)]
 	public static void FreeConfigDev(
 		[M68kRegister(M68kRegister.A0)] uint configDev)
 	{
 	}
 
-	[AmigaLvo(-90)]
+	[AmigaLvo(ExpansionLvo.FreeExpansionMem)]
 	public static void FreeExpansionMem(
 		[M68kRegister(M68kRegister.D0)] uint startSlot,
 		[M68kRegister(M68kRegister.D1)] uint numSlots)
 	{
 	}
 
-	[AmigaLvo(-96)]
+	[AmigaLvo(ExpansionLvo.ReadExpansionByte)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static byte ReadExpansionByte(
 		[M68kRegister(M68kRegister.A0)] uint board,
@@ -112,20 +112,20 @@ public static class Expansion
 		return 0;
 	}
 
-	[AmigaLvo(-102)]
+	[AmigaLvo(ExpansionLvo.ReadExpansionRom)]
 	public static void ReadExpansionRom(
 		[M68kRegister(M68kRegister.A0)] uint board,
 		[M68kRegister(M68kRegister.A1)] uint configDev)
 	{
 	}
 
-	[AmigaLvo(-108)]
+	[AmigaLvo(ExpansionLvo.RemConfigDev)]
 	public static void RemConfigDev(
 		[M68kRegister(M68kRegister.A0)] uint configDev)
 	{
 	}
 
-	[AmigaLvo(-114)]
+	[AmigaLvo(ExpansionLvo.WriteExpansionByte)]
 	public static void WriteExpansionByte(
 		[M68kRegister(M68kRegister.A0)] uint board,
 		[M68kRegister(M68kRegister.D0)] uint offset,
@@ -133,24 +133,24 @@ public static class Expansion
 	{
 	}
 
-	[AmigaLvo(-120)]
+	[AmigaLvo(ExpansionLvo.ObtainConfigBinding)]
 	public static void ObtainConfigBinding()
 	{
 	}
 
-	[AmigaLvo(-126)]
+	[AmigaLvo(ExpansionLvo.ReleaseConfigBinding)]
 	public static void ReleaseConfigBinding()
 	{
 	}
 
-	[AmigaLvo(-132)]
+	[AmigaLvo(ExpansionLvo.SetCurrentBinding)]
 	public static void SetCurrentBinding(
 		[M68kRegister(M68kRegister.A0)] uint currentBinding,
 		[M68kRegister(M68kRegister.D0)] uint bindingSize)
 	{
 	}
 
-	[AmigaLvo(-138)]
+	[AmigaLvo(ExpansionLvo.GetCurrentBinding)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint GetCurrentBinding(
 		[M68kRegister(M68kRegister.A0)] uint currentBinding,
@@ -159,7 +159,7 @@ public static class Expansion
 		return 0;
 	}
 
-	[AmigaLvo(-144)]
+	[AmigaLvo(ExpansionLvo.MakeDosNode)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint MakeDosNode(
 		[M68kRegister(M68kRegister.A0)] uint parameterPacket)
@@ -167,7 +167,7 @@ public static class Expansion
 		return 0;
 	}
 
-	[AmigaLvo(-150)]
+	[AmigaLvo(ExpansionLvo.AddDosNode)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int AddDosNode(
 		[M68kRegister(M68kRegister.D0)] int bootPri,

@@ -9,5 +9,6 @@ namespace Amiga.Hardware;
 public static class CustomRegister
 {
 	public const ushort BitplaneControl0 = 0x0100;
+	public const ushort InterruptRequest = 0x009C;
 	public const ushort Color00 = 0x0180;
 }

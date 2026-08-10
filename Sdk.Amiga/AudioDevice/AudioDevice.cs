@@ -29,7 +29,7 @@ public enum AudioIoError : sbyte
 [StructLayout(LayoutKind.Sequential, Pack = 2, Size = Size)]
 public struct IOAudio
 {
-	public const int Size = 76;
+	public const int Size = 68;
 	public IORequest Request;
 	public short AllocationKey;
 	public APTR Data;
@@ -42,6 +42,6 @@ public struct IOAudio
 
 public static class IOAudioLayout
 {
-	public const int Request = 0, AllocationKey = 40, Data = 42, Length = 46,
-		Period = 50, Volume = 52, Cycles = 54, WriteMessage = 56;
+	public const int Request = 0, AllocationKey = 32, Data = 34, Length = 38,
+		Period = 42, Volume = 44, Cycles = 46, WriteMessage = 48;
 }
