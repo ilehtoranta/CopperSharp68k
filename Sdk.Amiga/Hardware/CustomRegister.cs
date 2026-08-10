@@ -8,7 +8,7 @@ namespace Amiga.Hardware;
 /// <summary>Custom-register selectors used in Copper MOVE instructions.</summary>
 public static class CustomRegister
 {
-	public const ushort BitplaneControl0 = 0x0100;
-	public const ushort InterruptRequest = 0x009C;
-	public const ushort Color00 = 0x0180;
+	public const ushort BitplaneControl0 = (ushort)CustomWriteRegister.BitplaneControl0;
+	public const ushort InterruptRequest = (ushort)CustomWriteRegister.InterruptRequest;
+	public const ushort Color00 = (ushort)CustomWriteRegister.Color00;
 }

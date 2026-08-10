@@ -5,19 +5,14 @@
 
 namespace Amiga.Hardware;
 
-/// <summary>Allocation-free handle for the CIA-A register block.</summary>
-public readonly struct CiaA
+/// <summary>Allocation-free handle for the CIA-B register block.</summary>
+public readonly struct CiaB
 {
-	private const uint BaseAddress = 0x00BFE001;
-	private const byte LeftMouseButton = 1 << 6;
+	private const uint BaseAddress = 0x00BFD000;
 
 	public static byte Read(CiaRegister register) =>
 		APTR.ReadUInt8(APTR.FromPointer(BaseAddress), (int)register << 8);
 
 	public static void Write(CiaRegister register, byte value) =>
 		APTR.WriteUInt8(APTR.FromPointer(BaseAddress), (int)register << 8, value);
-
-	public static byte ReadPortA() => Read(CiaRegister.PortA);
-
-	public static bool IsLeftMouseButtonPressed() => (ReadPortA() & LeftMouseButton) == 0;
 }

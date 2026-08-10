@@ -36,16 +36,29 @@ Pointer arguments are represented as 32-bit guest addresses.
 ## Hardware registers
 
 `Amiga.Hardware` contains typed, allocation-free register façades alongside the
-OS subsystem namespaces. `CustomChip` separates read aliases from write
-strobes and set/clear operations, while `CiaA` exposes CIA-A inputs. Register
-bit fields use `ushort`-backed flag enums so accesses retain the hardware's
-16-bit width. Operations are static because the current AOT profile supports
-scalar locals only; the structs carry no runtime state.
+OS subsystem namespaces. Its model catalog covers the Commodore systems from
+the Amiga 1000 through the Amiga 4000T, plus CDTV and CD32. The shared register
+surface includes the complete OCS/ECS/AGA custom-chip map and both MOS 8520
+CIAs. Model-specific types cover the A2000- and A3000-style clocks, Gayle and
+PCMCIA, A600/A1200 and A4000 IDE layouts, A3000/A4000 motherboard resources,
+CDTV DMAC and CD32 Akiko.
+
+`CustomChip` separates CPU-readable aliases, ordinary writes, pointer pairs,
+write strobes, and set/clear operations. Use `CustomRegisterCatalog` to test
+whether an ECS- or AGA-only register exists for the selected chipset. Register
+bit fields retain their hardware width. Operations are static because the
+current AOT profile supports scalar locals only; the structs carry no runtime
+state. `HardwareBus` is the width-explicit escape hatch for expansion hardware
+and controller revisions that have no common motherboard layout.
 
 Use `CustomRegister` selectors when constructing Copper instructions. Direct
 custom-chip access remains the caller's responsibility: own or disable the
 affected OS resources before taking over the machine, and restore saved DMA,
 interrupt, audio/disk, Copper, and display state before returning.
+
+`AmigaHardware.GetFeatures()` describes built-in motherboard hardware only.
+Expansion cards and user-installed Agnus, Denise, or accelerator upgrades must
+be detected separately; the machine name alone cannot identify them safely.
 
 `APTR` represents untyped byte-addressed Amiga pointers. `BPTR` represents DOS
 BCPL pointers: the raw value passed to DOS is the byte address shifted right by

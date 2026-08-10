@@ -6,7 +6,7 @@
 namespace Amiga.Hardware;
 
 /// <summary>
-/// Allocation-free handle for the OCS/ECS custom-register block. Read aliases,
+/// Allocation-free handle for the OCS/ECS/AGA custom-register block. Read aliases,
 /// write aliases, and strobe operations are deliberately separate methods.
 /// </summary>
 public readonly struct CustomChip
@@ -20,12 +20,22 @@ public readonly struct CustomChip
 	private const int AudioDiskControlRead = 0x010;
 	private const int InterruptEnableRead = 0x01C;
 	private const int InterruptRequestRead = 0x01E;
-	private const int Copper1Pointer = 0x080;
-	private const int Copper1Jump = 0x088;
 	private const int DmaControl = 0x096;
 	private const int InterruptEnable = 0x09A;
 	private const int InterruptRequest = 0x09C;
 	private const int AudioDiskControl = 0x09E;
+
+	public static ushort Read(CustomReadRegister register) =>
+		APTR.ReadUInt16(APTR.FromPointer(BaseAddress), (int)register);
+
+	public static void Write(CustomWriteRegister register, ushort value) =>
+		APTR.WriteUInt16(APTR.FromPointer(BaseAddress), (int)register, value);
+
+	public static void WritePointer(CustomPointerRegister register, uint address) =>
+		APTR.WriteUInt32(APTR.FromPointer(BaseAddress), (int)register, address);
+
+	public static void Strobe(CustomStrobeRegister register) =>
+		APTR.WriteUInt16(APTR.FromPointer(BaseAddress), (int)register, 0);
 
 	public static DmaControlFlags ReadDmaControl() =>
 		(DmaControlFlags)APTR.ReadUInt16(APTR.FromPointer(BaseAddress), DmaControlRead);
@@ -48,10 +58,10 @@ public readonly struct CustomChip
 	}
 
 	public static void SetCopper1Pointer(uint address) =>
-		APTR.WriteUInt32(APTR.FromPointer(BaseAddress), Copper1Pointer, address);
+		WritePointer(CustomPointerRegister.Copper1, address);
 
 	public static void StrobeCopper1() =>
-		APTR.WriteUInt16(APTR.FromPointer(BaseAddress), Copper1Jump, 0);
+		Strobe(CustomStrobeRegister.CopperJump1);
 
 	public static void ClearDma(DmaControlFlags flags) =>
 		APTR.WriteUInt16(
