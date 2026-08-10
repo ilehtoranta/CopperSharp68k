@@ -134,11 +134,28 @@ public enum DeviceCommand : ushort
 	NonStandard = 9,
 }
 
+public enum IoError : sbyte
+{
+	Ok = 0,
+	OpenFail = -1,
+	Aborted = -2,
+	NoCommand = -3,
+	BadAddress = -4,
+	BadLength = -5,
+}
+
 [System.Flags]
 public enum MemoryHandlerFlags : uint
 {
 	None = 0,
 	Recycle = 1u << 0,
+}
+
+public enum MemoryHandlerResult : int
+{
+	AllDone = -1,
+	DidNothing = 0,
+	TryAgain = 1,
 }
 
 public enum SemaphoreMode : uint
@@ -181,8 +198,71 @@ public enum TaskError : uint
 	NoMemory = 1,
 }
 
+/// <summary>Classic V39 child-task status and error values.</summary>
+public enum ChildTaskStatus : uint
+{
+	NotNew = 1,
+	NotFound = 2,
+	Exited = 3,
+	Active = 4,
+}
+
+/// <summary>MorphOS V50 task attribute selectors accepted by NewGet/SetTaskAttrsA.</summary>
+public enum TaskInfoType : uint
+{
+	AllTasks = 0x00,
+	Name = 0x01,
+	Priority = 0x02,
+	Type = 0x03,
+	State = 0x04,
+	Flags = 0x05,
+	SignalAllocated = 0x06,
+	SignalWait = 0x07,
+	SignalReceived = 0x08,
+	SignalException = 0x09,
+	ExceptionData = 0x0A,
+	ExceptionCode = 0x0B,
+	TrapData = 0x0C,
+	TrapCode = 0x0D,
+	StackSizeM68k = 0x0E,
+	StackLowerM68k = 0x28,
+	StackUpperM68k = 0x29,
+	NameCopy = 0x2A,
+	UserData = 0x2B,
+	ProcessId = 0x33,
+}
+
+/// <summary>MorphOS V50 system attribute selectors implemented by portable consumers.</summary>
+public enum SystemInfoType : uint
+{
+	System = 0x000,
+	Machine = 0x001,
+	PageSize = 0x100,
+	CpuCount = 0x101,
+	Magic1 = 0x238,
+	Magic2 = 0x239,
+	NewScheduler = 0x242,
+}
+
+/// <summary>MorphOS Exec registry list identifiers used by FindExecNode.</summary>
+public enum ExecNodeListType : uint
+{
+	Device = 0,
+	Library = 2,
+	MemoryHeader = 4,
+	MessagePort = 5,
+	Resource = 6,
+	SignalSemaphore = 7,
+	Task = 8,
+}
+
 public static class ExecConstants
 {
+	public const uint TagDone = 0;
+	public const uint TagIgnore = 1;
+	public const uint TagMore = 2;
+	public const uint TagSkip = 3;
+	public const uint TagUser = 0x8000_0000u;
 	public const int LibraryVectorSize = 6;
 	public const int LibraryReservedVectors = 4;
 	public const short LibraryBase = -6;
@@ -205,4 +285,38 @@ public static class ExecConstants
 	public const uint DefaultTaskThresholdSize = 4096;
 	public const uint CurrentTaskId = 0;
 	public const uint InvalidTlsIndex = 0xFFFF_FFFFu;
+
+	public const uint TaskTagBase = TagUser + 0x0010_0000u;
+	public const uint TaskTagError = TaskTagBase + 0x00;
+	public const uint TaskTagCodeType = TaskTagBase + 0x01;
+	public const uint TaskTagProgramCounter = TaskTagBase + 0x02;
+	public const uint TaskTagFinalProgramCounter = TaskTagBase + 0x03;
+	public const uint TaskTagStackSize = TaskTagBase + 0x04;
+	public const uint TaskTagM68kStackSize = TaskTagBase + 0x05;
+	public const uint TaskTagName = TaskTagBase + 0x06;
+	public const uint TaskTagUserData = TaskTagBase + 0x07;
+	public const uint TaskTagPriority = TaskTagBase + 0x08;
+	public const uint TaskTagPoolPuddle = TaskTagBase + 0x09;
+	public const uint TaskTagPoolThreshold = TaskTagBase + 0x0A;
+	public const uint TaskTagFlags = TaskTagBase + 0x1A;
+
+	public const uint LibraryTagBase = TagUser + 0x0100_0100u;
+	public const uint LibraryTagFunctionInit = LibraryTagBase + 0x00;
+	public const uint LibraryTagStructInit = LibraryTagBase + 0x01;
+	public const uint LibraryTagLibraryInit = LibraryTagBase + 0x02;
+	public const uint LibraryTagMachine = LibraryTagBase + 0x03;
+	public const uint LibraryTagBaseSize = LibraryTagBase + 0x04;
+	public const uint LibraryTagSegmentList = LibraryTagBase + 0x05;
+	public const uint LibraryTagPriority = LibraryTagBase + 0x06;
+	public const uint LibraryTagType = LibraryTagBase + 0x07;
+	public const uint LibraryTagVersion = LibraryTagBase + 0x08;
+	public const uint LibraryTagFlags = LibraryTagBase + 0x09;
+	public const uint LibraryTagName = LibraryTagBase + 0x0A;
+	public const uint LibraryTagIdString = LibraryTagBase + 0x0B;
+	public const uint LibraryTagPublic = LibraryTagBase + 0x0C;
+	public const uint LibraryTagRevision = LibraryTagBase + 0x0D;
+
+	public const uint ExecNodeTagType = TagUser + 1001;
+	public const uint ExecNodeTagPriority = TagUser + 1002;
+	public const uint ExecNodeTagName = TagUser + 1003;
 }

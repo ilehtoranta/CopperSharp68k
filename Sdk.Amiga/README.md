@@ -33,6 +33,20 @@ The initial reference surface includes:
 
 Pointer arguments are represented as 32-bit guest addresses.
 
+## Hardware registers
+
+`Amiga.Hardware` contains typed, allocation-free register façades alongside the
+OS subsystem namespaces. `CustomChip` separates read aliases from write
+strobes and set/clear operations, while `CiaA` exposes CIA-A inputs. Register
+bit fields use `ushort`-backed flag enums so accesses retain the hardware's
+16-bit width. Operations are static because the current AOT profile supports
+scalar locals only; the structs carry no runtime state.
+
+Use `CustomRegister` selectors when constructing Copper instructions. Direct
+custom-chip access remains the caller's responsibility: own or disable the
+affected OS resources before taking over the machine, and restore saved DMA,
+interrupt, audio/disk, Copper, and display state before returning.
+
 `APTR` represents untyped byte-addressed Amiga pointers. `BPTR` represents DOS
 BCPL pointers: the raw value passed to DOS is the byte address shifted right by
 two, and `BPTR.Address` converts it back to an `APTR`. Use `APTR.Null`,
@@ -191,4 +205,6 @@ application, window, group, text object, and button. See
 nested deterministic cleanup. See `Examples/FileStats` for a YOLO-style DOS
 file report that mixes byte, word, and longword arithmetic. See
 `Examples/StopwatchBenchmark` for a portable .NET prime-number benchmark using
-`System.Diagnostics.Stopwatch` and `System.Console`.
+`System.Diagnostics.Stopwatch` and `System.Console`. See `Examples/CopperBars`
+for a PAL OCS system-takeover demo whose moving Copper effect performs no OS
+calls and exits on the left mouse button.

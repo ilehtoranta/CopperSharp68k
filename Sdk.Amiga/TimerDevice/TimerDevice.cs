@@ -13,9 +13,16 @@ using CopperSharp.Sdk.Amiga;
 public static class TimerDevice
 {
 	public const string Name = "timer.device";
-	public const uint UnitEClock = 2;
+	public const short Open = -6;
+	public const short Close = -12;
+	public const short Expunge = -18;
+	public const short ExtFunc = -24;
+	public const short BeginIO = -30;
+	public const short AbortIO = -36;
+	public const short ReadEClockLvo = -60;
+	public const uint UnitEClock = (uint)TimerUnit.EClock;
 
-	[AmigaLvo(-60)]
+	[AmigaLvo(ReadEClockLvo)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint ReadEClock(
 		[M68kRegister(M68kRegister.A6)] APTR deviceBase,

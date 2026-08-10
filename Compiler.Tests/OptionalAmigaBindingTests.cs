@@ -27,7 +27,6 @@ public sealed class OptionalAmigaBindingTests
 	[InlineData(typeof(XadMaster), "xadmaster.library", "_XadMasterLibraryBase")]
 	[InlineData(typeof(XpkMaster), "xpkmaster.library", "_XpkMasterLibraryBase")]
 	[InlineData(typeof(CAMD), "camd.library", "_CAMDLibraryBase")]
-	[InlineData(typeof(TimerDevice), "timer.device", "_TimerDeviceLibraryBase")]
 	public void OptionalLibrariesAreManual(Type libraryType, string name, string baseSymbol)
 	{
 		var attribute = libraryType.GetCustomAttribute<AmigaLibraryAttribute>();
@@ -36,6 +35,26 @@ public sealed class OptionalAmigaBindingTests
 		Assert.Equal(name, attribute.Name);
 		Assert.Equal(AmigaLibraryBasePolicy.Manual, attribute.BasePolicy);
 		Assert.Equal(baseSymbol, AmigaLibraryBaseSymbols.For(name));
+	}
+
+	[Fact]
+	public void TimerDeviceReceivesItsOpenedBaseFromTheCaller()
+	{
+		var attribute = typeof(TimerDevice).GetCustomAttribute<AmigaLibraryAttribute>();
+		var parameters = typeof(TimerDevice)
+			.GetMethod(nameof(TimerDevice.ReadEClock))!
+			.GetParameters();
+
+		Assert.NotNull(attribute);
+		Assert.Equal("timer.device", attribute.Name);
+		Assert.Equal(AmigaLibraryBasePolicy.CallerProvided, attribute.BasePolicy);
+		Assert.Equal(
+			M68kRegister.A6,
+			parameters[0].GetCustomAttribute<M68kRegisterAttribute>()?.Register);
+		Assert.Equal(
+			M68kRegister.A0,
+			parameters[1].GetCustomAttribute<M68kRegisterAttribute>()?.Register);
+		Assert.Null(typeof(TimerDevice).GetProperty("TimerDeviceLibraryBase"));
 	}
 
 	[Theory]

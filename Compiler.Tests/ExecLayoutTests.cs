@@ -1,5 +1,7 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using Amiga;
+using CopperSharp.Compiler;
 
 namespace CopperSharp.Compiler.Tests;
 
@@ -199,6 +201,196 @@ public sealed class ExecLayoutTests
 		Assert.Equal(1u << 20, (uint)Exec.MemoryFlags.SemaphoreProtected);
 		Assert.Equal(0x2u, (uint)ExecNotifyFlags.Post);
 		Assert.Equal(9u, (uint)ExecListType.RunCommand);
+		Assert.Equal(-1, (int)MemoryHandlerResult.AllDone);
+		Assert.Equal(0, (int)MemoryHandlerResult.DidNothing);
+		Assert.Equal(1, (int)MemoryHandlerResult.TryAgain);
+	}
+
+	[Fact]
+	public void PublicMemoryLayoutConstantsMatchRuntimeLayout()
+	{
+		Assert.Equal(ExecLayout.Node.Successor, Marshal.OffsetOf<Node>(nameof(Node.Successor)).ToInt32());
+		Assert.Equal(ExecLayout.Node.Name, Marshal.OffsetOf<Node>(nameof(Node.Name)).ToInt32());
+		Assert.Equal(ExecLayout.MemChunk.Bytes, Marshal.OffsetOf<MemChunk>(nameof(MemChunk.Bytes)).ToInt32());
+		Assert.Equal(ExecLayout.MemHeader.Attributes, Marshal.OffsetOf<MemHeader>(nameof(MemHeader.Attributes)).ToInt32());
+		Assert.Equal(ExecLayout.MemHeader.First, Marshal.OffsetOf<MemHeader>(nameof(MemHeader.First)).ToInt32());
+		Assert.Equal(ExecLayout.MemHeader.Free, Marshal.OffsetOf<MemHeader>(nameof(MemHeader.Free)).ToInt32());
+		Assert.Equal(ExecLayout.MemList.NumberOfEntries, Marshal.OffsetOf<MemList>(nameof(MemList.NumberOfEntries)).ToInt32());
+		Assert.Equal(ExecLayout.MemHandlerData.Flags, Marshal.OffsetOf<MemHandlerData>(nameof(MemHandlerData.Flags)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.ThisTask, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.ThisTask)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.ResModules, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.ResModules)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.MemList, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.MemList)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.KickMemPtr, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.KickMemPtr)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.KickTagPtr, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.KickTagPtr)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.KickCheckSum, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.KickCheckSum)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.ExReserved2, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.ExReserved2)).ToInt32());
+		Assert.Equal(ExecLayout.ExecBase.ExMemHandlers, Marshal.OffsetOf<Amiga.ExecBase>(nameof(Amiga.ExecBase.ExMemHandlers)).ToInt32());
+	}
+
+	[Theory]
+	[InlineData(typeof(Node), typeof(ExecLayout.Node))]
+	[InlineData(typeof(Amiga.List), typeof(ExecLayout.List))]
+	[InlineData(typeof(Library), typeof(ExecLayout.Library))]
+	[InlineData(typeof(Device), typeof(ExecLayout.Device))]
+	[InlineData(typeof(Message), typeof(ExecLayout.Message))]
+	[InlineData(typeof(MsgPort), typeof(ExecLayout.MsgPort))]
+	[InlineData(typeof(Unit), typeof(ExecLayout.Unit))]
+	[InlineData(typeof(Interrupt), typeof(ExecLayout.Interrupt))]
+	[InlineData(typeof(IntVector), typeof(ExecLayout.IntVector))]
+	[InlineData(typeof(SoftIntList), typeof(ExecLayout.SoftIntList))]
+	[InlineData(typeof(MemChunk), typeof(ExecLayout.MemChunk))]
+	[InlineData(typeof(MemHeader), typeof(ExecLayout.MemHeader))]
+	[InlineData(typeof(MemEntry), typeof(ExecLayout.MemEntry))]
+	[InlineData(typeof(MemList), typeof(ExecLayout.MemList))]
+	[InlineData(typeof(MemHandlerData), typeof(ExecLayout.MemHandlerData))]
+	[InlineData(typeof(Amiga.Task), typeof(ExecLayout.Task))]
+	[InlineData(typeof(StackSwapStruct), typeof(ExecLayout.StackSwapStruct))]
+	[InlineData(typeof(IORequest), typeof(ExecLayout.IORequest))]
+	[InlineData(typeof(IOStdReq), typeof(ExecLayout.IOStdReq))]
+	[InlineData(typeof(Resident), typeof(ExecLayout.Resident))]
+	[InlineData(typeof(MinList), typeof(ExecLayout.MinList))]
+	[InlineData(typeof(SemaphoreRequest), typeof(ExecLayout.SemaphoreRequest))]
+	[InlineData(typeof(SignalSemaphore), typeof(ExecLayout.SignalSemaphore))]
+	[InlineData(typeof(SemaphoreMessage), typeof(ExecLayout.SemaphoreMessage))]
+	[InlineData(typeof(Amiga.Semaphore), typeof(ExecLayout.Semaphore))]
+	[InlineData(typeof(Amiga.ExecBase), typeof(ExecLayout.ExecBase))]
+	public void PublicLayoutConstantsMatchRuntimeLayout(Type structureType, Type layoutType)
+	{
+		foreach (var field in layoutType.GetFields(
+			System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+		{
+			Assert.True(field.IsLiteral, $"{layoutType.Name}.{field.Name} must be compile-time constant");
+			var expected = (int)field.GetRawConstantValue()!;
+			var actual = Marshal.OffsetOf(structureType, field.Name).ToInt32();
+			Assert.Equal(expected, actual);
+		}
+	}
+
+	[Fact]
+	public void PublicExecLvoConstantsMatchEveryExecDeclaration()
+	{
+		var methods = typeof(Exec).GetMethods(
+			System.Reflection.BindingFlags.Public |
+			System.Reflection.BindingFlags.Static |
+			System.Reflection.BindingFlags.DeclaredOnly)
+			.Where(method => method.GetCustomAttributes(false)
+				.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any())
+			.ToArray();
+		Assert.Equal(158, methods.Length);
+
+		foreach (var method in methods)
+		{
+			var field = typeof(ExecLvo).GetField(method.Name,
+				System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+			Assert.NotNull(field);
+			Assert.True(field!.IsLiteral, $"ExecLvo.{method.Name} must be compile-time constant");
+			AssertLvo(method.Name, (short)field.GetRawConstantValue()!);
+		}
+	}
+
+	[Fact]
+	public void ExecDeclarationsHaveCompleteRegisterContracts()
+	{
+		var methods = typeof(Exec).GetMethods(
+			System.Reflection.BindingFlags.Public |
+			System.Reflection.BindingFlags.Static |
+			System.Reflection.BindingFlags.DeclaredOnly)
+			.Where(method => method.GetCustomAttributes(false)
+				.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any());
+
+		foreach (var method in methods)
+		{
+			var parameterRegisters = method.GetParameters()
+				.Select(parameter => parameter.GetCustomAttributes(false)
+					.OfType<M68kRegisterAttribute>().Single().Register)
+				.ToArray();
+			Assert.Equal(parameterRegisters.Length, parameterRegisters.Distinct().Count());
+			Assert.DoesNotContain(M68kRegister.A6, parameterRegisters);
+			if (method.ReturnType != typeof(void))
+			{
+				var resultRegister = method.ReturnParameter.GetCustomAttributes(false)
+					.OfType<M68kRegisterAttribute>().Single().Register;
+				Assert.Equal(M68kRegister.D0, resultRegister);
+			}
+		}
+	}
+
+	[Fact]
+	public void MakeFunctionsReturnsTableSizeInD0()
+	{
+		var method = typeof(Exec).GetMethod(nameof(Exec.MakeFunctions))!;
+
+		Assert.Equal(typeof(uint), method.ReturnType);
+		Assert.Equal(M68kRegister.D0,
+			method.ReturnParameter.GetCustomAttribute<M68kRegisterAttribute>()?.Register);
+	}
+
+	[Fact]
+	public void ExecLvoCollisionsAreLimitedToDocumentedAbiProfiles()
+	{
+		var duplicates = typeof(Exec).GetMethods(
+			System.Reflection.BindingFlags.Public |
+			System.Reflection.BindingFlags.Static |
+			System.Reflection.BindingFlags.DeclaredOnly)
+			.Select(method => (Method: method, Lvo: method.GetCustomAttributes(false)
+				.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().SingleOrDefault()?.Offset))
+			.Where(item => item.Lvo.HasValue)
+			.GroupBy(item => item.Lvo!.Value)
+			.Where(group => group.Count() > 1)
+			.ToDictionary(group => group.Key,
+				group => group.Select(item => item.Method.Name).Order().ToArray());
+
+		Assert.Equal(2, duplicates.Count);
+		Assert.Equal(new[] { nameof(Exec.ChildFree), nameof(Exec.NewGetTaskAttrsA) }, duplicates[-738]);
+		Assert.Equal(new[] { nameof(Exec.ChildOrphan), nameof(Exec.NewSetTaskAttrsA) }, duplicates[-744]);
+	}
+
+	[Fact]
+	public void MorphOsPortableTaskAndLibraryConstantsMatchPublishedHeaders()
+	{
+		Assert.Equal(0x01u, (uint)TaskInfoType.Name);
+		Assert.Equal(0x2Bu, (uint)TaskInfoType.UserData);
+		Assert.Equal(0x33u, (uint)TaskInfoType.ProcessId);
+		Assert.Equal(0x100u, (uint)SystemInfoType.PageSize);
+		Assert.Equal(0x8010_0002u, ExecConstants.TaskTagProgramCounter);
+		Assert.Equal(0x8100_0100u, ExecConstants.LibraryTagFunctionInit);
+		Assert.Equal(0x8100_010Cu, ExecConstants.LibraryTagPublic);
+		Assert.Equal(0u, (uint)ExecNodeListType.Device);
+		Assert.Equal(8u, (uint)ExecNodeListType.Task);
+		Assert.Equal(1u, (uint)ChildTaskStatus.NotNew);
+		Assert.Equal(2u, (uint)ChildTaskStatus.NotFound);
+		Assert.Equal(3u, (uint)ChildTaskStatus.Exited);
+		Assert.Equal(4u, (uint)ChildTaskStatus.Active);
+		Assert.Equal(8u, TimeVal.Size);
+		Assert.Equal(8u, EClockVal.Size);
+		Assert.Equal(40u, TimerRequest.Size);
+		Assert.Equal(32, TimerDeviceLayout.TimerRequest.Time);
+		Assert.Equal(36, TimerDeviceLayout.TimerRequest.Microseconds);
+		Assert.Equal(2u, (uint)TimerUnit.EClock);
+		Assert.Equal(9u, (uint)TimerCommand.AddRequest);
+		Assert.Equal(-60, TimerDevice.ReadEClockLvo);
+		Assert.Equal(22u, InputEvent.Size);
+		Assert.Equal(14, InputEventLayout.TimeStamp);
+		Assert.Equal(18, InputEventLayout.Microseconds);
+		Assert.Equal(8u, GamePortTrigger.Size);
+		Assert.Equal(56, Marshal.SizeOf<IOExtTD>());
+		Assert.Equal(32, Marshal.SizeOf<DriveGeometry>());
+		Assert.Equal(48, Marshal.OffsetOf<IOExtTD>(nameof(IOExtTD.Count)).ToInt32());
+		Assert.Equal(28, Marshal.OffsetOf<DriveGeometry>(nameof(DriveGeometry.DeviceType)).ToInt32());
+		Assert.Equal((ushort)22, (ushort)TrackDiskCommand.GetGeometry);
+		Assert.Equal((byte)28, (byte)TrackDiskError.WriteProtected);
+		Assert.Equal(76, Marshal.SizeOf<IOAudio>());
+		Assert.Equal(40, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.AllocationKey)).ToInt32());
+		Assert.Equal(42, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.Data)).ToInt32());
+		Assert.Equal(56, Marshal.OffsetOf<IOAudio>(nameof(IOAudio.WriteMessage)).ToInt32());
+		Assert.Equal((ushort)32, (ushort)AudioCommand.Allocate);
+		Assert.Equal((sbyte)-11, (sbyte)AudioIoError.AllocationFailed);
+		Assert.Equal((byte)0xE0, (byte)(AudioIoFlags.SyncCycle | AudioIoFlags.NoWait | AudioIoFlags.WriteMessage));
+		Assert.Equal(9u, (uint)KeyboardCommand.ReadEvent);
+		Assert.Equal(11u, (uint)InputDeviceCommand.WriteEvent);
+		Assert.Equal(13u, (uint)GamePortCommand.SetTrigger);
+		Assert.Equal(0x8000_03E9u, ExecConstants.ExecNodeTagType);
+		Assert.Equal(0x8000_03EBu, ExecConstants.ExecNodeTagName);
 	}
 
 	private static void AssertOffsets<T>(params (string Name, int Offset)[] expected)
@@ -207,5 +399,14 @@ public sealed class ExecLayoutTests
 		{
 			Assert.Equal(offset, Marshal.OffsetOf<T>(name).ToInt32());
 		}
+	}
+
+	private static void AssertLvo(string methodName, int expected)
+	{
+		var method = typeof(Exec).GetMethod(methodName)!;
+		var attribute = method.GetCustomAttributes(false)
+			.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>()
+			.Single();
+		Assert.Equal(expected, attribute.Offset);
 	}
 }
