@@ -8,7 +8,7 @@
 
   <Target Name="CompileCopper68kImage"
           AfterTargets="Build"
-          Condition="'$(Copper68kCompile)' == 'true'"
+          Condition="'$(Copper68kCompile)' == 'true' and '$(CopperSharpSdkActive)' != 'true'"
           Inputs="$(TargetPath)"
           Outputs="$(Copper68kOutputPath)">
     <Error Condition="'$(Copper68kEntry)' == ''"

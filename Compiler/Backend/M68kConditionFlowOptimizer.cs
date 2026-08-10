@@ -189,10 +189,6 @@ internal static class M68kConditionFlowOptimizer
 				RemoveTerminator(predecessor);
 				if (resolution.Constant is { } constant)
 				{
-					foreach (var removable in resolution.Removable)
-					{
-						predecessor.Instructions.Remove(removable);
-					}
 					var value = constant ^ resolution.Inverted ^ merged.Inverted;
 					var target = merge.Successors[
 						value ^ branchInverted ? 0 : 1];
@@ -202,6 +198,11 @@ internal static class M68kConditionFlowOptimizer
 						predecessor,
 						target,
 						blocks);
+					RemoveSafeRemovableInstructions(
+						predecessor,
+						resolution.Removable,
+						blocks,
+						[]);
 					predecessor.Instructions.Add(function.CreateInstruction(
 						M68kMachineOperation.Branch,
 						branch.IlOffset,
@@ -214,10 +215,6 @@ internal static class M68kConditionFlowOptimizer
 				}
 
 				var leaf = resolution.Leaf!;
-				foreach (var removable in resolution.Removable)
-				{
-					predecessor.Instructions.Remove(removable);
-				}
 				var inverted = resolution.Inverted ^ leaf.Inverted ^
 					merged.Inverted ^ branchInverted;
 				var condition = inverted
@@ -228,6 +225,11 @@ internal static class M68kConditionFlowOptimizer
 					merge,
 					predecessor,
 					blocks);
+				RemoveSafeRemovableInstructions(
+					predecessor,
+					resolution.Removable,
+					blocks,
+					leaf.Producer.Uses);
 				predecessor.Instructions.Add(CreateFusedBranch(
 					function,
 					branch,
@@ -244,6 +246,43 @@ internal static class M68kConditionFlowOptimizer
 			return true;
 		}
 		return false;
+	}
+
+	private static void RemoveSafeRemovableInstructions(
+		M68kMachineBlock predecessor,
+		IReadOnlySet<M68kMachineInstruction> removable,
+		IReadOnlyDictionary<int, M68kMachineBlock> blocks,
+		IReadOnlyCollection<int> branchUses)
+	{
+		var protectedValues = new HashSet<int>(branchUses);
+		foreach (var successorId in predecessor.Successors)
+		{
+			foreach (var phi in blocks[successorId].Phis)
+			{
+				if (phi.Inputs.TryGetValue(predecessor.Id, out var input))
+					protectedValues.Add(input);
+			}
+		}
+
+		bool changed;
+		do
+		{
+			changed = false;
+			foreach (var instruction in removable)
+			{
+				if (!instruction.Definitions.Any(protectedValues.Contains))
+					continue;
+				foreach (var use in instruction.Uses)
+					changed |= protectedValues.Add(use);
+			}
+		}
+		while (changed);
+
+		foreach (var instruction in removable)
+		{
+			if (!instruction.Definitions.Any(protectedValues.Contains))
+				predecessor.Instructions.Remove(instruction);
+		}
 	}
 
 	private static bool TryResolveBoolean(

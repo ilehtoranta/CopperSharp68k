@@ -28,6 +28,13 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private readonly M68kClrPolicy _clrPolicy;
 	private readonly IReadOnlyList<M68kLoopLayout> _sizeFirstLoops;
 
+	private readonly record struct TerminalBlockLookup(
+		int[] MethodEndOffsets,
+		int[] LabelOffsets,
+		int[] BranchOffsets,
+		int[] AddressOffsets,
+		int[] PcRelativeOffsets);
+
 	public M68kPeepholeOptimizer(
 		M68kAssembler assembler,
 		M68kAssemblyBuffer buffer,
@@ -896,6 +903,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private bool TryLayoutColdTerminalBranch()
 	{
 		var instructions = _assembler.GetInstructionStream();
+		var terminalLookup = CreateTerminalBlockLookup();
 		for (var conditionalIndex = 0; conditionalIndex < instructions.Count; conditionalIndex++)
 		{
 			var conditional = instructions[conditionalIndex];
@@ -936,7 +944,12 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				!TryGetBranch(unconditional.Offset, out var unconditionalBranch) ||
 				!_buffer.Labels.TryGetValue(unconditionalBranch.Target, out var tailOffset) ||
 				unconditional.Offset + unconditional.Length != failureOffset ||
-				!TryGetTerminalBlockEnd(tailOffset, failureOffset, instructions, out var tailEnd))
+				!TryGetTerminalBlockEnd(
+					tailOffset,
+					failureOffset,
+					instructions,
+					terminalLookup,
+					out var tailEnd))
 			{
 				continue;
 			}
@@ -1439,49 +1452,148 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		int tailOffset,
 		int failureOffset,
 		IReadOnlyList<M68kEmittedInstruction> instructions,
+		TerminalBlockLookup lookup,
 		out int tailEnd)
 	{
 		tailEnd = 0;
-		var candidateTailEnd = _buffer.Labels
-			.Where(item =>
-				item.Value > tailOffset &&
-				item.Key.EndsWith(":end", StringComparison.Ordinal))
-			.Select(static item => item.Value)
-			.DefaultIfEmpty(_buffer.Labels.Values
-				.Where(offset => offset > tailOffset)
-				.DefaultIfEmpty(_buffer.Bytes.Count)
-				.Min())
-			.Min();
+		var candidateTailEnd = NextOffsetAfter(
+			lookup.MethodEndOffsets,
+			tailOffset,
+			NextOffsetAfter(lookup.LabelOffsets, tailOffset, _buffer.Bytes.Count));
 		if (candidateTailEnd <= tailOffset ||
 			candidateTailEnd - 2 < tailOffset ||
 			_buffer.ReadWord(candidateTailEnd - 2) != 0x4E75 ||
-			_buffer.HasLabelAt(tailOffset) == false ||
-			_buffer.HasLabelAt(failureOffset) == false ||
-			_buffer.Branches.Any(branch =>
-				branch.OpcodeOffset >= failureOffset &&
-				branch.OpcodeOffset < candidateTailEnd) ||
-			_buffer.Addresses.Any(address =>
-				address.Offset >= failureOffset && address.Offset < candidateTailEnd) ||
-			_buffer.PcRelative.Any(reference =>
-				reference.DisplacementOffset >= failureOffset &&
-				reference.DisplacementOffset < candidateTailEnd))
+			HasOffsetInRange(lookup.BranchOffsets, failureOffset, candidateTailEnd) ||
+			HasOffsetInRange(lookup.AddressOffsets, failureOffset, candidateTailEnd) ||
+			HasOffsetInRange(lookup.PcRelativeOffsets, failureOffset, candidateTailEnd))
 		{
 			return false;
 		}
 
-		var tailInstructions = instructions
-			.Where(instruction => instruction.Offset >= tailOffset && instruction.Offset < candidateTailEnd)
-			.ToArray();
-		if (tailInstructions.Length == 0 ||
-			 tailInstructions[^1].Kind != M68kInstructionKind.Return ||
-			!tailInstructions.All(instruction =>
-				instruction.Kind is M68kInstructionKind.Normal or M68kInstructionKind.Return))
+		var instructionIndex = LowerBoundInstruction(instructions, tailOffset);
+		var hasTailInstruction = false;
+		var lastKind = M68kInstructionKind.Normal;
+		for (; instructionIndex < instructions.Count; instructionIndex++)
+		{
+			var instruction = instructions[instructionIndex];
+			if (instruction.Offset >= candidateTailEnd)
+			{
+				break;
+			}
+			if (instruction.Kind is not (M68kInstructionKind.Normal or M68kInstructionKind.Return))
+			{
+				return false;
+			}
+
+			hasTailInstruction = true;
+			lastKind = instruction.Kind;
+		}
+		if (!hasTailInstruction || lastKind != M68kInstructionKind.Return)
 		{
 			return false;
 		}
 
 		tailEnd = candidateTailEnd;
 		return true;
+	}
+
+	private TerminalBlockLookup CreateTerminalBlockLookup()
+	{
+		var labelOffsets = new int[_buffer.Labels.Count];
+		var methodEndOffsets = new List<int>();
+		var labelIndex = 0;
+		foreach (var label in _buffer.Labels)
+		{
+			labelOffsets[labelIndex++] = label.Value;
+			if (label.Key.EndsWith(":end", StringComparison.Ordinal))
+			{
+				methodEndOffsets.Add(label.Value);
+			}
+		}
+
+		var branchOffsets = _buffer.Branches
+			.Select(static branch => branch.OpcodeOffset)
+			.ToArray();
+		var addressOffsets = _buffer.Addresses
+			.Select(static address => address.Offset)
+			.ToArray();
+		var pcRelativeOffsets = _buffer.PcRelative
+			.Select(static reference => reference.DisplacementOffset)
+			.ToArray();
+		var methodEnds = methodEndOffsets.ToArray();
+		Array.Sort(methodEnds);
+		Array.Sort(labelOffsets);
+		Array.Sort(branchOffsets);
+		Array.Sort(addressOffsets);
+		Array.Sort(pcRelativeOffsets);
+		return new TerminalBlockLookup(
+			methodEnds,
+			labelOffsets,
+			branchOffsets,
+			addressOffsets,
+			pcRelativeOffsets);
+	}
+
+	private static int NextOffsetAfter(int[] sortedOffsets, int offset, int fallback)
+	{
+		var low = 0;
+		var high = sortedOffsets.Length;
+		while (low < high)
+		{
+			var middle = low + ((high - low) >> 1);
+			if (sortedOffsets[middle] <= offset)
+			{
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle;
+			}
+		}
+
+		return low < sortedOffsets.Length ? sortedOffsets[low] : fallback;
+	}
+
+	private static bool HasOffsetInRange(int[] sortedOffsets, int start, int end)
+	{
+		var low = 0;
+		var high = sortedOffsets.Length;
+		while (low < high)
+		{
+			var middle = low + ((high - low) >> 1);
+			if (sortedOffsets[middle] < start)
+			{
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle;
+			}
+		}
+
+		return low < sortedOffsets.Length && sortedOffsets[low] < end;
+	}
+
+	private static int LowerBoundInstruction(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int offset)
+	{
+		var low = 0;
+		var high = instructions.Count;
+		while (low < high)
+		{
+			var middle = low + ((high - low) >> 1);
+			if (instructions[middle].Offset < offset)
+			{
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle;
+			}
+		}
+
+		return low;
 	}
 
 	private bool TryGetBranch(int offset, out BranchFixup branch)

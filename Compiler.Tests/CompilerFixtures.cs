@@ -32,6 +32,9 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int MultiModuleEntry() => ExternalMethods.AddAndDouble(12, 9);
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MultiModuleGenericEntry() => ExternalMethods.AddOne<uint>(41);
+
 	private sealed class FixtureException : Exception
 	{
 	}
@@ -46,6 +49,8 @@ public static class CompilerFixtures
 	private static APTR _terminalAddress;
 	#pragma warning disable CS0169 // Targeted only by raw-CIL escape fixtures.
 	private static uint _managedByrefStaticEscapeSink;
+	private static uint _hunkBssExtraA;
+	private static uint _hunkBssExtraB;
 	#pragma warning restore CS0169
 
 	[M68kEntryPoint]
@@ -55,6 +60,37 @@ public static class CompilerFixtures
 		var left = 9;
 		var right = 5;
 		return Arithmetic(left, right) + LoopAndBranch(6);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint HunkBssEntry() => InitializeHunkBss(
+		ref _counter,
+		ref _zeroStatic,
+		ref _terminalScalar,
+		ref _terminalReadFlag,
+		ref _managedByrefStaticEscapeSink,
+		ref _hunkBssExtraA,
+		ref _hunkBssExtraB);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint InitializeHunkBss(
+		ref int counter,
+		ref int zeroStatic,
+		ref uint terminalScalar,
+		ref uint terminalReadFlag,
+		ref uint escapeSink,
+		ref uint extraA,
+		ref uint extraB)
+	{
+		counter = 1;
+		zeroStatic = 2;
+		terminalScalar = 3;
+		terminalReadFlag = 4;
+		escapeSink = 21;
+		extraA = 5;
+		extraB = 6;
+		return unchecked((uint)(counter + zeroStatic)) + terminalScalar +
+			terminalReadFlag + escapeSink + extraA + extraB;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -78,6 +114,50 @@ public static class CompilerFixtures
 			default: result = 50; break;
 		}
 		return result + value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int LoopCarriedInitializerEntry()
+	{
+		var position = 48;
+		var direction = 1;
+		ObserveLoopPosition(position);
+		SetupBeforeLoop();
+		while (!StopAfterOneLoopIteration())
+		{
+			ObserveLoopPosition(position);
+			position += direction;
+			if (position >= 140)
+			{
+				direction = -1;
+			}
+			else if (position <= 48)
+			{
+				direction = 1;
+			}
+		}
+
+		return position;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ObserveLoopPosition(int position)
+	{
+		_terminalScalar = (uint)position;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void SetupBeforeLoop()
+	{
+		_terminalReadFlag = 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool StopAfterOneLoopIteration()
+	{
+		var stop = _counter != 0;
+		_counter++;
+		return stop;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -2396,6 +2476,77 @@ public static class CompilerFixtures
 		var unsigned = 0x2Au;
 		var text = $"signed={signed}; hex={unsigned:X8}";
 		return text == "signed=-42; hex=0000002A" ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringFormatParamsIntegerEntry()
+	{
+		var first = -42;
+		var second = 42;
+		var third = 123_456;
+		var fourth = -654_321;
+		var text = string.Format(
+			"{{{3}}}:{0}:{1}:{2}:{0}",
+			new object[] { first, second, third, fourth });
+		return text.Length == 27 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringFormatSharedComputedParamsEntry()
+	{
+		int shared;
+		var text = string.Format(
+			"{0}",
+			new object[] { shared = ProduceStringFormatValue() });
+		return text.Length == 2 && shared == 42 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ProduceStringFormatValue() => 42;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringFormatFixedArgumentsEntry()
+	{
+		var first = string.Format("value={0}", 42);
+		var third = string.Format("{2}:{0}:{1}", -42, 7, 1234);
+		return first.Length == 8 && third.Length == 10 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringFormatSpanParamsEntry()
+	{
+		var text = string.Format("{3}:{0}:{1}:{2}", -42, 7, 1234, -5678);
+		return text.Length == 16 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringFormatSpanEightParamsEntry()
+	{
+		var text = string.Format(
+			"{0}{1}{2}{3}{4}{5}{6}{7}",
+			1, 2, 3, 4, 5, 6, 7, 8);
+		return text.Length == 8 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringFormatOverflowingIndexEntry()
+	{
+		try
+		{
+			_ = string.Format("{4294967296}", new object[] { 42 });
+		}
+		catch (FormatException)
+		{
+			return 42;
+		}
+		return 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int UnsupportedEscapingStringFormatParamsEntry()
+	{
+		var arguments = new object[] { 1, 2, 3, 4 };
+		return string.Format("{0}:{1}:{2}:{3}", arguments).Length;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -5480,6 +5631,15 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AptrByteWordAccessEntry()
+	{
+		var address = APTR.FromPointer(0x0000_4000);
+		APTR.WriteUInt8(address, 3, 0xA5);
+		APTR.WriteUInt16(address, 6, 0x5AA5);
+		return (uint)(APTR.ReadUInt8(address, 3) << 16) | APTR.ReadUInt16(address, 6);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint AddressReadNegativeEntry()
 	{
 		var address = M68kAddress.FromUInt32(0x0000_4000);
@@ -6095,6 +6255,14 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ObjectArrayBoxedValueStoreEntry()
+	{
+		var values = new object[1];
+		values[0] = 42;
+		return values[0] is int ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int StringArrayStoreTypeCheckEntry()
 	{
 		var strings = new string[2];
@@ -6369,6 +6537,42 @@ public static class CompilerFixtures
 	public static int ConstrainedGenericValueTypeDispatchEntry()
 	{
 		return ReadConstrained(ref _runtimeConstrainedSource);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ConstrainedGenericInterfaceMethodDispatchEntry()
+	{
+		return ReadConstrainedGenericMethod(ref _runtimeGenericMethodSource);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ConstrainedGenericMultiArgumentDefaultFinallyEntry()
+	{
+		var destination = new RuntimeConstrainedWriter();
+		return WriteConstrainedWithDefaultAndFinally(ref destination, 19, 23);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ValueTypeConstructorStoredThroughOutParameterEntry()
+	{
+		WriteAggregate(out var value, 19, 23);
+		return value.First + value.Second;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void WriteAggregate(out RuntimeOutAggregate value, int first, int second) =>
+		value = new RuntimeOutAggregate(first, second);
+
+	private readonly struct RuntimeOutAggregate
+	{
+		public RuntimeOutAggregate(int first, int second)
+		{
+			First = first;
+			Second = second;
+		}
+
+		public int First { get; }
+		public int Second { get; }
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -9082,6 +9286,29 @@ public static class CompilerFixtures
 		where T : struct, IRuntimeConstrainedSource => source.GetValue();
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadConstrainedGenericMethod<T>(ref T source)
+		where T : struct, IRuntimeGenericMethodSource => source.GetValue<uint>();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int WriteConstrainedWithDefaultAndFinally<T>(
+		ref T destination,
+		int first,
+		int second)
+		where T : struct, IRuntimeConstrainedWriter
+	{
+		var zero = default(T);
+		try
+		{
+			destination.Write(first, second);
+			return destination.Read() + zero.Read();
+		}
+		finally
+		{
+			destination.Write(destination.Read(), 0);
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static int ReadConstrainedReference<T>(ref T source)
 		where T : class, IRuntimeConstrainedSource => source.GetValue();
 
@@ -10687,8 +10914,21 @@ public static class CompilerFixtures
 		int GetValue();
 	}
 
+	private interface IRuntimeGenericMethodSource
+	{
+		int GetValue<TMarker>() where TMarker : struct;
+	}
+
+	private interface IRuntimeConstrainedWriter
+	{
+		void Write(int first, int second);
+		int Read();
+	}
+
 	private static RuntimeConstrainedSource _runtimeConstrainedSource =
 		new RuntimeConstrainedSource(0);
+	private static RuntimeGenericMethodSource _runtimeGenericMethodSource =
+		new RuntimeGenericMethodSource(0);
 	private static RuntimeStatefulConstrainedSource _runtimeStatefulConstrainedSource;
 
 	private readonly struct RuntimeConstrainedSource : IRuntimeConstrainedSource
@@ -10704,12 +10944,36 @@ public static class CompilerFixtures
 		public int GetValue() => 42;
 	}
 
+	private readonly struct RuntimeGenericMethodSource : IRuntimeGenericMethodSource
+	{
+		private readonly int _value;
+
+		public RuntimeGenericMethodSource(int value)
+		{
+			_value = value;
+		}
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public int GetValue<TMarker>() where TMarker : struct => _value + 42;
+	}
+
 	private struct RuntimeStatefulConstrainedSource : IRuntimeConstrainedSource
 	{
 		public int Value;
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		public int GetValue() => Value;
+	}
+
+	private struct RuntimeConstrainedWriter : IRuntimeConstrainedWriter
+	{
+		private int _value;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public void Write(int first, int second) => _value = first + second;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public readonly int Read() => _value;
 	}
 
 	private class RuntimeConstrainedReferenceBase : IRuntimeConstrainedSource
@@ -10838,6 +11102,28 @@ public static class CompilerFixtures
 	{
 		var inside = value >= lowerBound && value < upperBound;
 		return inside ? 42 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BooleanPhiWithCompanionValuesEntry() =>
+		BooleanPhiWithCompanionValues(17) + BooleanPhiWithCompanionValues(3);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int BooleanPhiWithCompanionValues(int value)
+	{
+		bool accepted;
+		int companion;
+		if (value > 10)
+		{
+			accepted = value < 20;
+			companion = value + 5;
+		}
+		else
+		{
+			accepted = value == 5;
+			companion = value + 7;
+		}
+		return accepted ? companion + 100 : companion + 200;
 	}
 }
 

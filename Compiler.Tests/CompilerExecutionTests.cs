@@ -31,6 +31,52 @@ public sealed class CompilerExecutionTests
 			{ M68kCpuTarget.M68060, M68kCpuModel.M68040 }
 		};
 
+	public static TheoryData<M68kCpuTarget, M68kCpuModel, M68kGcSweepStrategy, bool>
+		PortableConsoleReadLineCases
+	{
+		get
+		{
+			var result = new TheoryData<
+				M68kCpuTarget,
+				M68kCpuModel,
+				M68kGcSweepStrategy,
+				bool>();
+			foreach (var cpu in CpuTargets)
+			{
+				var target = (M68kCpuTarget)cpu[0];
+				var model = (M68kCpuModel)cpu[1];
+				result.Add(target, model, M68kGcSweepStrategy.OnAllocationFailure, true);
+				result.Add(target, model, M68kGcSweepStrategy.EveryAllocation, false);
+			}
+			return result;
+		}
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel>
+		PortableFileSystemNativeFailureCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var scenario in new[]
+			{
+				"open-failure",
+				"lock-failure",
+				"examine-failure"
+			})
+			{
+				foreach (var cpu in CpuTargets)
+				{
+					result.Add(
+						scenario,
+						(M68kCpuTarget)cpu[0],
+						(M68kCpuModel)cpu[1]);
+				}
+			}
+			return result;
+		}
+	}
+
 	public static TheoryData<string, M68kCpuTarget, M68kCpuModel>
 		ListIntegralEqualityCases
 	{
@@ -297,7 +343,7 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void PortableEnvironmentPalIsLinkedOnlyWhenReachable()
+	public void PortableEnvironmentMembersRemainIndependentlyPayForPlay()
 	{
 		var newLine = Compile(
 			M68kCpuTarget.M68000,
@@ -326,12 +372,10 @@ public sealed class CompilerExecutionTests
 		Assert.DoesNotContain(
 			newLine.Symbols,
 			symbol => symbol.Name.EndsWith("EnvironmentPal::GetProcessorCount", StringComparison.Ordinal));
-		Assert.Contains(
-			processorCount.Symbols,
-			symbol => symbol.Name.EndsWith("EnvironmentPal::GetProcessorCount", StringComparison.Ordinal));
 		Assert.DoesNotContain(
 			processorCount.Symbols,
-			symbol => symbol.Name.EndsWith("EnvironmentPal::GetNewLine", StringComparison.Ordinal));
+			symbol => symbol.Name.Contains("EnvironmentPal", StringComparison.Ordinal));
+		Assert.Contains("\tmoveq\t#42,d0", processorCount.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			console.Symbols,
 			symbol => symbol.Name.Contains("EnvironmentPal", StringComparison.Ordinal));
@@ -341,6 +385,47 @@ public sealed class CompilerExecutionTests
 		Assert.DoesNotContain(
 			unrelated.Symbols,
 			symbol => symbol.Name.Contains("EnvironmentPal", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void UnusedFrameworkAndPalGroupsContributeNoTargetSymbolsCodeOrData()
+	{
+		var unrelated = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DefaultEntry");
+		var groupMarkers = new[]
+		{
+			"ShadowString",
+			"ShadowStringFormat",
+			"ShadowInt32",
+			"ShadowUInt32",
+			"ShadowInt64",
+			"ShadowUInt64",
+			"ShadowList",
+			"ShadowDictionary",
+			"ShadowEnumerable",
+			"ManagedPool",
+			"ConsolePal",
+			"FileSystemPal",
+			"ClockPal",
+			"EnvironmentPal",
+			"CStringEncoding"
+		};
+
+		Assert.Empty(unrelated.FrameworkFeatures);
+		Assert.DoesNotContain(
+			unrelated.Symbols,
+			symbol => groupMarkers.Any(marker =>
+				symbol.Name.Contains(marker, StringComparison.Ordinal)));
+		// Assembly text contains both the code and data sections, so marker
+		// absence covers anonymous emission as well as the public symbol table.
+		Assert.All(
+			groupMarkers,
+			marker => Assert.DoesNotContain(
+				marker,
+				unrelated.Text,
+				StringComparison.Ordinal));
 	}
 
 	[Theory]
@@ -881,6 +966,16 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void LoopCarriedLocalRetainsInitializerAcrossSetupCalls()
+	{
+		const string entry =
+			"CopperSharp.Compiler.Tests.CompilerFixtures::LoopCarriedInitializerEntry";
+		var result = Compile(M68kCpuTarget.M68000, M68kOutputFormat.Hunk, entry);
+
+		Assert.Equal(49u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
 	public void CompilationReportsPerMethodAllocationStatistics()
 	{
 		var result = Compile(
@@ -1140,6 +1235,27 @@ public sealed class CompilerExecutionTests
 		Assert.Contains(
 			result.Symbols,
 			symbol => symbol.Name.EndsWith("::AddAndDouble", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CompilesAndExecutesGenericMethodBodyFromReferencedModule()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			ManagedAssemblyPaths =
+			[
+				typeof(CopperSharp.Compiler.Tests.MultiModule.ExternalMethods).Assembly.Location
+			],
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::MultiModuleGenericEntry",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+		Assert.Contains(
+			result.Symbols,
+			symbol => symbol.Name.Contains("::AddOne<", StringComparison.Ordinal));
 	}
 
 	[Fact]
@@ -2017,6 +2133,17 @@ public sealed class CompilerExecutionTests
 		Assert.DoesNotMatch(
 			@"(?m)^\tb(?!ra)[a-z]+\.w\t[^\r\n]+\r?\n\tbra\.w\t",
 			result.Text);
+	}
+
+	[Fact]
+	public void BooleanPhiThreadingPreservesCompanionPhiDefinitions()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::BooleanPhiWithCompanionValuesEntry");
+
+		Assert.Equal(332u, ExecuteHunk(result, M68kCpuModel.M68000));
 	}
 
 	[Fact]
@@ -4310,7 +4437,8 @@ public sealed class CompilerExecutionTests
 		var folded = Compile(
 			target,
 			M68kOutputFormat.Hunk,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::IdenticalDirectBodyFoldEntry");
+			"CopperSharp.Compiler.Tests.CompilerFixtures::IdenticalDirectBodyFoldEntry",
+			exceptionMode: M68kExceptionMode.Yolo);
 		var foldedFirst = Assert.Single(folded.Symbols.Where(symbol =>
 			symbol.Name.EndsWith("IdenticalDirectBodyA", StringComparison.Ordinal)));
 		var foldedSecond = Assert.Single(folded.Symbols.Where(symbol =>
@@ -4334,6 +4462,21 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(
 			17u,
 			ExecuteHunkWithAllocator(addressTaken, model));
+	}
+
+	[Fact]
+	public void FullExceptionIdenticalBodiesKeepDistinctUnwindIdentity()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::IdenticalDirectBodyFoldEntry");
+		var first = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.EndsWith("IdenticalDirectBodyA", StringComparison.Ordinal)));
+		var second = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.EndsWith("IdenticalDirectBodyB", StringComparison.Ordinal)));
+
+		Assert.NotEqual(first.Address, second.Address);
 	}
 
 	[Theory]
@@ -6069,6 +6212,7 @@ public sealed class CompilerExecutionTests
 			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
 			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,
@@ -6449,6 +6593,7 @@ public sealed class CompilerExecutionTests
 	{
 		foreach (var entry in new[]
 		{
+			"ObjectArrayBoxedValueStoreEntry",
 			"ReferenceArrayStoreTypeCheckEntry",
 			"StringArrayStoreTypeCheckEntry",
 			"InterfaceArrayStoreTypeCheckEntry"
@@ -6523,6 +6668,7 @@ public sealed class CompilerExecutionTests
 				"CopperSharp.Compiler.Tests.CompilerFixtures::ConstructedGenericStaticFieldEntry",
 			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,
@@ -6832,6 +6978,7 @@ public sealed class CompilerExecutionTests
 				"CopperSharp.Compiler.Tests.CompilerFixtures::ConstructedGenericBaseLayoutEntry",
 			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,
@@ -6851,6 +6998,45 @@ public sealed class CompilerExecutionTests
 		var result = CompileWithAllocator(
 			target,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::ConstrainedGenericValueTypeDispatchEntry");
+
+		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ConstrainedGenericInterfaceMethodsDispatchWithoutBoxing(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = CompileWithAllocator(
+			target,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ConstrainedGenericInterfaceMethodDispatchEntry");
+
+		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ConstrainedGenericCallsUseConcreteAbiAndInitializeDefaultsAcrossFinally(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = CompileWithAllocator(
+			target,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ConstrainedGenericMultiArgumentDefaultFinallyEntry");
+
+		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ValueTypeConstructorsCanBeStoredThroughOutParameters(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = CompileWithAllocator(
+			target,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ValueTypeConstructorStoredThroughOutParameterEntry");
 
 		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
 	}
@@ -8397,7 +8583,10 @@ public sealed class CompilerExecutionTests
 			$"Memory view code grew to {result.Code.Length} bytes.");
 		Assert.True(
 			cycles <= 6_500,
-			$"Memory view path grew to {cycles} MC68000 cycles.");
+			$"Memory view path grew to {cycles} MC68000 cycles " +
+			$"({result.Image.Length} image bytes, {result.Code.Length} code bytes, " +
+			$"{allocations} executed allocation, " +
+			$"{result.AllocationStatistics.Count} analyzed allocation methods).");
 		Assert.Equal(1, allocations);
 		Assert.Equal(2, result.AllocationStatistics.Count);
 		Assert.All(
@@ -8431,6 +8620,7 @@ public sealed class CompilerExecutionTests
 				"CopperSharp.Compiler.Tests.CompilerFixtures::SpanArrayOwnerSurvivesCollectionEntry",
 			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,
@@ -8795,6 +8985,70 @@ public sealed class CompilerExecutionTests
 	[Fact]
 	public void InterpolatedIntegerFixtureMatchesHostNet10() =>
 		Assert.Equal(42, CompilerFixtures.InterpolatedIntegerEntry());
+
+	[Fact]
+	public void StringFormatParamsIntegerFixtureMatchesHostNet10() =>
+		Assert.Multiple(
+			() => Assert.Equal(42, CompilerFixtures.StringFormatParamsIntegerEntry()),
+			() => Assert.Equal(42, CompilerFixtures.StringFormatSharedComputedParamsEntry()),
+			() => Assert.Equal(42, CompilerFixtures.StringFormatOverflowingIndexEntry()),
+			() => Assert.Equal(42, CompilerFixtures.StringFormatFixedArgumentsEntry()),
+			() => Assert.Equal(42, CompilerFixtures.StringFormatSpanParamsEntry()),
+			() => Assert.Equal(42, CompilerFixtures.StringFormatSpanEightParamsEntry()));
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringFormatFourIntegerParamsExecuteWithoutArrayOrBoxes(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint =
+				"CopperSharp.Compiler.Tests.CompilerFixtures::StringFormatParamsIntegerEntry",
+			Cpu = target,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions
+			{
+				StartAddress = 0x0000_4000,
+				Size = 0x0000_5000
+			}
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, model));
+	}
+
+	[Fact]
+	public void StringFormatRewritesExecuteWithForcedCollection()
+	{
+		foreach (var entry in new[]
+		{
+			"StringFormatSharedComputedParamsEntry",
+			"StringFormatFixedArgumentsEntry",
+			"StringFormatSpanParamsEntry",
+			"StringFormatOverflowingIndexEntry"
+		})
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = M68kCpuTarget.M68000,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions
+				{
+					StartAddress = 0x0000_4000,
+					Size = 0x0000_5000
+				}
+			});
+
+			var actual = ExecuteHunk(result, M68kCpuModel.M68000);
+			Assert.True(actual == 42u, $"{entry} returned {actual}.");
+		}
+	}
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
@@ -9532,6 +9786,7 @@ public sealed class CompilerExecutionTests
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::BoxedInt64GcEntry",
 			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,
@@ -9978,6 +10233,7 @@ public sealed class CompilerExecutionTests
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CapturingLambdaGcEntry",
 			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,
@@ -12549,10 +12805,12 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Theory]
-	[MemberData(nameof(CpuTargets))]
+	[MemberData(nameof(PortableConsoleReadLineCases))]
 	public void PortableConsoleReadLineHandlesCrLfCrAndEof(
 		M68kCpuTarget target,
-		M68kCpuModel model)
+		M68kCpuModel model,
+		M68kGcSweepStrategy sweepStrategy,
+		bool assertProductionBudgets)
 	{
 		const uint execBase = 0x0000_3000;
 		const uint dosBase = 0x0000_5000;
@@ -12568,6 +12826,7 @@ public sealed class CompilerExecutionTests
 			OutputFormat = M68kOutputFormat.Hunk,
 			RuntimeProfile = M68kRuntimeProfile.Application,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = sweepStrategy,
 			Heap = new M68kHeapOptions { Size = managedArenaSize }
 		});
 		var bus = CreateHunkBus(result);
@@ -12640,7 +12899,7 @@ public sealed class CompilerExecutionTests
 				model,
 				HunkLoadAddress + result.EntryPoint,
 				afterReturn: state => cycles = state.Cycles));
-		if (target == M68kCpuTarget.M68000)
+		if (assertProductionBudgets && target == M68kCpuTarget.M68000)
 		{
 			Assert.True(
 				result.Image.Length <= 10_500,
@@ -13197,17 +13456,18 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Theory]
-	[InlineData("open-failure")]
-	[InlineData("lock-failure")]
-	[InlineData("examine-failure")]
-	public void PortableFileSystemNativeFailuresReturnFalseAndReleaseOwnership(string scenario)
+	[MemberData(nameof(PortableFileSystemNativeFailureCases))]
+	public void PortableFileSystemNativeFailuresReturnFalseAndReleaseOwnership(
+		string scenario,
+		M68kCpuTarget target,
+		M68kCpuModel model)
 	{
 		const uint execBase = 0x0000_3000;
 		const uint dosBase = 0x0000_5000;
 		const uint nativePath = 0x0000_6000;
 		const uint lockHandle = 0x0000_0100;
 		var result = Compile(
-			M68kCpuTarget.M68000,
+			target,
 			M68kOutputFormat.Hunk,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableFileSystemMissingEntry");
 		var bus = CreateHunkBus(result);
@@ -13255,7 +13515,7 @@ public sealed class CompilerExecutionTests
 
 		Assert.Equal(
 			42u,
-			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint));
 		Assert.Equal(1, allocations);
 		Assert.Equal(1, frees);
 		Assert.Equal(1, opens);
@@ -15891,6 +16151,22 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
+	public void LowersAptrByteAndWordMemoryIntrinsics()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::AptrByteWordAccessEntry",
+			OutputFormat = M68kOutputFormat.Assembly
+		});
+
+		Assert.Matches(@"move\.b\td[0-7],3\(a[0-6]\)", result.Text);
+		Assert.Matches(@"move\.w\td[0-7],6\(a[0-6]\)", result.Text);
+		Assert.Matches(@"move\.b\t3\(a[0-6]\),d[0-7]", result.Text);
+		Assert.Matches(@"move\.w\t6\(a[0-6]\),d[0-7]", result.Text);
+	}
+
+	[Fact]
 	public void ConstantAddressDisplacementUsesDirectFormOnlyWhenLegal()
 	{
 		static string CompileAddressMethod(string method) =>
@@ -16096,13 +16372,17 @@ public sealed class CompilerExecutionTests
 			StringComparison.Ordinal);
 	}
 
-	[Fact]
-	public void ManagedPoolAllocationFailureCollectsRootsAndRetries()
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ManagedPoolAllocationFailureCollectsRootsAndRetries(
+		M68kCpuTarget target,
+		M68kCpuModel model)
 	{
 		var result = M68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PoolAllocationFailureCollectsRootsEntry",
+			Cpu = target,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
 			GcSweepStrategy = M68kGcSweepStrategy.OnAllocationFailure,
 			Heap = new M68kHeapOptions
@@ -16112,7 +16392,7 @@ public sealed class CompilerExecutionTests
 			}
 		});
 
-		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+		Assert.Equal(42u, ExecuteHunk(result, model));
 	}
 
 	[Fact]
@@ -16313,6 +16593,20 @@ public sealed class CompilerExecutionTests
 		Assert.Contains(0x0000_03E9u, words);
 		Assert.Contains(0x0000_03F0u, words);
 		Assert.Equal(0x0000_03F2u, words[^1]);
+	}
+
+	[Fact]
+	public void HunkOutputUsesBssForProfitableZeroInitializedStatics()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::HunkBssEntry");
+		var words = EnumerateLongWords(result.Image).ToArray();
+
+		Assert.Equal(2u, words[2]);
+		Assert.Contains(0x0000_03EBu, words);
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
 	}
 
 	[Fact]

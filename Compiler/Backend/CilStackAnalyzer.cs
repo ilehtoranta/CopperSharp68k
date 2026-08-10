@@ -152,7 +152,8 @@ internal static class CilStackAnalyzer
 
 	public static IReadOnlyDictionary<int, ImmutableArray<CilStackValueKind>> AnalyzeTypes(
 		CilMethod method,
-		CompilationModule module)
+		CompilationModule module,
+		CilOptimizationPlan? optimizations = null)
 	{
 		if (method.IsImport)
 		{
@@ -196,8 +197,13 @@ internal static class CilStackAnalyzer
 			if (states.TryGetValue(offset, out var priorStack))
 			{
 				var priorAggregateTypes = aggregateStates[offset];
-				if (!priorStack.SequenceEqual(stack) ||
-					!priorAggregateTypes.SequenceEqual(aggregateTypes))
+				if (!TryMergeTypedStacks(
+						priorStack,
+						priorAggregateTypes,
+						stack,
+						aggregateTypes,
+						out var mergedStack,
+						out var mergedAggregateTypes))
 				{
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.InvalidEvaluationStack,
@@ -208,7 +214,21 @@ internal static class CilStackAnalyzer
 						offset);
 				}
 
-				continue;
+				if (priorStack.SequenceEqual(mergedStack) &&
+					priorAggregateTypes.SequenceEqual(mergedAggregateTypes))
+				{
+					continue;
+				}
+
+				states[offset] = mergedStack;
+				aggregateStates[offset] = mergedAggregateTypes;
+				stack = mergedStack;
+				aggregateTypes = mergedAggregateTypes;
+			}
+			else
+			{
+				states.Add(offset, stack);
+				aggregateStates.Add(offset, aggregateTypes);
 			}
 
 			if (!instructions.TryGetValue(offset, out var instruction))
@@ -219,17 +239,49 @@ internal static class CilStackAnalyzer
 					method.DisplayName,
 					offset);
 			}
+			if (optimizations is not null &&
+				optimizations.TryGet(offset, out var suppressed) &&
+				suppressed.Kind == CilOptimizationKind.EphemeralSpanScaffolding)
+			{
+				var nextOffset = method.Instructions[suppressed.EndIndex].NextOffset;
+				if (instructions.ContainsKey(nextOffset))
+				{
+					work.Enqueue((nextOffset, stack, aggregateTypes));
+				}
+				continue;
+			}
 
-			states.Add(offset, stack);
-			aggregateStates.Add(offset, aggregateTypes);
-			var nextStack = ApplyStackEffect(method, module, instruction, stack);
-			var nextAggregateTypes = ApplyAggregateTypeEffect(
-				method,
-				module,
-				instruction,
-				stack,
-				aggregateTypes,
-				nextStack);
+			ImmutableArray<CilStackValueKind> nextStack;
+			ImmutableArray<CilAggregateStackType?> nextAggregateTypes;
+			if (optimizations is not null &&
+				optimizations.TryGetSpanFormat(offset, out var spanFormat))
+			{
+				var popSlots = spanFormat.ElementTypes.Count + 1;
+				if (stack.Length < popSlots)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.InvalidEvaluationStack,
+						"Ephemeral string.Format span lowering has insufficient stack values.",
+						method.DisplayName,
+						instruction.Offset);
+				}
+				nextStack = stack.RemoveRange(stack.Length - popSlots, popSlots)
+					.Add(CilStackValueKind.Reference);
+				nextAggregateTypes = aggregateTypes
+					.RemoveRange(aggregateTypes.Length - popSlots, popSlots)
+					.Add(null);
+			}
+			else
+			{
+				nextStack = ApplyStackEffect(method, module, instruction, stack);
+				nextAggregateTypes = ApplyAggregateTypeEffect(
+					method,
+					module,
+					instruction,
+					stack,
+					aggregateTypes,
+					nextStack);
+			}
 			if (instruction.OpCode == OpCodes.Throw ||
 				instruction.OpCode == OpCodes.Rethrow ||
 				instruction.OpCode == OpCodes.Endfinally)
@@ -924,15 +976,17 @@ internal static class CilStackAnalyzer
 			var result = Pop(method, instruction, stack, count);
 			if (op == OpCodes.Newobj)
 			{
-					if ((IsSpanValueConstructor(target.ImportName) ||
-						 IsMemoryValueConstructor(target.ImportName) ||
-						 target.ConstructedDeclaringType?.IsNullable == true) &&
-						target.ConstructedDeclaringType is { } constructedValueType)
-					{
-						return PushValue(
-							result,
-							StackKindForType(module, constructedValueType, method.ModuleName));
+				var constructedValueType = target.ConstructedDeclaringType;
+				if (constructedValueType is null && target.Definition is { Name: ".ctor" } definition)
+				{
+					var declaringType = module.GetMethodDeclaringType(definition);
+					if (declaringType.Kind == CilTypeKind.ValueType)
+						constructedValueType = declaringType;
 				}
+				if (constructedValueType is { Kind: CilTypeKind.ValueType })
+					return PushValue(
+						result,
+						StackKindForType(module, constructedValueType, method.ModuleName));
 				return Push(result, CilStackValueKind.Reference);
 			}
 			return target.Signature.ReturnType.IsVoid
@@ -1175,7 +1229,10 @@ internal static class CilStackAnalyzer
 					throw Unsupported(
 						method,
 						instruction,
-						$"stobj source does not match '{type.DisplayName}'");
+						$"stobj source does not match '{type.DisplayName}' " +
+						$"(expected module '{expected.ModuleName}', actual " +
+						$"'{currentAggregateTypes[^1]?.ModuleName ?? "<none>"}', " +
+						$"actual type '{currentAggregateTypes[^1]?.Type.DisplayName ?? "<none>"}')");
 				}
 			}
 		}
@@ -1251,12 +1308,31 @@ internal static class CilStackAnalyzer
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
-			if (IsSpanValueConstructor(target.ImportName) ||
+			if (target.ConstructedDeclaringType is { Kind: CilTypeKind.ValueType } valueType)
+			{
+				type = valueType;
+				moduleName = target.Definition?.ModuleName ?? method.ModuleName;
+			}
+			else if (target.Definition is { Name: ".ctor" } definition)
+			{
+				var declaringType = module.GetMethodDeclaringType(definition);
+				if (declaringType.Kind == CilTypeKind.ValueType)
+				{
+					type = declaringType;
+					moduleName = definition.ModuleName;
+				}
+			}
+			else if (IsSpanValueConstructor(target.ImportName) ||
 				IsMemoryValueConstructor(target.ImportName) ||
 				target.ConstructedDeclaringType?.IsNullable == true)
 			{
 				type = target.ConstructedDeclaringType;
 			}
+			if (type is null)
+				throw Unsupported(method, instruction,
+					$"unclassified newobj target definition='{target.Definition?.DisplayName ?? "<none>"}', " +
+					$"import='{target.ImportName ?? "<none>"}', constructed=" +
+					$"'{target.ConstructedDeclaringType?.DisplayName ?? "<none>"}'");
 		}
 		else if (instruction.OpCode == OpCodes.Unbox_Any)
 		{
@@ -1338,6 +1414,57 @@ internal static class CilStackAnalyzer
 
 		return string.Join(",", entries);
 	}
+
+	private static bool TryMergeTypedStacks(
+		ImmutableArray<CilStackValueKind> first,
+		ImmutableArray<CilAggregateStackType?> firstAggregateTypes,
+		ImmutableArray<CilStackValueKind> second,
+		ImmutableArray<CilAggregateStackType?> secondAggregateTypes,
+		out ImmutableArray<CilStackValueKind> merged,
+		out ImmutableArray<CilAggregateStackType?> mergedAggregateTypes)
+	{
+		merged = default;
+		mergedAggregateTypes = default;
+		if (first.Length != second.Length ||
+			firstAggregateTypes.Length != first.Length ||
+			secondAggregateTypes.Length != second.Length)
+		{
+			return false;
+		}
+
+		var kinds = first.ToBuilder();
+		var aggregates = firstAggregateTypes.ToBuilder();
+		for (var index = 0; index < first.Length; index++)
+		{
+			if (first[index] == second[index] &&
+				firstAggregateTypes[index] == secondAggregateTypes[index])
+			{
+				continue;
+			}
+			if (firstAggregateTypes[index] is null &&
+				secondAggregateTypes[index] is null &&
+				IsInt32StackKind(first[index]) &&
+				IsInt32StackKind(second[index]))
+			{
+				kinds[index] = CilStackValueKind.Int32;
+				aggregates[index] = null;
+				continue;
+			}
+			return false;
+		}
+
+		merged = kinds.ToImmutable();
+		mergedAggregateTypes = aggregates.ToImmutable();
+		return true;
+	}
+
+	private static bool IsInt32StackKind(CilStackValueKind kind) =>
+		kind is CilStackValueKind.Int32 or
+			CilStackValueKind.BooleanByte or
+			CilStackValueKind.SignedByte or
+			CilStackValueKind.UnsignedByte or
+			CilStackValueKind.SignedWord or
+			CilStackValueKind.UnsignedWord;
 
 	internal static int GetPopSlotCount(
 		CilMethod method,

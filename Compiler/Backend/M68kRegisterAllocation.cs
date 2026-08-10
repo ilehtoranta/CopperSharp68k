@@ -1371,13 +1371,16 @@ internal static class M68kGraphColoringAllocator
 				if (allocation.Registers.TryGetValue(neighbor, out var other) &&
 					location.OccupiedRegisters.Overlaps(other.OccupiedRegisters))
 				{
+					var leftSites = DescribeValueSites(function, valueId);
+					var rightSites = DescribeValueSites(function, neighbor);
 					throw new InvalidOperationException(
 						$"{function.DisplayName}: interfering values v{valueId} " +
 						$"({value.Kind}, {value.Width}) and v{neighbor} " +
 						$"({function.Values[neighbor].Kind}, {function.Values[neighbor].Width}) " +
 						$"share {location.Register}; precolored=" +
 						$"{value.PrecoloredRegister?.ToString() ?? "none"}/" +
-						$"{function.Values[neighbor].PrecoloredRegister?.ToString() ?? "none"}.");
+						$"{function.Values[neighbor].PrecoloredRegister?.ToString() ?? "none"}; " +
+						$"v{valueId} sites={leftSites}; v{neighbor} sites={rightSites}.");
 				}
 			}
 		}
@@ -1388,6 +1391,25 @@ internal static class M68kGraphColoringAllocator
 			instructionLiveness ?? M68kLivenessAnalysis.AnalyzeInstructions(
 				function,
 				M68kLivenessAnalysis.Analyze(function)));
+	}
+
+	private static string DescribeValueSites(M68kMachineFunction function, int value)
+	{
+		var sites = new List<string>();
+		foreach (var block in function.Blocks)
+		{
+			foreach (var phi in block.Phis)
+			{
+				if (phi.Definition == value || phi.Inputs.Values.Contains(value))
+					sites.Add($"b{block.Id}:phi:d{phi.Definition}:u({string.Join(",", phi.Inputs.Values)})");
+			}
+			foreach (var instruction in block.Instructions)
+			{
+				if (instruction.Definitions.Contains(value) || instruction.Uses.Contains(value))
+					sites.Add($"b{block.Id}:i{instruction.Id}:{instruction.Operation}:u({string.Join(",", instruction.Uses)}):d({string.Join(",", instruction.Definitions)})");
+			}
+		}
+		return string.Join("|", sites);
 	}
 
 	private static void VerifySimultaneouslyLiveLocations(

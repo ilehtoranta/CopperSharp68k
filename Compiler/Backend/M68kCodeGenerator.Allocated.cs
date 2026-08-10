@@ -474,6 +474,10 @@ internal sealed partial class M68kCodeGenerator
 		var instructions = allocated.Function.Blocks
 			.SelectMany(static block => block.Instructions)
 			.ToArray();
+		var phiInputs = allocated.Function.Blocks
+			.SelectMany(static block => block.Phis)
+			.SelectMany(static phi => phi.Inputs.Values)
+			.ToHashSet();
 		foreach (var constant in instructions.Where(static instruction =>
 			instruction.Operation == M68kMachineOperation.Constant &&
 			instruction.Definitions.Length == 1))
@@ -483,6 +487,10 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineInstruction[] users;
 			do
 			{
+				if (phiInputs.Contains(value))
+				{
+					break;
+				}
 				users = instructions
 					.Where(instruction => instruction.Uses.Contains(value))
 					.ToArray();
@@ -546,6 +554,10 @@ internal sealed partial class M68kCodeGenerator
 		var instructions = allocated.Function.Blocks
 			.SelectMany(static block => block.Instructions)
 			.ToArray();
+		var phiInputs = allocated.Function.Blocks
+			.SelectMany(static block => block.Phis)
+			.SelectMany(static phi => phi.Inputs.Values)
+			.ToHashSet();
 		foreach (var address in instructions.Where(instruction =>
 			IsAllocatedLiteralAddressMaterialization(method, instruction) &&
 			instruction.Definitions.Length == 1))
@@ -555,6 +567,10 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineInstruction[] users;
 			do
 			{
+				if (phiInputs.Contains(value))
+				{
+					break;
+				}
 				users = instructions
 					.Where(instruction => instruction.Uses.Contains(value))
 					.ToArray();
@@ -3540,8 +3556,16 @@ internal sealed partial class M68kCodeGenerator
 				0,
 				type.DisplayName)
 			: type;
-		var isSupportedScalar = type.IsSupportedScalar &&
-			type.Size is 1 or 2 or 4 or 8;
+		var hasInitializeLayout = _module.TryGetIndirectInitializeLayout(
+			valueType,
+			method.ModuleName,
+			out var initializeLayout);
+		var scalarSize = type.IsSupportedScalar
+			? type.Size
+			: hasInitializeLayout && initializeLayout.Size <= 4
+				? initializeLayout.Size
+				: 0;
+		var isSupportedScalar = scalarSize is 1 or 2 or 4 or 8;
 		if (valueType is null ||
 			!isSupportedScalar &&
 			(!valueType.IsNullable ||
@@ -3563,7 +3587,7 @@ internal sealed partial class M68kCodeGenerator
 		if (isSupportedScalar)
 		{
 			EmitAllocatedImmediate(0, M68kRegister.D0);
-			if (type.Size == 8)
+			if (scalarSize == 8)
 			{
 				EmitAllocatedBaseStore(
 					M68kRegister.D0,
@@ -3581,7 +3605,7 @@ internal sealed partial class M68kCodeGenerator
 				EmitAllocatedBaseStore(
 					M68kRegister.D0,
 					baseRegister,
-					type.Size switch
+					scalarSize switch
 					{
 						1 => M68kMachineValueWidth.Byte,
 						2 => M68kMachineValueWidth.Word,
@@ -4380,13 +4404,52 @@ internal sealed partial class M68kCodeGenerator
 					out var addressRegister))
 			{
 				EmitAllocatedFrameAddress(addressRegister, clearDisplacements[0]);
-				EmitAllocatedImmediate(clearDisplacements.Length - 1, counterRegister);
+				var zeroRegister = default(M68kRegister);
+				var hasZeroRegister = clearDisplacements.Length > 64 &&
+					TrySelectAllocatedFrameScratchRegister(
+					abi,
+					allocated,
+					address: false,
+					excluded: counterRegister,
+					out zeroRegister);
+				if (hasZeroRegister)
+				{
+					_assembler.EmitWord((ushort)(0x7000 | ((int)zeroRegister << 9)));
+					var remainder = clearDisplacements.Length % 4;
+					for (var index = 0; index < remainder; index++)
+					{
+						_assembler.EmitWord((ushort)(
+							0x20C0 |
+							(((int)addressRegister - (int)M68kRegister.A0) << 9) |
+							(int)zeroRegister));
+					}
+					EmitAllocatedImmediate(
+						(clearDisplacements.Length / 4) - 1,
+						counterRegister);
+				}
+				else
+				{
+					EmitAllocatedImmediate(clearDisplacements.Length - 1, counterRegister);
+				}
 				var loop = UniqueLabel("allocated-frame-zero-loop");
 				_assembler.Mark(loop);
-				_assembler.EmitWord((ushort)(
-					0x20FC |
-					(((int)addressRegister - (int)M68kRegister.A0) << 9)));
-				_assembler.EmitLong(0);
+				if (hasZeroRegister)
+				{
+					for (var index = 0; index < 4; index++)
+					{
+						_assembler.EmitWord((ushort)(
+							0x20C0 |
+							(((int)addressRegister - (int)M68kRegister.A0) << 9) |
+							(int)zeroRegister));
+					}
+				}
+				else
+				{
+					_assembler.EmitWord((ushort)(
+						0x20FC |
+						(((int)addressRegister - (int)M68kRegister.A0) << 9)));
+					_assembler.EmitLong(0);
+				}
 				_assembler.EmitDbra((int)counterRegister, loop);
 			}
 			else if (_request.Cpu == M68kCpuTarget.M68000 &&
@@ -4641,6 +4704,7 @@ internal sealed partial class M68kCodeGenerator
 			source.Offset);
 		if (target.Definition is not { IsImport: false, ExternalCall: null } callee ||
 			IsNativeShadowMathLeaf(callee) ||
+			IsAlwaysInlinedMethod(callee) ||
 			GetActiveExceptionGroups(caller, call.IlOffset).Length != 0 ||
 			callee.Signature.ReturnType.IsVoid !=
 				caller.Signature.ReturnType.IsVoid ||
@@ -7654,7 +7718,7 @@ internal sealed partial class M68kCodeGenerator
 			EmitAllocatedAddress(ExportLabel(exportName), Definition());
 			return;
 		}
-		if (name == "intrinsic:aptr-read-uint32")
+		if (name is "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32")
 		{
 			var baseRegister = Use(0);
 			var destination = Definition();
@@ -7687,10 +7751,12 @@ internal sealed partial class M68kCodeGenerator
 					baseRegister,
 					M68kMachineValueWidth.Long);
 			}
+			var width = name == "intrinsic:aptr-read-uint8" ? M68kMachineValueWidth.Byte :
+				name == "intrinsic:aptr-read-uint16" ? M68kMachineValueWidth.Word : M68kMachineValueWidth.Long;
 			EmitAllocatedBaseLoad(
 				baseRegister,
 				destination,
-				M68kMachineValueWidth.Long,
+				width,
 				displacement);
 			return;
 		}
@@ -7725,7 +7791,7 @@ internal sealed partial class M68kCodeGenerator
 				displacement);
 			return;
 		}
-		if (name == "intrinsic:aptr-write-uint32")
+		if (name is "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32")
 		{
 			var baseRegister = Use(0);
 			var hasConstantOffset = instruction.Immediate.HasValue;
@@ -7750,10 +7816,12 @@ internal sealed partial class M68kCodeGenerator
 					baseRegister,
 					M68kMachineValueWidth.Long);
 			}
+			var width = name == "intrinsic:aptr-write-uint8" ? M68kMachineValueWidth.Byte :
+				name == "intrinsic:aptr-write-uint16" ? M68kMachineValueWidth.Word : M68kMachineValueWidth.Long;
 			EmitAllocatedBaseStore(
 				Use(instruction.Immediate is null ? 2 : 1),
 				baseRegister,
-				M68kMachineValueWidth.Long,
+				width,
 				displacement);
 			return;
 		}
@@ -9303,7 +9371,11 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:cstring-from-literal" or
 			"intrinsic:amiga-vararg-from-literal" or
 			"intrinsic:aptr-export-address" or
+			"intrinsic:aptr-read-uint8" or
+			"intrinsic:aptr-read-uint16" or
 			"intrinsic:aptr-read-uint32" or
+			"intrinsic:aptr-write-uint8" or
+			"intrinsic:aptr-write-uint16" or
 			"intrinsic:aptr-write-uint32" or
 			"intrinsic:aptr-raw" or
 			"intrinsic:boopsi-instance-data" or

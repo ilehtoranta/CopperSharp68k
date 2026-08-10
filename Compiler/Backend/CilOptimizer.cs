@@ -13,7 +13,8 @@ internal enum CilOptimizationKind
 	DiscardCallResult,
 	ComparisonBranch,
 	PredicateBranch,
-	Suppress
+	Suppress,
+	EphemeralSpanScaffolding
 }
 
 internal sealed record CilOptimization(
@@ -27,14 +28,29 @@ internal sealed record CilOptimization(
 internal sealed class CilOptimizationPlan
 {
 	private readonly IReadOnlyDictionary<int, CilOptimization> _optimizations;
+	private readonly IReadOnlyDictionary<int, EphemeralSpanParams> _spanFormats;
 
-	public CilOptimizationPlan(IReadOnlyDictionary<int, CilOptimization> optimizations)
+	public CilOptimizationPlan(
+		IReadOnlyDictionary<int, CilOptimization> optimizations,
+		IReadOnlyDictionary<int, EphemeralSpanParams>? spanFormats = null)
 	{
 		_optimizations = optimizations;
+		_spanFormats = spanFormats ??
+			new Dictionary<int, EphemeralSpanParams>();
 	}
 
 	public bool TryGet(int ilOffset, out CilOptimization optimization) =>
 		_optimizations.TryGetValue(ilOffset, out optimization!);
+
+	public bool TryGetSpanFormat(
+		int ilOffset,
+		out EphemeralSpanParams format) =>
+		_spanFormats.TryGetValue(ilOffset, out format!);
+
+	public IReadOnlySet<int> ElidedLocalIndices =>
+		_spanFormats.Values
+			.Select(static format => format.InlineArrayLocal)
+			.ToHashSet();
 }
 
 internal static class CilOptimizer
@@ -46,9 +62,46 @@ internal static class CilOptimizer
 		var instructions = method.Instructions;
 		var branchTargets = GetBranchTargets(instructions);
 		var optimizations = new Dictionary<int, CilOptimization>();
+		var spanFormats = new Dictionary<int, EphemeralSpanParams>();
+		foreach (var instruction in instructions)
+		{
+			if (instruction.OpCode != OpCodes.Call ||
+				EphemeralParamsArrayAnalyzer.AnalyzeReadOnlySpanParams(
+					module,
+					method,
+					instruction.Offset) is not { } spanFormat)
+			{
+				continue;
+			}
+			spanFormats.Add(instruction.Offset, spanFormat);
+			foreach (var range in spanFormat.SuppressedRanges)
+			{
+				optimizations.Add(
+					instructions[range.StartIndex].Offset,
+					new CilOptimization(
+						CilOptimizationKind.EphemeralSpanScaffolding,
+						range.StartIndex,
+						range.EndIndex,
+						default,
+						false,
+						0));
+			}
+		}
 
 		for (var index = 0; index < instructions.Count;)
 		{
+			if (optimizations.TryGetValue(
+					instructions[index].Offset,
+					out var precomputed))
+			{
+				index = precomputed.EndIndex + 1;
+				continue;
+			}
+			if (spanFormats.ContainsKey(instructions[index].Offset))
+			{
+				index++;
+				continue;
+			}
 			if (TryCreateDiscardCallResult(
 					method,
 					module,
@@ -102,7 +155,7 @@ internal static class CilOptimizer
 			index++;
 		}
 
-		return new CilOptimizationPlan(optimizations);
+		return new CilOptimizationPlan(optimizations, spanFormats);
 	}
 
 	private static bool TryCreateSuppressedRange(
@@ -310,10 +363,23 @@ internal static class CilOptimizer
 			return false;
 		}
 
-		var target = module.ResolveMethodToken(
-			(int)predicate.Operand!,
-			method,
-			predicate.Offset);
+		MethodReference target;
+		try
+		{
+			target = module.ResolveMethodToken(
+				(int)predicate.Operand!,
+				method,
+				predicate.Offset);
+		}
+		catch (M68kCompilationException exception) when (
+			exception.DiagnosticId == M68kDiagnosticIds.UnsupportedSignature)
+		{
+			// Predicate recognition is speculative. A later lowering may erase
+			// unsupported generic scaffolding (for example an immediate params
+			// inline array), while a surviving call will still report the same
+			// diagnostic from its authoritative lowering path.
+			return false;
+		}
 		if (!IsConditionCodePredicate(target.ImportName))
 		{
 			return false;

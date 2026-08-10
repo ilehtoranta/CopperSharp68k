@@ -48,9 +48,23 @@ internal static class M68kStaticAnalyzer
 					method.DisplayName);
 			}
 			ValidateExceptionRegions(module, method);
+			var suppressedEphemeralSpanCalls = method.Instructions
+				.Where(static instruction => instruction.OpCode == OpCodes.Call)
+				.Select(instruction =>
+					EphemeralParamsArrayAnalyzer.AnalyzeReadOnlySpanParams(
+						module,
+						method,
+						instruction.Offset))
+				.OfType<EphemeralSpanParams>()
+				.SelectMany(static format => format.SuppressedCallOffsets)
+				.ToHashSet();
 
 			foreach (var instruction in method.Instructions)
 			{
+				if (suppressedEphemeralSpanCalls.Contains(instruction.Offset))
+				{
+					continue;
+				}
 				AnalyzeInstruction(
 					module,
 					method,
@@ -194,9 +208,20 @@ internal static class M68kStaticAnalyzer
 		ValidateCallDispatch(method, instruction, target);
 		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 		{
-			foreach (var implementation in module.GetInterfaceImplementations(interfaceMethod))
+			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 			{
-				pending.Enqueue(implementation);
+				pending.Enqueue(module.ResolveConstrainedInterfaceImplementation(
+					method,
+					constrainedTypeToken,
+					instruction.Offset,
+					interfaceMethod));
+			}
+			else
+			{
+				foreach (var implementation in module.GetInterfaceImplementations(interfaceMethod))
+				{
+					pending.Enqueue(implementation);
+				}
 			}
 		}
 		else if (target.Definition is { IsImport: false } definition &&

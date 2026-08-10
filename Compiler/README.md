@@ -143,6 +143,11 @@ and `CopperSharp.Sdk.Amiga` packages.
 
 ## Supported subset
 
+This overview covers the compiler's broader CIL and output capabilities. The
+exact admitted .NET 10 framework surface and its limitations are defined by the
+[compatibility profile](Framework/Net10Profile.md) and its machine-readable
+manifest.
+
 - Signed and unsigned 32-bit integer arithmetic, comparisons, conversions,
   branches, calls, locals, and arguments.
 - 64-bit integer constants, locals, returns, 32-bit `conv.i8`/`conv.u8`
@@ -199,11 +204,15 @@ and `CopperSharp.Sdk.Amiga` packages.
 - Table-driven managed exceptions with catch, finally, rethrow, leave, and
   callee-saved restoration during unwind; see
   [ExceptionRuntime.md](ExceptionRuntime.md).
-- HUNK executable output with relocations and symbols, and 256/512 KiB
-  Kickstart ROM output with reset vectors and checksum.
+- HUNK executable output with relocations, symbols, and automatic `HUNK_BSS`
+  storage for safe zero-initialized static suffixes when the fully serialized
+  two-hunk image is strictly smaller; and 256/512 KiB Kickstart ROM output
+  with reset vectors and checksum.
 
-This preview intentionally rejects floating point, general 64-bit arithmetic,
-boxing, delegates, reflection, P/Invoke, and unsupported CIL opcodes. Allocation
+Unlisted framework identities, general 64-bit arithmetic, reflection, arbitrary
+P/Invoke, and unsupported CIL opcodes remain fail-closed. Floating point,
+boxing, and delegates are available only through their explicitly admitted
+compiler/runtime profiles; they are not general CoreCLR-compatible services. Allocation
 is supplied by the `__c68k_alloc` import. Optional explicit release can be
 supplied through `__c68k_dispose`, exposed through helpers such as
 `M68kRuntime.DisposeObject(ref value)` and

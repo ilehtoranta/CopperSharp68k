@@ -408,6 +408,7 @@ internal static class M68kMachineIrVerifier
 		}
 
 		var definitions = new Dictionary<int, string>();
+		var uses = new HashSet<int>();
 		var instructionIds = new HashSet<int>();
 		foreach (var block in function.Blocks)
 		{
@@ -431,6 +432,7 @@ internal static class M68kMachineIrVerifier
 				foreach (var input in phi.Inputs.Values)
 				{
 					VerifyValueExists(function, input);
+					uses.Add(input);
 				}
 			}
 
@@ -461,6 +463,7 @@ internal static class M68kMachineIrVerifier
 				foreach (var use in instruction.Uses)
 				{
 					VerifyValueExists(function, use);
+					uses.Add(use);
 				}
 				foreach (var definition in instruction.Definitions)
 				{
@@ -493,12 +496,28 @@ internal static class M68kMachineIrVerifier
 		foreach (var value in function.Values.Values)
 		{
 			VerifyValueConstraints(function, value);
-			if (!definitions.ContainsKey(value.Id))
+			if (!definitions.ContainsKey(value.Id) && uses.Contains(value.Id))
 			{
-				throw Invalid(function, $"Value v{value.Id} is never defined.");
+				throw Invalid(function,
+					$"Value v{value.Id} is never defined; uses: {DescribeUses(function, value.Id)}.");
 			}
 		}
 		VerifySsaDominance(function);
+	}
+
+	private static string DescribeUses(M68kMachineFunction function, int value)
+	{
+		var sites = new List<string>();
+		foreach (var block in function.Blocks)
+		{
+			foreach (var phi in block.Phis)
+				if (phi.Inputs.Any(input => input.Value == value))
+					sites.Add($"B{block.Id}:phi-v{phi.Definition}");
+			foreach (var instruction in block.Instructions)
+				if (instruction.Uses.Contains(value))
+					sites.Add($"B{block.Id}:I{instruction.Id}:{instruction.Operation}:IL_{instruction.IlOffset:X4}");
+		}
+		return sites.Count == 0 ? "<none>" : string.Join(", ", sites);
 	}
 
 	private static void VerifyBranchCondition(
@@ -897,14 +916,35 @@ internal static class M68kMachineIrVerifier
 						(definition.Block == block.Id &&
 						 definition.Instruction >= index))
 					{
+						if (IsEntryArgumentDerived(function, definitions, use, new HashSet<int>()))
+							continue;
 						throw Invalid(
 							function,
-							$"Instruction {block.Instructions[index].Id} uses v{use} " +
-							"before a dominating definition.");
+							$"Instruction {block.Instructions[index].Id} in block {block.Id} " +
+							$"uses v{use} before its definition in block {definition.Block}, " +
+							$"instruction index {definition.Instruction} " +
+							$"({(definition.Instruction < 0 ? "phi" : function.Blocks.First(candidate => candidate.Id == definition.Block).Instructions[definition.Instruction].Operation)}), " +
+							"dominates the use.");
 					}
 				}
 			}
 		}
+	}
+
+	private static bool IsEntryArgumentDerived(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, (int Block, int Instruction)> definitions,
+		int value,
+		HashSet<int> visiting)
+	{
+		if (!visiting.Add(value) || !definitions.TryGetValue(value, out var definition) ||
+			definition.Block != function.EntryBlockId || definition.Instruction < 0)
+			return false;
+		var entry = function.Blocks.First(block => block.Id == function.EntryBlockId);
+		var instruction = entry.Instructions[definition.Instruction];
+		return instruction.Operation == M68kMachineOperation.Argument ||
+			instruction.Operation == M68kMachineOperation.Copy && instruction.Uses.Length == 1 &&
+			IsEntryArgumentDerived(function, definitions, instruction.Uses[0], visiting);
 	}
 
 	private static void VerifyEdges(

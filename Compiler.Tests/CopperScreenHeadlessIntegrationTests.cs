@@ -21,6 +21,7 @@ public sealed class CopperScreenHeadlessIntegrationTests
             {
                 ("DefaultEntry", 106u),
                 ("ArithmeticEntry", 16u),
+                ("HunkBssEntry", 42u),
                 ("TryCatchEntry", 42u)
             })
             {

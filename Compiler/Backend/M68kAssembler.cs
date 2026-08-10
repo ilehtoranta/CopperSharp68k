@@ -194,6 +194,15 @@ internal sealed class M68kAssembler
 		_addresses.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target)) ||
 		_pcRelative.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target));
 
+	internal bool HasPcRelativeRelaxationCandidate(string targetPrefix) =>
+		_addresses.Any(address =>
+			!address.External &&
+			address.Target.StartsWith(targetPrefix, StringComparison.Ordinal) &&
+			address.Offset >= 2 &&
+			TryGetPcRelativeAddressingOpcode(
+				_buffer.ReadWord(address.Offset - 2),
+				out _));
+
 	public void Mark(string label)
 	{
 		if (!_labels.TryAdd(label, Offset))
@@ -388,6 +397,8 @@ internal sealed class M68kAssembler
 	}
 
 	internal void MarkDataStart() => _buffer.MarkDataStart();
+
+	internal void MarkBssStart() => _buffer.MarkBssStart();
 
 	internal void MarkAnalysisAnchor(string name)
 	{
@@ -744,6 +755,7 @@ internal sealed class M68kAssembler
 		IReadOnlyDictionary<string, uint> imports)
 	{
 		RelaxFinalLayout();
+		EnsureBssLongAlignment();
 		var code = _bytes.ToArray();
 		foreach (var branch in _branches)
 		{
@@ -831,7 +843,36 @@ internal sealed class M68kAssembler
 			new Dictionary<string, int>(
 				_buffer.AnalysisAnchors,
 				StringComparer.Ordinal),
-			relocations);
+			relocations,
+			_buffer.BssStartOffset,
+			_pcRelative
+				.Select(static fixup => fixup.Target)
+				.ToHashSet(StringComparer.Ordinal));
+	}
+
+	private void EnsureBssLongAlignment()
+	{
+		if (_buffer.BssStartOffset is not { } bssStart || (bssStart & 3) == 0)
+		{
+			return;
+		}
+
+		var padding = 4 - (bssStart & 3);
+		var labelsAtBoundary = _labels.Keys
+			.Where(label => _labels[label] == bssStart)
+			.ToArray();
+		var anchorsAtBoundary = _buffer.AnalysisAnchors.Keys
+			.Where(anchor => _buffer.AnalysisAnchors[anchor] == bssStart)
+			.ToArray();
+		_buffer.InsertBytes(bssStart, padding);
+		foreach (var label in labelsAtBoundary)
+		{
+			_labels[label] += padding;
+		}
+		foreach (var anchor in anchorsAtBoundary)
+		{
+			_buffer.AnalysisAnchors[anchor] += padding;
+		}
 	}
 
 	public string RenderAssembly(M68kCpuTarget cpu)
@@ -2184,4 +2225,6 @@ internal sealed record LinkedCode(
 	byte[] Bytes,
 	IReadOnlyDictionary<string, int> Labels,
 	IReadOnlyDictionary<string, int> AnalysisAnchors,
-	IReadOnlyList<M68kRelocation> Relocations);
+	IReadOnlyList<M68kRelocation> Relocations,
+	int? BssStartOffset,
+	IReadOnlySet<string> PcRelativeTargets);

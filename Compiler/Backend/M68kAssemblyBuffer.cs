@@ -23,9 +23,13 @@ internal sealed class M68kAssemblyBuffer
 
 	internal int? DataStartOffset { get; private set; }
 
+	internal int? BssStartOffset { get; private set; }
+
 	internal bool HasLabelAt(int offset) => Labels.Values.Contains(offset);
 
 	internal void MarkDataStart() => DataStartOffset ??= Bytes.Count;
+
+	internal void MarkBssStart() => BssStartOffset ??= Bytes.Count;
 
 	internal ushort ReadWord(int offset) =>
 		(ushort)((Bytes[offset] << 8) | Bytes[offset + 1]);
@@ -45,6 +49,10 @@ internal sealed class M68kAssemblyBuffer
 		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= offset)
 		{
 			DataStartOffset = dataStartOffset + count;
+		}
+		if (BssStartOffset is { } bssStartOffset && bssStartOffset >= offset)
+		{
+			BssStartOffset = bssStartOffset + count;
 		}
 
 		foreach (var label in Labels.Keys.ToArray())
@@ -110,6 +118,10 @@ internal sealed class M68kAssemblyBuffer
 		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= end)
 		{
 			DataStartOffset = dataStartOffset - count;
+		}
+		if (BssStartOffset is { } bssStartOffset && bssStartOffset >= end)
+		{
+			BssStartOffset = bssStartOffset - count;
 		}
 		Branches.RemoveAll(branch =>
 			branch.OpcodeOffset >= offset && branch.OpcodeOffset < end);

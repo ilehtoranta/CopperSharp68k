@@ -44,10 +44,13 @@ internal static class CilMachineIrBuilder
 		IReadOnlyList<M68kRegister?>? argumentRegisters = null)
 	{
 		optimizations ??= CilOptimizer.Optimize(method, module);
-		var stackStates = CilStackAnalyzer.AnalyzeTypes(method, module);
+		var stackStates = CilStackAnalyzer.AnalyzeTypes(method, module, optimizations);
 		var reachableOffsets = stackStates.Keys.ToHashSet();
 		var instructions = method.Instructions
-			.Where(instruction => reachableOffsets.Contains(instruction.Offset))
+			.Where(instruction =>
+				reachableOffsets.Contains(instruction.Offset) &&
+				!(optimizations.TryGet(instruction.Offset, out var optimization) &&
+					optimization.Kind == CilOptimizationKind.EphemeralSpanScaffolding))
 			.ToArray();
 		if (instructions.Length == 0)
 		{
@@ -78,9 +81,14 @@ internal static class CilMachineIrBuilder
 
 		ConnectBlocks(blockInstructions, function.Blocks, blocksByOffset);
 		ComputeLoopDepths(function);
-		var promotableLocals = GetPromotableLocals(method, module);
+		var elidedLocals = optimizations.ElidedLocalIndices;
+		var promotableLocals = GetPromotableLocals(method, module, elidedLocals);
 		for (var index = 0; index < method.Locals.Length; index++)
 		{
+			if (elidedLocals.Contains(index))
+			{
+				continue;
+			}
 			if (!promotableLocals[index])
 			{
 				var type = method.Locals[index];
@@ -135,7 +143,7 @@ internal static class CilMachineIrBuilder
 		var entryLocalValues = new int?[method.Locals.Length];
 		for (var index = 0; index < method.Locals.Length; index++)
 		{
-			if (promotableLocals[index])
+			if (promotableLocals[index] && !elidedLocals.Contains(index))
 			{
 				entryLocalValues[index] = CreateValueForType(
 					function,
@@ -222,6 +230,7 @@ internal static class CilMachineIrBuilder
 			argumentRegisters);
 		EliminateDeadMachineValues(function);
 		PropagateNarrowExpressionWidths(function);
+		M68kMachineIrVerifier.Verify(function);
 		M68kConditionFlowOptimizer.Run(function, method, module);
 		EliminateDeadMachineValues(function);
 		EliminateUnusedLocalHomes(function);
@@ -587,7 +596,8 @@ internal static class CilMachineIrBuilder
 
 	private static bool[] GetPromotableLocals(
 		CilMethod method,
-		CompilationModule module)
+		CompilationModule module,
+		IReadOnlySet<int>? excludedLocals = null)
 	{
 		var result = new bool[method.Locals.Length];
 		if (method.ExceptionRegions.Count != 0)
@@ -596,6 +606,10 @@ internal static class CilMachineIrBuilder
 		}
 		for (var index = 0; index < method.Locals.Length; index++)
 		{
+			if (excludedLocals?.Contains(index) == true)
+			{
+				continue;
+			}
 			var localIndex = index;
 			result[index] =
 				!method.Instructions.Select((instruction, instructionIndex) =>
@@ -1192,6 +1206,19 @@ internal static class CilMachineIrBuilder
 					stackKinds);
 				continue;
 			}
+			if (TryLowerEphemeralSpanStringFormatCall(
+					function,
+					state.Block,
+					method,
+					module,
+					cpu,
+					optimizations,
+					instruction,
+					ref stackKinds,
+					stackValues))
+			{
+				continue;
+			}
 
 			var popSlots = CilStackAnalyzer.GetPopSlotCount(
 				method,
@@ -1470,7 +1497,8 @@ internal static class CilMachineIrBuilder
 					definitions);
 				if (definitions.Count == 1 &&
 					uses.Length == 1 &&
-					IsStackVarargsNewArray(method, module, instruction) &&
+					(IsStackVarargsNewArray(method, module, instruction) ||
+					 IsEphemeralParamsNewArray(method, module, instruction)) &&
 					TryGetMachineIntegerConstant(
 						state.Block,
 						uses[0],
@@ -1597,6 +1625,23 @@ internal static class CilMachineIrBuilder
 				module.ResolveMethodToken(
 					(int)instruction.Operand!,
 					method,
+					instruction.Offset).Definition is { } valueConstructor &&
+				module.IsValueTypeConstructor(valueConstructor))
+			{
+				AddConstrainedValueTypeConstruction(
+					function,
+					state.Block,
+					method,
+					module,
+					instruction,
+					cpu,
+					uses,
+					definitions);
+			}
+			else if (instruction.OpCode == OpCodes.Newobj &&
+				module.ResolveMethodToken(
+					(int)instruction.Operand!,
+					method,
 					instruction.Offset).ImportName?.StartsWith(
 						"intrinsic:nullable-ctor:",
 						StringComparison.Ordinal) == true)
@@ -1633,9 +1678,26 @@ internal static class CilMachineIrBuilder
 				instruction.OpCode == OpCodes.Newobj)
 			{
 				M68kRegister? stackVarargsRegister = null;
+				var usesDefinitionSignature = false;
 
-
-				if (uses.Length != 0 &&
+				var callTarget = module.ResolveMethodToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset);
+				if (TryFlattenImmediateBoxedStringFormatCall(
+						state.Block,
+						callTarget,
+						uses,
+						out var immediateFormatUses,
+						out var immediateFormatInstructionIds))
+				{
+					uses = immediateFormatUses;
+					usesDefinitionSignature = true;
+					state.Block.Instructions.RemoveAll(candidateInstruction =>
+						immediateFormatInstructionIds.Contains(
+							candidateInstruction.Id));
+				}
+				else if (uses.Length != 0 &&
 					TryFindStackVarargsCandidate(
 						state.Block,
 						uses,
@@ -1643,6 +1705,7 @@ internal static class CilMachineIrBuilder
 						out var callCandidate,
 						out var arrayUseIndex) &&
 					TryFlattenStackVarargsCall(
+						state.Block,
 						method,
 						module,
 						instruction,
@@ -1650,7 +1713,8 @@ internal static class CilMachineIrBuilder
 						arrayUseIndex,
 						callCandidate,
 						out var flattenedUses,
-						out stackVarargsRegister))
+						out stackVarargsRegister,
+						out usesDefinitionSignature))
 				{
 					uses = flattenedUses;
 					state.Block.Instructions.RemoveAll(candidateInstruction =>
@@ -1666,7 +1730,8 @@ internal static class CilMachineIrBuilder
 					cpu,
 					uses,
 					definitions,
-					stackVarargsRegister: stackVarargsRegister);
+					stackVarargsRegister: stackVarargsRegister,
+					useDefinitionSignature: usesDefinitionSignature);
 			}
 			else if (RequiresFixedDataOperands(instruction.OpCode) &&
 				(uses.Length == 0 || function.Values[uses[0]].Kind is not
@@ -1702,6 +1767,58 @@ internal static class CilMachineIrBuilder
 		}
 		state.ExitValues.AddRange(stackValues);
 		Array.Copy(localValues, state.ExitLocals, localValues.Length);
+	}
+
+	private static bool TryLowerEphemeralSpanStringFormatCall(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilMethod caller,
+		CompilationModule module,
+		M68kCpuTarget cpu,
+		CilOptimizationPlan optimizations,
+		CilInstruction instruction,
+		ref ImmutableArray<CilStackValueKind> stackKinds,
+		List<int> stackValues)
+	{
+		if (!optimizations.TryGetSpanFormat(
+				instruction.Offset,
+				out var spanFormat))
+		{
+			return false;
+		}
+
+		var popSlots = spanFormat.ElementTypes.Count + 1;
+		if (stackKinds.Length < popSlots || stackValues.Count < popSlots)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidEvaluationStack,
+				"Ephemeral string.Format span lowering has insufficient stack values.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+		var uses = CollapseStackOperands(
+			stackKinds,
+			stackValues,
+			popSlots);
+		stackValues.RemoveRange(stackValues.Count - popSlots, popSlots);
+		stackKinds = stackKinds.RemoveRange(
+			stackKinds.Length - popSlots,
+			popSlots).Add(CilStackValueKind.Reference);
+		var definitions = CreateStackValues(
+			function,
+			ImmutableArray.Create(CilStackValueKind.Reference));
+		stackValues.AddRange(definitions);
+		AddConstrainedCall(
+			function,
+			block,
+			caller,
+			module,
+			instruction,
+			cpu,
+			uses,
+			definitions,
+			useDefinitionSignature: true);
+		return true;
 	}
 
 	private static bool TryLowerMultiwordUnboxAny(
@@ -2306,6 +2423,7 @@ internal static class CilMachineIrBuilder
 	}
 
 	private static bool TryFlattenStackVarargsCall(
+		M68kMachineBlock block,
 		CilMethod caller,
 		CompilationModule module,
 		CilInstruction instruction,
@@ -2313,10 +2431,12 @@ internal static class CilMachineIrBuilder
 		int arrayUseIndex,
 		StackVarargsArrayCandidate candidate,
 		out int[] flattenedUses,
-		out M68kRegister? varargsRegister)
+		out M68kRegister? varargsRegister,
+		out bool usesDefinitionSignature)
 	{
 		flattenedUses = [];
 		varargsRegister = null;
+		usesDefinitionSignature = false;
 		if (candidate.IsInvalidated ||
 			candidate.Elements.Any(static element => element is null))
 		{
@@ -2326,6 +2446,33 @@ internal static class CilMachineIrBuilder
 			(int)instruction.Operand!,
 			caller,
 			instruction.Offset);
+		if (IsEphemeralStringFormatTarget(target))
+		{
+			if (uses.Count != 2 || arrayUseIndex != 1 ||
+				candidate.Elements.Length is < 1 or > 8 ||
+				target.Definition is null ||
+				target.Definition.Signature.ParameterTypes.Length !=
+					candidate.Elements.Length + 1)
+			{
+				return false;
+			}
+			var unboxed = new int[candidate.Elements.Length];
+			for (var index = 0; index < unboxed.Length; index++)
+			{
+				if (!TryUnwrapEphemeralBox(
+						block,
+						candidate.Elements[index]!.Value,
+						out unboxed[index],
+						out var boxInstructionIds))
+				{
+					return false;
+				}
+				candidate.GeneratedInstructionIds.UnionWith(boxInstructionIds);
+			}
+			flattenedUses = [uses[0], .. unboxed];
+			usesDefinitionSignature = true;
+			return true;
+		}
 		if (target.ImportName ==
 			"intrinsic:boopsi-do-method-stack-varargs")
 		{
@@ -2349,6 +2496,110 @@ internal static class CilMachineIrBuilder
 			.. candidate.Elements.Select(static element => element!.Value)
 		];
 		return true;
+	}
+
+	private static bool IsEphemeralStringFormatTarget(MethodReference target) =>
+		target.FrameworkBinding?.Member is
+		{
+			Name: "Format",
+			DeclaringType.MetadataName: "System.String"
+		} &&
+		target.Definition?.DisplayName.StartsWith(
+			"CopperSharp.Runtime.ShadowStringFormat::Format",
+			StringComparison.Ordinal) == true;
+
+	private static bool TryFlattenImmediateBoxedStringFormatCall(
+		M68kMachineBlock block,
+		MethodReference target,
+		IReadOnlyList<int> uses,
+		out int[] flattenedUses,
+		out HashSet<int> generatedInstructionIds)
+	{
+		flattenedUses = [];
+		generatedInstructionIds = [];
+		if (!IsEphemeralStringFormatTarget(target) ||
+			target.Signature.ParameterTypes.Length is < 2 or > 4 ||
+			target.Signature.ParameterTypes.Skip(1).Any(type =>
+				type.DisplayName is not ("object" or "System.Object")) ||
+			uses.Count != target.Signature.ParameterTypes.Length ||
+			target.Definition is null ||
+			target.Definition.Signature.ParameterTypes.Length != uses.Count)
+		{
+			return false;
+		}
+
+		var unboxed = new int[uses.Count - 1];
+		for (var index = 0; index < unboxed.Length; index++)
+		{
+			if (!TryUnwrapEphemeralBox(
+					block,
+					uses[index + 1],
+					out unboxed[index],
+					out var boxInstructionIds))
+			{
+				return false;
+			}
+			generatedInstructionIds.UnionWith(boxInstructionIds);
+		}
+
+		flattenedUses = [uses[0], .. unboxed];
+		return true;
+	}
+
+	private static bool TryUnwrapEphemeralBox(
+		M68kMachineBlock block,
+		int value,
+		out int unboxed,
+		out IReadOnlyList<int> boxInstructionIds)
+	{
+		var visited = new HashSet<int>();
+		while (visited.Add(value))
+		{
+			var definition = block.Instructions.LastOrDefault(instruction =>
+				instruction.Definitions.Contains(value));
+			if (definition is
+				{
+					SourceInstruction.OpCode: var sourceOp,
+					Uses: [var source]
+				} && sourceOp == OpCodes.Box)
+			{
+				var generated = block.Instructions
+					.Where(item => item.IlOffset == definition.IlOffset)
+					.Select(static item => item.Id)
+					.ToList();
+				// AddConstrainedBox contributes exactly one source-register staging
+				// copy at the box IL offset. Do not walk through older generated
+				// copies: a call-result or another SSA adapter may still have users
+				// outside this ephemeral box/array suffix.
+				var staging = block.Instructions.LastOrDefault(instruction =>
+					instruction.IlOffset == definition.IlOffset &&
+					instruction.Definitions.Contains(source));
+				if (staging is not
+					{
+						Operation: M68kMachineOperation.Copy,
+						SourceInstruction: null,
+						Uses: [var stagingSource]
+					})
+				{
+					break;
+				}
+				unboxed = stagingSource;
+				boxInstructionIds = generated;
+				return true;
+			}
+			if (definition is not
+				{
+					Operation: M68kMachineOperation.Copy,
+					Uses: [var copied]
+				})
+			{
+				break;
+			}
+			value = copied;
+		}
+		unboxed = 0;
+		boxInstructionIds = [];
+		return false;
 	}
 
 	private static bool TryGetStackVarargsCallInfo(
@@ -2387,6 +2638,15 @@ internal static class CilMachineIrBuilder
 			elementType.DisplayName == "Amiga.AmigaVarArg" ||
 			module.IsTransparentScalarType(elementType);
 	}
+
+	private static bool IsEphemeralParamsNewArray(
+		CilMethod caller,
+		CompilationModule module,
+		CilInstruction instruction) =>
+		module.ResolveTypeToken(
+			(int)instruction.Operand!,
+			caller,
+			instruction.Offset).DisplayName == "object";
 
 	private static bool TryGetMachineIntegerConstant(
 		M68kMachineBlock block,
@@ -3366,6 +3626,7 @@ internal static class CilMachineIrBuilder
 		switch (optimization.Kind)
 		{
 			case CilOptimizationKind.Suppress:
+			case CilOptimizationKind.EphemeralSpanScaffolding:
 				return true;
 
 			case CilOptimizationKind.DiscardCallResult:
@@ -3659,6 +3920,77 @@ internal static class CilMachineIrBuilder
 			hasInstanceArgumentOverride: true);
 	}
 
+	private static void AddConstrainedValueTypeConstruction(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilMethod caller,
+		CompilationModule module,
+		CilInstruction instruction,
+		M68kCpuTarget cpu,
+		IReadOnlyList<int> uses,
+		IReadOnlyList<int> definitions)
+	{
+		var target = module.ResolveMethodToken(
+			(int)instruction.Operand!,
+			caller,
+			instruction.Offset);
+		var definition = target.Definition ??
+			throw new InvalidOperationException("Value-type construction requires a direct constructor.");
+		var valueType = target.ConstructedDeclaringType ?? module.GetMethodDeclaringType(definition);
+		if (definitions.Count != 1 ||
+			!module.TryGetReferenceFreeStructLayout(
+				valueType,
+				definition.ModuleName,
+				out var layout))
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				$"Value-type construction requires one reference-free aggregate result for '{valueType.DisplayName}'.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+
+		var home = AllocateAggregateTemporaryHome(
+			function,
+			caller,
+			layout.Size,
+			GcReferenceOffsets(module, valueType, definition.ModuleName));
+		var result = function.Values[definitions[0]];
+		function.Values[definitions[0]] = result with
+		{
+			Kind = CilStackValueKind.AggregateAddress,
+			Width = M68kMachineValueWidth.Long,
+			AllowedRegisters = M68kRegisterSet.Address,
+			PrecoloredRegister = null,
+			IsGcReference = false,
+			IsRematerializable = false
+		};
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.LocalAddress,
+			instruction.Offset,
+			definitions: definitions,
+			argumentIndex: home));
+		var callAddress = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.LocalAddress,
+			instruction.Offset,
+			definitions: [callAddress.Id],
+			argumentIndex: home));
+		AddConstrainedCall(
+			function,
+			block,
+			caller,
+			module,
+			instruction with { OpCode = OpCodes.Call },
+			cpu,
+			[callAddress.Id, .. uses],
+			[],
+			hasInstanceArgumentOverride: true);
+	}
+
 	private static void AddConstrainedCall(
 		M68kMachineFunction function,
 		M68kMachineBlock block,
@@ -3669,12 +4001,16 @@ internal static class CilMachineIrBuilder
 		IReadOnlyList<int> uses,
 		IReadOnlyList<int> definitions,
 		bool? hasInstanceArgumentOverride = null,
-		M68kRegister? stackVarargsRegister = null)
+		M68kRegister? stackVarargsRegister = null,
+		bool useDefinitionSignature = false)
 	{
 		var target = module.ResolveMethodToken(
 			(int)instruction.Operand!,
 			caller,
 			instruction.Offset);
+		var abiTarget = useDefinitionSignature && target.Definition is not null
+			? target with { Signature = target.Definition.Signature }
+			: target;
 		var callInstruction = instruction;
 		CilMethod? constrainedImplementation = null;
 		var dereferencesConstrainedReference = false;
@@ -3702,6 +4038,7 @@ internal static class CilMachineIrBuilder
 						instruction.Offset,
 						constrainedDeclaration);
 				target = MethodReference.ForDefinition(constrainedImplementation);
+				abiTarget = target;
 			}
 		}
 		if (IsLiteralAddressIntrinsic(target.ImportName))
@@ -3878,10 +4215,10 @@ internal static class CilMachineIrBuilder
 			caller,
 			module,
 			instruction,
-			target,
+			abiTarget,
 			sourceUses,
 			hasInstanceArgumentOverride ??
-				(target.Signature.Header.IsInstance &&
+				(abiTarget.Signature.Header.IsInstance &&
 					(instruction.OpCode != OpCodes.Newobj ||
 					 target.ImportName?.StartsWith(
 						"intrinsic:nullable-ctor:",
@@ -3891,10 +4228,10 @@ internal static class CilMachineIrBuilder
 			: GetCallArgumentRegisters(
 				function,
 				module,
-				target,
+				abiTarget,
 				sourceUses,
 				hasInstanceArgumentOverride ??
-					(target.Signature.Header.IsInstance &&
+					(abiTarget.Signature.Header.IsInstance &&
 						(instruction.OpCode != OpCodes.Newobj ||
 						 target.ImportName?.StartsWith(
 						"intrinsic:nullable-ctor:",
@@ -3932,8 +4269,8 @@ internal static class CilMachineIrBuilder
 		}
 		int? embeddedDisplacement = null;
 		if (target.ImportName is
-				"intrinsic:aptr-read-uint32" or
-				"intrinsic:aptr-write-uint32" &&
+				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
+				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			sourceUses.Count > 1 &&
 			TryGetMachineIntegerConstant(
 				block,
@@ -3947,8 +4284,8 @@ internal static class CilMachineIrBuilder
 		}
 		if (embeddedDisplacement is null &&
 			target.ImportName is
-				"intrinsic:aptr-read-uint32" or
-				"intrinsic:aptr-write-uint32" &&
+				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
+				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			argumentConstraints.Count != 0)
 		{
 			argumentConstraints[0] = argumentConstraints[0] with
@@ -3957,7 +4294,7 @@ internal static class CilMachineIrBuilder
 			};
 		}
 		if (embeddedDisplacement is not null &&
-			target.ImportName == "intrinsic:aptr-write-uint32" &&
+			target.ImportName is "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			argumentConstraints.Count != 0)
 		{
 			// A constant displacement leaves the value as a direct memory-store
@@ -4090,7 +4427,7 @@ internal static class CilMachineIrBuilder
 		M68kMachineValue? fixedReturn = null;
 		if (!hasMultiwordReturn &&
 			definitions.Count == 1 &&
-			target.ImportName != "intrinsic:aptr-read-uint32" &&
+			target.ImportName is not ("intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
 			!HasFlexibleScalarReturn(target.ImportName))
 		{
 			var result = function.Values[definitions[0]];
@@ -4860,7 +5197,7 @@ internal static class CilMachineIrBuilder
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
 				CallArgumentConstraint.Fixed(M68kRegister.D0)];
 		}
-		if (target.ImportName == "intrinsic:aptr-read-uint32" ||
+		if (target.ImportName is "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:file-info-block-read-int32:",
 				StringComparison.Ordinal) == true)
@@ -4881,7 +5218,7 @@ internal static class CilMachineIrBuilder
 				CallArgumentConstraint.Fixed(M68kRegister.A2),
 				CallArgumentConstraint.Fixed(M68kRegister.A3)];
 		}
-		if (target.ImportName == "intrinsic:aptr-write-uint32")
+		if (target.ImportName is "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32")
 		{
 			return [
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
@@ -5518,8 +5855,8 @@ internal static class CilMachineIrBuilder
 			}
 			if (target.Definition is null &&
 				target.ImportName is
-					"intrinsic:aptr-read-uint32" or
-					"intrinsic:aptr-write-uint32" or
+					"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
+					"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" or
 					"intrinsic:aptr-raw" or
 					"intrinsic:iff-handle-stream" or
 					"intrinsic:iff-handle-set-stream" or
