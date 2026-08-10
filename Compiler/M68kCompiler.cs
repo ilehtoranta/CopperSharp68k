@@ -412,8 +412,9 @@ public static class M68kCompiler
 			0);
 		var entryOffset = checked((uint)linked.Labels[program.EntryLabel]);
 		var text = program.Assembler.RenderAssembly(request.Cpu);
+		var image = Encoding.UTF8.GetBytes(text);
 		return new M68kCompilationResult(
-			Encoding.UTF8.GetBytes(text),
+			image,
 			linked.Bytes,
 			entryOffset,
 			symbols,
@@ -422,6 +423,8 @@ public static class M68kCompiler
 				request,
 				frameworkAnalysis,
 				entryOffset,
+				image.Length,
+				linked.Bytes.Length,
 				symbols,
 				linked.Relocations,
 				loopFootprints,
@@ -452,6 +455,9 @@ public static class M68kCompiler
 			linked.Bytes,
 			linked.Relocations,
 			symbols,
+			linked.Labels,
+			linked.BssStartOffset,
+			linked.PcRelativeTargets,
 			request.Hunk);
 		return new M68kCompilationResult(
 			image,
@@ -463,6 +469,8 @@ public static class M68kCompiler
 				request,
 				frameworkAnalysis,
 				entryOffset,
+				image.Length,
+				linked.Bytes.Length,
 				symbols,
 				linked.Relocations,
 				loopFootprints,
@@ -502,6 +510,8 @@ public static class M68kCompiler
 				request,
 				frameworkAnalysis,
 				entryPoint,
+				image.Length,
+				linked.Bytes.Length,
 				symbols,
 				linked.Relocations,
 				loopFootprints,
@@ -583,6 +593,8 @@ public static class M68kCompiler
 		M68kCompilationRequest request,
 		M68kFrameworkAnalysisResult frameworkAnalysis,
 		uint entryPoint,
+		int artifactBytes,
+		int codeBytes,
 		IReadOnlyList<M68kSymbol> symbols,
 		IReadOnlyList<M68kRelocation> relocations,
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
@@ -616,6 +628,11 @@ public static class M68kCompiler
 		map.AppendLine($"CPU {request.Cpu}");
 		map.AppendLine($"FORMAT {request.OutputFormat}");
 		map.AppendLine($"ENTRY {entryPoint:X8}");
+		map.AppendLine(
+			$"METRICS artifact-bytes={artifactBytes} code-bytes={codeBytes} " +
+			$"symbols={symbols.Count} relocations={relocations.Count} " +
+			$"loops={loopFootprints.Count} framework-features={frameworkFeatures.Count} " +
+			$"managed-allocation-sites={frameworkAnalysis.ManagedAllocationSites.Count}");
 		map.AppendLine("SYMBOLS");
 		foreach (var symbol in symbols)
 		{
