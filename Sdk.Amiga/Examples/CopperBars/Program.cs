@@ -17,12 +17,14 @@ public static class Program
 	private const ushort CopperEnd1 = 0xFFFF;
 	private const ushort CopperEnd2 = 0xFFFE;
 	private const ushort WaitMask = 0xFFFE;
+	private const ushort SetClear = 0x8000;
 	private const ushort BackgroundColor = 0x001;
+	private const int CopperUpdateLine = 280;
 
 	private const int BarCount = 4;
 	private const int BarHeight = 8;
 	private const int BarSpacing = 24;
-	private const int CopperInstructionCount = 2 + (BarCount * (BarHeight + 1) * 2) + 1;
+	private const int CopperInstructionCount = 2 + (BarCount * (BarHeight + 1) * 2) + 3;
 	private const uint CopperListSize = CopperInstructionCount * 4;
 
 	[M68kEntryPoint]
@@ -138,6 +140,12 @@ public static class Program
 			WriteCopperInstruction(list, ref offset, CustomRegister.Color00, BackgroundColor);
 		}
 
+		WriteCopperWait(list, ref offset, CopperUpdateLine);
+		WriteCopperInstruction(
+			list,
+			ref offset,
+			CustomRegister.InterruptRequest,
+			(ushort)(SetClear | (ushort)CustomInterruptFlags.Copper));
 		WriteCopperInstruction(list, ref offset, CopperEnd1, CopperEnd2);
 	}
 
@@ -213,12 +221,10 @@ public static class Program
 
 	private static void WaitForCopperUpdateWindow()
 	{
-		while (CustomChip.ReadBeamLine() >= 280)
+		while ((CustomChip.ReadInterruptRequest() & CustomInterruptFlags.Copper) == 0)
 		{
 		}
-		while (CustomChip.ReadBeamLine() < 280)
-		{
-		}
+		CustomChip.ClearInterruptRequest(CustomInterruptFlags.Copper);
 	}
 
 	private static void WaitForLeftMouseRelease()

@@ -30,13 +30,17 @@ dotnet run --project .\Compiler.Cli -- `
   .\Sdk.Amiga\Examples\CopperBars\bin\Debug\net10.0\CopperBars.dll `
   --entry CopperBarsExample.Program::Main `
   --output .\Sdk.Amiga\Examples\CopperBars\CopperBars `
-  --platform amiga --cpu 68000 --format hunk --runtime application --exceptions yolo
+  --platform amiga --cpu 68000 --format hunk --runtime application `
+  --exceptions yolo --symbols off
 ```
 
-This example deliberately synchronizes against PAL line 280 and keeps every
-Copper wait below line 256. It is not an NTSC example. Run it from a shell on a
-PAL OCS/ECS machine or emulator; if experimental compiler output or hardware
-state prevents the cleanup path from running, reset the machine.
+This example keeps the bar waits below line 256. At PAL line 280, the Copper
+strobes its interrupt-request bit to tell the CPU that the list is safely
+parked and can be updated. The interrupt remains disabled, so the CPU polls and
+clears the request without invoking an interrupt handler. It is not an NTSC
+example. Run it from a shell on a PAL OCS/ECS machine or emulator; if
+experimental compiler output or hardware state prevents the cleanup path from
+running, reset the machine.
 
 The dedicated ADF test builds and runs the demo with Kickstart 3.1 on
 cycle-exact PAL OCS WinUAE, clicks the left mouse button, and verifies that
