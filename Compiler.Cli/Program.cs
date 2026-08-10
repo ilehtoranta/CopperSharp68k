@@ -40,6 +40,7 @@ static int Run(string[] args)
 		var clrPolicy = ParseClrPolicy(GetOptional(args, "--clr") ?? "auto");
 		var exceptionMode = ParseExceptionMode(GetOptional(args, "--exceptions") ?? "full");
 		var format = ParseFormat(GetOptional(args, "--format") ?? "hunk");
+		var includeHunkSymbols = ParseSymbolMode(GetOptional(args, "--symbols") ?? "on");
 		var runtimeProfile = ParseRuntimeProfile(
 			GetOptional(args, "--runtime") ??
 			format switch
@@ -48,6 +49,9 @@ static int Run(string[] args)
 				M68kOutputFormat.KickstartRom => "rom",
 				_ => "freestanding"
 			});
+		var memoryManagement = ParseMemoryManagement(
+			GetOptional(args, "--memory") ?? "default");
+		var heapSize = ParseUInt(GetOptional(args, "--heap-size") ?? "0");
 		var romSize = ParseInt(GetOptional(args, "--rom-size") ?? "524288");
 		var romBase = ParseUInt(GetOptional(args, "--rom-base") ?? "0");
 		var stack = ParseUInt(GetOptional(args, "--stack") ?? "0x80000");
@@ -68,6 +72,7 @@ static int Run(string[] args)
 			ExceptionMode = exceptionMode,
 			OutputFormat = format,
 			RuntimeProfile = runtimeProfile,
+			MemoryManagement = memoryManagement,
 			Imports = imports,
 			ManagedAssemblyPaths = managedAssemblyPaths,
 			FrameworkImplementationPack = frameworkImplementationManifest is null
@@ -79,7 +84,9 @@ static int Run(string[] args)
 				Size = romSize,
 				BaseAddress = romBase,
 				InitialStackPointer = stack
-			}
+			},
+			Hunk = new HunkOutputOptions { IncludeSymbols = includeHunkSymbols },
+			Heap = new M68kHeapOptions { Size = heapSize }
 		};
 
 		if (frameworkReport is not null)
@@ -214,7 +221,10 @@ static string[] ExpandResponseManifest(string[] args)
 			"clr" => "--clr",
 			"exceptions" => "--exceptions",
 			"format" => "--format",
+			"symbols" => "--symbols",
 			"runtime" => "--runtime",
+			"memory" => "--memory",
+			"heap-size" => "--heap-size",
 			"rom-size" => "--rom-size",
 			"rom-base" => "--rom-base",
 			"stack" => "--stack",
@@ -411,6 +421,15 @@ static M68kOutputFormat ParseFormat(string value) =>
 		_ => throw new ArgumentException($"Unknown output format '{value}'.")
 	};
 
+static bool ParseSymbolMode(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"on" or "include" or "yes" => true,
+		"off" or "strip" or "no" or "none" => false,
+		_ => throw new ArgumentException(
+			$"Unknown symbol mode '{value}'; expected on or off.")
+	};
+
 static M68kRuntimeProfile ParseRuntimeProfile(string value) =>
 	value.ToLowerInvariant() switch
 	{
@@ -418,6 +437,17 @@ static M68kRuntimeProfile ParseRuntimeProfile(string value) =>
 		"application" or "app" => M68kRuntimeProfile.Application,
 		"rom" or "persistent" => M68kRuntimeProfile.Rom,
 		_ => throw new ArgumentException($"Unknown runtime profile '{value}'.")
+	};
+
+static M68kMemoryManagement? ParseMemoryManagement(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"default" => null,
+		"none" => M68kMemoryManagement.None,
+		"external" => M68kMemoryManagement.ExternalAllocator,
+		"managed-pool" or "managed" => M68kMemoryManagement.ManagedPoolMarkSweepGc,
+		"exec-pool" => M68kMemoryManagement.ExecPoolMarkSweepGc,
+		_ => throw new ArgumentException($"Unknown memory management mode '{value}'.")
 	};
 
 static int ParseInt(string value) =>
@@ -529,8 +559,9 @@ static void PrintUsage()
 		  [--platform generic|amiga]
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
 		  [--clr auto|always]
-		  [--exceptions full|yolo] [--format hunk|rom|asm]
+		  [--exceptions full|yolo] [--format hunk|rom|asm] [--symbols on|off]
 		  [--runtime freestanding|application|rom]
+		  [--memory default|none|external|managed-pool|exec-pool] [--heap-size <bytes>]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]
 		  [--managed-assemblies <UTF-8 path-list>]

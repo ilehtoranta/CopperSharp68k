@@ -56,3 +56,6 @@ HUNK output defaults to the terminating `application` lifetime. Assembly
 output defaults to `freestanding`; pass `--runtime application` only when the
 entry is invoked once and private image storage becomes unobservable after it
 returns. ROM output is persistent and never receives terminal-store removal.
+HUNK output includes method symbols by default. Pass `--symbols off` to omit
+`HUNK_SYMBOL` records from release executables. The equivalent response
+manifest entry is `symbols=off`.
