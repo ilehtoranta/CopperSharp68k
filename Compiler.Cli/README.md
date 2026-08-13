@@ -52,6 +52,10 @@ Floating point is disabled by default.
 `--clr auto` enables `CLR` for known-readable frame and stack slots and
 automatically for all memory on 68020/040/060 output; use `--clr always` to opt in
 for other 68000-compatible memory targets.
+`--peephole fixed-point` preserves historical whole-image convergence.
+`--peephole bounded` applies a deterministic rewrite budget for very large
+closed-world graphs; skipped optional rewrites affect code quality, not program
+semantics.
 HUNK output defaults to the terminating `application` lifetime. Assembly
 output defaults to `freestanding`; pass `--runtime application` only when the
 entry is invoked once and private image storage becomes unobservable after it

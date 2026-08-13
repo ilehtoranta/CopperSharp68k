@@ -34,13 +34,19 @@ dotnet run --project .\Compiler.Cli -- `
   --exceptions yolo --symbols off
 ```
 
-This example keeps the bar waits below line 256. At PAL line 280, the Copper
-strobes its interrupt-request bit to tell the CPU that the list is safely
-parked and can be updated. The interrupt remains disabled, so the CPU polls and
-clears the request without invoking an interrupt handler. It is not an NTSC
-example. Run it from a shell on a PAL OCS/ECS machine or emulator; if
-experimental compiler output or hardware state prevents the cleanup path from
-running, reset the machine.
+This example keeps the moving bar waits below line 256. The Copper's WAIT
+vertical comparator has only eight position bits, so the list first waits for
+`$FFDF,$FFFE` late on comparison line 255. It can then use `$1801,$FFFE` for
+the low eight bits of physical PAL line 280. At that point the Copper strobes
+its interrupt-request bit to tell the CPU that the list is safely parked and
+can be updated. The interrupt remains disabled, so the CPU polls and clears the
+request without invoking an interrupt handler. The 78-instruction list occupies
+312 bytes of chip RAM. The CPU patches its 36 moving WAIT words with nested
+four-bar and nine-line loops. A conservative count is about 7,900 MC68000
+cycles, well below the roughly 36,000 CPU clocks between the line-280 update
+request and the next frame's first bar at line 48. It is not an NTSC example. Run it from a shell on a PAL
+OCS/ECS machine or emulator; if experimental compiler output or hardware state
+prevents the cleanup path from running, reset the machine.
 
 The dedicated ADF test builds and runs the demo with Kickstart 3.1 on
 cycle-exact PAL OCS WinUAE, clicks the left mouse button, and verifies that

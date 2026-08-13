@@ -14,6 +14,7 @@ internal static class M68kStaticAnalyzer
 		CompilationModule module,
 		CilMethod entry,
 		M68kCompilationRequest request,
+		IReadOnlyList<CilExport> exports,
 		IEnumerable<CilMethod>? additionalRoots = null)
 	{
 		var memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
@@ -22,7 +23,7 @@ internal static class M68kStaticAnalyzer
 		var reachableDispatchLayouts = new Dictionary<CilTypeIdentity, CilTypeLayout>();
 		var usedVirtualDeclarations = new Dictionary<CilMethodIdentity, CilMethod>();
 		pending.Enqueue(entry);
-		foreach (var export in module.GetExports())
+		foreach (var export in exports)
 		{
 			pending.Enqueue(export.Method);
 		}
@@ -34,6 +35,7 @@ internal static class M68kStaticAnalyzer
 	ProcessPending:
 		while (pending.TryDequeue(out var method))
 		{
+			method = module.ApplyTargetRuntimeOverride(method);
 			if (!visited.Add(method) || method.IsImport)
 			{
 				continue;
@@ -216,6 +218,10 @@ internal static class M68kStaticAnalyzer
 					instruction.Offset,
 					interfaceMethod));
 			}
+			else if (!interfaceMethod.Signature.Header.IsInstance && !interfaceMethod.IsAbstract)
+			{
+				pending.Enqueue(interfaceMethod);
+			}
 			else
 			{
 				foreach (var implementation in module.GetInterfaceImplementations(interfaceMethod))
@@ -263,12 +269,24 @@ internal static class M68kStaticAnalyzer
 		}
 
 		if (method.DeclaringTypeIsInterface &&
-			(instruction.OpCode != OpCodes.Callvirt ||
-			 !method.Signature.Header.IsInstance))
+			method.Signature.Header.IsInstance &&
+			instruction.OpCode != OpCodes.Callvirt)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedPolymorphism,
 				$"Interface method '{method.DisplayName}' must be invoked through instance callvirt dispatch.",
+				caller.DisplayName,
+				instruction.Offset);
+		}
+
+		if (method.DeclaringTypeIsInterface &&
+			!method.Signature.Header.IsInstance &&
+			method.IsAbstract &&
+			instruction.ConstrainedTypeToken is null)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.UnsupportedPolymorphism,
+				$"Static abstract interface method '{method.DisplayName}' requires constrained dispatch.",
 				caller.DisplayName,
 				instruction.Offset);
 		}

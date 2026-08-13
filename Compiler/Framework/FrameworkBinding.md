@@ -59,6 +59,32 @@ The implementation-pack manifest records:
 
 This makes managed implementation reuse reproducible and auditable. A servicing update cannot silently replace method bodies merely because a newer runtime is installed on the build host.
 
+## Bounded unlisted-body ingestion spike
+
+An August 2026 architectural spike tested whether a verified CoreLib pack could replace the per-member managed-body allowlist. The spike resolves an arbitrary official framework identity to the matching `System.Private.CoreLib` definition, constructs closed generic declaring types and generic methods from the application arguments, and recursively admits only reachable IL. Compiler intrinsics and required PAL bindings retain precedence. The experiment is isolated behind an internal test switch; normal implementation-pack behavior is unchanged.
+
+Two probes were used without adding `StringBuilder` or `List<T>` binding rules:
+
+- `StringBuilder.Append(int)`, followed by length and character checks;
+- construction and property access on `List<int>`.
+
+Both probes crossed the facade-to-CoreLib boundary and entered closed generic CoreLib bodies. A follow-up dispatch gate added direct resolution for primitive constrained receivers, default interface bodies, constructed generic interface methods, and the `constrained.` plus `call` form used by static interface members. Static concrete interface bodies are treated as direct calls rather than runtime interface-table slots. These changes let both probes pass the original numeric-formatting and generic-comparison boundary, including CoreLib's static generic conversion methods and constrained `List<T>.Enumerator.Dispose` calls.
+
+Before introducing a target-runtime cut point, both probes stopped at the same substantially later boundary: `System.Exception.ToString()` reached stack-trace and runtime-type helpers, expanding into the reflection cache graph where `RuntimeTypeCache.MemberInfoCache<RuntimeConstructorInfo>` contains the unsupported `CerHashtable<string, RuntimeConstructorInfo[]>` layout. This is useful negative evidence for efficiency: unrestricted official-body ingestion remains closed-world, but ordinary validation and formatting paths can import a large runtime subsystem unless target-specific cut points replace those dependencies.
+
+The next bounded gate introduced exactly one experimental cut point. While unlisted-body ingestion is enabled, the exact `System.Exception.ToString(): string` identity resolves to `CopperSharp.Runtime.ShadowException.ToString()`, which returns the compact target-owned text `System.Exception`. The override is applied consistently during framework reachability, static analysis, and final code discovery, and it remains virtual-dispatch capable. A dedicated M68000 execution probe forces the exact base call through the complete backend and verifies both the compact result and the absence of stack-trace/reflection symbols. The override is not registered in the normal public compatibility profile, so ordinary implementation-pack behavior and the advertised .NET surface remain unchanged.
+
+That cut point clears the reflection-cache boundary for both probes. Their next common stop is now in globalization/platform reachability: numeric or resource formatting requests `CultureInfo.DateTimeFormat`, then Japanese-era initialization reaches the Windows registry and environment expansion path; `Win32Marshal.GetExceptionForWin32Error` finally requires the unsupported `System.OperationCanceledException::_cancellationToken` field of type `System.Threading.CancellationToken`. This is a separate boundary and is intentionally left unresolved by this one-cut-point spike.
+
+The spike therefore validates on-demand identity, generic-body ingestion, and the constrained-dispatch shapes encountered by the probes, but not an end-to-end replacement for shadows. Before this path can become a supported profile feature, the compiler needs:
+
+- a small target-runtime override table for CoreLib methods that have no IL body, including bulk memory movement;
+- controlled formatting, globalization, resource, and target-OS cut points so ordinary validation branches do not import host-specific subsystems;
+- completion tests for the remaining static-abstract interface encoding shapes before advertising general static-interface support; and
+- corpus and size/cycle gates proving that closed-world CoreLib ingestion remains pay-for-play.
+
+This is a compiler-time reachability problem, not an offline analyzer or monthly manual CoreLib member inventory. The implementation pack remains hash-pinned; servicing changes are evaluated by recompiling the compatibility corpus and reviewing newly reached runtime boundaries.
+
 ## Selection rules
 
 Binding selection follows these rules:

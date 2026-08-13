@@ -423,6 +423,17 @@ public static class Exec
 		[M68kRegister(M68kRegister.A1)] CString name,
 		[M68kRegister(M68kRegister.D0)] uint minimumVersion);
 
+	/// <summary>
+	/// Opens a library and returns the native pointer value directly. This is the
+	/// allocation-free resident form of <see cref="OpenLibrary(CString,uint)"/>;
+	/// callers must test <see cref="APTR.IsNull"/> before use.
+	/// </summary>
+	[AmigaLvo(ExecLvo.OpenLibrary)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern APTR OpenLibraryRaw(
+		[M68kRegister(M68kRegister.A1)] CString name,
+		[M68kRegister(M68kRegister.D0)] uint minimumVersion);
+
 	[AmigaLvo(ExecLvo.InitSemaphore)]
 	public static extern void InitSemaphore(
 		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);

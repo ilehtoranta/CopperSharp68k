@@ -15,6 +15,7 @@ internal sealed partial class M68kCodeGenerator
 {
 	private readonly CompilationModule _module;
 	private readonly M68kCompilationRequest _request;
+	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _usedTypeLayouts = new();
 	private readonly Dictionary<string, (CilType Type, CilTypeLayout Layout)>
@@ -64,7 +65,10 @@ internal sealed partial class M68kCodeGenerator
 		SimpleWrapperConstructor,
 		ConstantReturn,
 		IdentityReturn,
-		MaskedAddReturn
+		MaskedAddReturn,
+		ConstantAddressReadByte,
+		ConstantAddressReadWord,
+		ConstantAddressWriteWord
 	}
 
 	private readonly record struct InlineCandidate(
@@ -73,7 +77,10 @@ internal sealed partial class M68kCodeGenerator
 		int CallBytes,
 		int InlineCycles,
 		int CallCycles,
-		int ConstantValue = 0)
+		int ConstantValue = 0,
+		uint Address = 0,
+		ushort AndMask = ushort.MaxValue,
+		ushort OrMask = 0)
 	{
 		public int SavedBytes => CallBytes - InlineBytes;
 
@@ -89,6 +96,19 @@ internal sealed partial class M68kCodeGenerator
 		bool IsGcReference)
 	{
 		public bool IsStack => Register is null;
+	}
+
+	private readonly record struct InlineWordValue(
+		bool IsArgument,
+		uint Constant,
+		uint AndMask,
+		uint OrMask)
+	{
+		public static InlineWordValue ForConstant(uint value) =>
+			new(false, value, 0, 0);
+
+		public static InlineWordValue ForArgument() =>
+			new(true, 0, uint.MaxValue, 0);
 	}
 
 	private sealed record InternalCallAbi(
@@ -123,11 +143,13 @@ internal sealed partial class M68kCodeGenerator
 	public M68kCodeGenerator(
 		CompilationModule module,
 		M68kCompilationRequest request,
+		IReadOnlyList<CilExport> exports,
 		ManagedPoolRuntimeModule? managedPoolRuntime = null,
 		IReadOnlyList<ManagedLifecycleModule>? managedLifecycles = null)
 	{
 		_module = module;
 		_request = request;
+		_exports = exports;
 		_memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
 		_managedPoolRuntime = managedPoolRuntime;
 		_managedLifecycles = managedLifecycles ?? Array.Empty<ManagedLifecycleModule>();
@@ -143,7 +165,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 		ValidateMethodSignature(entry, isEntry: true, isExport: false);
-		var exports = _module.GetExports();
+		var exports = _exports;
 		var methods = PruneAlwaysInlinedMethods(DiscoverReachableMethods(entry, exports), entry, exports);
 		PlanIdenticalMethodFolds(methods, entry, exports);
 		var exportedMethods = exports
@@ -271,7 +293,8 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.OptimizeForCpu(
 			_request.Cpu,
 			_request.ClrPolicy,
-			sizeFirstLoops);
+			sizeFirstLoops,
+			_request.PeepholeOptimization);
 		_assembler.ApplyRequestedAlignments();
 		_assembler.MarkDataStart();
 		var deferZeroInitializedStatics = ShouldDeferZeroInitializedStatics();
@@ -381,7 +404,7 @@ internal sealed partial class M68kCodeGenerator
 	ProcessQueue:
 		while (queue.Count != 0)
 		{
-			var method = queue.Dequeue();
+			var method = _module.ApplyTargetRuntimeOverride(queue.Dequeue());
 			if (!visited.Add(method.Identity))
 			{
 				continue;
@@ -1103,12 +1126,20 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.Mark(runtimeAlias);
 		}
 		_assembler.Mark(MethodLabel(method));
-		EmitAllocatedMethod(
-			method,
-			internalAbi,
-			allocatedFunction,
-			platformBaseBlockEntries,
-			exceptionStateBlockEntries);
+		try
+		{
+			EmitAllocatedMethod(
+				method,
+				internalAbi,
+				allocatedFunction,
+				platformBaseBlockEntries,
+				exceptionStateBlockEntries);
+		}
+		catch (InvalidOperationException error)
+		{
+			throw new InvalidOperationException(
+				$"Failed to emit {method.DisplayName}: {error.Message}", error);
+		}
 		_assembler.Mark(MethodEndLabel(method));
 		var emittedEnd = _assembler.Offset;
 		var stackMemoryInstructions = _assembler
@@ -1165,10 +1196,13 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private bool IsAlwaysInlinedMethod(CilMethod method) =>
+		(method.ImplAttributes & MethodImplAttributes.NoInlining) == 0 &&
 		GetInternalRegisterAbi(method) switch
 		{
-			[M68kRegister.D0] => IsIdentityReturnBody(method),
-			[] => TryGetConstantReturnBody(method, out _),
+			[M68kRegister.D0] => IsIdentityReturnBody(method) ||
+				TryGetConstantAddressWriteWordBody(method, out _, out _, out _),
+			[] => TryGetConstantReturnBody(method, out _) ||
+				TryGetConstantAddressReadBody(method, out _, out _),
 			_ => false
 		};
 
@@ -1857,7 +1891,7 @@ internal sealed partial class M68kCodeGenerator
 			return true;
 		}
 
-		_assembler.EmitBsr(MethodLabel(definition));
+		_assembler.EmitCall(MethodLabel(definition));
 		_loadedPlatformBase = null;
 		if (!definition.Signature.ReturnType.IsVoid && !discardsResult)
 		{
@@ -2113,6 +2147,46 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlyList<M68kRegister> registerAbi,
 		out InlineCandidate candidate)
 	{
+		if ((target.ImplAttributes & MethodImplAttributes.NoInlining) != 0)
+		{
+			candidate = default;
+			return false;
+		}
+
+		if (registerAbi.Count == 0 &&
+			TryGetConstantAddressReadBody(target, out var readWidth, out var address))
+		{
+			candidate = new InlineCandidate(
+				readWidth == 1
+					? InlineCandidateKind.ConstantAddressReadByte
+					: InlineCandidateKind.ConstantAddressReadWord,
+				InlineBytes: 8,
+				CallBytes: 4,
+				InlineCycles: readWidth == 1 ? 20 : 20,
+				CallCycles: 50,
+				Address: address);
+			return true;
+		}
+
+		if (registerAbi is [M68kRegister.D0] &&
+			TryGetConstantAddressWriteWordBody(
+				target,
+				out var writeAddress,
+				out var andMask,
+				out var orMask))
+		{
+			candidate = new InlineCandidate(
+				InlineCandidateKind.ConstantAddressWriteWord,
+				InlineBytes: 16,
+				CallBytes: 4,
+				InlineCycles: 36,
+				CallCycles: 70,
+				Address: writeAddress,
+				AndMask: andMask,
+				OrMask: orMask);
+			return true;
+		}
+
 		if (registerAbi.Count == 0 &&
 			TryGetConstantReturnBody(target, out var constant))
 		{
@@ -2169,8 +2243,285 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private static bool ShouldInline(InlineCandidate candidate) =>
-		candidate.Kind is InlineCandidateKind.ConstantReturn or InlineCandidateKind.IdentityReturn ||
+		candidate.Kind is InlineCandidateKind.ConstantReturn or
+			InlineCandidateKind.IdentityReturn or
+			InlineCandidateKind.ConstantAddressReadByte or
+			InlineCandidateKind.ConstantAddressReadWord or
+			InlineCandidateKind.ConstantAddressWriteWord ||
 		candidate.SavedBytes > 0 || candidate.SavedCycles >= 16;
+
+	// Keep always-inlining deliberately structural and bounded. These façades
+	// have no locals, exception regions, allocation, branches, or observable
+	// call boundary; forwarding is limited to one constant argument.
+	private bool TryGetConstantAddressReadBody(
+		CilMethod method,
+		out int width,
+		out uint address)
+	{
+		width = 0;
+		address = 0;
+		if (method.Signature.Header.IsInstance ||
+			method.Signature.ParameterTypes.Length != 0 ||
+			method.ExceptionRegions.Count != 0 ||
+			method.Locals.Length != 0)
+		{
+			return false;
+		}
+
+		var body = method.Instructions
+			.Where(static instruction => instruction.OpCode != OpCodes.Nop)
+			.ToArray();
+		if (body is [var forwardedValue, var forwardedCall, var forwardedReturn] &&
+			TryGetConstant(forwardedValue, out var argument) &&
+			forwardedCall.OpCode == OpCodes.Call &&
+			forwardedReturn.OpCode == OpCodes.Ret)
+		{
+			var forwarded = _module.ResolveMethodToken(
+				(int)forwardedCall.Operand!,
+				method,
+				forwardedCall.Offset);
+			return forwarded.Definition is { } definition &&
+				(definition.ImplAttributes & MethodImplAttributes.NoInlining) == 0 &&
+				TryGetParameterizedAddressReadBody(
+					definition,
+					argument,
+					out width,
+					out address);
+		}
+
+		if (body.Length != 5 ||
+			!TryGetConstant(body[0], out var baseAddress) ||
+			body[1].OpCode != OpCodes.Call ||
+			!TryGetConstant(body[2], out var offset) ||
+			body[3].OpCode != OpCodes.Call ||
+			body[4].OpCode != OpCodes.Ret)
+		{
+			return false;
+		}
+
+		var fromPointer = _module.ResolveMethodToken(
+			(int)body[1].Operand!,
+			method,
+			body[1].Offset);
+		var read = _module.ResolveMethodToken(
+			(int)body[3].Operand!,
+			method,
+			body[3].Offset);
+		width = read.ImportName switch
+		{
+			"intrinsic:aptr-read-uint8" => 1,
+			"intrinsic:aptr-read-uint16" => 2,
+			_ => 0
+		};
+		if (fromPointer.ImportName != "intrinsic:aptr-from-pointer" || width == 0)
+		{
+			return false;
+		}
+
+		address = unchecked((uint)(baseAddress + offset));
+		return true;
+	}
+
+	private bool TryGetParameterizedAddressReadBody(
+		CilMethod method,
+		int argument,
+		out int width,
+		out uint address)
+	{
+		width = 0;
+		address = 0;
+		if (method.Signature.Header.IsInstance ||
+			method.Signature.ParameterTypes.Length != 1 ||
+			method.ExceptionRegions.Count != 0 ||
+			method.Locals.Length != 0)
+		{
+			return false;
+		}
+
+		var body = method.Instructions
+			.Where(static instruction => instruction.OpCode != OpCodes.Nop)
+			.ToArray();
+		if (body.Length is not (5 or 7) ||
+			!TryGetConstant(body[0], out var baseAddress) ||
+			body[1].OpCode != OpCodes.Call ||
+			!TryGetArgumentIndex(body[2], out var argumentIndex) ||
+			argumentIndex != 0 ||
+			body[^2].OpCode != OpCodes.Call ||
+			body[^1].OpCode != OpCodes.Ret)
+		{
+			return false;
+		}
+
+		var offset = argument;
+		if (body.Length == 7)
+		{
+			if (!TryGetConstant(body[3], out var shift) ||
+				shift is < 0 or > 31 ||
+				body[4].OpCode != OpCodes.Shl)
+			{
+				return false;
+			}
+			offset = unchecked(argument << shift);
+		}
+
+		var fromPointer = _module.ResolveMethodToken(
+			(int)body[1].Operand!,
+			method,
+			body[1].Offset);
+		var read = _module.ResolveMethodToken(
+			(int)body[^2].Operand!,
+			method,
+			body[^2].Offset);
+		width = read.ImportName switch
+		{
+			"intrinsic:aptr-read-uint8" => 1,
+			"intrinsic:aptr-read-uint16" => 2,
+			_ => 0
+		};
+		if (fromPointer.ImportName != "intrinsic:aptr-from-pointer" || width == 0)
+		{
+			return false;
+		}
+
+		address = unchecked((uint)(baseAddress + offset));
+		return true;
+	}
+
+	private bool TryGetConstantAddressWriteWordBody(
+		CilMethod method,
+		out uint address,
+		out ushort andMask,
+		out ushort orMask)
+	{
+		address = 0;
+		andMask = ushort.MaxValue;
+		orMask = 0;
+		if (method.Signature.Header.IsInstance ||
+			method.Signature.ParameterTypes.Length != 1 ||
+			!method.Signature.ReturnType.IsVoid ||
+			method.ExceptionRegions.Count != 0 ||
+			method.Locals.Length != 0)
+		{
+			return false;
+		}
+
+		var stack = new List<InlineWordValue>();
+		var foundWrite = false;
+		foreach (var instruction in method.Instructions.Where(
+			static instruction => instruction.OpCode != OpCodes.Nop))
+		{
+			if (TryGetConstant(instruction, out var constant))
+			{
+				stack.Add(InlineWordValue.ForConstant(unchecked((uint)constant)));
+				continue;
+			}
+			if (TryGetArgumentIndex(instruction, out var argumentIndex) && argumentIndex == 0)
+			{
+				stack.Add(InlineWordValue.ForArgument());
+				continue;
+			}
+			if (instruction.OpCode is { } conversion &&
+				conversion is var _ &&
+				(conversion == OpCodes.Conv_U2 || conversion == OpCodes.Conv_I2))
+			{
+				if (stack.Count == 0)
+				{
+					return false;
+				}
+				var value = stack[^1];
+				stack[^1] = value.IsArgument
+					? value with
+					{
+						AndMask = value.AndMask & ushort.MaxValue,
+						OrMask = value.OrMask & ushort.MaxValue
+					}
+					: InlineWordValue.ForConstant(value.Constant & ushort.MaxValue);
+				continue;
+			}
+			if (instruction.OpCode == OpCodes.And || instruction.OpCode == OpCodes.Or)
+			{
+				if (stack.Count < 2)
+				{
+					return false;
+				}
+				var right = stack[^1];
+				var left = stack[^2];
+				stack.RemoveRange(stack.Count - 2, 2);
+				if (!TryCombineInlineWordValues(
+						left,
+						right,
+						instruction.OpCode == OpCodes.And,
+						out var combined))
+				{
+					return false;
+				}
+				stack.Add(combined);
+				continue;
+			}
+			if (instruction.OpCode == OpCodes.Call)
+			{
+				var target = _module.ResolveMethodToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset);
+				if (target.ImportName == "intrinsic:aptr-from-pointer")
+				{
+					continue;
+				}
+				if (target.ImportName != "intrinsic:aptr-write-uint16" ||
+					stack.Count != 3 ||
+					stack[0].IsArgument ||
+					stack[1].IsArgument ||
+					!stack[2].IsArgument)
+				{
+					return false;
+				}
+				address = unchecked(stack[0].Constant + stack[1].Constant);
+				andMask = (ushort)stack[2].AndMask;
+				orMask = (ushort)stack[2].OrMask;
+				stack.Clear();
+				foundWrite = true;
+				continue;
+			}
+			if (instruction.OpCode == OpCodes.Ret && foundWrite && stack.Count == 0)
+			{
+				return true;
+			}
+			return false;
+		}
+
+		return false;
+	}
+
+	private static bool TryCombineInlineWordValues(
+		InlineWordValue left,
+		InlineWordValue right,
+		bool and,
+		out InlineWordValue result)
+	{
+		if (!left.IsArgument && !right.IsArgument)
+		{
+			result = InlineWordValue.ForConstant(and
+				? left.Constant & right.Constant
+				: left.Constant | right.Constant);
+			return true;
+		}
+		var argument = left.IsArgument ? left : right;
+		var constant = left.IsArgument ? right : left;
+		if (constant.IsArgument)
+		{
+			result = default;
+			return false;
+		}
+		result = and
+			? argument with
+			{
+				AndMask = argument.AndMask & constant.Constant,
+				OrMask = argument.OrMask & constant.Constant
+			}
+			: argument with { OrMask = argument.OrMask | constant.Constant };
+		return true;
+	}
 
 	private bool IsAlignLongReturnBody(CilMethod method)
 	{
@@ -2211,6 +2562,28 @@ internal sealed partial class M68kCodeGenerator
 			case InlineCandidateKind.MaskedAddReturn:
 				_assembler.EmitWord(0x5680); // ADDQ.L #3,D0
 				EmitAndImmediateToDataRegister(M68kRegister.D0, -4);
+				return;
+			case InlineCandidateKind.ConstantAddressReadByte:
+			case InlineCandidateKind.ConstantAddressReadWord:
+				EmitImmediateToRegister(M68kRegister.D0, 0);
+				_assembler.EmitWord(candidate.Kind == InlineCandidateKind.ConstantAddressReadByte
+					? (ushort)0x1039 // MOVE.B abs.l,D0
+					: (ushort)0x3039); // MOVE.W abs.l,D0
+				_assembler.EmitLong(candidate.Address);
+				return;
+			case InlineCandidateKind.ConstantAddressWriteWord:
+				if (candidate.AndMask != ushort.MaxValue)
+				{
+					_assembler.EmitWord(0x0240); // ANDI.W #mask,D0
+					_assembler.EmitWord(candidate.AndMask);
+				}
+				if (candidate.OrMask != 0)
+				{
+					_assembler.EmitWord(0x0040); // ORI.W #mask,D0
+					_assembler.EmitWord(candidate.OrMask);
+				}
+				_assembler.EmitWord(0x33C0); // MOVE.W D0,abs.l
+				_assembler.EmitLong(candidate.Address);
 				return;
 			default:
 				throw new InvalidOperationException($"Unsupported inline candidate '{candidate.Kind}'.");
@@ -2365,7 +2738,7 @@ internal sealed partial class M68kCodeGenerator
 					registerAbi[argument]);
 			}
 
-			_assembler.EmitBsr(MethodLabel(definition));
+			_assembler.EmitCall(MethodLabel(definition));
 			_loadedPlatformBase = null;
 		}
 
@@ -5832,7 +6205,7 @@ internal sealed partial class M68kCodeGenerator
 				EmitPrepareInternalCall(target.Definition, internalAbi);
 				if (!IsAlwaysInlinedMethod(target.Definition))
 				{
-					_assembler.EmitBsr(MethodLabel(target.Definition));
+					_assembler.EmitCall(MethodLabel(target.Definition));
 					_loadedPlatformBase = null;
 				}
 			}
@@ -6108,7 +6481,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var exportName = _module.GetUserString(token, caller, instruction.Offset);
-		if (!_module.GetExports().Any(export => export.Name == exportName))
+		if (!_exports.Any(export => export.Name == exportName))
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnresolvedImport,
@@ -6585,7 +6958,7 @@ internal sealed partial class M68kCodeGenerator
 						binding.BaseRegister);
 					break;
 				case M68kExternalBaseSource.WritableSlot:
-					EmitLoadAddressRegisterPcRelative(binding.BaseRegister, platformBase.Label!);
+					EmitLoadAddressRegisterLocal(binding.BaseRegister, platformBase.Label!);
 					break;
 				case M68kExternalBaseSource.Immediate:
 					EmitLoadAddressRegisterImmediate(binding.BaseRegister, binding.InitialValue);
@@ -7553,7 +7926,7 @@ internal sealed partial class M68kCodeGenerator
 
 		EmitMoveRegister(M68kRegister.D0, M68kRegister.A0);
 		EmitPrepareInternalCall(constructor, constructorAbi, receiverAlreadyLoaded: true);
-		_assembler.EmitBsr(MethodLabel(constructor));
+		_assembler.EmitCall(MethodLabel(constructor));
 		_loadedPlatformBase = null;
 		EmitReleaseStackBytes(constructorAbi.StackBytes);
 		EmitPushRegister(M68kRegister.A0);
@@ -8178,7 +8551,19 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_usedTypeLayouts.TryAdd(layout.Identity, layout);
 		}
-		return checked((short)layout.FieldOffsets[field.Handle]);
+		var displacement = layout.FieldOffsets[field.Handle];
+		if (string.Equals(
+				field.ModuleName,
+				"System.Private.CoreLib",
+				StringComparison.Ordinal) &&
+			field.DisplayName.EndsWith("System.TimeSpan::_ticks", StringComparison.Ordinal))
+		{
+			// The verified CoreLib layout is expressed in managed-object
+			// coordinates. Pinned TimeSpan bodies operate on the public value
+			// transport, which omits the eight-byte object header.
+			displacement -= 8;
+		}
+		return checked((short)displacement);
 	}
 
 	private void EmitRequireNonNull()
@@ -8732,7 +9117,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitInitializePlatformBases();
 		}
-		_assembler.EmitBsr(MethodLabel(export.Method));
+		_assembler.EmitCall(MethodLabel(export.Method));
 		EmitReleaseStackBytes(internalAbi.StackBytes);
 
 		EmitPopRegisters(stackalloc[]
@@ -9040,12 +9425,11 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitAddress(label);
 	}
 
-	private void EmitLoadAddressRegisterPcRelative(M68kRegister register, string label)
+	private void EmitLoadAddressRegisterLocal(M68kRegister register, string label)
 	{
-		InvalidatePlatformBaseIfWritingRegister(register);
-		var index = (int)register - (int)M68kRegister.A0;
-		_assembler.EmitWord((ushort)(0x207A | (index << 9)));
-		_assembler.EmitPcRelativeWord(label);
+		// Emit the relocation-safe maximum form. Final layout relaxation converts
+		// it to MOVEA.L d16(PC),An only when the selected slot remains in range.
+		EmitLoadAddressRegisterAbsolute(register, label);
 	}
 
 	private void EmitAddressImmediateToRegister(M68kRegister register, string label)

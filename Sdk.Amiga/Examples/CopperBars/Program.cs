@@ -17,6 +17,7 @@ public static class Program
 	private const ushort CopperEnd1 = 0xFFFF;
 	private const ushort CopperEnd2 = 0xFFFE;
 	private const ushort WaitMask = 0xFFFE;
+	private const ushort CopperVerticalWrapWait = 0xFFDF;
 	private const ushort SetClear = 0x8000;
 	private const ushort BackgroundColor = 0x001;
 	private const int CopperUpdateLine = 280;
@@ -24,7 +25,9 @@ public static class Program
 	private const int BarCount = 4;
 	private const int BarHeight = 8;
 	private const int BarSpacing = 24;
-	private const int CopperInstructionCount = 2 + (BarCount * (BarHeight + 1) * 2) + 3;
+	private const int FirstBarWaitOffset = 8;
+	private const int CopperBytesPerBar = (BarHeight + 1) * 8;
+	private const int CopperInstructionCount = 2 + (BarCount * (BarHeight + 1) * 2) + 4;
 	private const uint CopperListSize = CopperInstructionCount * 4;
 
 	[M68kEntryPoint]
@@ -140,6 +143,9 @@ public static class Program
 			WriteCopperInstruction(list, ref offset, CustomRegister.Color00, BackgroundColor);
 		}
 
+		// The Copper compares only eight vertical-position bits. Cross physical
+		// line 255 before waiting for the low eight bits of PAL line 280.
+		WriteCopperInstruction(list, ref offset, CopperVerticalWrapWait, WaitMask);
 		WriteCopperWait(list, ref offset, CopperUpdateLine);
 		WriteCopperInstruction(
 			list,
@@ -151,23 +157,22 @@ public static class Program
 
 	private static void UpdateCopperWaits(APTR list, int top)
 	{
-		UpdateBarWaits(list, 8, top);
-		UpdateBarWaits(list, 80, top + BarSpacing);
-		UpdateBarWaits(list, 152, top + (BarSpacing * 2));
-		UpdateBarWaits(list, 224, top + (BarSpacing * 3));
+		var offset = FirstBarWaitOffset;
+		var y = top;
+		for (var bar = 0; bar < BarCount; bar++)
+		{
+			UpdateBarWaits(list, offset, y);
+			offset += CopperBytesPerBar;
+			y += BarSpacing;
+		}
 	}
 
 	private static void UpdateBarWaits(APTR list, int offset, int y)
 	{
-		APTR.WriteUInt16(list, offset, CopperWait(y));
-		APTR.WriteUInt16(list, offset + 8, CopperWait(y + 1));
-		APTR.WriteUInt16(list, offset + 16, CopperWait(y + 2));
-		APTR.WriteUInt16(list, offset + 24, CopperWait(y + 3));
-		APTR.WriteUInt16(list, offset + 32, CopperWait(y + 4));
-		APTR.WriteUInt16(list, offset + 40, CopperWait(y + 5));
-		APTR.WriteUInt16(list, offset + 48, CopperWait(y + 6));
-		APTR.WriteUInt16(list, offset + 56, CopperWait(y + 7));
-		APTR.WriteUInt16(list, offset + 64, CopperWait(y + 8));
+		for (var line = 0; line <= BarHeight; line++)
+		{
+			APTR.WriteUInt16(list, offset + (line * 8), CopperWait(y + line));
+		}
 	}
 
 	private static ushort CopperWait(int y)

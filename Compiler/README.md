@@ -49,6 +49,13 @@ for general memory on MC68020/040/060 output. MC68000-compatible output uses
 move-based clears for arbitrary memory unless `ClrPolicy` is set to
 `M68kClrPolicy.Always`.
 
+`M68kPeepholeOptimizationMode.FixedPoint` preserves the historical global
+peephole fixed point. Large closed-world images with thousands of independent
+rewrite candidates may select `Bounded`; it applies one deterministic global
+cycle with eight optional rewrites. This bounds compile work without changing
+program semantics, although the resulting image can retain optimization
+opportunities.
+
 The compiler accepts a deliberately bounded, freestanding subset of CIL. Any
 reachable unsupported instruction or type is reported with a stable `C68Kxxxx`
 diagnostic rather than silently changing its semantics.

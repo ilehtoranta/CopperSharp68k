@@ -102,6 +102,18 @@ internal sealed class Net10FrameworkContract
 						.Order(StringComparer.Ordinal)
 						.ToArray());
 			}
+			if (FrameworkImplementationProfile.IsTargetRuntimeOverride(binding))
+			{
+				return new FrameworkBindingDecision(
+					M68kFrameworkCompatibilityStatus.Implemented,
+					binding.Target,
+					binding.Reason,
+					EffectNames(binding.EffectSummary.Effects),
+					binding.EffectSummary.RequiredFeatures
+						.Select(static feature => feature.Name)
+						.Order(StringComparer.Ordinal)
+						.ToArray());
+			}
 			if (rules.Length == 0)
 			{
 				return new FrameworkBindingDecision(

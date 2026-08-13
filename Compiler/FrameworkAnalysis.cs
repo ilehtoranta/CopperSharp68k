@@ -99,11 +99,15 @@ public sealed class M68kFrameworkAnalysisResult
 		M68kFrameworkContract contract,
 		IReadOnlyList<M68kFrameworkMemberAnalysis> members,
 		IReadOnlyList<M68kManagedAllocationSite> managedAllocationSites,
+		int rootMethodCount,
+		int reachableMethodCount,
 		M68kFrameworkImplementationPackProvenance? implementationPack = null)
 	{
 		Contract = contract;
 		Members = members;
 		ManagedAllocationSites = managedAllocationSites;
+		RootMethodCount = rootMethodCount;
+		ReachableMethodCount = reachableMethodCount;
 		ImplementationPack = implementationPack;
 	}
 
@@ -122,6 +126,12 @@ public sealed class M68kFrameworkAnalysisResult
 	/// the managed heap. Value-type construction is excluded.
 	/// </summary>
 	public IReadOnlyList<M68kManagedAllocationSite> ManagedAllocationSites { get; }
+
+	/// <summary>Distinct entry, export, runtime, and lifecycle roots analyzed.</summary>
+	public int RootMethodCount { get; }
+
+	/// <summary>Distinct managed methods reached by the closed-world analysis.</summary>
+	public int ReachableMethodCount { get; }
 
 	public bool IsCompatible => Members.All(static member =>
 		member.Status is

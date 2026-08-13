@@ -857,17 +857,13 @@ internal static class CilStackAnalyzer
 			op == OpCodes.Clt || op == OpCodes.Clt_Un)
 		{
 			var comparisonKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
-			if (comparisonKind == CilStackValueKind.Int64)
-			{
-				throw Unsupported(method, instruction, "64-bit comparisons");
-			}
 
 			// Comparison results are observable managed booleans. Keep their
 			// evaluation-stack representation 32-bit so merges with integer
 			// constants remain ABI-compatible; compact nullable predicates use
 			// BooleanByte independently until a consumer widens them.
 			return Push(Pop(method, instruction, stack,
-				comparisonKind == CilStackValueKind.Float64 ? 4 : 2), CilStackValueKind.Int32);
+				comparisonKind is CilStackValueKind.Int64 or CilStackValueKind.Float64 ? 4 : 2), CilStackValueKind.Int32);
 		}
 
 		if (op == OpCodes.Add || op == OpCodes.Add_Ovf || op == OpCodes.Sub || op == OpCodes.And ||
@@ -958,7 +954,14 @@ internal static class CilStackAnalyzer
 
 		if (IsRelationalBranch(op))
 		{
-			return Pop(method, instruction, stack, 2);
+			return Pop(
+				method,
+				instruction,
+				stack,
+				stack.Length != 0 && stack[^1] is
+					CilStackValueKind.Int64 or CilStackValueKind.Float64
+						? 4
+						: 2);
 		}
 
 		if (op == OpCodes.Switch)
@@ -1581,6 +1584,12 @@ internal static class CilStackAnalyzer
 			currentStack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
 		{
 			return 2;
+		}
+		if (IsRelationalBranch(op) &&
+			currentStack.Length != 0 &&
+			currentStack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
+		{
+			return 4;
 		}
 		if ((op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.Mul ||
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||

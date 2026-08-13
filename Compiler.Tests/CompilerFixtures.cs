@@ -37,6 +37,8 @@ public static class CompilerFixtures
 
 	private sealed class FixtureException : Exception
 	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public string FormatBase() => base.ToString();
 	}
 
 	private static int _counter;
@@ -366,6 +368,116 @@ public static class CompilerFixtures
 		int third,
 		int fourth) =>
 		(marker.Length * 10_000) + (first * 1_000) + (second * 100) + (third * 10) + fourth;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint StackArgumentHomePreservesCallerD7Entry()
+	{
+		var first = 1u;
+		var second = 2u;
+		var third = 3u;
+		var fourth = 4u;
+		var index = 0u;
+		var sum = 0u;
+		while (index < 36)
+		{
+			sum += StackArgumentHomePreservesCallerD7Target(
+				first,
+				second,
+				third,
+				fourth);
+			first++;
+			second += 2;
+			third += 3;
+			fourth += 4;
+			index++;
+		}
+
+		return index == 36 &&
+			sum == 6_660 &&
+			first == 37 &&
+			second == 74 &&
+			third == 111 &&
+			fourth == 148
+				? 42u
+				: 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint StackArgumentHomePreservesCallerD7Target(
+		uint first,
+		uint second,
+		uint third,
+		uint fourth)
+	{
+		var copiedThird = ReadStackArgumentHome(ref third);
+		return first + second + copiedThird + fourth;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ReadStackArgumentHome(ref uint value) => value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AnchoredStackArgumentHomePreservesCallerD7Entry()
+	{
+		var first = 1u;
+		var second = 2u;
+		var third = 3u;
+		var fourth = 4u;
+		var index = 0u;
+		var sum = 0u;
+		while (index < 36)
+		{
+			sum += AnchoredStackArgumentHomePreservesCallerD7Target(
+				first,
+				second,
+				third,
+				fourth);
+			first++;
+			second += 2;
+			third += 3;
+			fourth += 4;
+			index++;
+		}
+
+		return index == 36 &&
+			sum == 6_660 &&
+			first == 37 &&
+			second == 74 &&
+			third == 111 &&
+			fourth == 148
+				? 42u
+				: 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint AnchoredStackArgumentHomePreservesCallerD7Target(
+		uint first,
+		uint second,
+		uint third,
+		uint fourth)
+	{
+		var scratchLength = (int)(first & 1u) + 1;
+		Span<uint> scratch = stackalloc uint[scratchLength];
+		scratch[0] = ReadStackArgumentHome(ref third);
+		return first + second + scratch[0] + fourth;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AnchoredMultiwordStackArgumentHomeEntry()
+	{
+		var source = new BoxedPair(19, 23);
+		return AnchoredMultiwordStackArgumentHome(source, 1) == 42 ? 42u : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int AnchoredMultiwordStackArgumentHome(
+		BoxedPair source,
+		int scratchLength)
+	{
+		Span<int> scratch = stackalloc int[scratchLength];
+		scratch[0] = source.First;
+		return scratch[0] + source.Second;
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int IncomingDataOverlapEntry() =>
@@ -1329,6 +1441,43 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PlatformBaseIncomingA6Entry()
+	{
+		var first = global::Amiga.Exec.TypeOfMem(0x0000_1800);
+		var value0 = APTR.FromPointer(1);
+		var value1 = APTR.FromPointer(2);
+		var value2 = APTR.FromPointer(3);
+		var value3 = APTR.FromPointer(4);
+		var value4 = APTR.FromPointer(5);
+		var value5 = APTR.FromPointer(6);
+		var value6 = APTR.FromPointer(7);
+		return first + PlatformBaseIncomingA6Helper(
+			value0,
+			value1,
+			value2,
+			value3,
+			value4,
+			value5,
+			value6);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint PlatformBaseIncomingA6Helper(
+		APTR value0,
+		APTR value1,
+		APTR value2,
+		APTR value3,
+		APTR value4,
+		APTR value5,
+		APTR value6)
+	{
+		var sum = value0.Raw + value1.Raw + value2.Raw + value3.Raw + value4.Raw +
+			value5.Raw + value6.Raw;
+		global::Amiga.Exec.FreeMem(0x0000_1800, 4);
+		return sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint PlatformBaseTailCallEntry()
 	{
 		_ = PlatformBaseStateA();
@@ -1441,6 +1590,10 @@ public static class CompilerFixtures
 		var library = global::Amiga.Exec.OpenLibrary(0x0000_1800, 37);
 		return library.HasValue ? library.Value.Raw : 0u;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CallSdkOpenLibraryRaw() =>
+		global::Amiga.Exec.OpenLibraryRaw(0x0000_1800, 37).Raw;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint CallSdkOpenLibraryLiteral()
@@ -2013,6 +2166,17 @@ public static class CompilerFixtures
 		IValueSource value = new InterfaceValueSource();
 		return value.GetValue();
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int InterfaceDispatchWithUnrelatedSdkRectangleEntry()
+	{
+		var rectangle = new Rectangle { MinX = 40, MaxX = 40 };
+		IValueSource value = new InterfaceValueSource();
+		return value.GetValue() + rectangle.MaxX - rectangle.MinX;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static IExternalValueSource ExternalInterfaceIdentityEntry() => null!;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int InterfaceArgumentDispatchEntry()
@@ -3784,6 +3948,29 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendIntEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		builder.Append(4);
+		builder.Append(2);
+		return builder.Length == 2 && builder[0] == '4' && builder[1] == '2' ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibListIntEntry()
+	{
+		var values = new List<int>(2);
+		return values.Count == 0 && values.Capacity == 2 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibExceptionToStringCutPointEntry()
+	{
+		var text = new FixtureException().FormatBase();
+		return text.Length == 16 && text[0] == 'S' && text[15] == 'n' ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static long PortableStopwatchElapsedValuesEntry()
 	{
 		var stopwatch = new System.Diagnostics.Stopwatch();
@@ -3794,25 +3981,68 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static long PortablePinnedTimeSpanEntry()
+	public static int PortablePinnedTimeSpanEntry()
 	{
-		var first = System.Diagnostics.Stopwatch.GetElapsedTime(100, 200);
-		var second = System.Diagnostics.Stopwatch.GetElapsedTime(100, 300);
+		const long ticks = 937_840_050_000;
+		var first = new TimeSpan(ticks);
+		var second = TimeSpan.FromTicks(ticks + 1);
 		var same = first;
-		if (first == second || first != same || first >= second || first > second)
-		{
-			return -1;
-		}
-		if (!(first < second) || !(first <= second) || !(second > first) || !(second >= first))
-		{
-			return -2;
-		}
-		return first.Ticks;
+		if (first == second) return 1;
+		if (first != same) return 2;
+		if (first >= second) return 3;
+		if (first > second) return 4;
+		if (!(first < second)) return 5;
+		if (!(first <= second)) return 6;
+		if (!(second > first)) return 7;
+		if (!(second >= first)) return 8;
+		var ticksLow = M68kRuntime.SplitInt64(first.Ticks, out var ticksHigh);
+		if (ticksHigh != 0x0000_00da || ticksLow != 0x5b9f_7f50) return 9;
+		if (first.Days != 1) return 10;
+		if (first.Hours != 2) return 11;
+		if (first.Minutes != 3) return 12;
+		if (first.Seconds != 4) return 13;
+		if (first.Milliseconds != 5) return 14;
+		var negative = new TimeSpan(-ticks);
+		if (negative.Days != -1) return 15;
+		if (negative.Hours != -2) return 16;
+		if (negative.Minutes != -3) return 17;
+		if (negative.Seconds != -4) return 18;
+		return negative.Milliseconds == -5 ? 42 : 19;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static double PortableUnallowlistedTimeSpanTotalMillisecondsEntry() =>
-		System.Diagnostics.Stopwatch.GetElapsedTime(100, 200).TotalMilliseconds;
+	public static int PortableTimeSpanTotalsEntry()
+	{
+		var low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(864_000_000_000).TotalDays,
+			out var high);
+		if (high != 0x3ff0_0000 || low != 0) return 1;
+		low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(864_000_000_000).TotalHours,
+			out high);
+		if (high != 0x4038_0000 || low != 0) return 2;
+		low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(864_000_000_000).TotalMinutes,
+			out high);
+		if (high != 0x4096_8000 || low != 0) return 3;
+		low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(864_000_000_000).TotalSeconds,
+			out high);
+		if (high != 0x40f5_1800 || low != 0) return 4;
+		low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(864_000_000_000).TotalMilliseconds,
+			out high);
+		if (high != 0x4194_9970 || low != 0) return 5;
+		low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(long.MaxValue).TotalMilliseconds,
+			out high);
+		if (high != 0x430a_36e2 || low != 0xeb1c_4328) return 6;
+		low = M68kRuntime.SplitDouble(
+			TimeSpan.FromTicks(long.MinValue).TotalMilliseconds,
+			out high);
+		if (high != 0xc30a_36e2 || low != 0xeb1c_4328) return 7;
+		return 42;
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int PortableStopwatchInvalidOperationEntry()
@@ -9968,6 +10198,83 @@ public static class CompilerFixtures
 		ref BoxedPair target,
 		ref BoxedPair source) =>
 		target = source;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool TryWritePackedRectangle(
+		bool succeed,
+		out Rectangle bounds)
+	{
+		bounds = default;
+		if (!succeed)
+		{
+			return false;
+		}
+
+		var candidate = new Rectangle
+		{
+			MinX = -3840,
+			MinY = -7,
+			MaxX = 123,
+			MaxY = 2047
+		};
+		bounds = candidate;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PackedRectangleOutStoreEntry()
+	{
+		var failed = new Rectangle
+		{
+			MinX = 1,
+			MinY = 2,
+			MaxX = 3,
+			MaxY = 4
+		};
+		if (TryWritePackedRectangle(false, out failed) ||
+			failed.MinX != 0 ||
+			failed.MinY != 0 ||
+			failed.MaxX != 0 ||
+			failed.MaxY != 0)
+		{
+			return 1;
+		}
+
+		if (!TryWritePackedRectangle(true, out var bounds))
+		{
+			return 2;
+		}
+		return bounds.MinX == -3840 &&
+			bounds.MinY == -7 &&
+			bounds.MaxX == 123 &&
+			bounds.MaxY == 2047
+				? 42
+				: 3;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool TryWriteNestedPackedRectangle(
+		out ExternalValueTypes.NestedRectangle bounds)
+	{
+		bounds = new ExternalValueTypes.NestedRectangle
+		{
+			MinX = -1234,
+			MinY = 17,
+			MaxX = 2046,
+			MaxY = 8191
+		};
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int NestedExternalPackedRectangleOutStoreEntry()
+	{
+		if (!TryWriteNestedPackedRectangle(out var bounds)) return 1;
+		if (bounds.MinX != -1234) return 2;
+		if (bounds.MinY != 17) return 3;
+		if (bounds.MaxX != 2046) return 4;
+		return bounds.MaxY == 8191 ? 42 : 5;
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int MultiwordIndirectLoadEntry()

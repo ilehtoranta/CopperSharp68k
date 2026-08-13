@@ -120,23 +120,22 @@ public sealed class M68kBranchRelaxationTests
 	}
 
 	[Fact]
-	public void RelaxesNearbyLocalAbsoluteCallToBsrWord()
+	public void RelaxesNearbyLocalAbsoluteCallToBsrShort()
 	{
 		var assembler = new M68kAssembler();
-		assembler.EmitJsr("callee", external: false);
+		assembler.EmitCall("method:callee");
 		assembler.EmitWord(0x4E71); // NOP
 		assembler.EmitWord(0x4E75); // RTS
-		assembler.Mark("callee");
+		assembler.Mark("method:callee");
 		assembler.EmitWord(0x4E75); // RTS
 
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		var linked = assembler.Link(0, new Dictionary<string, uint>());
 
-		Assert.Contains("bsr.w\tC68K_callee", assembly, StringComparison.Ordinal);
-		Assert.DoesNotContain("bsr.s", assembly, StringComparison.Ordinal);
-		Assert.DoesNotContain("jsr\tC68K_callee", assembly, StringComparison.Ordinal);
-		Assert.Equal(0x6100, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes));
-		Assert.Equal(6, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(2)));
+		Assert.Contains("bsr.s\tC68K_method_003Acallee", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("bsr.w", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("jsr\tC68K_method_003Acallee", assembly, StringComparison.Ordinal);
+		Assert.Equal(0x6104, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes));
 		Assert.Empty(linked.Relocations);
 	}
 
@@ -197,14 +196,14 @@ public sealed class M68kBranchRelaxationTests
 	public void KeepsOutOfRangeLocalCallAndLeaAbsolute()
 	{
 		var assembler = new M68kAssembler();
-		assembler.EmitJsr("far", external: false);
+		assembler.EmitCall("method:far");
 		assembler.EmitWord(0x47F9); // LEA far.abs.l,A3
-		assembler.EmitAddress("far");
+		assembler.EmitAddress("method:far");
 		for (var index = 0; index < 16_384; index++)
 		{
 			assembler.EmitWord(0x4E71); // NOP
 		}
-		assembler.Mark("far");
+		assembler.Mark("method:far");
 		assembler.EmitWord(0x4E75); // RTS
 
 		var linked = assembler.Link(0x0001_0000, new Dictionary<string, uint>());
@@ -212,5 +211,79 @@ public sealed class M68kBranchRelaxationTests
 		Assert.Equal(0x4EB9, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes));
 		Assert.Equal(0x47F9, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(6)));
 		Assert.Equal(2, linked.Relocations.Count);
+	}
+
+	[Theory]
+	[InlineData(32_767)]
+	[InlineData(-32_767)]
+	[InlineData(-32_768)]
+	public void MethodCallUsesBsrAtSignedWordBoundary(int displacement)
+	{
+		var (linked, opcodeOffset) = AssembleBoundaryCall(displacement);
+
+		Assert.Equal(0x6100,
+			BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(opcodeOffset)));
+		Assert.Equal(displacement,
+			BinaryPrimitives.ReadInt16BigEndian(linked.Bytes.AsSpan(opcodeOffset + 2)));
+		Assert.Empty(linked.Relocations);
+	}
+
+	[Theory]
+	[InlineData(32_768)]
+	[InlineData(-32_769)]
+	public void MethodCallKeepsAbsoluteJsrBeyondSignedWordBoundary(int displacement)
+	{
+		const uint origin = 0x0001_0000;
+		var (linked, opcodeOffset) = AssembleBoundaryCall(displacement, origin);
+
+		Assert.Equal(0x4EB9,
+			BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(opcodeOffset)));
+		Assert.Equal(origin + (uint)linked.Labels["method:boundary"],
+			BinaryPrimitives.ReadUInt32BigEndian(linked.Bytes.AsSpan(opcodeOffset + 2)));
+		var relocation = Assert.Single(linked.Relocations);
+		Assert.Equal(opcodeOffset + 2, relocation.Offset);
+		Assert.Equal("method:boundary", relocation.Target);
+	}
+
+	[Fact]
+	public void MethodCallRejectsNonMethodLabel()
+	{
+		var assembler = new M68kAssembler();
+
+		var exception = Assert.Throws<ArgumentException>(() =>
+			assembler.EmitCall("runtime:helper"));
+
+		Assert.Equal("target", exception.ParamName);
+	}
+
+	private static (LinkedCode Linked, int OpcodeOffset) AssembleBoundaryCall(
+		int displacement,
+		uint origin = 0)
+	{
+		const string target = "method:boundary";
+		var assembler = new M68kAssembler();
+		int opcodeOffset;
+		if (displacement > 0)
+		{
+			opcodeOffset = 0;
+			assembler.EmitCall(target);
+			for (var index = 0; index < displacement - 2; index++)
+			{
+				assembler.EmitByte(0);
+			}
+			assembler.Mark(target);
+		}
+		else
+		{
+			assembler.Mark(target);
+			for (var index = 0; index < -displacement - 2; index++)
+			{
+				assembler.EmitByte(0);
+			}
+			opcodeOffset = assembler.Offset;
+			assembler.EmitCall(target);
+		}
+		assembler.EmitWord(0x4E75);
+		return (assembler.Link(origin, new Dictionary<string, uint>()), opcodeOffset);
 	}
 }

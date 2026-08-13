@@ -297,6 +297,16 @@ internal sealed class M68kValueRangeAnalysis
 			return output;
 		}
 
+		if ((opcode & 0xF000) == 0x3000 &&
+			((opcode >> 6) & 7) == 0)
+		{
+			var destination = (opcode >> 9) & 7;
+			// MOVE.W replaces only the low word. Preserve a known-zero upper
+			// word established by MOVEQ #0 even when the word source is memory.
+			output.Data[destination] = PreserveUpperWord(input.Data[destination]);
+			return output;
+		}
+
 		if ((opcode & 0xFFC0) == 0x4280)
 		{
 			if (((opcode >> 3) & 7) == 0)

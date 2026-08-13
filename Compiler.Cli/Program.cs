@@ -38,6 +38,8 @@ static int Run(string[] args)
 		var cpu = ParseCpu(GetOptional(args, "--cpu") ?? "68000");
 		var floatingPoint = ParseFloatingPoint(GetOptional(args, "--fpu") ?? "disabled");
 		var clrPolicy = ParseClrPolicy(GetOptional(args, "--clr") ?? "auto");
+		var peepholeOptimization = ParsePeepholeOptimization(
+			GetOptional(args, "--peephole") ?? "fixed-point");
 		var exceptionMode = ParseExceptionMode(GetOptional(args, "--exceptions") ?? "full");
 		var format = ParseFormat(GetOptional(args, "--format") ?? "hunk");
 		var includeHunkSymbols = ParseSymbolMode(GetOptional(args, "--symbols") ?? "on");
@@ -59,6 +61,18 @@ static int Run(string[] args)
 		var managedAssemblyPaths = ParseManagedAssemblyPaths(
 			GetOptional(args, "--managed-assemblies"),
 			GetAll(args, "--managed-assembly"));
+		var includedExports = GetAll(args, "--include-export");
+		var exportMode = GetOptional(args, "--exports") ?? "all";
+		if (exportMode is not ("all" or "none"))
+		{
+			throw new ArgumentException(
+				$"Unknown export mode '{exportMode}'; expected all or none.");
+		}
+		if (exportMode == "none" && includedExports.Count != 0)
+		{
+			throw new ArgumentException(
+				"--exports none cannot be combined with --include-export.");
+		}
 		var frameworkImplementationManifest =
 			GetOptional(args, "--framework-implementation-manifest");
 
@@ -69,12 +83,16 @@ static int Run(string[] args)
 			Cpu = cpu,
 			FloatingPoint = floatingPoint,
 			ClrPolicy = clrPolicy,
+			PeepholeOptimization = peepholeOptimization,
 			ExceptionMode = exceptionMode,
 			OutputFormat = format,
 			RuntimeProfile = runtimeProfile,
 			MemoryManagement = memoryManagement,
 			Imports = imports,
 			ManagedAssemblyPaths = managedAssemblyPaths,
+			IncludedExportNames = exportMode == "none"
+				? Array.Empty<string>()
+				: includedExports.Count == 0 ? null : includedExports,
 			FrameworkImplementationPack = frameworkImplementationManifest is null
 				? null
 				: new M68kFrameworkImplementationPackOptions(
@@ -219,9 +237,11 @@ static string[] ExpandResponseManifest(string[] args)
 			"cpu" => "--cpu",
 			"fpu" => "--fpu",
 			"clr" => "--clr",
+			"peephole" => "--peephole",
 			"exceptions" => "--exceptions",
 			"format" => "--format",
 			"symbols" => "--symbols",
+			"exports" => "--exports",
 			"runtime" => "--runtime",
 			"memory" => "--memory",
 			"heap-size" => "--heap-size",
@@ -232,11 +252,13 @@ static string[] ExpandResponseManifest(string[] args)
 			"compatibility-report" => "--compatibility-report",
 			"framework-implementation-manifest" => "--framework-implementation-manifest",
 			"managed-assembly" => "--managed-assembly",
+			"include-export" => "--include-export",
 			"import" => "--import",
 			_ => throw new ArgumentException(
 				$"Response manifest '{manifestPath}' contains unknown key '{key}'.")
 		};
-		if (key is not ("managed-assembly" or "import") && !singleKeys.Add(key))
+		if (key is not ("managed-assembly" or "include-export" or "import") &&
+			!singleKeys.Add(key))
 		{
 			throw new ArgumentException(
 				$"Response manifest '{manifestPath}' contains duplicate key '{key}'.");
@@ -287,7 +309,10 @@ static void WriteFrameworkReport(
 		analysis.IsCompatible,
 		analysis.ImplementationPack,
 		analysis.Members,
-		analysis.ManagedAllocationSites);
+		analysis.ManagedAllocationSites,
+		analysis.RootMethodCount,
+		analysis.ReachableMethodCount,
+		request.IncludedExportNames);
 	var json = JsonSerializer.Serialize(report, options);
 	if (reportPath == "-")
 	{
@@ -402,6 +427,16 @@ static M68kClrPolicy ParseClrPolicy(string value) =>
 		"auto" => M68kClrPolicy.Auto,
 		"always" or "on" => M68kClrPolicy.Always,
 		_ => throw new ArgumentException($"Unknown CLR policy '{value}'.")
+	};
+
+static M68kPeepholeOptimizationMode ParsePeepholeOptimization(string value) =>
+	value.ToLowerInvariant() switch
+	{
+		"fixed" or "fixed-point" or "full" =>
+			M68kPeepholeOptimizationMode.FixedPoint,
+		"bounded" or "scalable" => M68kPeepholeOptimizationMode.Bounded,
+		_ => throw new ArgumentException(
+			$"Unknown peephole optimization mode '{value}'.")
 	};
 
 static M68kExceptionMode ParseExceptionMode(string value) =>
@@ -558,8 +593,9 @@ static void PrintUsage()
 		copper68kc @response-manifest
 		  [--platform generic|amiga]
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
-		  [--clr auto|always]
+		  [--clr auto|always] [--peephole fixed-point|bounded]
 		  [--exceptions full|yolo] [--format hunk|rom|asm] [--symbols on|off]
+		  [--exports all|none] [--include-export <symbol> ...]
 		  [--runtime freestanding|application|rom]
 		  [--memory default|none|external|managed-pool|exec-pool] [--heap-size <bytes>]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
@@ -595,4 +631,7 @@ sealed record CompatibilityReport(
 	bool IsCompatible,
 	M68kFrameworkImplementationPackProvenance? ImplementationPack,
 	IReadOnlyList<M68kFrameworkMemberAnalysis> Members,
-	IReadOnlyList<M68kManagedAllocationSite> ManagedAllocationSites);
+	IReadOnlyList<M68kManagedAllocationSite> ManagedAllocationSites,
+	int RootMethodCount,
+	int ReachableMethodCount,
+	IReadOnlyList<string>? IncludedExportNames);

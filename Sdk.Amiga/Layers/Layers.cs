@@ -3,8 +3,8 @@
 - SPDX-License-Identifier: MIT
  */
 
-using CopperSharp.Sdk.Amiga;
 using CopperSharp.Compiler;
+using CopperSharp.Sdk.Amiga;
 
 namespace Amiga;
 
@@ -21,280 +21,280 @@ public static class Layers
 			"LayersLibraryBase is lowered by CopperSharp.");
 	}
 
-	[AmigaLvo(-30)]
+	[AmigaLvo(LayersLvo.InitLayers)]
 	public static extern void InitLayers(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-36)]
+	[AmigaLvo(LayersLvo.CreateUpfrontLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateUpfrontLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3,
-		[M68kRegister(M68kRegister.D2)] int arg4,
-		[M68kRegister(M68kRegister.D3)] int arg5,
-		[M68kRegister(M68kRegister.D4)] int arg6,
-		[M68kRegister(M68kRegister.A2)] uint arg7);
+	public static extern APTR CreateUpfrontLayer(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR bitMap,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY,
+		[M68kRegister(M68kRegister.D4)] LayerCreationFlags flags,
+		[M68kRegister(M68kRegister.A2)] APTR superBitMap);
 
-	[AmigaLvo(-42)]
+	[AmigaLvo(LayersLvo.CreateBehindLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateBehindLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3,
-		[M68kRegister(M68kRegister.D2)] int arg4,
-		[M68kRegister(M68kRegister.D3)] int arg5,
-		[M68kRegister(M68kRegister.D4)] int arg6,
-		[M68kRegister(M68kRegister.A2)] uint arg7);
+	public static extern APTR CreateBehindLayer(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR bitMap,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY,
+		[M68kRegister(M68kRegister.D4)] LayerCreationFlags flags,
+		[M68kRegister(M68kRegister.A2)] APTR superBitMap);
 
-	[AmigaLvo(-48)]
+	[AmigaLvo(LayersLvo.UpfrontLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UpfrontLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer);
 
-	[AmigaLvo(-54)]
+	[AmigaLvo(LayersLvo.BehindLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int BehindLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer);
 
-	[AmigaLvo(-60)]
+	[AmigaLvo(LayersLvo.MoveLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MoveLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int deltaX,
+		[M68kRegister(M68kRegister.D1)] int deltaY);
 
-	[AmigaLvo(-66)]
+	[AmigaLvo(LayersLvo.SizeLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SizeLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int deltaWidth,
+		[M68kRegister(M68kRegister.D1)] int deltaHeight);
 
-	[AmigaLvo(-72)]
+	[AmigaLvo(LayersLvo.ScrollLayer)]
 	public static extern void ScrollLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int deltaX,
+		[M68kRegister(M68kRegister.D1)] int deltaY);
 
-	[AmigaLvo(-78)]
+	[AmigaLvo(LayersLvo.BeginUpdate)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int BeginUpdate(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layer);
 
-	[AmigaLvo(-84)]
+	[AmigaLvo(LayersLvo.EndUpdate)]
 	public static extern void EndUpdate(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.D0)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] uint complete);
 
-	[AmigaLvo(-90)]
+	[AmigaLvo(LayersLvo.DeleteLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DeleteLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer);
 
-	[AmigaLvo(-96)]
+	[AmigaLvo(LayersLvo.LockLayer)]
 	public static extern void LockLayer(
-		[M68kRegister(M68kRegister.A0)] int arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] int dummy,
+		[M68kRegister(M68kRegister.A1)] APTR layer);
 
-	[AmigaLvo(-102)]
+	[AmigaLvo(LayersLvo.UnlockLayer)]
 	public static extern void UnlockLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layer);
 
-	[AmigaLvo(-108)]
+	[AmigaLvo(LayersLvo.LockLayers)]
 	public static extern void LockLayers(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-114)]
+	[AmigaLvo(LayersLvo.UnlockLayers)]
 	public static extern void UnlockLayers(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-120)]
+	[AmigaLvo(LayersLvo.LockLayerInfo)]
 	public static extern void LockLayerInfo(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-126)]
+	[AmigaLvo(LayersLvo.SwapBitsRastPortClipRect)]
 	public static extern void SwapBitsRastPortClipRect(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] APTR rastPort,
+		[M68kRegister(M68kRegister.A1)] APTR clipRect);
 
-	[AmigaLvo(-132)]
+	[AmigaLvo(LayersLvo.WhichLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint WhichLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.D0)] int arg1,
-		[M68kRegister(M68kRegister.D1)] int arg2);
+	public static extern APTR WhichLayer(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.D0)] int x,
+		[M68kRegister(M68kRegister.D1)] int y);
 
-	[AmigaLvo(-138)]
+	[AmigaLvo(LayersLvo.UnlockLayerInfo)]
 	public static extern void UnlockLayerInfo(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-144)]
+	[AmigaLvo(LayersLvo.NewLayerInfo)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint NewLayerInfo();
+	public static extern APTR NewLayerInfo();
 
-	[AmigaLvo(-150)]
+	[AmigaLvo(LayersLvo.DisposeLayerInfo)]
 	public static extern void DisposeLayerInfo(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-156)]
+	[AmigaLvo(LayersLvo.FattenLayerInfo)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FattenLayerInfo(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-162)]
+	[AmigaLvo(LayersLvo.ThinLayerInfo)]
 	public static extern void ThinLayerInfo(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo);
 
-	[AmigaLvo(-168)]
+	[AmigaLvo(LayersLvo.MoveLayerInFrontOf)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MoveLayerInFrontOf(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] APTR layerToMove,
+		[M68kRegister(M68kRegister.A1)] APTR otherLayer);
 
-	[AmigaLvo(-174)]
+	[AmigaLvo(LayersLvo.InstallClipRegion)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint InstallClipRegion(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+	public static extern APTR InstallClipRegion(
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.A1)] APTR region);
 
-	[AmigaLvo(-180)]
+	[AmigaLvo(LayersLvo.MoveSizeLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MoveSizeLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.D0)] int arg1,
-		[M68kRegister(M68kRegister.D1)] int arg2,
-		[M68kRegister(M68kRegister.D2)] int arg3,
-		[M68kRegister(M68kRegister.D3)] int arg4);
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int deltaX,
+		[M68kRegister(M68kRegister.D1)] int deltaY,
+		[M68kRegister(M68kRegister.D2)] int deltaWidth,
+		[M68kRegister(M68kRegister.D3)] int deltaHeight);
 
-	[AmigaLvo(-186)]
+	[AmigaLvo(LayersLvo.CreateUpfrontHookLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateUpfrontHookLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3,
-		[M68kRegister(M68kRegister.D2)] int arg4,
-		[M68kRegister(M68kRegister.D3)] int arg5,
-		[M68kRegister(M68kRegister.D4)] int arg6,
-		[M68kRegister(M68kRegister.A3)] uint arg7,
-		[M68kRegister(M68kRegister.A2)] uint arg8);
+	public static extern APTR CreateUpfrontHookLayer(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR bitMap,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY,
+		[M68kRegister(M68kRegister.D4)] LayerCreationFlags flags,
+		[M68kRegister(M68kRegister.A3)] APTR hook,
+		[M68kRegister(M68kRegister.A2)] APTR superBitMap);
 
-	[AmigaLvo(-192)]
+	[AmigaLvo(LayersLvo.CreateBehindHookLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateBehindHookLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3,
-		[M68kRegister(M68kRegister.D2)] int arg4,
-		[M68kRegister(M68kRegister.D3)] int arg5,
-		[M68kRegister(M68kRegister.D4)] int arg6,
-		[M68kRegister(M68kRegister.A3)] uint arg7,
-		[M68kRegister(M68kRegister.A2)] uint arg8);
+	public static extern APTR CreateBehindHookLayer(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR bitMap,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY,
+		[M68kRegister(M68kRegister.D4)] LayerCreationFlags flags,
+		[M68kRegister(M68kRegister.A3)] APTR hook,
+		[M68kRegister(M68kRegister.A2)] APTR superBitMap);
 
-	[AmigaLvo(-198)]
+	[AmigaLvo(LayersLvo.InstallLayerHook)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint InstallLayerHook(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+	public static extern APTR InstallLayerHook(
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.A1)] APTR hook);
 
-	[AmigaLvo(-204)]
+	[AmigaLvo(LayersLvo.InstallLayerInfoHook)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint InstallLayerInfoHook(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+	public static extern APTR InstallLayerInfoHook(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR hook);
 
-	[AmigaLvo(-210)]
+	[AmigaLvo(LayersLvo.SortLayerCR)]
 	public static extern void SortLayerCR(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.D0)] int arg1,
-		[M68kRegister(M68kRegister.D1)] int arg2);
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int deltaX,
+		[M68kRegister(M68kRegister.D1)] int deltaY);
 
-	[AmigaLvo(-216)]
+	[AmigaLvo(LayersLvo.DoHookClipRects)]
 	public static extern void DoHookClipRects(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.A2)] uint arg2);
+		[M68kRegister(M68kRegister.A0)] APTR hook,
+		[M68kRegister(M68kRegister.A1)] APTR rastPort,
+		[M68kRegister(M68kRegister.A2)] APTR bounds);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-234)]
+	// MorphOS V50 m68k ABI extensions.
+	[AmigaLvo(LayersLvo.CreateUpfrontLayerTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateUpfrontLayerTagList(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3,
-		[M68kRegister(M68kRegister.D2)] int arg4,
-		[M68kRegister(M68kRegister.D3)] int arg5,
-		[M68kRegister(M68kRegister.D4)] int arg6,
-		[M68kRegister(M68kRegister.A2)] uint arg7);
+	public static extern APTR CreateUpfrontLayerTagList(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR bitMap,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY,
+		[M68kRegister(M68kRegister.D4)] LayerCreationFlags flags,
+		[M68kRegister(M68kRegister.A2)] APTR tagList);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-240)]
+	[AmigaLvo(LayersLvo.CreateBehindLayerTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateBehindLayerTagList(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1,
-		[M68kRegister(M68kRegister.D0)] int arg2,
-		[M68kRegister(M68kRegister.D1)] int arg3,
-		[M68kRegister(M68kRegister.D2)] int arg4,
-		[M68kRegister(M68kRegister.D3)] int arg5,
-		[M68kRegister(M68kRegister.D4)] int arg6,
-		[M68kRegister(M68kRegister.A2)] uint arg7);
+	public static extern APTR CreateBehindLayerTagList(
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR bitMap,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY,
+		[M68kRegister(M68kRegister.D4)] LayerCreationFlags flags,
+		[M68kRegister(M68kRegister.A2)] APTR tagList);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-252)]
+	// MorphOS V52 m68k ABI extensions.
+	[AmigaLvo(LayersLvo.WhichLayerBehindLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint WhichLayerBehindLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.D0)] int arg1,
-		[M68kRegister(M68kRegister.D1)] int arg2);
+	public static extern APTR WhichLayerBehindLayer(
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int x,
+		[M68kRegister(M68kRegister.D1)] int y);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-258)]
+	[AmigaLvo(LayersLvo.IsLayerVisible)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IsLayerVisible(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layer);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-282)]
+	[AmigaLvo(LayersLvo.RenderLayerInfoTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RenderLayerInfoTagList(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.A1)] uint arg1);
+		[M68kRegister(M68kRegister.A0)] APTR layerInfo,
+		[M68kRegister(M68kRegister.A1)] APTR tagList);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-288)]
+	[AmigaLvo(LayersLvo.LockLayerUpdates)]
 	public static extern void LockLayerUpdates(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layer);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-294)]
+	[AmigaLvo(LayersLvo.UnlockLayerUpdates)]
 	public static extern void UnlockLayerUpdates(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layer);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-300)]
+	[AmigaLvo(LayersLvo.IsVisibleInLayer)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IsVisibleInLayer(
-		[M68kRegister(M68kRegister.A0)] uint arg0,
-		[M68kRegister(M68kRegister.D0)] int arg1,
-		[M68kRegister(M68kRegister.D1)] int arg2,
-		[M68kRegister(M68kRegister.D2)] int arg3,
-		[M68kRegister(M68kRegister.D3)] int arg4);
+		[M68kRegister(M68kRegister.A0)] APTR layer,
+		[M68kRegister(M68kRegister.D0)] int minX,
+		[M68kRegister(M68kRegister.D1)] int minY,
+		[M68kRegister(M68kRegister.D2)] int maxX,
+		[M68kRegister(M68kRegister.D3)] int maxY);
 
-	// MorphOS m68k ABI call.
-	[AmigaLvo(-306)]
+	[AmigaLvo(LayersLvo.IsLayerHitable)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IsLayerHitable(
-		[M68kRegister(M68kRegister.A0)] uint arg0);
+		[M68kRegister(M68kRegister.A0)] APTR layer);
+
+	/// <summary>
+	/// Pointer-list form of the official MorphOS RenderLayerInfoTags varargs
+	/// wrapper. CopperSharp callers supply the address of a TagItem sequence.
+	/// </summary>
+	public static int RenderLayerInfoTags(APTR layerInfo, APTR tags) =>
+		RenderLayerInfoTagList(layerInfo, tags);
 }

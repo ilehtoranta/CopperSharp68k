@@ -85,12 +85,12 @@ internal static class CilInstructionDecoder
 
 			if (constrainedTypeToken is { } typeToken)
 			{
-				if (opCode != OpCodes.Callvirt)
+				if (opCode != OpCodes.Callvirt && opCode != OpCodes.Call)
 				{
 					throw InvalidIl(
 						methodName,
 						instructionOffset,
-						$"A constrained. prefix must be followed by callvirt, not '{opCode.Name}'.");
+						$"A constrained. prefix must be followed by call or callvirt, not '{opCode.Name}'.");
 				}
 				result.Add(new CilInstruction(
 					constrainedOffset,
@@ -110,7 +110,7 @@ internal static class CilInstructionDecoder
 			throw InvalidIl(
 				methodName,
 				constrainedOffset,
-				"A constrained. prefix at the end of a method has no following callvirt.");
+				"A constrained. prefix at the end of a method has no following call or callvirt.");
 		}
 
 		return result;

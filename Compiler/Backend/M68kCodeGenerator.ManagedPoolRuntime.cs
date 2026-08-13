@@ -127,7 +127,7 @@ internal sealed partial class M68kCodeGenerator
 				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
 				EmitMoveRegister(M68kRegister.A2, M68kRegister.A0);
 			}
-			_assembler.EmitBsr(MethodLabel(entry));
+			_assembler.EmitCall(MethodLabel(entry));
 			_loadedPlatformBase = null;
 			if (preservesScalarResult)
 			{
@@ -179,7 +179,7 @@ internal sealed partial class M68kCodeGenerator
 
 		if (usesExceptionRuntime)
 		{
-			_assembler.EmitBsr(MethodLabel(entry));
+			_assembler.EmitCall(MethodLabel(entry));
 			_loadedPlatformBase = null;
 			_assembler.EmitWord(0x4E75); // RTS
 			return label;
@@ -192,7 +192,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		foreach (var lifecycle in _managedLifecycles)
 		{
-			_assembler.EmitBsr(MethodLabel(lifecycle.Initialize));
+			_assembler.EmitCall(MethodLabel(lifecycle.Initialize));
 			_loadedPlatformBase = null;
 		}
 	}
@@ -201,7 +201,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		for (var index = _managedLifecycles.Count - 1; index >= 0; index--)
 		{
-			_assembler.EmitBsr(MethodLabel(_managedLifecycles[index].Shutdown));
+			_assembler.EmitCall(MethodLabel(_managedLifecycles[index].Shutdown));
 			_loadedPlatformBase = null;
 		}
 	}
@@ -227,7 +227,7 @@ internal sealed partial class M68kCodeGenerator
 
 		if (_loadedPlatformBase?.Label != ExecBaseSlotSymbol)
 		{
-			EmitLoadAddressRegisterPcRelative(M68kRegister.A6, ExecBaseSlotSymbol);
+			EmitLoadAddressRegisterLocal(M68kRegister.A6, ExecBaseSlotSymbol);
 		}
 		_assembler.EmitWord(0x203C); // MOVE.L #heap-size,D0
 		_assembler.EmitLong(_request.Heap.Size);
@@ -267,20 +267,20 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeAllocLabel);
-		_assembler.EmitBsr(MethodLabel(runtime.Allocate));
+		_assembler.EmitCall(MethodLabel(runtime.Allocate));
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeDisposeLabel);
 		_assembler.EmitWord(0x2008); // MOVE.L A0,D0
-		_assembler.EmitBsr(MethodLabel(runtime.Dispose));
+		_assembler.EmitCall(MethodLabel(runtime.Dispose));
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeMarkLabel);
 		_assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
 		_assembler.EmitWord(0x0004);
-		_assembler.EmitBsr(MethodLabel(runtime.Mark));
+		_assembler.EmitCall(MethodLabel(runtime.Mark));
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
@@ -292,7 +292,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		EmitPushRegister(M68kRegister.A1);
 		EmitPushRegister(M68kRegister.A0);
-		_assembler.EmitBsr(MethodLabel(
+		_assembler.EmitCall(MethodLabel(
 			UsesExtendedUnwindMetadata ? runtime.MarkRootsExtended : runtime.MarkRoots));
 		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 3 : 2);
 		_assembler.EmitWord(0x4E75); // RTS
@@ -306,7 +306,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		EmitPushRegister(M68kRegister.A1);
 		EmitPushRegister(M68kRegister.A0);
-		_assembler.EmitBsr(MethodLabel(
+		_assembler.EmitCall(MethodLabel(
 			UsesExtendedUnwindMetadata
 				? runtime.CollectWithRootsExtended
 				: runtime.CollectWithRoots));
@@ -340,7 +340,7 @@ internal sealed partial class M68kCodeGenerator
 		var done = UniqueLabel("gc_shutdown_done");
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeShutdownLabel);
-		_assembler.EmitBsr(MethodLabel(runtime.Shutdown));
+		_assembler.EmitCall(MethodLabel(runtime.Shutdown));
 		if (UsesAmigaManagedPoolArena)
 		{
 			EmitLoadA0FromLabel(GcArenaBaseLabel);
@@ -349,7 +349,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x2248); // MOVEA.L A0,A1
 			_assembler.EmitWord(0x2039); // MOVE.L heap-size,D0
 			_assembler.EmitAddress(GcConfigHeapSizeLabel);
-			EmitLoadAddressRegisterPcRelative(M68kRegister.A6, ExecBaseSlotSymbol);
+			EmitLoadAddressRegisterLocal(M68kRegister.A6, ExecBaseSlotSymbol);
 			_assembler.EmitWord(0x4EAE); // JSR -210(A6)
 			_assembler.EmitWord(unchecked((ushort)-210));
 			_assembler.EmitWord(0x7000); // MOVEQ #0,D0

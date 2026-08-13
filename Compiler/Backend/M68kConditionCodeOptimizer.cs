@@ -702,7 +702,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 		{
 			changed = false;
 			var dataflow = M68kInstructionDataflow.Analyze(_assembler);
-			if (TryFoldKnownZeroBranch(dataflow) ||
+			if (FoldKnownZeroBranches(dataflow) ||
 				TryRewriteSingleBitTest(dataflow))
 			{
 				changed = true;
@@ -710,28 +710,50 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 				continue;
 			}
 
-			foreach (var instruction in dataflow.Instructions)
+			if (RemoveRedundantConditionInstructions(dataflow))
 			{
-				if (_buffer.HasLabelAt(instruction.Offset) ||
-					!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
-					!dataflow.IsConditionInstructionRedundant(
-						instruction,
-						facts.LiveConditionsAfter))
-				{
-					continue;
-				}
-				_buffer.RemoveBytes(instruction.Offset, instruction.Length);
 				changed = true;
 				Changed = true;
-				break;
 			}
 		}
 		while (changed);
 	}
 
-	private bool TryFoldKnownZeroBranch(M68kInstructionDataflow dataflow)
+	private bool RemoveRedundantConditionInstructions(
+		M68kInstructionDataflow dataflow)
+	{
+		var redundant = new List<M68kEmittedInstruction>();
+		foreach (var instruction in dataflow.Instructions)
+		{
+			if (_buffer.HasLabelAt(instruction.Offset) ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				!dataflow.IsConditionInstructionRedundant(
+					instruction,
+					facts.LiveConditionsAfter))
+			{
+				continue;
+			}
+			redundant.Add(instruction);
+		}
+		for (var index = redundant.Count - 1; index >= 0; index--)
+		{
+			var instruction = redundant[index];
+			_buffer.RemoveBytes(instruction.Offset, instruction.Length);
+		}
+		return redundant.Count != 0;
+	}
+
+	private readonly record struct KnownZeroBranchFold(
+		M68kEmittedInstruction Test,
+		M68kEmittedInstruction Branch,
+		bool BranchTaken);
+
+	private bool FoldKnownZeroBranches(M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
+		var instructionByOffset = instructions.ToDictionary(
+			static instruction => instruction.Offset);
+		var folds = new List<KnownZeroBranchFold>();
 		for (var index = 0; index + 1 < instructions.Count; index++)
 		{
 			var test = instructions[index];
@@ -751,33 +773,38 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			var successorOffset = branchTaken
 				? branch.TargetOffset.Value
 				: branch.Offset + branch.Length;
-			var successor = instructions.FirstOrDefault(
-				instruction => instruction.Offset == successorOffset);
-			if (successor.Length == 0 ||
+			if (!instructionByOffset.TryGetValue(successorOffset,
+				out var successor) ||
 				!successor.IsNonReturning &&
-				(!dataflow.TryGetFacts(
+					(!dataflow.TryGetFacts(
 					successor.Offset,
 					out var successorFacts) ||
 					successorFacts.LiveConditionsBefore != M68kConditionCodeSet.None))
 			{
 				continue;
 			}
-			if (!branchTaken)
+			folds.Add(new KnownZeroBranchFold(test, branch, branchTaken));
+		}
+
+		for (var index = folds.Count - 1; index >= 0; index--)
+		{
+			var fold = folds[index];
+			if (!fold.BranchTaken)
 			{
-				_buffer.RemoveBytes(test.Offset, test.Length + branch.Length);
-				return true;
+				_buffer.RemoveBytes(
+					fold.Test.Offset,
+					fold.Test.Length + fold.Branch.Length);
+				continue;
 			}
 
 			// The condition is known true, so retain the target transfer but no
 			// longer require the zero-test to establish condition codes.
 			_buffer.WriteWord(
-				branch.Offset,
-				(branch.Opcode & 0xF0FF) | 0x6000); // Bcc -> BRA
-			_buffer.RemoveBytes(test.Offset, test.Length);
-			return true;
+				fold.Branch.Offset,
+				(fold.Branch.Opcode & 0xF0FF) | 0x6000); // Bcc -> BRA
+			_buffer.RemoveBytes(fold.Test.Offset, fold.Test.Length);
 		}
-
-		return false;
+		return folds.Count != 0;
 	}
 
 	private bool TryRewriteSingleBitTest(M68kInstructionDataflow dataflow)

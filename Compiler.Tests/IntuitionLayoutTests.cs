@@ -321,6 +321,29 @@ public sealed class IntuitionLayoutTests
 	}
 
 	[Fact]
+	public void TransparencyMessageMatchesMorphOsM68kAbi()
+	{
+		Assert.Equal(16u, TransparencyMessage.Size);
+		Assert.Equal(16, Marshal.SizeOf<TransparencyMessage>());
+		Assert.Equal(2, typeof(TransparencyMessage).StructLayoutAttribute!.Pack);
+
+		AssertOffsets<TransparencyMessage>(
+			(nameof(TransparencyMessage.Layer), 0),
+			(nameof(TransparencyMessage.Region), 4),
+			(nameof(TransparencyMessage.NewBounds), 8),
+			(nameof(TransparencyMessage.OldBounds), 12));
+
+		foreach (var fieldName in new[]
+		{
+			nameof(TransparencyMessage.Layer), nameof(TransparencyMessage.Region),
+			nameof(TransparencyMessage.NewBounds), nameof(TransparencyMessage.OldBounds),
+		})
+		{
+			Assert.Equal(typeof(APTR), typeof(TransparencyMessage).GetField(fieldName)!.FieldType);
+		}
+	}
+
+	[Fact]
 	public void ClassicFlagValuesRemainUnchanged()
 	{
 		Assert.Equal(0x0000_0200u, (uint)IDCMPFlags.CloseWindow);

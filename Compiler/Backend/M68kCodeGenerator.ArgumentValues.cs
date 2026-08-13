@@ -862,7 +862,7 @@ internal sealed partial class M68kCodeGenerator
 		CilInstruction instruction)
 	{
 		var exportName = _module.GetUserString((int)instruction.Operand!, caller, instruction.Offset);
-		if (!_module.GetExports().Any(export => export.Name == exportName))
+		if (!_exports.Any(export => export.Name == exportName))
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnresolvedImport,

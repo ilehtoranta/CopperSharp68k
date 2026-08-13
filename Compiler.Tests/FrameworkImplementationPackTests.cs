@@ -19,6 +19,35 @@ public sealed class FrameworkImplementationPackTests
 	private static readonly string FixtureAssembly = typeof(CompilerFixtures).Assembly.Location;
 
 	[Fact]
+	public void ExperimentalProfileCutsOffExceptionToStringOnlyWhenUnlistedBodiesAreEnabled()
+	{
+		var member = new FrameworkMemberId(
+			FrameworkTypeId.Named("System.Runtime", "System.Exception"),
+			"ToString",
+			new FrameworkMethodSignatureId(
+				0x20,
+				0,
+				0,
+				FrameworkTypeId.Primitive("System.String"),
+				[]));
+
+		Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(
+			member,
+			enableUnlistedManagedBodies: false,
+			out _));
+		Assert.True(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(
+			member,
+			enableUnlistedManagedBodies: true,
+			out var binding));
+		Assert.Equal(FrameworkBindingKind.ShadowMethod, binding.Kind);
+		Assert.Equal(
+			"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowException::ToString",
+			binding.Target);
+		Assert.True(binding.PreservesVirtualDispatch);
+		Assert.True(FrameworkImplementationProfile.IsTargetRuntimeOverride(binding));
+	}
+
+	[Fact]
 	public void ValidCoreLibPackIsReportedAndSelectsPinnedStopwatchBodies()
 	{
 		using var pack = CoreLibPack.Create();
@@ -148,37 +177,67 @@ public sealed class FrameworkImplementationPackTests
 		var members = analysis.Members
 			.Where(static member => member.Member.TypeName == "System.TimeSpan")
 			.ToArray();
-		Assert.Equal(7, members.Length);
-		var ticks = Assert.Single(members, static member => member.Member.Name == "get_Ticks");
-		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, ticks.Status);
-		Assert.Equal("pinned:[System.Private.CoreLib]System.TimeSpan::get_Ticks", ticks.Binding);
+		Assert.Equal(14, members.Length);
 		Assert.All(
-			members.Where(static member => member.Member.Name != "get_Ticks"),
+			members.Where(static member => member.Member.Name is
+				".ctor" or "FromTicks" or "get_Days" or "get_Hours" or
+				"get_Minutes" or "get_Seconds" or "get_Milliseconds"),
 			static member => Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status));
+		Assert.All(members.Where(static member => member.Member.Name is
+			not ".ctor" and not "FromTicks" and not "get_Days" and not "get_Hours" and
+			not "get_Minutes" and not "get_Seconds" and not "get_Milliseconds"), static member =>
+		{
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, member.Status);
+			Assert.StartsWith(
+				"pinned:[System.Private.CoreLib]System.TimeSpan::",
+				member.Binding,
+				StringComparison.Ordinal);
+		});
 
 		var result = AmigaM68kCompiler.Compile(request);
 		Assert.Contains(result.Symbols, static symbol =>
 			symbol.Name == "System.TimeSpan::get_Ticks");
 		Assert.Contains(result.Symbols, static symbol =>
-			symbol.Name.Contains("ShadowTimeSpan", StringComparison.Ordinal));
+			symbol.Name.Contains("ShadowTimeSpan::Initialize", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("ShadowTimeSpan::Equal", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ShadowTimeSpan::LessThan", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ShadowTimeSpan::GreaterThan", StringComparison.Ordinal));
 		Assert.DoesNotContain(result.Symbols, static symbol =>
 			symbol.Name == "System.TimeSpan::.cctor");
+		Assert.Equal(42, CompilerFixtures.PortablePinnedTimeSpanEntry());
 	}
 
 	[Fact]
-	public void UnallowlistedTimeSpanMemberFailsClosedWhenPackIsConfigured()
+	public void TimeSpanTotalGettersUseExactPalOverrides()
 	{
 		using var pack = CoreLibPack.Create();
 		var request = Request(
 			pack.ManifestPath,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableUnallowlistedTimeSpanTotalMillisecondsEntry");
+			"CopperSharp.Compiler.Tests.CompilerFixtures::PortableTimeSpanTotalsEntry",
+			M68kCpuTarget.M68040,
+			M68kFloatingPointMode.M68040);
 		var analysis = AmigaM68kCompiler.AnalyzeFramework(request);
 
-		var member = Assert.Single(analysis.Members, static candidate =>
-			candidate.Member.TypeName == "System.TimeSpan" &&
-			candidate.Member.Name == "get_TotalMilliseconds");
-		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, member.Status);
-		Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(request));
+		var members = analysis.Members.Where(static candidate =>
+			candidate.Member.TypeName == "System.TimeSpan").ToArray();
+		Assert.Contains(members, static member => member.Member.Name == "FromTicks");
+		Assert.Equal(5, members.Count(static member =>
+			member.Member.Name.StartsWith("get_Total", StringComparison.Ordinal)));
+		Assert.Equal(
+			M68kFrameworkCompatibilityStatus.Platform,
+			Assert.Single(members, static member => member.Member.Name == "FromTicks").Status);
+		Assert.All(members.Where(static member =>
+			member.Member.Name != "FromTicks"), static member =>
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Platform, member.Status));
+
+		var result = AmigaM68kCompiler.Compile(request);
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name.Contains("ShadowTimeSpan::GetTotalDays", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ShadowTimeSpan::GetTotalHours", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ShadowTimeSpan::GetTotalMinutes", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ShadowTimeSpan::GetTotalSeconds", StringComparison.Ordinal));
+		Assert.Equal(42, CompilerFixtures.PortableTimeSpanTotalsEntry());
 	}
 
 	[Fact]
@@ -319,10 +378,14 @@ public sealed class FrameworkImplementationPackTests
 
 	private static M68kCompilationRequest Request(
 		string? manifestPath,
-		string entry = "CopperSharp.Compiler.Tests.CompilerFixtures::PortableStopwatchResetOnlyEntry") => new()
+		string entry = "CopperSharp.Compiler.Tests.CompilerFixtures::PortableStopwatchResetOnlyEntry",
+		M68kCpuTarget cpu = M68kCpuTarget.M68000,
+		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled) => new()
 	{
 		AssemblyPath = FixtureAssembly,
 		EntryPoint = entry,
+		Cpu = cpu,
+		FloatingPoint = floatingPoint,
 		OutputFormat = M68kOutputFormat.Hunk,
 		RuntimeProfile = M68kRuntimeProfile.Application,
 		Imports = new Dictionary<string, uint>

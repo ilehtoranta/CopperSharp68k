@@ -23,7 +23,7 @@ function Assert-DotNetFailure {
     if ($LASTEXITCODE -eq 0) {
         throw "dotnet $($Arguments -join ' ') unexpectedly succeeded."
     }
-    if (-not $output.Contains($ExpectedText, [StringComparison]::Ordinal)) {
+    if ($output.IndexOf($ExpectedText, [StringComparison]::Ordinal) -lt 0) {
         throw "dotnet $($Arguments -join ' ') did not report '$ExpectedText'. Output: $output"
     }
     $script:LastDotNetFailureOutput = $output
@@ -47,7 +47,9 @@ $explicitProjectVersions = [System.IO.Directory]::EnumerateFiles(
     [System.IO.SearchOption]::AllDirectories) |
     Where-Object {
         $_ -notmatch '[\\/](bin|obj)[\\/]' -and
-        (Get-Content -Raw -LiteralPath $_).Contains('<PackageVersion>', [StringComparison]::Ordinal)
+        (Get-Content -Raw -LiteralPath $_).IndexOf(
+            '<PackageVersion>',
+            [StringComparison]::Ordinal) -ge 0
     }
 if ($explicitProjectVersions.Count -ne 0) {
     throw "PackageVersion must be owned by Directory.Build.props, not project files: $($explicitProjectVersions -join ', ')"
@@ -109,7 +111,7 @@ try {
             }
             foreach ($dependency in $nuspec.SelectNodes("//*[local-name()='dependency']")) {
                 if ($dependency.id.StartsWith('CopperSharp.', [StringComparison]::Ordinal) -and
-                    -not $dependency.version.Contains($packageVersion, [StringComparison]::Ordinal)) {
+                    $dependency.version.IndexOf($packageVersion, [StringComparison]::Ordinal) -lt 0) {
                     throw "$package dependency $($dependency.id) has version '$($dependency.version)' instead of '$packageVersion'."
                 }
             }
@@ -151,7 +153,7 @@ try {
             try {
                 $packageText = $reader.ReadToEnd()
                 foreach ($forbiddenPath in $forbiddenPackagePaths) {
-                    if ($packageText.Contains($forbiddenPath, [StringComparison]::OrdinalIgnoreCase)) {
+                    if ($packageText.IndexOf($forbiddenPath, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
                         throw "$sdkPackage entry $($entry.FullName) contains build-host path '$forbiddenPath'."
                     }
                 }
@@ -220,12 +222,12 @@ try {
         "CPU M68000",
         "FORMAT Hunk"
     )) {
-        if (-not $map.Contains($provenanceLine, [StringComparison]::Ordinal)) {
+        if ($map.IndexOf($provenanceLine, [StringComparison]::Ordinal) -lt 0) {
             throw "$mapPath does not contain deterministic provenance '$provenanceLine'."
         }
     }
-    if ($map.Contains($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or
-        $map.Contains($auditRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($map.IndexOf($repoRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+        $map.IndexOf($auditRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
         throw "$mapPath contains a build-host path."
     }
     $frameworkReportPath = $hunkPath + ".framework.json"
@@ -291,7 +293,7 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "The legacy Copper68k* alias build failed: $legacyBuildOutput"
     }
-    if (-not $legacyBuildOutput.Contains("C68KSDK001", [StringComparison]::Ordinal) -or
+    if ($legacyBuildOutput.IndexOf("C68KSDK001", [StringComparison]::Ordinal) -lt 0 -or
         -not (Test-Path -LiteralPath $legacyBuildPath -PathType Leaf)) {
         throw "The legacy Copper68k* alias did not warn and emit through the packaged compiler."
     }
@@ -305,9 +307,9 @@ try {
             "-p:CopperSharpOutputPath=$cpuOutput" `
             "-p:CopperSharpFrameworkReportPath=$cpuOutput.framework.json"
         $expectedCpu = "CPU M$cpu"
-        if (-not (Get-Content -Raw -LiteralPath ($cpuOutput + ".map")).Contains(
+        if ((Get-Content -Raw -LiteralPath ($cpuOutput + ".map")).IndexOf(
             $expectedCpu,
-            [StringComparison]::Ordinal)) {
+            [StringComparison]::Ordinal) -lt 0) {
             throw "The CPU matrix output for $cpu does not contain '$expectedCpu'."
         }
     }
@@ -320,10 +322,10 @@ try {
     $compatibleProject = Join-Path $repoRoot "Compiler.Tests.PackageConsumers\Compatible\Compatible.csproj"
     $compatibleIntermediate = Join-Path $auditRoot "compatible-obj"
     Invoke-DotNet restore $compatibleProject --configfile $nugetConfig `
-        "-p:BaseIntermediateOutputPath=$compatibleIntermediate\"
+        "-p:BaseIntermediateOutputPath=$compatibleIntermediate/"
     Invoke-DotNet publish $compatibleProject -c $Configuration --no-restore --nologo `
-        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')\" `
-        "-p:BaseIntermediateOutputPath=$compatibleIntermediate\"
+        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')/" `
+        "-p:BaseIntermediateOutputPath=$compatibleIntermediate/"
     $compatibleHunk = Join-Path $auditRoot "compatible-bin\Release\net10.0\amiga-m68k\publish\Compatible.hunk"
     if (-not (Test-Path -LiteralPath $compatibleHunk -PathType Leaf)) {
         throw "The compatible package consumer did not produce $compatibleHunk."
@@ -336,37 +338,37 @@ try {
     $formatMatrixRoot = Join-Path $auditRoot "format-matrix"
     $assemblyOutput = Join-Path $formatMatrixRoot "Compatible.s"
     Invoke-DotNet publish $compatibleProject -c $Configuration --no-restore --nologo `
-        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')\" `
-        "-p:BaseIntermediateOutputPath=$compatibleIntermediate\" `
+        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')/" `
+        "-p:BaseIntermediateOutputPath=$compatibleIntermediate/" `
         "-p:CopperSharpOutputFormat=asm" `
         "-p:CopperSharpRuntimeProfile=freestanding" `
         "-p:CopperSharpOutputPath=$assemblyOutput" `
         "-p:CopperSharpFrameworkReportPath=$assemblyOutput.framework.json"
     $assemblyMap = Get-Content -Raw -LiteralPath ($assemblyOutput + ".map")
-    if (-not $assemblyMap.Contains("FORMAT Assembly", [StringComparison]::Ordinal) -or
-        -not $assemblyMap.Contains("PROFILE Freestanding", [StringComparison]::Ordinal)) {
+    if ($assemblyMap.IndexOf("FORMAT Assembly", [StringComparison]::Ordinal) -lt 0 -or
+        $assemblyMap.IndexOf("PROFILE Freestanding", [StringComparison]::Ordinal) -lt 0) {
         throw "Assembler publish did not map the requested format and profile."
     }
 
     $romOutput = Join-Path $formatMatrixRoot "Compatible.rom"
     Invoke-DotNet publish $compatibleProject -c $Configuration --no-restore --nologo `
-        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')\" `
-        "-p:BaseIntermediateOutputPath=$compatibleIntermediate\" `
+        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')/" `
+        "-p:BaseIntermediateOutputPath=$compatibleIntermediate/" `
         "-p:CopperSharpOutputFormat=rom" `
         "-p:CopperSharpRuntimeProfile=rom" `
         "-p:CopperSharpOutputPath=$romOutput" `
         "-p:CopperSharpFrameworkReportPath=$romOutput.framework.json"
     $romMap = Get-Content -Raw -LiteralPath ($romOutput + ".map")
     if ((Get-Item -LiteralPath $romOutput).Length -ne 524288 -or
-        -not $romMap.Contains("FORMAT KickstartRom", [StringComparison]::Ordinal) -or
-        -not $romMap.Contains("PROFILE Rom", [StringComparison]::Ordinal)) {
+        $romMap.IndexOf("FORMAT KickstartRom", [StringComparison]::Ordinal) -lt 0 -or
+        $romMap.IndexOf("PROFILE Rom", [StringComparison]::Ordinal) -lt 0) {
         throw "ROM publish did not emit the requested 512 KiB ROM/profile."
     }
 
     $incompatibleProject = Join-Path $repoRoot "Compiler.Tests.PackageConsumers\Incompatible\Incompatible.csproj"
     $incompatibleIntermediate = Join-Path $auditRoot "incompatible-obj"
     Invoke-DotNet restore $incompatibleProject --configfile $nugetConfig `
-        "-p:BaseIntermediateOutputPath=$incompatibleIntermediate\"
+        "-p:BaseIntermediateOutputPath=$incompatibleIntermediate/"
     $incompatibleHunk = Join-Path $auditRoot "incompatible-bin\Release\net10.0\amiga-m68k\publish\Incompatible.hunk"
     $incompatibleHunkDirectory = Split-Path -Parent $incompatibleHunk
     New-Item -ItemType Directory -Path $incompatibleHunkDirectory -Force | Out-Null
@@ -374,12 +376,14 @@ try {
     [System.IO.File]::WriteAllBytes($incompatibleHunk, $sentinel)
     Assert-DotNetFailure "System.String::Concat" @(
         "publish", $incompatibleProject, "-c", $Configuration, "--no-restore", "--nologo",
-        "-p:BaseOutputPath=$(Join-Path $auditRoot 'incompatible-bin')\",
-        "-p:BaseIntermediateOutputPath=$incompatibleIntermediate\")
-    if (-not $script:LastDotNetFailureOutput.Contains("Root path:", [StringComparison]::Ordinal)) {
+        "-p:BaseOutputPath=$(Join-Path $auditRoot 'incompatible-bin')/",
+        "-p:BaseIntermediateOutputPath=$incompatibleIntermediate/")
+    if ($script:LastDotNetFailureOutput.IndexOf("Root path:", [StringComparison]::Ordinal) -lt 0) {
         throw "The incompatible package diagnostic did not contain a rooting path."
     }
-    if ([Convert]::ToHexString([System.IO.File]::ReadAllBytes($incompatibleHunk)) -ne [Convert]::ToHexString($sentinel)) {
+    if (-not [System.Collections.StructuralComparisons]::StructuralEqualityComparer.Equals(
+        [System.IO.File]::ReadAllBytes($incompatibleHunk),
+        $sentinel)) {
         throw "The failed package publish replaced the previous target artifact."
     }
 

@@ -1676,6 +1676,38 @@ internal static class FrameworkBindingRegistry
 			Member(
 				"System.Runtime",
 				"System.TimeSpan",
+				".ctor",
+				isInstance: true,
+				Void,
+				Int64),
+			"platform:amiga-timespan-ctor",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowTimeSpan",
+				"Initialize"),
+			Effects(FrameworkEffects.WritesManagedMemory));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.TimeSpan",
+				"FromTicks",
+				isInstance: false,
+				TimeSpan,
+				Int64),
+			"platform:amiga-timespan-from-ticks",
+			new FrameworkShadowMethod(
+				"CopperSharp.Runtime.AmigaPal",
+				"CopperSharp.Runtime.AmigaPal.ShadowTimeSpan",
+				"FromTicks"),
+			Effects(
+				FrameworkEffects.WritesManagedMemory,
+				FrameworkFeature.NativeMemory));
+		AddPlatform(
+			bindings,
+			Member(
+				"System.Runtime",
+				"System.TimeSpan",
 				"get_Ticks",
 				isInstance: true,
 				Int64),
@@ -1687,6 +1719,54 @@ internal static class FrameworkBindingRegistry
 			Effects(
 				FrameworkEffects.ReadsManagedMemory,
 				FrameworkFeature.NativeMemory));
+		foreach (var (memberName, targetName, shadowName) in new[]
+		{
+			("get_Days", "platform:amiga-timespan-days", "GetDays"),
+			("get_Hours", "platform:amiga-timespan-hours", "GetHours"),
+			("get_Minutes", "platform:amiga-timespan-minutes", "GetMinutes"),
+			("get_Seconds", "platform:amiga-timespan-seconds", "GetSeconds"),
+			("get_Milliseconds", "platform:amiga-timespan-milliseconds", "GetMilliseconds")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					"System.TimeSpan",
+					memberName,
+					isInstance: true,
+					Int32),
+				targetName,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ShadowTimeSpan",
+					shadowName),
+				Effects(FrameworkEffects.ReadsManagedMemory));
+		}
+		foreach (var (memberName, targetName, shadowName) in new[]
+		{
+			("get_TotalDays", "platform:amiga-timespan-total-days", "GetTotalDays"),
+			("get_TotalHours", "platform:amiga-timespan-total-hours", "GetTotalHours"),
+			("get_TotalMinutes", "platform:amiga-timespan-total-minutes", "GetTotalMinutes"),
+			("get_TotalSeconds", "platform:amiga-timespan-total-seconds", "GetTotalSeconds"),
+			("get_TotalMilliseconds", "platform:amiga-timespan-total-milliseconds", "GetTotalMilliseconds")
+		})
+		{
+			AddPlatform(
+				bindings,
+				Member(
+					"System.Runtime",
+					"System.TimeSpan",
+					memberName,
+					isInstance: true,
+					Double),
+				targetName,
+				new FrameworkShadowMethod(
+					"CopperSharp.Runtime.AmigaPal",
+					"CopperSharp.Runtime.AmigaPal.ShadowTimeSpan",
+					shadowName),
+				Effects(FrameworkEffects.ReadsManagedMemory));
+		}
 		foreach (var (memberName, targetName, shadowName) in new[]
 		{
 			("op_Equality", "platform:amiga-timespan-equality", "Equal"),

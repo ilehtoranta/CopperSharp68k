@@ -4,11 +4,43 @@
  */
 
 using CopperSharp.Runtime;
+using CopperSharp.Runtime.AmigaPal;
 
 namespace CopperSharp.Compiler.Tests;
 
 public sealed class ManagedRuntimeShadowTests
 {
+	[Theory]
+	[InlineData(0L)]
+	[InlineData(1L)]
+	[InlineData(-1L)]
+	[InlineData(864_000_000_000L)]
+	[InlineData(-864_000_000_000L)]
+	[InlineData(long.MaxValue)]
+	[InlineData(long.MinValue)]
+	public void ShadowTimeSpanTotalsMatchCoreLib(long ticks)
+	{
+		var shadow = default(ShadowTimeSpan);
+		shadow.Initialize(ticks);
+		var expected = TimeSpan.FromTicks(ticks);
+
+		Assert.Equal(
+			BitConverter.DoubleToInt64Bits(expected.TotalDays),
+			BitConverter.DoubleToInt64Bits(shadow.GetTotalDays()));
+		Assert.Equal(
+			BitConverter.DoubleToInt64Bits(expected.TotalHours),
+			BitConverter.DoubleToInt64Bits(shadow.GetTotalHours()));
+		Assert.Equal(
+			BitConverter.DoubleToInt64Bits(expected.TotalMinutes),
+			BitConverter.DoubleToInt64Bits(shadow.GetTotalMinutes()));
+		Assert.Equal(
+			BitConverter.DoubleToInt64Bits(expected.TotalSeconds),
+			BitConverter.DoubleToInt64Bits(shadow.GetTotalSeconds()));
+		Assert.Equal(
+			BitConverter.DoubleToInt64Bits(expected.TotalMilliseconds),
+			BitConverter.DoubleToInt64Bits(shadow.GetTotalMilliseconds()));
+	}
+
 	[Fact]
 	public void ShadowStringFormatRejectsOverflowingArgumentIndex()
 	{
@@ -17,6 +49,10 @@ public sealed class ManagedRuntimeShadowTests
 		Assert.Throws<FormatException>(() =>
 			ShadowStringFormat.Format1("{2147483648}", 42));
 	}
+
+	[Fact]
+	public void ShadowExceptionToStringIsCompactAndDeterministic() =>
+		Assert.Equal("System.Exception", new ShadowException().ToString());
 
 	[Fact]
 	public void ShadowIntegerFormatterPacksInvariantDecimalWithoutAllocation()

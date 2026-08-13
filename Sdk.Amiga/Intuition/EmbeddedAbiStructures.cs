@@ -64,9 +64,9 @@ public struct LayerInfo
 	public MinList GraphicsSemaphoreHead;
 	public short PrivateReserve3;
 	public APTR PrivateReserve4;
-	public LayerFlags Flags;
+	public LayerInfoFlags Flags;
 	public sbyte FattenCount;
-	public byte LockLayersCount;
+	public sbyte LockLayersCount;
 	public short PrivateReserve5;
 	public APTR BlankHook;
 	public APTR Extra;

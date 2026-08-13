@@ -153,6 +153,16 @@ public class ShadowObject
 }
 
 /// <summary>
+/// Compact exception formatting used by the experimental official-body profile.
+/// The target runtime deliberately does not materialize stack traces or reflection metadata.
+/// </summary>
+public class ShadowException
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public override string ToString() => "System.Exception";
+}
+
+/// <summary>
 /// Per-closed-element cache used to preserve the singleton contract of
 /// <see cref="Array.Empty{T}"/> without importing the CoreLib cache graph.
 /// </summary>

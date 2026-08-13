@@ -196,6 +196,14 @@ public static class ExecLayout
 		public const int Init = 22;
 	}
 
+	public static class ResidentAutoInit
+	{
+		public const int DataSize = 0;
+		public const int FunctionTable = 4;
+		public const int StructureTable = 8;
+		public const int InitFunction = 12;
+	}
+
 	public static class MinList
 	{
 		public const int Head = 0;

@@ -255,6 +255,50 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void FrameOmitsAllocatedCalleeSavedValueRemovedFromFinalIr()
+	{
+		var function = new M68kMachineFunction("dead-callee-save", 0);
+		var block = AddBlock(function, 0, 0);
+		var live = CreateLong(function);
+		var removed = CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			0,
+			definitions: [live.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			1,
+			uses: [live.Id]));
+		var allocation = new M68kAllocationResult(
+			new Dictionary<int, M68kAllocatedLocation>
+			{
+				[live.Id] = new(M68kRegister.D2, IsPair: false),
+				[removed.Id] = new(M68kRegister.D3, IsPair: false)
+			},
+			new HashSet<int>());
+
+		var frame = M68kAllocatedFramePlanner.Create(
+			function,
+			allocation,
+			new M68kSpillLayout(
+				new Dictionary<int, M68kSpillSlot>(),
+				new HashSet<int>(),
+				FrameBytes: 0),
+			new M68kSafepointPlan(
+				[],
+				new Dictionary<int, int>(),
+				FirstRootSlot: 0,
+				RootSlotCount: 0),
+			new M68kParallelCopyPlan(
+				new Dictionary<
+					(int From, int To),
+					IReadOnlyList<M68kParallelCopy>>(),
+				NeedsTemporarySlot: false));
+
+		Assert.Equal([M68kRegister.D2], frame.CalleeSavedRegisters);
+	}
+
+	[Fact]
 	public void FinalDestinationsRetainSemanticForwarders()
 	{
 		var function = new M68kMachineFunction("final-destinations-effects", 0);

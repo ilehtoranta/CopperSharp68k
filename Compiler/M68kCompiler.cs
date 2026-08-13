@@ -35,6 +35,7 @@ public static class M68kCompiler
 			GetManagedAssemblyPaths(request),
 			implementationPack);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
+		var exports = SelectExports(module, request.IncludedExportNames);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
 				? ResolveManagedPoolRuntime(module)
@@ -43,7 +44,7 @@ public static class M68kCompiler
 		var (analysis, _) = AnalyzeFrameworkAndLifecycles(
 			module,
 			entry,
-			module.GetExports(),
+			exports,
 			managedPoolRuntime,
 			request);
 		return analysis;
@@ -66,6 +67,7 @@ public static class M68kCompiler
 			managedAssemblyPaths,
 			implementationPack);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
+		var exports = SelectExports(module, request.IncludedExportNames);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
 				? ResolveManagedPoolRuntime(module)
@@ -73,7 +75,7 @@ public static class M68kCompiler
 		var (frameworkAnalysis, managedLifecycles) = AnalyzeFrameworkAndLifecycles(
 			module,
 			entry,
-			module.GetExports(),
+			exports,
 			managedPoolRuntime,
 			request);
 		ThrowIfFrameworkIncompatible(frameworkAnalysis);
@@ -86,10 +88,12 @@ public static class M68kCompiler
 			module,
 			entry,
 			request,
+			exports,
 			managedLifecycles.SelectMany(static lifecycle => lifecycle.Methods));
 		var generated = new M68kCodeGenerator(
 			module,
 			request,
+			exports,
 			managedPoolRuntime,
 			managedLifecycles).Generate(entry);
 
@@ -102,6 +106,43 @@ public static class M68kCompiler
 				M68kDiagnosticIds.InvalidOutputOptions,
 				$"Unknown output format {request.OutputFormat}.")
 		};
+	}
+
+	private static IReadOnlyList<CilExport> SelectExports(
+		CompilationModule module,
+		IReadOnlyList<string>? includedExportNames)
+	{
+		var exports = module.GetExports();
+		if (includedExportNames is null)
+		{
+			return exports;
+		}
+
+		var requested = new HashSet<string>(StringComparer.Ordinal);
+		foreach (var name in includedExportNames)
+		{
+			if (string.IsNullOrWhiteSpace(name) || !requested.Add(name))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					"Included export names must be non-empty and unique.");
+			}
+		}
+
+		var selected = exports
+			.Where(export => requested.Contains(export.Name))
+			.ToArray();
+		if (selected.Length != requested.Count)
+		{
+			var declared = exports.Select(static export => export.Name)
+				.ToHashSet(StringComparer.Ordinal);
+			var missing = requested.Where(name => !declared.Contains(name))
+				.Order(StringComparer.Ordinal);
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Included export name(s) are not declared: {string.Join(", ", missing)}.");
+		}
+		return selected;
 	}
 
 	private static (

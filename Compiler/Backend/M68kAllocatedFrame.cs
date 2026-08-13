@@ -92,7 +92,20 @@ internal static class M68kAllocatedFramePlanner
 			parallelCopyTemporaryOffset = nextOffset;
 			nextOffset = checked(nextOffset + 4);
 		}
-		var calleeSaved = allocation.Registers.Values
+		// Allocation results may retain a location for a value removed by a late
+		// machine-IR cleanup.  Do not let such stale locations enlarge the ABI
+		// save mask; only values still referenced by the final function need to
+		// contribute occupied registers.
+		var referencedValues = function.Blocks
+			.SelectMany(static block =>
+				block.Phis.SelectMany(static phi =>
+					phi.Inputs.Values.Append(phi.Definition))
+				.Concat(block.Instructions.SelectMany(static instruction =>
+					instruction.Uses.Concat(instruction.Definitions))))
+			.ToHashSet();
+		var calleeSaved = allocation.Registers
+			.Where(location => referencedValues.Contains(location.Key))
+			.Select(static location => location.Value)
 			.SelectMany(static location =>
 				location.OccupiedRegisters.Enumerate())
 			.Concat(function.Blocks

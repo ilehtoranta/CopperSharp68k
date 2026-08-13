@@ -281,6 +281,22 @@ public struct Resident
 	public APTR Init;
 }
 
+/// <summary>
+/// Four-longword table referenced by an <see cref="ResidentFlags.AutoInit"/>
+/// resident. Exec uses it to allocate the positive library base, install the
+/// function table, apply the optional InitStruct table, and call InitFunction.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct ResidentAutoInit
+{
+	public const uint Size = 16;
+
+	public uint DataSize;
+	public APTR FunctionTable;
+	public APTR StructureTable;
+	public APTR InitFunction;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct SemaphoreMessage
 {

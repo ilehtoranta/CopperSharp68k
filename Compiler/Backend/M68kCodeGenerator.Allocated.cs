@@ -508,6 +508,30 @@ internal sealed partial class M68kCodeGenerator
 				value = copy.Definitions[0];
 			}
 			while (true);
+			var finalUsers = instructions
+				.Where(instruction => instruction.Uses.Contains(value))
+				.ToArray();
+			if (finalUsers is [var call] &&
+				call.Operation == M68kMachineOperation.Call &&
+				call.SourceInstruction is { Operand: int token } callSource)
+			{
+				var target = _module.ResolveMethodToken(
+					token,
+					method,
+					callSource.Offset);
+				if (target.Definition is { } definition &&
+					GetInternalRegisterAbi(definition) is { } inlineAbi &&
+					TryGetInlineCandidate(definition, inlineAbi, out var candidate) &&
+					candidate.Kind == InlineCandidateKind.ConstantAddressWriteWord)
+				{
+					_allocatedSuppressedInstructions.Add(constant.Id);
+					foreach (var copy in forwarding)
+					{
+						_allocatedSuppressedInstructions.Add(copy.Id);
+					}
+					continue;
+				}
+			}
 			if (forwarding.Count != 0)
 			{
 				_allocatedSuppressedInstructions.Add(constant.Id);
@@ -2051,6 +2075,21 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Compare:
+				if (allocated.Function.Values[instruction.Uses[0]].Kind ==
+					CilStackValueKind.Int64)
+				{
+					if (instruction.Definitions.Length != 1)
+					{
+						throw new InvalidOperationException(
+							"Int64 comparison must materialize one Boolean result.");
+					}
+					EmitAllocatedInt64Comparison(
+						instruction.SourceInstruction!.OpCode,
+						Location(instruction.Uses[1]).Register,
+						Location(instruction.Uses[0]).Register,
+						Location(instruction.Definitions[0]).Register);
+					return;
+				}
 				EmitAllocatedCompare(
 					Location(instruction.Uses[0]).Register,
 					Location(instruction.Uses[1]).Register,
@@ -4478,6 +4517,7 @@ internal sealed partial class M68kCodeGenerator
 			.OrderBy(static home => home.Index))
 		{
 			var source = abi.Arguments[home.Index];
+			var pushedFrameDelta = UsesAllocatedFrameAnchor ? 0 : 4;
 			if (home.Size > 4)
 			{
 				if (!source.IsStack || source.SlotLongs * 4 != home.Size)
@@ -4496,7 +4536,8 @@ internal sealed partial class M68kCodeGenerator
 						M68kMachineValueWidth.Long,
 						checked(AllocatedFrameOffset(
 							allocated,
-							allocated.Frame.ArgumentHomeOffsets[home.Index]) + 4 + offset));
+							allocated.Frame.ArgumentHomeOffsets[home.Index]) +
+							pushedFrameDelta + offset));
 				}
 				_assembler.EmitWord(0x2E1F); // MOVE.L (A7)+,D7
 				continue;
@@ -4506,15 +4547,28 @@ internal sealed partial class M68kCodeGenerator
 				throw new InvalidOperationException(
 					$"Allocated argument home {home.Index} has unsupported size {home.Size}.");
 			}
-			var register = source.Register ?? M68kRegister.D7;
 			if (source.Register is null)
 			{
+				// D7 is callee-saved by the internal ABI. A stack argument home is
+				// emitted after frame allocation and is not represented in machine
+				// IR, so using D7 as an implicit scratch would otherwise escape the
+				// allocated frame's save-mask discovery and corrupt caller-live state.
+				EmitAllocatedPush(M68kRegister.D7);
 				EmitAllocatedStackLoad(
-					register,
-					checked(savedBytes + 4 + source.StackOffset));
+					M68kRegister.D7,
+					checked(savedBytes + 8 + source.StackOffset));
+				EmitAllocatedFrameStore(
+					M68kRegister.D7,
+					M68kMachineValueWidth.Long,
+					checked(AllocatedFrameOffset(
+						allocated,
+						allocated.Frame.ArgumentHomeOffsets[home.Index]) +
+						pushedFrameDelta));
+				_assembler.EmitWord(0x2E1F); // MOVE.L (A7)+,D7
+				continue;
 			}
 			EmitAllocatedFrameStore(
-				register,
+				source.Register.Value,
 				M68kMachineValueWidth.Long,
 				AllocatedFrameOffset(
 					allocated,
@@ -4823,7 +4877,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x23FC); // MOVE.L #initializing,state
 		_assembler.EmitLong(1);
 		_assembler.EmitAddress(stateLabel);
-		_assembler.EmitBsr(MethodLabel(initializer));
+		_assembler.EmitCall(MethodLabel(initializer));
 		RegisterCurrentUnwindSite(
 			exception: true,
 			gc: true,
@@ -5189,6 +5243,60 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return;
 		}
+		if (GetInternalRegisterAbi(definition) is { } inlineAbi &&
+			TryGetInlineCandidate(definition, inlineAbi, out var inlineCandidate) &&
+			inlineCandidate.Kind is InlineCandidateKind.ConstantAddressReadByte or
+				InlineCandidateKind.ConstantAddressReadWord or
+				InlineCandidateKind.ConstantAddressWriteWord)
+		{
+			if (inlineCandidate.Kind == InlineCandidateKind.ConstantAddressWriteWord)
+			{
+				if (TryGetAllocatedConstant(
+						allocated.Function,
+						instruction.Uses[0],
+						out var constant))
+				{
+					var value = (ushort)(((ushort)constant & inlineCandidate.AndMask) |
+						inlineCandidate.OrMask);
+					_assembler.EmitWord(0x33FC); // MOVE.W #imm,abs.l
+					_assembler.EmitWord(value);
+					_assembler.EmitLong(inlineCandidate.Address);
+					return;
+				}
+
+				var sourceRegister = allocated.Allocation.Registers[
+					instruction.Uses[0]].Register;
+				EmitAllocatedMove(
+					sourceRegister,
+					M68kRegister.D0,
+					M68kMachineValueWidth.Word);
+				if (inlineCandidate.AndMask != ushort.MaxValue)
+				{
+					_assembler.EmitWord(0x0240); // ANDI.W #mask,D0
+					_assembler.EmitWord(inlineCandidate.AndMask);
+				}
+				if (inlineCandidate.OrMask != 0)
+				{
+					_assembler.EmitWord(0x0040); // ORI.W #mask,D0
+					_assembler.EmitWord(inlineCandidate.OrMask);
+				}
+				_assembler.EmitWord(0x33C0); // MOVE.W D0,abs.l
+				_assembler.EmitLong(inlineCandidate.Address);
+				return;
+			}
+
+			var destination = allocated.Allocation.Registers[
+				instruction.Definitions[0]].Register;
+			EmitAllocatedImmediate(0, destination);
+			var destinationEa = (int)destination << 9;
+			_assembler.EmitWord((ushort)(
+				(inlineCandidate.Kind == InlineCandidateKind.ConstantAddressReadByte
+					? 0x1039
+					: 0x3039) |
+				destinationEa));
+			_assembler.EmitLong(inlineCandidate.Address);
+			return;
+		}
 		if (IsAlwaysInlinedMethod(definition))
 		{
 			if (TryGetConstantReturnBody(definition, out var constant))
@@ -5215,6 +5323,13 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (definition.ExternalCall is { } externalCall)
 		{
+			if (externalCall.Convention.BaseSource != M68kExternalBaseSource.Argument)
+			{
+				// CIL platform-base analysis cannot observe physical register writes
+				// introduced by allocation. Reload a non-argument base at the call
+				// boundary so an allocated A6 definition cannot stale the proof.
+				_loadedPlatformBase = null;
+			}
 			EmitEnsurePlatformBase(externalCall.Convention, definition);
 			var callOffset = _assembler.Offset;
 			EmitBaseRelativeJsr(
@@ -5230,7 +5345,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitJsr(definition.ImportName!, external: true);
 			return;
 		}
-		_assembler.EmitBsr(MethodLabel(definition));
+		_assembler.EmitCall(MethodLabel(definition));
 		RegisterCurrentUnwindSite(instruction.MayThrow, instruction.IsSafepoint);
 		PreservePlatformBaseAcrossInternalCall();
 	}
@@ -7707,7 +7822,7 @@ internal sealed partial class M68kCodeGenerator
 				literal,
 				caller,
 				instruction.IlOffset);
-			if (!_module.GetExports().Any(export => export.Name == exportName))
+			if (!_exports.Any(export => export.Name == exportName))
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnresolvedImport,
@@ -10166,6 +10281,70 @@ internal sealed partial class M68kCodeGenerator
 			0xB1C0 |
 			(destination << 9) |
 			AllocatedRegisterEa(right)));
+	}
+
+	private void EmitAllocatedInt64Comparison(
+		OpCode op,
+		M68kRegister left,
+		M68kRegister right,
+		M68kRegister destination)
+	{
+		var isTrue = UniqueLabel("compare-i64-true");
+		var isFalse = UniqueLabel("compare-i64-false");
+		var complete = UniqueLabel("compare-i64-complete");
+
+		EmitAllocatedCompare(left, right, M68kMachineValueWidth.Long);
+		if (op == OpCodes.Ceq)
+		{
+			_assembler.EmitBranch(M68kCondition.NotEqual, isFalse);
+			EmitAllocatedCompare(
+				(M68kRegister)((int)left + 1),
+				(M68kRegister)((int)right + 1),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Equal, isTrue);
+			_assembler.EmitBranch(M68kCondition.True, isFalse);
+		}
+		else if (op == OpCodes.Clt || op == OpCodes.Clt_Un)
+		{
+			_assembler.EmitBranch(
+				op == OpCodes.Clt ? M68kCondition.LessThan : M68kCondition.CarrySet,
+				isTrue);
+			_assembler.EmitBranch(
+				op == OpCodes.Clt ? M68kCondition.GreaterThan : M68kCondition.Higher,
+				isFalse);
+			EmitAllocatedCompare(
+				(M68kRegister)((int)left + 1),
+				(M68kRegister)((int)right + 1),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.CarrySet, isTrue);
+			_assembler.EmitBranch(M68kCondition.True, isFalse);
+		}
+		else if (op == OpCodes.Cgt || op == OpCodes.Cgt_Un)
+		{
+			_assembler.EmitBranch(
+				op == OpCodes.Cgt ? M68kCondition.GreaterThan : M68kCondition.Higher,
+				isTrue);
+			_assembler.EmitBranch(
+				op == OpCodes.Cgt ? M68kCondition.LessThan : M68kCondition.CarrySet,
+				isFalse);
+			EmitAllocatedCompare(
+				(M68kRegister)((int)left + 1),
+				(M68kRegister)((int)right + 1),
+				M68kMachineValueWidth.Long);
+			_assembler.EmitBranch(M68kCondition.Higher, isTrue);
+			_assembler.EmitBranch(M68kCondition.True, isFalse);
+		}
+		else
+		{
+			throw new InvalidOperationException($"Unsupported Int64 comparison {op.Name}.");
+		}
+
+		_assembler.Mark(isTrue);
+		EmitAllocatedImmediate(1, destination);
+		_assembler.EmitBranch(M68kCondition.True, complete);
+		_assembler.Mark(isFalse);
+		EmitAllocatedImmediate(0, destination);
+		_assembler.Mark(complete);
 	}
 
 	private void EmitAllocatedConditionResult(

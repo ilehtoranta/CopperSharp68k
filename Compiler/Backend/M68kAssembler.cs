@@ -370,6 +370,17 @@ internal sealed class M68kAssembler
 		_branches.Add(new BranchFixup(opcodeOffset, target));
 	}
 
+	public void EmitCall(string target)
+	{
+		if (!target.StartsWith("method:", StringComparison.Ordinal))
+		{
+			throw new ArgumentException(
+				"Relaxable long-range calls require a compiler-owned method label.",
+				nameof(target));
+		}
+		EmitJsr(target, external: false);
+	}
+
 	public void EmitJsr(string target, bool external)
 	{
 		EmitWord(0x4EB9);
@@ -418,13 +429,16 @@ internal sealed class M68kAssembler
 	public void OptimizeForCpu(
 		M68kCpuTarget cpu,
 		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto,
-		IReadOnlyList<M68kLoopLayout>? sizeFirstLoops = null) =>
+		IReadOnlyList<M68kLoopLayout>? sizeFirstLoops = null,
+		M68kPeepholeOptimizationMode peepholeOptimization =
+			M68kPeepholeOptimizationMode.FixedPoint) =>
 		new M68kOptimizerPipeline(
 			this,
 			_buffer,
 			cpu,
 			clrPolicy,
-			sizeFirstLoops).Run();
+			sizeFirstLoops,
+			peepholeOptimization).Run();
 
 	internal void RelaxBranches()
 	{
@@ -621,7 +635,10 @@ internal sealed class M68kAssembler
 			_buffer.WriteWord(opcodeOffset + 2, 0);
 			_addresses.RemoveAt(index);
 			_buffer.RemoveBytes(opcodeOffset + 4, 2);
-			_branches.Add(new BranchFixup(opcodeOffset, address.Target, CanRelaxToShort: false));
+			_branches.Add(new BranchFixup(
+				opcodeOffset,
+				address.Target,
+				CanRelaxToShort: opcode == 0x4EB9));
 			return true;
 		}
 

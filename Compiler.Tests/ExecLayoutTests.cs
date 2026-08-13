@@ -28,6 +28,7 @@ public sealed class ExecLayoutTests
 	[InlineData(typeof(IORequest), 32u)]
 	[InlineData(typeof(IOStdReq), 48u)]
 	[InlineData(typeof(Resident), 26u)]
+	[InlineData(typeof(ResidentAutoInit), 16u)]
 	[InlineData(typeof(SemaphoreMessage), 24u)]
 	[InlineData(typeof(Amiga.Semaphore), 36u)]
 	[InlineData(typeof(TaskTrapMessage), 40u)]
@@ -130,6 +131,11 @@ public sealed class ExecLayoutTests
 			(nameof(Resident.Version), 11), (nameof(Resident.Type), 12),
 			(nameof(Resident.Priority), 13), (nameof(Resident.Name), 14),
 			(nameof(Resident.IdString), 18), (nameof(Resident.Init), 22));
+		AssertOffsets<ResidentAutoInit>(
+			(nameof(ResidentAutoInit.DataSize), 0),
+			(nameof(ResidentAutoInit.FunctionTable), 4),
+			(nameof(ResidentAutoInit.StructureTable), 8),
+			(nameof(ResidentAutoInit.InitFunction), 12));
 	}
 
 	[Fact]
@@ -250,6 +256,7 @@ public sealed class ExecLayoutTests
 	[InlineData(typeof(IORequest), typeof(ExecLayout.IORequest))]
 	[InlineData(typeof(IOStdReq), typeof(ExecLayout.IOStdReq))]
 	[InlineData(typeof(Resident), typeof(ExecLayout.Resident))]
+	[InlineData(typeof(ResidentAutoInit), typeof(ExecLayout.ResidentAutoInit))]
 	[InlineData(typeof(MinList), typeof(ExecLayout.MinList))]
 	[InlineData(typeof(SemaphoreRequest), typeof(ExecLayout.SemaphoreRequest))]
 	[InlineData(typeof(SignalSemaphore), typeof(ExecLayout.SignalSemaphore))]

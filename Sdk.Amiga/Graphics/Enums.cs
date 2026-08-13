@@ -5,6 +5,15 @@
 
 namespace Amiga;
 
+/// <summary>V39 graphics.library GetBitMapAttr attribute selectors.</summary>
+public enum BitMapAttribute : uint
+{
+	Height = 0,
+	Depth = 4,
+	Width = 8,
+	Flags = 12,
+}
+
 [System.Flags]
 public enum GraphicsDisplayFlags : ushort
 {

@@ -23,8 +23,12 @@ internal static class FrameworkReachabilityAnalyzer
 		var members = new Dictionary<MemberObservationKey, MemberAccumulator>();
 		var managedAllocationSites = new HashSet<M68kManagedAllocationSite>();
 		var discoveredPaths = new Dictionary<CilMethodIdentity, IReadOnlyList<string>>();
+		var rootMethods = new HashSet<CilMethodIdentity>();
 		var reachableDispatchLayouts = new Dictionary<CilTypeIdentity, CilTypeLayout>();
 		var usedVirtualDeclarations = new Dictionary<
+			CilMethodIdentity,
+			(CilMethod Method, IReadOnlyList<string> RootPath)>();
+		var usedInterfaceDeclarations = new Dictionary<
 			CilMethodIdentity,
 			(CilMethod Method, IReadOnlyList<string> RootPath)>();
 		var pending = new Queue<ReachableMethod>();
@@ -48,7 +52,7 @@ internal static class FrameworkReachabilityAnalyzer
 	ProcessPending:
 		while (pending.TryDequeue(out var reachable))
 		{
-			var method = reachable.Method;
+			var method = module.ApplyTargetRuntimeOverride(reachable.Method);
 			if (method.IsImport)
 			{
 				continue;
@@ -137,7 +141,10 @@ internal static class FrameworkReachabilityAnalyzer
 					method,
 					instruction.Offset);
 				var isFrameworkReference =
-					contract.IsFrameworkAssembly(exactIdentity.AssemblyName);
+					contract.IsFrameworkAssembly(exactIdentity.AssemblyName) ||
+					(module.FrameworkImplementationPack is not null &&
+					 FrameworkImplementationProfile.IsFrameworkImplementationCandidate(
+						exactIdentity));
 				MethodReference? target = null;
 				M68kCompilationException? resolutionFailure = null;
 				try
@@ -221,7 +228,16 @@ internal static class FrameworkReachabilityAnalyzer
 				{
 					continue;
 				}
-				if (target.Definition is { IsImport: false } virtualDefinition &&
+				if (instruction.ConstrainedTypeToken is null &&
+					target.Definition is
+						{ IsImport: false, DeclaringTypeIsInterface: true } interfaceDefinition &&
+					interfaceDefinition.Signature.Header.IsInstance)
+				{
+					usedInterfaceDeclarations.TryAdd(
+						interfaceDefinition.Identity,
+						(interfaceDefinition, reachable.RootPath));
+				}
+				else if (target.Definition is { IsImport: false } virtualDefinition &&
 					RequiresVirtualDispatch(instruction, virtualDefinition))
 				{
 					usedVirtualDeclarations.TryAdd(
@@ -231,6 +247,7 @@ internal static class FrameworkReachabilityAnalyzer
 
 				EnqueueTargets(
 					module,
+					method,
 					instruction,
 					target,
 					floatingPoint,
@@ -241,6 +258,20 @@ internal static class FrameworkReachabilityAnalyzer
 		var queuedClosedVirtual = false;
 		foreach (var layout in reachableDispatchLayouts.Values)
 		{
+			foreach (var item in usedInterfaceDeclarations.Values)
+			{
+				var interfaceDefinition = module.GetInterfaceDefinition(item.Method);
+				var implementation = module.TryGetInterfaceImplementation(
+					layout,
+					interfaceDefinition);
+				if (implementation is not null &&
+					EnqueueChild(
+						implementation.Methods[module.GetInterfaceSlot(item.Method)],
+						item.RootPath))
+				{
+					queuedClosedVirtual = true;
+				}
+			}
 			foreach (var item in usedVirtualDeclarations.Values)
 			{
 				var implementation = module.TryGetVirtualImplementation(
@@ -260,6 +291,7 @@ internal static class FrameworkReachabilityAnalyzer
 
 		void EnqueueRoot(CilMethod method)
 		{
+			rootMethods.Add(method.Identity);
 			var path = new[] { method.DisplayName };
 			if (discoveredPaths.TryAdd(method.Identity, path))
 			{
@@ -296,11 +328,14 @@ internal static class FrameworkReachabilityAnalyzer
 				.ThenBy(static site => site.Kind, StringComparer.Ordinal)
 				.ThenBy(static site => site.AllocatedType, StringComparer.Ordinal)
 				.ToArray(),
+			rootMethods.Count,
+			discoveredPaths.Count,
 			module.FrameworkImplementationPack?.Provenance);
 	}
 
 	private static void EnqueueTargets(
 		CompilationModule module,
+		CilMethod caller,
 		CilInstruction instruction,
 		MethodReference target,
 		M68kFloatingPointMode floatingPoint,
@@ -308,9 +343,17 @@ internal static class FrameworkReachabilityAnalyzer
 	{
 		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 		{
-			foreach (var implementation in module.GetInterfaceTableImplementations(interfaceMethod))
+			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 			{
-				enqueue(implementation);
+				enqueue(module.ResolveConstrainedInterfaceImplementation(
+					caller,
+					constrainedTypeToken,
+					instruction.Offset,
+					interfaceMethod));
+			}
+			else if (!interfaceMethod.Signature.Header.IsInstance && !interfaceMethod.IsAbstract)
+			{
+				enqueue(interfaceMethod);
 			}
 			return;
 		}
@@ -318,10 +361,6 @@ internal static class FrameworkReachabilityAnalyzer
 		if (target.Definition is { IsImport: false } definition &&
 			RequiresVirtualDispatch(instruction, definition))
 		{
-			foreach (var implementation in module.GetVirtualImplementations(definition))
-			{
-				enqueue(implementation);
-			}
 			return;
 		}
 

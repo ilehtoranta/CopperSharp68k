@@ -10,6 +10,43 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kInstructionDataflowTests
 {
+	[Fact(Timeout = 10_000)]
+	public void BoundedPeepholeCompletesManyIndependentSingleRewriteCandidates()
+	{
+		const int candidateCount = 4_096;
+		var first = ManyIndependentAddressZeroMoves(candidateCount);
+		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+		first.OptimizeForCpu(M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.Bounded);
+		stopwatch.Stop();
+
+		var firstInstructions = first.GetInstructionStream();
+		Assert.Equal(8, firstInstructions.Count(static instruction =>
+			instruction.Opcode == 0x91C8));
+		Assert.Equal(candidateCount - 8, firstInstructions.Count(static instruction =>
+			instruction.Opcode == 0x207C && instruction.ExtensionLong == 0));
+		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+			$"Bounded optimizer took {stopwatch.Elapsed.TotalSeconds:N3}s.");
+
+		var second = ManyIndependentAddressZeroMoves(candidateCount);
+		second.OptimizeForCpu(M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.Bounded);
+		Assert.Equal(first.GetInstructionStream(), second.GetInstructionStream());
+	}
+
+	private static M68kAssembler ManyIndependentAddressZeroMoves(int count)
+	{
+		var assembler = new M68kAssembler();
+		for (var index = 0; index < count; index++)
+		{
+			assembler.Mark($"candidate:{index}");
+			assembler.EmitWord(0x207C); // MOVE.L #0,A0
+			assembler.EmitLong(0);
+			assembler.EmitWord(0x4E75); // RTS
+		}
+		return assembler;
+	}
+
 	[Fact]
 	public void CallClobbersButDoesNotConsumeConditionCodes()
 	{
@@ -2587,6 +2624,113 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void RemovesWordNormalizationObservedOnlyByTerminalWordStore()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x0280); // ANDI.L #$FFFF,D0
+		assembler.EmitLong(0x0000FFFF);
+		assembler.EmitWord(0x207C); // MOVEA.L #$DFF000,A0
+		assembler.EmitLong(0x00DFF000);
+		assembler.EmitWord(0x3140); // MOVE.W D0,150(A0)
+		assembler.EmitWord(150);
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("andi.l\t#$0000FFFF,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.w\td0,150(a0)", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsWordNormalizationWhenLongValueIsObservedAfterWordStore()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x0280); // ANDI.L #$FFFF,D0
+		assembler.EmitLong(0x0000FFFF);
+		assembler.EmitWord(0x3140); // MOVE.W D0,150(A0)
+		assembler.EmitWord(150);
+		assembler.EmitWord(0xD280); // ADD.L D0,D1
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("andi.l\t#$0000FFFF,d0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void FoldsDeadWordConstantRegisterIntoLogicalImmediate()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x203C); // MOVE.L #$7FFF,D0
+		assembler.EmitLong(0x00007FFF);
+		assembler.EmitWord(0xC440); // AND.W D0,D2
+		assembler.EmitWord(0x3142); // MOVE.W D2,150(A0)
+		assembler.EmitWord(150);
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("andi.w\t#$7FFF,d2", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\t#$00007FFF", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsWordConstantRegisterWhenItsLongValueRemainsLive()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x203C); // MOVE.L #$7FFF,D0
+		assembler.EmitLong(0x00007FFF);
+		assembler.EmitWord(0xC440); // AND.W D0,D2
+		assembler.EmitWord(0xD680); // ADD.L D0,D3
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\t#$00007FFF,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("and.w\td0,d2", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void FoldsLongMaskToWordWhenDestinationUpperWordIsKnownZero()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7400); // MOVEQ #0,D2
+		assembler.EmitWord(0x3410); // MOVE.W (A0),D2
+		assembler.EmitWord(0x203C); // MOVE.L #$7FFF,D0
+		assembler.EmitLong(0x00007FFF);
+		assembler.EmitWord(0xC480); // AND.L D0,D2
+		assembler.EmitWord(0xD282); // ADD.L D2,D1 observes canonical long result
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("andi.w\t#$7FFF,d2", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\t#$00007FFF", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsLongMaskWhenDestinationUpperWordIsUnknown()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x203C); // MOVE.L #$7FFF,D0
+		assembler.EmitLong(0x00007FFF);
+		assembler.EmitWord(0xC480); // AND.L D0,D2
+		assembler.EmitWord(0xD282); // ADD.L D2,D1
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\t#$00007FFF,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("and.l\td0,d2", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void PreservesZeroUpperWordInCalleeSavedRegisterAcrossCall()
 	{
 		var assembler = new M68kAssembler();
@@ -4101,6 +4245,46 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void CompactsCanonicalBooleanWhenSetConditionDestinationIsZeroAboveByte()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x4A81); // TST.L D1
+		assembler.EmitWord(0x57C0); // SEQ D0
+		assembler.EmitWord(0x4880); // EXT.W D0
+		assembler.EmitWord(0x48C0); // EXT.L D0
+		assembler.EmitWord(0x4480); // NEG.L D0
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("seq\td0\r\n\tneg.b\td0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("ext.w\td0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("neg.l\td0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsCanonicalBooleanExtensionsWhenUpperBytesAreUnknown()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x4A81); // TST.L D1
+		assembler.EmitWord(0x57C0); // SEQ D0
+		assembler.EmitWord(0x4880); // EXT.W D0
+		assembler.EmitWord(0x48C0); // EXT.L D0
+		assembler.EmitWord(0x4480); // NEG.L D0
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("ext.w\td0", assembly, StringComparison.Ordinal);
+		Assert.Contains("ext.l\td0", assembly, StringComparison.Ordinal);
+		Assert.Contains("neg.l\td0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("neg.b\td0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void GroupsDescendingDataRegisterPushesIntoOrderedMovemVector()
 	{
 		var assembler = new M68kAssembler();
@@ -5120,6 +5304,29 @@ public sealed class M68kInstructionDataflowTests
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Contains("move.l\t(a0),d0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("tst.l\td0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesMultipleIndependentRedundantTests()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		assembler.EmitWord(0x4A80); // TST.L D0
+		assembler.EmitBranch(M68kCondition.NotEqual, "first-nonzero");
+		assembler.EmitWord(0x4E71); // NOP
+		assembler.Mark("first-nonzero");
+		assembler.EmitWord(0x2211); // MOVE.L (A1),D1
+		assembler.EmitWord(0x4A81); // TST.L D1
+		assembler.EmitBranch(M68kCondition.NotEqual, "second-nonzero");
+		assembler.EmitWord(0x4E71); // NOP
+		assembler.Mark("second-nonzero");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("tst.l\td0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("tst.l\td1", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]

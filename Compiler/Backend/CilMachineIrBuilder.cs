@@ -2090,11 +2090,21 @@ internal static class CilMachineIrBuilder
 			operation = M68kMachineOperation.AggregateIndirectInitialize;
 		}
 
+		var clobbers = M68kRegisterSet.From(M68kRegister.D0);
+		if (operation == M68kMachineOperation.AggregateIndirectInitialize &&
+			layout.Size >= 32)
+		{
+			clobbers = clobbers
+				.Add(M68kRegister.D1)
+				.Add(M68kRegister.A0)
+				.Add(M68kRegister.A1);
+		}
+
 		state.Block.Instructions.Add(function.CreateInstruction(
 			operation,
 			instruction.Offset,
 			uses,
-			clobbers: M68kRegisterSet.From(M68kRegister.D0),
+			clobbers: clobbers,
 			memoryEffect: operation ==
 				M68kMachineOperation.AggregateIndirectInitialize
 					? M68kMachineMemoryEffect.Write
@@ -3661,7 +3671,7 @@ internal static class CilMachineIrBuilder
 			case CilOptimizationKind.ComparisonBranch:
 			{
 				var popSlots = stackKinds.Length != 0 &&
-					stackKinds[^1] == CilStackValueKind.Float64 ? 4 : 2;
+					stackKinds[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64 ? 4 : 2;
 				var uses = CollapseStackOperands(
 					stackKinds,
 					stackValues,
@@ -4021,7 +4031,8 @@ internal static class CilMachineIrBuilder
 				constrainedTypeToken,
 				caller,
 				instruction.Offset);
-			if (constrainedType.Kind == CilTypeKind.ManagedReference)
+			if (constrainedDeclaration.Signature.Header.IsInstance &&
+				constrainedType.Kind == CilTypeKind.ManagedReference)
 			{
 				// constrained. supplies &T. For a closed reference T, load the
 				// object reference and retain the original callvirt so the normal

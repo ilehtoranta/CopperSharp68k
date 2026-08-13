@@ -17,15 +17,19 @@ internal sealed class FrameworkImplementationPackCatalog
 
 	public FrameworkImplementationPackCatalog(
 		IReadOnlyDictionary<string, string> assemblyPaths,
-		M68kFrameworkImplementationPackProvenance provenance)
+		M68kFrameworkImplementationPackProvenance provenance,
+		bool enableUnlistedManagedBodies)
 	{
 		_assemblyPaths = assemblyPaths;
 		Provenance = provenance;
+		EnableUnlistedManagedBodies = enableUnlistedManagedBodies;
 	}
 
 	public M68kFrameworkImplementationPackProvenance Provenance { get; }
 
 	public string ImplementationProfile => Provenance.ImplementationProfile;
+
+	public bool EnableUnlistedManagedBodies { get; }
 
 	public bool TryGetAssemblyPath(string assemblyName, out string path) =>
 		_assemblyPaths.TryGetValue(assemblyName, out path!);
@@ -106,7 +110,8 @@ internal static class FrameworkImplementationPackLoader
 				manifest.ReferencePack,
 				manifest.ReferencePackVersion,
 				manifest.ImplementationProfile,
-				provenance));
+				provenance),
+			options.EnableUnlistedManagedBodies);
 	}
 
 	private static void ValidateManifest(
