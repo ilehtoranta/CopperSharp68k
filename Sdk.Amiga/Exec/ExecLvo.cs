@@ -196,6 +196,7 @@ public static class ExecLvo
 	public const short NewSetTaskPIDAttrsA = -1074;
 
 	// Source-compatible aliases retained for existing consumers.
+	public const short OpenLibraryRaw = OpenLibrary;
 	public const short AllocVecDma = AllocVecDMA;
 	public const short FreeVecDma = FreeVecDMA;
 }
