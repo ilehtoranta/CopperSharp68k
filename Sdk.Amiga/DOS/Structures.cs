@@ -7,6 +7,26 @@ using System.Runtime.InteropServices;
 
 namespace Amiga;
 
+[System.Runtime.InteropServices.StructLayout(
+	System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2)]
+public struct ExAllControl
+{
+	public const uint Size = 16;
+	public uint Entries;
+	public uint LastKey;
+	public APTR MatchString;
+	public APTR MatchFunction;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct DosAttrBuffer
+{
+	public const uint Size = 8;
+
+	public APTR Pointer;
+	public uint Length;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct DateStamp
 {
@@ -15,6 +35,62 @@ public struct DateStamp
 	public int Days;
 	public int Minutes;
 	public int Ticks;
+}
+
+/// <summary>MorphOS UTC timestamp used by the m68k DOS ABI.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct PosixDateStamp
+{
+	public const uint Size = 12;
+
+	public long Seconds;
+	public int Nanoseconds;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct CSource
+{
+	public const uint Size = 12;
+
+	public APTR Buffer;
+	public int Length;
+	public int CurrentCharacter;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct RDArgs
+{
+	public const uint Size = 32;
+
+	public CSource Source;
+	public APTR AllocationList;
+	public APTR Buffer;
+	public int BufferSize;
+	public APTR ExtendedHelp;
+	public int Flags;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct RecordLock
+{
+	public const uint Size = 16;
+
+	public BPTR File;
+	public uint Offset;
+	public uint Length;
+	public uint Mode;
+}
+
+/// <summary>MorphOS 64-bit record-lock descriptor used by the m68k DOS ABI.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct RecordLock64
+{
+	public const uint Size = 24;
+
+	public BPTR File;
+	public ulong Offset;
+	public ulong Length;
+	public uint Mode;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2)]

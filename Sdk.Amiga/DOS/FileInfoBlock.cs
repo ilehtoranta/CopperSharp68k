@@ -12,6 +12,7 @@ using CopperSharp.Compiler;
 public unsafe struct FileInfoBlock
 {
 	public const int SizeInBytes = 260;
+	public const int DiskKeyOffset = 0;
 	public const int FileNameOffset = 8;
 	public const int CommentOffset = 144;
 	public const int DirEntryTypeOffset = 4;
@@ -20,6 +21,11 @@ public unsafe struct FileInfoBlock
 	public const int DateDaysOffset = 132;
 	public const int DateMinuteOffset = 136;
 	public const int DateTickOffset = 140;
+	/// <summary>MorphOS V51 extension fields overlaid on the 32 reserved bytes.</summary>
+	public const int Size64Offset = 228;
+	public const int NumBlocks64Offset = 236;
+	public const int ActualExtensionFlagsOffset = 258;
+	public const int RequestedExtensionFlagsOffset = 259;
 
 	public static APTR AddressOf(ref FileInfoBlock fileInfoBlock) =>
 		throw new System.NotSupportedException(
@@ -49,8 +55,25 @@ public unsafe struct FileInfoBlock
 	public static int GetDateTick(uint fileInfoBlock) =>
 		ReadInt32(fileInfoBlock, DateTickOffset);
 
+	public static ulong GetSize64(uint fileInfoBlock) =>
+		ReadUInt64(fileInfoBlock, Size64Offset);
+
+	public static ulong GetNumBlocks64(uint fileInfoBlock) =>
+		ReadUInt64(fileInfoBlock, NumBlocks64Offset);
+
+	public static byte GetActualExtensionFlags(uint fileInfoBlock) =>
+		APTR.ReadUInt8(APTR.FromPointer(fileInfoBlock), ActualExtensionFlagsOffset);
+
+	public static byte GetRequestedExtensionFlags(uint fileInfoBlock) =>
+		APTR.ReadUInt8(APTR.FromPointer(fileInfoBlock), RequestedExtensionFlagsOffset);
+
 	private static int ReadInt32(uint fileInfoBlock, int offset) =>
 		(int)APTR.ReadUInt32(APTR.FromPointer(fileInfoBlock), offset);
+
+	private static ulong ReadUInt64(uint fileInfoBlock, int offset) =>
+		unchecked((ulong)M68kRuntime.CombineInt64(
+			APTR.ReadUInt32(APTR.FromPointer(fileInfoBlock), offset),
+			APTR.ReadUInt32(APTR.FromPointer(fileInfoBlock), offset + 4)));
 
 	public int DiskKey;
 	public int DirEntryType;

@@ -11,6 +11,39 @@ public enum DosBoolean : int
 	True = -1,
 }
 
+public enum DosObjectType : uint
+{
+	FileHandle = 0,
+	ExAllControl = 1,
+	FileInfoBlock = 2,
+	StandardPacket = 3,
+	CommandLineInterface = 4,
+	RdArgs = 5,
+	DeviceNode = 6,
+	FileSystemContext = 7,
+	VolumeNode = 8,
+	AssignNode = 9,
+}
+
+public enum DosObjectTag : uint
+{
+	FileHandleMode = 0x8000_0000u + 2001u,
+	DirectoryLength = 0x8000_0000u + 2002u,
+	CommandNameLength = 0x8000_0000u + 2003u,
+	CommandFileLength = 0x8000_0000u + 2004u,
+	PromptLength = 0x8000_0000u + 2005u,
+	CliDirectory = 0x8000_0000u + 2020u,
+	CliCommandName = 0x8000_0000u + 2021u,
+	CliCommandFile = 0x8000_0000u + 2022u,
+	CliPrompt = 0x8000_0000u + 2023u,
+	CliResult2 = 0x8000_0000u + 2024u,
+	CliReturnCode = 0x8000_0000u + 2025u,
+	CliFailLevel = 0x8000_0000u + 2026u,
+	CliInteractive = 0x8000_0000u + 2027u,
+	CliBackground = 0x8000_0000u + 2028u,
+	CliDefaultStack = 0x8000_0000u + 2029u,
+}
+
 public enum DosDiskState : int
 {
 	WriteProtected = 80,
@@ -51,6 +84,13 @@ public enum DosListLockFlags : uint
 }
 
 [System.Flags]
+public enum DevProcFlags : uint
+{
+	Unlock = 1u << 0,
+	Assign = 1u << 1,
+}
+
+[System.Flags]
 public enum FileProtection : int
 {
 	Delete = 1 << 0,
@@ -88,6 +128,28 @@ public enum DosConstants : int
 	File = -3,
 	LinkFile = -4,
 	PipeFile = -5,
+}
+
+/// <summary>Classic and MorphOS record-lock modes from dos/record.h.</summary>
+public enum DosRecordMode : uint
+{
+	Exclusive = 0,
+	ExclusiveImmediate = 1,
+	Shared = 2,
+	SharedImmediate = 3,
+}
+
+/// <summary>MorphOS V51 Examine64 tag identifiers from dos/dostags.h.</summary>
+public enum DosExamine64Tag : uint
+{
+	PosixDate = 0x8000_0000u + 3601u,
+}
+
+[System.Flags]
+public enum FileInfoExtensionFlags : byte
+{
+	None = 0,
+	PosixDate = 1 << 0,
 }
 
 public enum DosPacketAction : int

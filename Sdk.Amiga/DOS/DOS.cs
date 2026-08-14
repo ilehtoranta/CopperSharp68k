@@ -83,6 +83,15 @@ public static class DOS
 		Write = Exclusive,
 	}
 
+	public enum ItemKind : int
+	{
+		Equal = -2,
+		Error = -1,
+		Nothing = 0,
+		Unquoted = 1,
+		Quoted = 2,
+	}
+
 	public const string Name = "dos.library";
 
 	// Return codes from <dos/dos.h>.
@@ -250,12 +259,12 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int timeout);
 
-	[AmigaLvo(-210)]
+	[AmigaLvo(DosLvo.ParentDir)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? ParentDir(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
-	[AmigaLvo(-216)]
+	[AmigaLvo(DosLvo.IsInteractive)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int IsInteractive(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
@@ -337,57 +346,57 @@ public static class DOS
 	public static extern int UnLockRecords(
 		[M68kRegister(M68kRegister.D1)] uint recordArray);
 
-	[AmigaLvo(-294)]
+	[AmigaLvo(DosLvo.SelectInput)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR SelectInput(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-300)]
+	[AmigaLvo(DosLvo.SelectOutput)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR SelectOutput(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-306)]
+	[AmigaLvo(DosLvo.FGetC)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FGetC(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-312)]
+	[AmigaLvo(DosLvo.FPutC)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FPutC(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int character);
 
-	[AmigaLvo(-318)]
+	[AmigaLvo(DosLvo.UnGetC)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UnGetC(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int character);
 
-	[AmigaLvo(-324)]
+	[AmigaLvo(DosLvo.FRead)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FRead(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint block,
+		[M68kRegister(M68kRegister.D2)] APTR block,
 		[M68kRegister(M68kRegister.D3)] uint blockLength,
 		[M68kRegister(M68kRegister.D4)] uint number);
 
-	[AmigaLvo(-330)]
+	[AmigaLvo(DosLvo.FWrite)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FWrite(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint block,
+		[M68kRegister(M68kRegister.D2)] APTR block,
 		[M68kRegister(M68kRegister.D3)] uint blockLength,
 		[M68kRegister(M68kRegister.D4)] uint number);
 
-	[AmigaLvo(-336)]
+	[AmigaLvo(DosLvo.FGets)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FGets(
+	public static extern APTR FGets(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] uint bufferLength);
 
-	[AmigaLvo(-342)]
+	[AmigaLvo(DosLvo.FPuts)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FPuts(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
@@ -406,7 +415,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D2)] CString format,
 		[M68kRegister(M68kRegister.D3)] uint argArray);
 
-	[AmigaLvo(-360)]
+	[AmigaLvo(DosLvo.Flush)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Flush(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
@@ -419,26 +428,26 @@ public static class DOS
 		[M68kRegister(M68kRegister.D3)] int type,
 		[M68kRegister(M68kRegister.D4)] int size);
 
-	[AmigaLvo(-372)]
+	[AmigaLvo(DosLvo.DupLockFromFH)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? DupLockFromFH(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-378)]
+	[AmigaLvo(DosLvo.OpenFromLock)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? OpenFromLock(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
-	[AmigaLvo(-384)]
+	[AmigaLvo(DosLvo.ParentOfFH)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? ParentOfFH(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-390)]
+	[AmigaLvo(DosLvo.ExamineFH)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock);
 
 	[AmigaLvo(-396)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -446,18 +455,18 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] uint date);
 
-	[AmigaLvo(-402)]
+	[AmigaLvo(DosLvo.NameFromLock)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int NameFromLock(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
-	[AmigaLvo(-408)]
+	[AmigaLvo(DosLvo.NameFromFH)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int NameFromFH(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
 	[AmigaLvo(-414)]
@@ -469,7 +478,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D4)] int oldPosition,
 		[M68kRegister(M68kRegister.D5)] int size);
 
-	[AmigaLvo(-420)]
+	[AmigaLvo(DosLvo.SameLock)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SameLock(
 		[M68kRegister(M68kRegister.D1)] BPTR lock1,
@@ -588,7 +597,7 @@ public static class DOS
 
 	[AmigaLvo(-540)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern int SetArgStr(
+	public static extern uint SetArgStr(
 		[M68kRegister(M68kRegister.D1)] CString text);
 
 	[AmigaLvo(-546)]
@@ -835,21 +844,21 @@ public static class DOS
 	[AmigaLvo(-804)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int FindArg(
-		[M68kRegister(M68kRegister.D1)] CString keyword,
-		[M68kRegister(M68kRegister.D2)] CString template_);
+		[M68kRegister(M68kRegister.D1)] CString template_,
+		[M68kRegister(M68kRegister.D2)] CString keyword);
 
 	[AmigaLvo(-810)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ReadItem(
-		[M68kRegister(M68kRegister.D1)] uint name,
+		[M68kRegister(M68kRegister.D1)] APTR name,
 		[M68kRegister(M68kRegister.D2)] int maxChars,
-		[M68kRegister(M68kRegister.D3)] uint cSource);
+		[M68kRegister(M68kRegister.D3)] APTR cSource);
 
 	[AmigaLvo(-816)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int StrToLong(
 		[M68kRegister(M68kRegister.D1)] CString text,
-		[M68kRegister(M68kRegister.D2)] uint value);
+		[M68kRegister(M68kRegister.D2)] APTR value);
 
 	[AmigaLvo(-822)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -1277,7 +1286,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetFilePosixDate(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint date,
+		[M68kRegister(M68kRegister.D2)] APTR date,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call alias.
@@ -1285,26 +1294,26 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetFilePosixDateTagList(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint date,
+		[M68kRegister(M68kRegister.D2)] APTR date,
 		[M68kRegister(M68kRegister.D3)] uint tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1192)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint PosixDateStamp(
-		[M68kRegister(M68kRegister.D1)] uint date);
+	public static extern APTR PosixDateStamp(
+		[M68kRegister(M68kRegister.D1)] APTR date);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1198)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int PosixDateStampToDateStamp(
-		[M68kRegister(M68kRegister.D1)] uint posixDate,
-		[M68kRegister(M68kRegister.D2)] uint date);
+		[M68kRegister(M68kRegister.D1)] APTR posixDate,
+		[M68kRegister(M68kRegister.D2)] APTR date);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1204)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DateStampToPosixDateStamp(
-		[M68kRegister(M68kRegister.D1)] uint date,
-		[M68kRegister(M68kRegister.D2)] uint posixDate);
+		[M68kRegister(M68kRegister.D1)] APTR date,
+		[M68kRegister(M68kRegister.D2)] APTR posixDate);
 }
