@@ -90,6 +90,118 @@ internal enum M68kMachineValueWidth
 	LongPair = 8
 }
 
+internal enum M68kMachineConstantKind
+{
+	Int32,
+	Int64,
+	Boolean,
+	Null,
+	Float32Bits,
+	Float64Bits
+}
+
+internal readonly record struct M68kMachineConstant(
+	M68kMachineConstantKind Kind,
+	ulong Bits)
+{
+	public static M68kMachineConstant Int32(int value) =>
+		new(M68kMachineConstantKind.Int32, unchecked((uint)value));
+
+	public static M68kMachineConstant Int64(long value) =>
+		new(M68kMachineConstantKind.Int64, unchecked((ulong)value));
+
+	public static M68kMachineConstant Boolean(bool value) =>
+		new(M68kMachineConstantKind.Boolean, value ? 1u : 0u);
+
+	public static M68kMachineConstant Null =>
+		new(M68kMachineConstantKind.Null, 0);
+
+	public bool TryGetIntegral(out long value)
+	{
+		switch (Kind)
+		{
+			case M68kMachineConstantKind.Int32:
+				value = unchecked((int)(uint)Bits);
+				return true;
+			case M68kMachineConstantKind.Int64:
+				value = unchecked((long)Bits);
+				return true;
+			case M68kMachineConstantKind.Boolean:
+			case M68kMachineConstantKind.Null:
+				value = unchecked((long)Bits);
+				return true;
+			default:
+				value = 0;
+				return false;
+		}
+	}
+
+	public static bool TryFromCil(
+		CilInstruction instruction,
+		bool boolean,
+		out M68kMachineConstant constant)
+	{
+		var op = instruction.OpCode;
+		if (op == System.Reflection.Emit.OpCodes.Ldnull)
+		{
+			constant = Null;
+			return true;
+		}
+		if (op == System.Reflection.Emit.OpCodes.Ldc_I8)
+		{
+			constant = Int64((long)instruction.Operand!);
+			return true;
+		}
+		if (op == System.Reflection.Emit.OpCodes.Ldc_R4)
+		{
+			constant = new M68kMachineConstant(
+				M68kMachineConstantKind.Float32Bits,
+				BitConverter.SingleToUInt32Bits((float)instruction.Operand!));
+			return true;
+		}
+		if (op == System.Reflection.Emit.OpCodes.Ldc_R8)
+		{
+			constant = new M68kMachineConstant(
+				M68kMachineConstantKind.Float64Bits,
+				unchecked((ulong)BitConverter.DoubleToInt64Bits(
+					(double)instruction.Operand!)));
+			return true;
+		}
+
+		int value;
+		if (op == System.Reflection.Emit.OpCodes.Ldc_I4)
+		{
+			value = (int)instruction.Operand!;
+		}
+		else if (op == System.Reflection.Emit.OpCodes.Ldc_I4_S)
+		{
+			value = Convert.ToSByte(instruction.Operand);
+		}
+		else
+		{
+			var delta = op.Value - System.Reflection.Emit.OpCodes.Ldc_I4_0.Value;
+			if (op == System.Reflection.Emit.OpCodes.Ldc_I4_M1)
+			{
+				value = -1;
+			}
+			else if (delta is >= 0 and <= 8)
+			{
+				value = delta;
+			}
+			else
+			{
+				constant = default;
+				return false;
+			}
+		}
+
+		constant = boolean && value is 0 or 1
+			? Boolean(value != 0)
+			: Int32(value);
+		return true;
+	}
+}
+
 internal readonly record struct M68kRegisterSet(ushort Bits)
 {
 	public static M68kRegisterSet None => new(0);
@@ -187,6 +299,53 @@ internal sealed record M68kMachinePhi(
 	int Definition,
 	IReadOnlyDictionary<int, int> Inputs);
 
+internal enum M68kMachineEdgeKind
+{
+	Normal,
+	ExceptionDispatch,
+	LeaveToFinally,
+	FinallyContinuation
+}
+
+internal readonly record struct M68kMachineEdge(
+	int SourceBlockId,
+	int TargetBlockId,
+	M68kMachineEdgeKind Kind,
+	int? ExceptionRegionId = null);
+
+internal sealed class M68kMachineExceptionRegion
+{
+	public M68kMachineExceptionRegion(
+		int id,
+		CilExceptionRegion sourceRegion,
+		int handlerEntryBlockId,
+		IReadOnlyList<int> tryBlockIds,
+		IReadOnlyList<int> handlerBlockIds,
+		int? parentRegionId)
+	{
+		Id = id;
+		SourceRegion = sourceRegion;
+		HandlerEntryBlockId = handlerEntryBlockId;
+		TryBlockIds = tryBlockIds.ToList();
+		HandlerBlockIds = handlerBlockIds.ToList();
+		ParentRegionId = parentRegionId;
+	}
+
+	public int Id { get; }
+
+	public CilExceptionRegion SourceRegion { get; }
+
+	public int HandlerEntryBlockId { get; }
+
+	public List<int> TryBlockIds { get; }
+
+	public List<int> HandlerBlockIds { get; }
+
+	public int? ParentRegionId { get; }
+
+	public int? CatchValueId { get; set; }
+}
+
 internal enum M68kMachineConditionSourceKind
 {
 	Test,
@@ -198,6 +357,51 @@ internal sealed record M68kMachineBranchCondition(
 	M68kMachineConditionSourceKind SourceKind,
 	M68kCondition Condition,
 	CilInstruction? ProducerInstruction = null);
+
+internal readonly record struct M68kMachineInlineSite(
+	CilMethodIdentity Caller,
+	CilInstruction CallInstruction);
+
+internal sealed record M68kMachineInstructionOrigin(
+	CilMethod SourceMethod,
+	CilInstruction SourceInstruction,
+	ImmutableArray<M68kMachineInlineSite> InlineSites)
+{
+	public CilMethodIdentity SourceMethodIdentity => SourceMethod.Identity;
+
+	public static M68kMachineInstructionOrigin Create(
+		CilMethod sourceMethod,
+		CilInstruction sourceInstruction) =>
+		new(sourceMethod, sourceInstruction, ImmutableArray<M68kMachineInlineSite>.Empty);
+
+	public M68kMachineInstructionOrigin AtInlineSite(
+		CilMethod caller,
+		CilInstruction callInstruction) =>
+		this with
+		{
+			InlineSites = InlineSites.Add(new M68kMachineInlineSite(
+				caller.Identity,
+				callInstruction))
+	};
+}
+
+internal enum M68kMachineCallDispatchKind
+{
+	Direct,
+	Virtual,
+	Interface,
+	Constrained,
+	Import,
+	External
+}
+
+internal sealed record M68kMachineLogicalCall(
+	M68kMachineCallDispatchKind DispatchKind,
+	ImmutableArray<CilMethodIdentity> ResolvedTargets,
+	ImmutableArray<int> ArgumentValueIds,
+	ImmutableArray<int> ResultValueIds,
+	bool RequiresNullCheck,
+	M68kMachineInstructionOrigin Origin);
 
 internal sealed record M68kMachineInstruction(
 	int Id,
@@ -219,7 +423,10 @@ internal sealed record M68kMachineInstruction(
 	bool AllowCopyCoalescing = true,
 	bool TransportsManagedByrefOwner = false,
 	M68kMachineBranchCondition? BranchCondition = null,
-	bool RequiresLiveCallerFrame = false)
+	bool RequiresLiveCallerFrame = false,
+	M68kMachineConstant? ConstantValue = null,
+	M68kMachineInstructionOrigin? Origin = null,
+	M68kMachineLogicalCall? LogicalCall = null)
 {
 	public static M68kMachineInstruction Create(
 		int id,
@@ -241,7 +448,10 @@ internal sealed record M68kMachineInstruction(
 		bool allowCopyCoalescing = true,
 		bool transportsManagedByrefOwner = false,
 		M68kMachineBranchCondition? branchCondition = null,
-		bool requiresLiveCallerFrame = false) =>
+		bool requiresLiveCallerFrame = false,
+		M68kMachineConstant? constantValue = null,
+		M68kMachineInstructionOrigin? origin = null,
+		M68kMachineLogicalCall? logicalCall = null) =>
 		new(
 			id,
 			operation,
@@ -262,7 +472,10 @@ internal sealed record M68kMachineInstruction(
 			allowCopyCoalescing,
 			transportsManagedByrefOwner,
 			branchCondition,
-			requiresLiveCallerFrame);
+			requiresLiveCallerFrame,
+			constantValue,
+			origin,
+			logicalCall);
 }
 
 internal sealed class M68kMachineBlock
@@ -285,6 +498,22 @@ internal sealed class M68kMachineBlock
 
 	public List<int> Successors { get; } = new();
 
+	public List<M68kMachineEdge> PredecessorEdges { get; } = new();
+
+	public List<M68kMachineEdge> SuccessorEdges { get; } = new();
+
+	public List<int> ActiveExceptionRegionIds { get; } = new();
+
+	public IEnumerable<int> ControlFlowPredecessors =>
+		Predecessors.Concat(PredecessorEdges
+			.Where(static edge => edge.Kind != M68kMachineEdgeKind.Normal)
+			.Select(static edge => edge.SourceBlockId)).Distinct();
+
+	public IEnumerable<int> ControlFlowSuccessors =>
+		Successors.Concat(SuccessorEdges
+			.Where(static edge => edge.Kind != M68kMachineEdgeKind.Normal)
+			.Select(static edge => edge.TargetBlockId)).Distinct();
+
 	public int LoopDepth { get; set; }
 
 	public bool IsExceptionEntry { get; set; }
@@ -295,21 +524,31 @@ internal sealed class M68kMachineFunction
 	private int _nextValueId;
 	private int _nextInstructionId;
 
-	public M68kMachineFunction(string displayName, int entryBlockId)
+	public M68kMachineFunction(
+		string displayName,
+		int entryBlockId,
+		CilMethod? sourceMethod = null)
 	{
 		DisplayName = displayName;
 		EntryBlockId = entryBlockId;
+		SourceMethod = sourceMethod;
 	}
 
 	public string DisplayName { get; }
 
 	public int EntryBlockId { get; }
 
+	public CilMethod? SourceMethod { get; }
+
 	public Dictionary<int, M68kMachineValue> Values { get; } = new();
 
 	public Dictionary<int, M68kManagedByrefType> ManagedByrefTypes { get; } = new();
 
 	public List<M68kMachineBlock> Blocks { get; } = new();
+
+	public List<M68kMachineExceptionRegion> ExceptionRegions { get; } = new();
+
+	public M68kMachineOptimizationStatistics? OptimizationStatistics { get; set; }
 
 	public M68kRegisterSet ReservedRegisters { get; set; }
 
@@ -368,7 +607,10 @@ internal sealed class M68kMachineFunction
 		bool allowCopyCoalescing = true,
 		bool transportsManagedByrefOwner = false,
 		M68kMachineBranchCondition? branchCondition = null,
-		bool requiresLiveCallerFrame = false) =>
+		bool requiresLiveCallerFrame = false,
+		M68kMachineConstant? constantValue = null,
+		M68kMachineInstructionOrigin? origin = null,
+		M68kMachineLogicalCall? logicalCall = null) =>
 		M68kMachineInstruction.Create(
 			_nextInstructionId++,
 			operation,
@@ -389,7 +631,118 @@ internal sealed class M68kMachineFunction
 			allowCopyCoalescing,
 			transportsManagedByrefOwner,
 			branchCondition,
-			requiresLiveCallerFrame);
+			requiresLiveCallerFrame,
+			constantValue,
+			origin ?? OriginAt(ilOffset, sourceInstruction),
+			logicalCall);
+
+	public M68kMachineInstructionOrigin? OriginAt(
+		int ilOffset,
+		CilInstruction? preferredInstruction = null)
+	{
+		if (SourceMethod is null)
+		{
+			return null;
+		}
+		var sourceInstruction = preferredInstruction ??
+			SourceMethod.Instructions.FirstOrDefault(instruction =>
+				instruction.Offset == ilOffset) ??
+			SourceMethod.Instructions.LastOrDefault(instruction =>
+				instruction.Offset <= ilOffset) ??
+			SourceMethod.Instructions.First();
+		return M68kMachineInstructionOrigin.Create(SourceMethod, sourceInstruction);
+	}
+
+	public void AddEdge(
+		M68kMachineBlock source,
+		M68kMachineBlock target,
+		M68kMachineEdgeKind kind = M68kMachineEdgeKind.Normal,
+		int? exceptionRegionId = null)
+	{
+		var edge = new M68kMachineEdge(
+			source.Id,
+			target.Id,
+			kind,
+			exceptionRegionId);
+		if (!source.SuccessorEdges.Contains(edge))
+		{
+			source.SuccessorEdges.Add(edge);
+			target.PredecessorEdges.Add(edge);
+		}
+		if (kind == M68kMachineEdgeKind.Normal)
+		{
+			if (!source.Successors.Contains(target.Id))
+			{
+				source.Successors.Add(target.Id);
+			}
+			if (!target.Predecessors.Contains(source.Id))
+			{
+				target.Predecessors.Add(source.Id);
+			}
+		}
+	}
+
+	public void SynchronizeNormalEdges()
+	{
+		foreach (var block in Blocks)
+		{
+			block.SuccessorEdges.RemoveAll(static edge =>
+				edge.Kind == M68kMachineEdgeKind.Normal);
+			block.PredecessorEdges.RemoveAll(static edge =>
+				edge.Kind == M68kMachineEdgeKind.Normal);
+		}
+		var blocks = Blocks.ToDictionary(static block => block.Id);
+		foreach (var source in Blocks)
+		{
+			foreach (var targetId in source.Successors)
+			{
+				if (blocks.TryGetValue(targetId, out var target))
+				{
+					AddEdge(source, target);
+				}
+			}
+		}
+	}
+
+	public void RemoveBlocks(IReadOnlySet<int> removedBlockIds)
+	{
+		if (removedBlockIds.Count == 0)
+		{
+			return;
+		}
+		foreach (var block in Blocks.Where(block =>
+			!removedBlockIds.Contains(block.Id)))
+		{
+			block.Predecessors.RemoveAll(removedBlockIds.Contains);
+			block.Successors.RemoveAll(removedBlockIds.Contains);
+			block.PredecessorEdges.RemoveAll(edge =>
+				removedBlockIds.Contains(edge.SourceBlockId) ||
+				removedBlockIds.Contains(edge.TargetBlockId));
+			block.SuccessorEdges.RemoveAll(edge =>
+				removedBlockIds.Contains(edge.SourceBlockId) ||
+				removedBlockIds.Contains(edge.TargetBlockId));
+		}
+		Blocks.RemoveAll(block => removedBlockIds.Contains(block.Id));
+		foreach (var region in ExceptionRegions)
+		{
+			region.TryBlockIds.RemoveAll(removedBlockIds.Contains);
+			region.HandlerBlockIds.RemoveAll(removedBlockIds.Contains);
+		}
+		var removedRegions = ExceptionRegions
+			.Where(region => removedBlockIds.Contains(region.HandlerEntryBlockId))
+			.Select(static region => region.Id)
+			.ToHashSet();
+		ExceptionRegions.RemoveAll(region => removedRegions.Contains(region.Id));
+		foreach (var block in Blocks)
+		{
+			block.ActiveExceptionRegionIds.RemoveAll(removedRegions.Contains);
+			block.PredecessorEdges.RemoveAll(edge =>
+				edge.ExceptionRegionId is { } id && removedRegions.Contains(id));
+			block.SuccessorEdges.RemoveAll(edge =>
+				edge.ExceptionRegionId is { } id && removedRegions.Contains(id));
+		}
+		SynchronizeNormalEdges();
+	}
 }
 
 internal static class M68kMachineIrVerifier
@@ -451,12 +804,62 @@ internal static class M68kMachineIrVerifier
 						function,
 						$"Instruction id {instruction.Id} is duplicated.");
 				}
+				if (function.SourceMethod is not null &&
+					instruction.Origin is not { } origin)
+				{
+					throw Invalid(
+						function,
+						$"Instruction {instruction.Id} has no source origin.");
+				}
+				if (instruction.Origin is { } instructionOrigin &&
+					(instructionOrigin.SourceInstruction.Offset < 0 ||
+					 string.IsNullOrWhiteSpace(
+						 instructionOrigin.SourceMethodIdentity.ModuleName)))
+				{
+					throw Invalid(
+						function,
+						$"Instruction {instruction.Id} has an invalid source origin.");
+				}
 				if (!instruction.AllowCopyCoalescing &&
 					instruction.Operation != M68kMachineOperation.Copy)
 				{
 					throw Invalid(
 						function,
 						$"Instruction {instruction.Id} disables coalescing but is not a copy.");
+				}
+				if (instruction.ConstantValue is not null &&
+					(instruction.Operation != M68kMachineOperation.Constant ||
+					 instruction.Uses.Length != 0 ||
+					 instruction.Definitions.Length != 1))
+				{
+					throw Invalid(
+						function,
+						$"Instruction {instruction.Id} has constant metadata but is not a definition-only constant.");
+				}
+				if (instruction.LogicalCall is { } logicalCall &&
+					(instruction.Operation != M68kMachineOperation.Call &&
+					 instruction.Operation != M68kMachineOperation.ConditionalBranch ||
+					 instruction.Origin is null ||
+					 logicalCall.Origin != instruction.Origin ||
+					 logicalCall.ArgumentValueIds.Any(value =>
+						 !function.Values.ContainsKey(value)) ||
+					 logicalCall.ResultValueIds.Any(value =>
+						 !function.Values.ContainsKey(value)) ||
+					 (logicalCall.DispatchKind is
+						 M68kMachineCallDispatchKind.Direct or
+						 M68kMachineCallDispatchKind.Virtual or
+						 M68kMachineCallDispatchKind.Interface or
+						 M68kMachineCallDispatchKind.Constrained) &&
+						 logicalCall.ResolvedTargets.Length == 0))
+				{
+					throw Invalid(
+						function,
+						$"Instruction {instruction.Id} has invalid logical-call metadata " +
+						$"(operation={instruction.Operation}, origin={instruction.Origin is not null}, " +
+						$"originMatches={logicalCall.Origin == instruction.Origin}, " +
+						$"arguments=[{string.Join(',', logicalCall.ArgumentValueIds)}], " +
+						$"results=[{string.Join(',', logicalCall.ResultValueIds)}], " +
+						$"targets={logicalCall.ResolvedTargets.Length}, dispatch={logicalCall.DispatchKind}).");
 				}
 				VerifyBranchCondition(function, instruction);
 				VerifySpillInstruction(function, instruction);
@@ -492,6 +895,9 @@ internal static class M68kMachineIrVerifier
 				}
 			}
 		}
+		function.SynchronizeNormalEdges();
+		VerifyTypedControlFlow(function, blocks);
+		VerifyExceptionRegions(function, blocks);
 
 		foreach (var value in function.Values.Values)
 		{
@@ -503,6 +909,90 @@ internal static class M68kMachineIrVerifier
 			}
 		}
 		VerifySsaDominance(function);
+	}
+
+	private static void VerifyTypedControlFlow(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, M68kMachineBlock> blocks)
+	{
+		foreach (var block in function.Blocks)
+		{
+			if (block.SuccessorEdges.Count != block.SuccessorEdges.Distinct().Count() ||
+				block.PredecessorEdges.Count != block.PredecessorEdges.Distinct().Count())
+			{
+				throw Invalid(function, $"Block {block.Id} has duplicate typed CFG edges.");
+			}
+			foreach (var edge in block.SuccessorEdges)
+			{
+				if (edge.SourceBlockId != block.Id ||
+					!blocks.TryGetValue(edge.TargetBlockId, out var target) ||
+					!target.PredecessorEdges.Contains(edge))
+				{
+					throw Invalid(function, $"Block {block.Id} has an inconsistent typed CFG edge.");
+				}
+				if (edge.Kind != M68kMachineEdgeKind.Normal &&
+					edge.ExceptionRegionId is null)
+				{
+					throw Invalid(function, $"Typed CFG edge {edge} has no exception region.");
+				}
+			}
+			foreach (var edge in block.PredecessorEdges)
+			{
+				if (edge.TargetBlockId != block.Id ||
+					!blocks.TryGetValue(edge.SourceBlockId, out var source) ||
+					!source.SuccessorEdges.Contains(edge))
+				{
+					throw Invalid(function, $"Block {block.Id} has an inconsistent incoming typed CFG edge.");
+				}
+			}
+		}
+	}
+
+	private static void VerifyExceptionRegions(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, M68kMachineBlock> blocks)
+	{
+		var regions = function.ExceptionRegions.ToDictionary(static region => region.Id);
+		if (regions.Count != function.ExceptionRegions.Count)
+		{
+			throw Invalid(function, "Exception region ids are duplicated.");
+		}
+		foreach (var region in function.ExceptionRegions)
+		{
+			if (!blocks.ContainsKey(region.HandlerEntryBlockId) ||
+				region.TryBlockIds.Any(id => !blocks.ContainsKey(id)) ||
+				region.HandlerBlockIds.Any(id => !blocks.ContainsKey(id)) ||
+				region.ParentRegionId is { } parent && !regions.ContainsKey(parent))
+			{
+				throw Invalid(function, $"Exception region {region.Id} owns an invalid block or parent.");
+			}
+			if (region.SourceRegion.IsCatch && region.CatchValueId is { } catchValue)
+			{
+				VerifyValueExists(function, catchValue);
+				var handler = blocks[region.HandlerEntryBlockId];
+				if (!handler.Instructions.Any(instruction =>
+					instruction.Definitions.Contains(catchValue)))
+				{
+					throw Invalid(function, $"Catch value v{catchValue} is not defined at handler entry.");
+				}
+			}
+		}
+		foreach (var block in function.Blocks)
+		{
+			if (block.ActiveExceptionRegionIds.Distinct().Count() !=
+					block.ActiveExceptionRegionIds.Count ||
+				block.ActiveExceptionRegionIds.Any(id => !regions.ContainsKey(id)))
+			{
+				throw Invalid(function, $"Block {block.Id} has an invalid active exception scope.");
+			}
+		}
+		foreach (var edge in function.Blocks.SelectMany(static block => block.SuccessorEdges))
+		{
+			if (edge.ExceptionRegionId is { } regionId && !regions.ContainsKey(regionId))
+			{
+				throw Invalid(function, $"Typed CFG edge {edge} names an invalid exception region.");
+			}
+		}
 	}
 
 	private static string DescribeUses(M68kMachineFunction function, int value)

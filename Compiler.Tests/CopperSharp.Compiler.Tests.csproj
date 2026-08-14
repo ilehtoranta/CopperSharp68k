@@ -44,7 +44,7 @@
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
     <ProjectReference Include="..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj"
                       ReferenceOutputAssembly="false"
-                      Condition="Exists('..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj')" />
+                      Condition="Exists('..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj') and '$(SkipCopperScreenHeadlessProjectReference)' != 'true'" />
     <ProjectReference Include="..\..\MedPlayer\Copper68k\Copper68k.csproj"
                       Condition="Exists('..\..\MedPlayer\Copper68k\Copper68k.csproj')" />
     <PackageReference Include="Copper68k"

@@ -52,6 +52,8 @@ internal sealed partial class M68kCodeGenerator
 		_allocationStatistics = new();
 	private readonly Dictionary<CilMethodIdentity, M68kTerminalDeadStoreStatistics>
 		_terminalDeadStoreStatistics = new();
+	private M68kMachineModuleOptimizationStatistics _machineOptimizationStatistics =
+		M68kMachineModuleOptimizationStatistics.Empty;
 	private readonly List<M68kLoopLayout> _loopLayouts = new();
 	private readonly HashSet<CilMethodIdentity> _rootOnlyMethods = new();
 	private readonly HashSet<CilMethodIdentity> _terminatingEntryMethods = new();
@@ -249,13 +251,36 @@ internal sealed partial class M68kCodeGenerator
 			_rootOnlyMethods.Add(entry.Identity);
 		}
 		AnalyzePlatformBaseMethodEntries(methods, entry, exports);
+		var rawFunctions = BuildRawMachineFunctions(methods);
+		var optimizerRoots = exports
+			.Select(static export => export.Method.Identity)
+			.Append(entry.Identity)
+			.Concat(_managedLifecycles.SelectMany(static lifecycle =>
+				lifecycle.Methods.Select(static method => method.Identity)))
+			.Concat(_managedPoolRuntime?.Methods.Select(static method => method.Identity) ?? [])
+			.Concat(_foldedMethodAliases.Keys)
+			.Concat(_foldedMethodAliases.Values.Select(static method => method.Identity))
+			.Concat(methods.Where(static method =>
+				method.IsVirtual || method.DeclaringTypeIsInterface)
+				.Select(static method => method.Identity))
+			.ToHashSet();
+		_machineOptimizationStatistics = M68kMachineModuleOptimizer.Run(
+			methods,
+			rawFunctions,
+			_module,
+			_request.Cpu,
+			optimizerRoots);
+		methods = methods.Where(method =>
+			!rawFunctions.ContainsKey(method.Identity) ||
+			_machineOptimizationStatistics.RetainedMethodIdentities.Contains(
+				method.Identity)).ToArray();
 		foreach (var method in methods)
 		{
 			if (_foldedMethodAliases.ContainsKey(method.Identity))
 			{
 				continue;
 			}
-			CompileMethod(method);
+			CompileMethod(method, rawFunctions[method.Identity]);
 		}
 		foreach (var export in exports)
 		{
@@ -314,6 +339,7 @@ internal sealed partial class M68kCodeGenerator
 			methods.ToDictionary(method => method.Identity, MethodLabel),
 			_allocationStatistics,
 			_terminalDeadStoreStatistics,
+			_machineOptimizationStatistics,
 			_loopLayouts);
 	}
 
@@ -1060,7 +1086,36 @@ internal sealed partial class M68kCodeGenerator
 			$"Unsupported {role} '{type.DisplayName}'. This compiler version accepts 32-bit scalar values.",
 			method.DisplayName);
 
-	private void CompileMethod(CilMethod method)
+	private IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction>
+		BuildRawMachineFunctions(IReadOnlyList<CilMethod> methods)
+	{
+		var functions = new Dictionary<CilMethodIdentity, M68kMachineFunction>();
+		foreach (var method in methods)
+		{
+			if (_foldedMethodAliases.ContainsKey(method.Identity))
+			{
+				continue;
+			}
+			var internalAbi = GetInternalCallAbi(method);
+			var machineFunction = CilMachineIrBuilder.Build(
+				method,
+				_module,
+				_request.Cpu,
+				RequiresRuntimeFrame(method),
+				CilOptimizer.Optimize(method, _module),
+				internalAbi.Arguments
+					.Select(static argument => argument.Register)
+					.ToArray());
+			machineFunction.PreserveCalleeSavedRegisters =
+				!_rootOnlyMethods.Contains(method.Identity);
+			functions.Add(method.Identity, machineFunction);
+		}
+		return functions;
+	}
+
+	private void CompileMethod(
+		CilMethod method,
+		M68kMachineFunction machineFunction)
 	{
 		_loadedPlatformBase =
 			_platformBaseMethodEntries.TryGetValue(method.Identity, out var entryIdentity) &&
@@ -1070,17 +1125,7 @@ internal sealed partial class M68kCodeGenerator
 				: null;
 		var ilOptimizations = CilOptimizer.Optimize(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
-		var machineFunction = CilMachineIrBuilder.Build(
-			method,
-			_module,
-			_request.Cpu,
-			RequiresRuntimeFrame(method),
-			ilOptimizations,
-			internalAbi.Arguments
-				.Select(static argument => argument.Register)
-				.ToArray());
-		machineFunction.PreserveCalleeSavedRegisters =
-			!_rootOnlyMethods.Contains(method.Identity);
+		M68kCallAbiLowering.FinalizeLogicalCalls(machineFunction);
 		_terminalDeadStoreStatistics[method.Identity] =
 			M68kTerminalDeadStoreEliminator.Run(
 			machineFunction,
@@ -10540,6 +10585,7 @@ internal sealed record GeneratedProgram(
 		AllocationStatistics,
 	IReadOnlyDictionary<CilMethodIdentity, M68kTerminalDeadStoreStatistics>
 		TerminalDeadStoreStatistics,
+	M68kMachineModuleOptimizationStatistics MachineOptimizationStatistics,
 	IReadOnlyList<M68kLoopLayout> LoopLayouts);
 
 internal sealed record GeneratedPlatformBase(

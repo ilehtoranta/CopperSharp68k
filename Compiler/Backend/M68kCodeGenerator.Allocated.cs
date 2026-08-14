@@ -10872,7 +10872,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 			return;
 		}
-		if (width is M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word &&
+		if (width == M68kMachineValueWidth.Byte &&
 			(source > M68kRegister.D7 || destination > M68kRegister.D7))
 		{
 			throw new InvalidOperationException(

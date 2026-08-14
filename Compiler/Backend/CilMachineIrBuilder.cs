@@ -57,10 +57,15 @@ internal static class CilMachineIrBuilder
 			throw new InvalidOperationException(
 				$"Cannot build machine IR for empty method '{method.DisplayName}'.");
 		}
-		var leaders = FindLeaders(method, instructions, reachableOffsets);
+		var leaders = FindLeaders(
+			method,
+			module,
+			instructions,
+			reachableOffsets,
+			optimizations);
 		var blockInstructions = PartitionBlocks(instructions, leaders);
 		var blocksByOffset = new Dictionary<int, M68kMachineBlock>();
-		var function = new M68kMachineFunction(method.DisplayName, 0)
+		var function = new M68kMachineFunction(method.DisplayName, 0, method)
 		{
 			ReservedRegisters = M68kRegisterSet.None,
 			HasExceptionHandlers = method.ExceptionRegions.Count != 0
@@ -79,7 +84,8 @@ internal static class CilMachineIrBuilder
 			blocksByOffset.Add(block.StartIlOffset, block);
 		}
 
-		ConnectBlocks(blockInstructions, function.Blocks, blocksByOffset);
+		ConnectBlocks(function, blockInstructions, function.Blocks, blocksByOffset);
+		CreateExceptionRegions(function, method, blocksByOffset);
 		ComputeLoopDepths(function);
 		var elidedLocals = optimizations.ElidedLocalIndices;
 		var promotableLocals = GetPromotableLocals(method, module, elidedLocals);
@@ -186,7 +192,10 @@ internal static class CilMachineIrBuilder
 							? M68kMachineOperation.Constant
 							: M68kMachineOperation.Other,
 						block.StartIlOffset,
-						definitions: [value]));
+						definitions: [value],
+						constantValue: method.InitializeLocals
+							? M68kMachineConstant.Int32(0)
+							: null));
 				}
 			}
 
@@ -221,6 +230,8 @@ internal static class CilMachineIrBuilder
 				argumentRegisters,
 				aggregateTemporaryHomes);
 		}
+		AttachCatchValues(function, states);
+		ConnectExceptionalEdges(function, states, blocksByOffset);
 		PopulatePhiInputs(states);
 		FoldIncomingStackArgumentForwarding(
 			function,
@@ -232,6 +243,7 @@ internal static class CilMachineIrBuilder
 		PropagateNarrowExpressionWidths(function);
 		M68kMachineIrVerifier.Verify(function);
 		M68kConditionFlowOptimizer.Run(function, method, module);
+		function.OptimizationStatistics = M68kMachineOptimizer.Run(function, cpu);
 		EliminateDeadMachineValues(function);
 		EliminateUnusedLocalHomes(function);
 		M68kManagedByrefTypeTracker.TrackAndValidate(function, method, module);
@@ -552,7 +564,9 @@ internal static class CilMachineIrBuilder
 			var used = function.Blocks
 				.SelectMany(static block =>
 					block.Instructions.SelectMany(static instruction =>
-						instruction.Uses)
+						instruction.Uses.Concat(
+							instruction.LogicalCall?.ArgumentValueIds ?? [])
+						.Concat(instruction.LogicalCall?.ResultValueIds ?? []))
 					.Concat(block.Phis.SelectMany(static phi =>
 						phi.Inputs.Values)))
 				.ToHashSet();
@@ -570,7 +584,9 @@ internal static class CilMachineIrBuilder
 		var referenced = function.Blocks
 			.SelectMany(static block =>
 				block.Instructions.SelectMany(static instruction =>
-					instruction.Uses.Concat(instruction.Definitions))
+					instruction.Uses.Concat(instruction.Definitions)
+						.Concat(instruction.LogicalCall?.ArgumentValueIds ?? [])
+						.Concat(instruction.LogicalCall?.ResultValueIds ?? []))
 				.Concat(block.Phis.SelectMany(static phi =>
 					phi.Inputs.Values.Append(phi.Definition))))
 			.ToHashSet();
@@ -862,12 +878,27 @@ internal static class CilMachineIrBuilder
 
 	private static HashSet<int> FindLeaders(
 		CilMethod method,
+		CompilationModule module,
 		IReadOnlyList<CilInstruction> instructions,
-		IReadOnlySet<int> reachableOffsets)
+		IReadOnlySet<int> reachableOffsets,
+		CilOptimizationPlan optimizations)
 	{
 		var leaders = new HashSet<int> { instructions[0].Offset };
 		foreach (var region in method.ExceptionRegions)
 		{
+			foreach (var boundary in new[]
+				{
+					region.TryOffset,
+					region.TryEnd,
+					region.HandlerOffset,
+					region.HandlerEnd
+				})
+			{
+				if (reachableOffsets.Contains(boundary))
+				{
+					leaders.Add(boundary);
+				}
+			}
 			if (reachableOffsets.Contains(region.HandlerOffset))
 			{
 				leaders.Add(region.HandlerOffset);
@@ -879,8 +910,26 @@ internal static class CilMachineIrBuilder
 			}
 		}
 
-		foreach (var instruction in instructions)
+		for (var instructionIndex = 0;
+			instructionIndex < instructions.Count;
+			instructionIndex++)
 		{
+			var instruction = instructions[instructionIndex];
+			if (method.ExceptionRegions.Count != 0 &&
+				MayThrow(instruction.OpCode) &&
+				instructionIndex + 1 < instructions.Count &&
+				!IsAggregateDirectStorePair(
+					method,
+					module,
+					instruction,
+					instructions[instructionIndex + 1]) &&
+				!optimizations.IsOptimizationInterior(
+					method.Instructions,
+					instruction.NextOffset) &&
+				reachableOffsets.Contains(instruction.NextOffset))
+			{
+				leaders.Add(instruction.NextOffset);
+			}
 			if (instruction.OpCode == OpCodes.Switch)
 			{
 				foreach (var target in (int[])instruction.Operand!)
@@ -908,6 +957,48 @@ internal static class CilMachineIrBuilder
 		return leaders;
 	}
 
+	private static bool IsAggregateDirectStorePair(
+		CilMethod method,
+		CompilationModule module,
+		CilInstruction producer,
+		CilInstruction consumer)
+	{
+		if (producer.NextOffset != consumer.Offset ||
+			!TryGetStoreLocalIndex(consumer, out var localIndex) ||
+			localIndex < 0 || localIndex >= method.Locals.Length)
+		{
+			return false;
+		}
+		CilType type;
+		if (producer.OpCode == OpCodes.Unbox_Any ||
+			producer.OpCode == OpCodes.Ldelem ||
+			producer.OpCode == OpCodes.Ldobj)
+		{
+			type = module.ResolveTypeToken(
+				(int)producer.Operand!,
+				method,
+				producer.Offset);
+		}
+		else if (producer.OpCode == OpCodes.Ldfld ||
+			producer.OpCode == OpCodes.Ldsfld)
+		{
+			type = module.ResolveFieldToken(
+				(int)producer.Operand!,
+				method,
+				producer.Offset).Type;
+		}
+		else
+		{
+			return false;
+		}
+		return method.Locals[localIndex].DisplayName == type.DisplayName &&
+			module.TryGetReferenceFreeStructLayout(
+				type,
+				method.ModuleName,
+				out var layout) &&
+			layout.Size > 4;
+	}
+
 	private static List<IReadOnlyList<CilInstruction>> PartitionBlocks(
 		IReadOnlyList<CilInstruction> instructions,
 		IReadOnlySet<int> leaders)
@@ -931,6 +1022,7 @@ internal static class CilMachineIrBuilder
 	}
 
 	private static void ConnectBlocks(
+		M68kMachineFunction function,
 		IReadOnlyList<IReadOnlyList<CilInstruction>> blockInstructions,
 		IReadOnlyList<M68kMachineBlock> blocks,
 		IReadOnlyDictionary<int, M68kMachineBlock> blocksByOffset)
@@ -943,26 +1035,26 @@ internal static class CilMachineIrBuilder
 			{
 				foreach (var target in (int[])last.Operand!)
 				{
-					AddEdge(block, blocksByOffset[target]);
+					AddEdge(function, block, blocksByOffset[target]);
 				}
 				if (blocksByOffset.TryGetValue(last.NextOffset, out var switchFallthrough))
 				{
-					AddEdge(block, switchFallthrough);
+					AddEdge(function, block, switchFallthrough);
 				}
 				continue;
 			}
 			if (last.OpCode.FlowControl == FlowControl.Cond_Branch)
 			{
-				AddEdge(block, blocksByOffset[(int)last.Operand!]);
+				AddEdge(function, block, blocksByOffset[(int)last.Operand!]);
 				if (blocksByOffset.TryGetValue(last.NextOffset, out var fallthrough))
 				{
-					AddEdge(block, fallthrough);
+					AddEdge(function, block, fallthrough);
 				}
 				continue;
 			}
 			if (last.OpCode.FlowControl == FlowControl.Branch)
 			{
-				AddEdge(block, blocksByOffset[(int)last.Operand!]);
+				AddEdge(function, block, blocksByOffset[(int)last.Operand!]);
 				continue;
 			}
 			if (last.OpCode.FlowControl is FlowControl.Return or FlowControl.Throw ||
@@ -972,19 +1064,148 @@ internal static class CilMachineIrBuilder
 			}
 			if (index + 1 < blocks.Count)
 			{
-				AddEdge(block, blocks[index + 1]);
+				AddEdge(function, block, blocks[index + 1]);
 			}
 		}
 	}
 
 	private static void AddEdge(
+		M68kMachineFunction function,
 		M68kMachineBlock from,
 		M68kMachineBlock to)
 	{
-		if (!from.Successors.Contains(to.Id))
+		function.AddEdge(from, to);
+	}
+
+	private static void CreateExceptionRegions(
+		M68kMachineFunction function,
+		CilMethod method,
+		IReadOnlyDictionary<int, M68kMachineBlock> blocksByOffset)
+	{
+		for (var index = 0; index < method.ExceptionRegions.Count; index++)
 		{
-			from.Successors.Add(to.Id);
-			to.Predecessors.Add(from.Id);
+			var source = method.ExceptionRegions[index];
+			if (!blocksByOffset.TryGetValue(source.HandlerOffset, out var handlerEntry))
+			{
+				continue;
+			}
+			var tryBlocks = function.Blocks
+				.Where(block => block.StartIlOffset >= source.TryOffset &&
+					block.StartIlOffset < source.TryEnd)
+				.Select(static block => block.Id)
+				.ToArray();
+			var handlerBlocks = function.Blocks
+				.Where(block => block.StartIlOffset >= source.HandlerOffset &&
+					block.StartIlOffset < source.HandlerEnd)
+				.Select(static block => block.Id)
+				.ToArray();
+			var parent = method.ExceptionRegions
+				.Select((region, regionIndex) => (region, regionIndex))
+				.Where(candidate => candidate.regionIndex != index &&
+					candidate.region.TryOffset <= source.TryOffset &&
+					candidate.region.TryEnd >= source.HandlerEnd &&
+					(candidate.region.TryOffset != source.TryOffset ||
+					 candidate.region.TryEnd != source.TryEnd))
+				.OrderBy(candidate =>
+					candidate.region.TryEnd - candidate.region.TryOffset)
+				.Select(static candidate => (int?)candidate.regionIndex)
+				.FirstOrDefault();
+			function.ExceptionRegions.Add(new M68kMachineExceptionRegion(
+				index,
+				source,
+				handlerEntry.Id,
+				tryBlocks,
+				handlerBlocks,
+				parent));
+		}
+		foreach (var block in function.Blocks)
+		{
+			block.ActiveExceptionRegionIds.AddRange(function.ExceptionRegions
+				.Where(region => region.TryBlockIds.Contains(block.Id))
+				.OrderByDescending(region => region.SourceRegion.TryOffset)
+				.ThenBy(region => region.SourceRegion.TryEnd)
+				.Select(static region => region.Id));
+		}
+	}
+
+	private static void AttachCatchValues(
+		M68kMachineFunction function,
+		IReadOnlyList<BlockBuildState> states)
+	{
+		var statesByBlock = states.ToDictionary(static state => state.Block.Id);
+		foreach (var region in function.ExceptionRegions.Where(static region =>
+			region.SourceRegion.IsCatch))
+		{
+			var state = statesByBlock[region.HandlerEntryBlockId];
+			region.CatchValueId = state.EntryValues.FirstOrDefault();
+		}
+	}
+
+	private static void ConnectExceptionalEdges(
+		M68kMachineFunction function,
+		IReadOnlyList<BlockBuildState> states,
+		IReadOnlyDictionary<int, M68kMachineBlock> blocksByOffset)
+	{
+		var blocks = function.Blocks.ToDictionary(static block => block.Id);
+		var regions = function.ExceptionRegions.ToDictionary(static region => region.Id);
+		foreach (var block in function.Blocks.Where(block =>
+			block.Instructions.Any(static instruction => instruction.MayThrow)))
+		{
+			var active = block.ActiveExceptionRegionIds
+				.Select(id => regions[id])
+				.ToArray();
+			if (active.Length == 0)
+			{
+				continue;
+			}
+			var innermost = active[0].SourceRegion;
+			foreach (var region in active.Where(region =>
+				region.SourceRegion.TryOffset == innermost.TryOffset &&
+				region.SourceRegion.TryEnd == innermost.TryEnd))
+			{
+				function.AddEdge(
+					block,
+					blocks[region.HandlerEntryBlockId],
+					M68kMachineEdgeKind.ExceptionDispatch,
+					region.Id);
+			}
+		}
+
+		foreach (var state in states)
+		{
+			var last = state.Instructions.LastOrDefault();
+			if (last is null ||
+				last.OpCode != OpCodes.Leave && last.OpCode != OpCodes.Leave_S ||
+				last.Operand is not int continuationOffset)
+			{
+				continue;
+			}
+			var finallyRegion = function.ExceptionRegions
+				.Where(region => region.SourceRegion.IsFinally &&
+					last.Offset >= region.SourceRegion.TryOffset &&
+					last.Offset < region.SourceRegion.TryEnd)
+				.OrderBy(region => region.SourceRegion.TryLength)
+				.FirstOrDefault();
+			if (finallyRegion is null ||
+				!blocksByOffset.TryGetValue(continuationOffset, out var continuation))
+			{
+				continue;
+			}
+			function.AddEdge(
+				state.Block,
+				blocks[finallyRegion.HandlerEntryBlockId],
+				M68kMachineEdgeKind.LeaveToFinally,
+				finallyRegion.Id);
+			foreach (var handlerState in states.Where(candidate =>
+				finallyRegion.HandlerBlockIds.Contains(candidate.Block.Id) &&
+				candidate.Instructions.LastOrDefault()?.OpCode == OpCodes.Endfinally))
+			{
+				function.AddEdge(
+					handlerState.Block,
+					continuation,
+					M68kMachineEdgeKind.FinallyContinuation,
+					finallyRegion.Id);
+			}
 		}
 	}
 
@@ -1761,7 +1982,12 @@ internal static class CilMachineIrBuilder
 					mayThrow: MayThrow(instruction.OpCode),
 					producesConditionCodes: IsComparison(instruction.OpCode),
 					sourceInstruction: instruction,
-					argumentIndex: frameIndex));
+					argumentIndex: frameIndex,
+					constantValue: ConstantValueFor(
+						function,
+						operation,
+						instruction,
+						definitions)));
 			}
 			stackKinds = nextKinds;
 		}
@@ -4217,9 +4443,23 @@ internal static class CilMachineIrBuilder
 					instruction.Offset,
 					OpCodes.Ldind_Ref,
 					null,
-					instruction.Offset)));
+				instruction.Offset)));
 			sourceUses[0] = receiver.Id;
 		}
+		var logicalOrigin = function.OriginAt(
+			instruction.Offset,
+			callInstruction) ??
+			throw new InvalidOperationException(
+				$"Logical call at IL_{instruction.Offset:X4} has no source origin.");
+		var logicalCall = new M68kMachineLogicalCall(
+			DispatchKindFor(instruction, target, constrainedImplementation),
+			target.Definition is { } logicalTarget
+				? ImmutableArray.Create(logicalTarget.Identity)
+				: ImmutableArray<CilMethodIdentity>.Empty,
+			sourceUses.ToImmutableArray(),
+			definitions.ToImmutableArray(),
+			instruction.OpCode == OpCodes.Callvirt,
+			logicalOrigin);
 		var multiwordArgumentBytes = RewriteMultiwordCallArguments(
 			function,
 			block,
@@ -4554,7 +4794,8 @@ internal static class CilMachineIrBuilder
 			sourceInstruction: callInstruction,
 			stackVarargsRegister: stackVarargsRegister,
 			immediate: embeddedDisplacement,
-			transportsManagedByrefOwner: transportsManagedByrefOwner));
+			transportsManagedByrefOwner: transportsManagedByrefOwner,
+			logicalCall: logicalCall));
 		if (stackArgumentBytes != 0)
 		{
 			block.Instructions.Add(function.CreateInstruction(
@@ -4605,6 +4846,32 @@ internal static class CilMachineIrBuilder
 				definitions: definitions,
 				argumentIndex: returnHome));
 		}
+	}
+
+	private static M68kMachineCallDispatchKind DispatchKindFor(
+		CilInstruction instruction,
+		MethodReference target,
+		CilMethod? constrainedImplementation)
+	{
+		if (target.Definition?.ExternalCall is not null)
+		{
+			return M68kMachineCallDispatchKind.External;
+		}
+		if (target.Definition?.IsImport == true || target.Definition is null)
+		{
+			return M68kMachineCallDispatchKind.Import;
+		}
+		if (constrainedImplementation is not null)
+		{
+			return M68kMachineCallDispatchKind.Constrained;
+		}
+		if (instruction.OpCode != OpCodes.Callvirt)
+		{
+			return M68kMachineCallDispatchKind.Direct;
+		}
+		return target.Definition.DeclaringTypeIsInterface
+			? M68kMachineCallDispatchKind.Interface
+			: M68kMachineCallDispatchKind.Virtual;
 	}
 
 	private static void AddLiteralAddressIntrinsic(
@@ -5728,6 +5995,27 @@ internal static class CilMachineIrBuilder
 			return M68kMachineOperation.Convert;
 		}
 		return M68kMachineOperation.Other;
+	}
+
+	private static M68kMachineConstant? ConstantValueFor(
+		M68kMachineFunction function,
+		M68kMachineOperation operation,
+		CilInstruction instruction,
+		IReadOnlyList<int> definitions)
+	{
+		if (operation != M68kMachineOperation.Constant ||
+			definitions.Count != 1)
+		{
+			return null;
+		}
+		var boolean = function.Values[definitions[0]].Kind ==
+			CilStackValueKind.BooleanByte;
+		return M68kMachineConstant.TryFromCil(
+			instruction,
+			boolean,
+			out var constant)
+				? constant
+				: null;
 	}
 
 	private static bool IsMachineArrayAccess(OpCode op) =>

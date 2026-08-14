@@ -10,6 +10,18 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kInstructionDataflowTests
 {
+	[Fact]
+	public void DisabledPeepholePreservesUnoptimizedInstructionStream()
+	{
+		var assembler = ManyIndependentAddressZeroMoves(16);
+		var before = assembler.GetInstructionStream().ToArray();
+
+		assembler.OptimizeForCpu(M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.Disabled);
+
+		Assert.Equal(before, assembler.GetInstructionStream());
+	}
+
 	[Fact(Timeout = 10_000)]
 	public void BoundedPeepholeCompletesManyIndependentSingleRewriteCandidates()
 	{
@@ -1666,6 +1678,25 @@ public sealed class M68kInstructionDataflowTests
 			"lea\t4(a0),a0\r\n\tlea\t4(a0),a0",
 			selfAssembly,
 			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsZeroDisplacementLeaExtensionBeforeDisplacementLoad()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x41EF); // LEA 0(A7),A0
+		assembler.EmitWord(0);
+		assembler.EmitWord(0x41E8); // LEA 0(A0),A0
+		assembler.EmitWord(0);
+		assembler.EmitWord(0x2028); // MOVE.L 0(A0),D0
+		assembler.EmitWord(0);
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("lea\t8232(a0),a0", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -3785,6 +3816,70 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains("move.w\td2,d0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\td2,d0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("andi.l\t#$0000FFFF,d0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RetargetsZeroExtendedAbsoluteWordLoadPastDeadTemporary()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7200); // MOVEQ #0,D1
+		assembler.EmitWord(0x3239); // MOVE.W $00DFF002,D1
+		assembler.EmitLong(0x00DFF002);
+		assembler.EmitWord(0x7C00); // MOVEQ #0,D6
+		assembler.EmitWord(0x3C01); // MOVE.W D1,D6
+		assembler.EmitWord(0x2086); // MOVE.L D6,(A0)
+		assembler.EmitWord(0x7200); // MOVEQ #0,D1; kills the temporary
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("moveq\t#0,d6", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.w\t$00DFF002,d6", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.w\t$00DFF002,d1", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.w\td1,d6", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsZeroExtendedAbsoluteWordTemporaryWhenStillLive()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7200); // MOVEQ #0,D1
+		assembler.EmitWord(0x3239); // MOVE.W $00DFF002,D1
+		assembler.EmitLong(0x00DFF002);
+		assembler.EmitWord(0x7C00); // MOVEQ #0,D6
+		assembler.EmitWord(0x3C01); // MOVE.W D1,D6
+		assembler.EmitWord(0x2286); // MOVE.L D6,(A1)
+		assembler.EmitWord(0x2481); // MOVE.L D1,(A2)
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.w\t$00DFF002,d1", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.w\td1,d6", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RemovesUnobservedUpperWordClearBeforeMaskedWordStore()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x3003); // MOVE.W D3,D0
+		assembler.EmitWord(0x0240); // ANDI.W #$7FFF,D0
+		assembler.EmitWord(0x7FFF);
+		assembler.EmitWord(0x0040); // ORI.W #$8000,D0
+		assembler.EmitWord(0x8000);
+		assembler.EmitWord(0x33C0); // MOVE.W D0,$00DFF09E
+		assembler.EmitLong(0x00DFF09E);
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.DoesNotContain("moveq\t#0,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.w\td3,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.w\td0,$00DFF09E", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]

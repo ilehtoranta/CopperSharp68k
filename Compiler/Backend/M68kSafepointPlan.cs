@@ -143,7 +143,7 @@ internal static class M68kSafepointPlanner
 			changed = false;
 			foreach (var block in function.Blocks)
 			{
-				var incoming = block.Predecessors
+				var incoming = block.ControlFlowPredecessors
 					.SelectMany(predecessor => liveOut[predecessor])
 					.ToHashSet();
 				var outgoing = SimulateSpillRoots(

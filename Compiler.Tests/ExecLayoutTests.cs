@@ -285,7 +285,7 @@ public sealed class ExecLayoutTests
 			.Where(method => method.GetCustomAttributes(false)
 				.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any())
 			.ToArray();
-		Assert.Equal(158, methods.Length);
+		Assert.Equal(159, methods.Length);
 
 		foreach (var method in methods)
 		{
@@ -315,6 +315,26 @@ public sealed class ExecLayoutTests
 		Assert.NotNull(field); Assert.True(field!.IsLiteral);
 		Assert.Equal(expected, (short)field.GetRawConstantValue()!);
 		AssertLvo(methodName, expected, typeof(DOS));
+	}
+
+	[Fact]
+	public void PublicDosLvoConstantsCoverEveryClassicAndMorphOsDeclaration()
+	{
+		var methods = typeof(DOS).GetMethods(BindingFlags.Public | BindingFlags.Static |
+			BindingFlags.DeclaredOnly)
+			.Where(method => method.GetCustomAttribute<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>() is not null)
+			.ToArray();
+
+		Assert.Equal(194, methods.Length);
+		foreach (var method in methods)
+		{
+			var field = typeof(DosLvo).GetField(method.Name,
+				BindingFlags.Public | BindingFlags.Static);
+			Assert.NotNull(field);
+			Assert.True(field!.IsLiteral, $"DosLvo.{method.Name} must be a compile-time constant");
+			Assert.Equal(method.GetCustomAttribute<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>()!.Offset,
+				(short)field.GetRawConstantValue()!);
+		}
 	}
 
 	[Fact]
@@ -415,7 +435,8 @@ public sealed class ExecLayoutTests
 			.ToDictionary(group => group.Key,
 				group => group.Select(item => item.Method.Name).Order().ToArray());
 
-		Assert.Equal(2, duplicates.Count);
+		Assert.Equal(3, duplicates.Count);
+		Assert.Equal(new[] { nameof(Exec.OpenLibrary), nameof(Exec.OpenLibraryRaw) }, duplicates[-552]);
 		Assert.Equal(new[] { nameof(Exec.ChildFree), nameof(Exec.NewGetTaskAttrsA) }, duplicates[-738]);
 		Assert.Equal(new[] { nameof(Exec.ChildOrphan), nameof(Exec.NewSetTaskAttrsA) }, duplicates[-744]);
 	}

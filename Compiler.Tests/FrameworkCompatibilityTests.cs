@@ -3992,8 +3992,11 @@ public sealed class FrameworkCompatibilityTests
 				FileAttributes.None,
 				File.GetAttributes(file) & FileAttributes.Directory);
 			File.SetAttributes(file, FileAttributes.ReadOnly | FileAttributes.Archive);
+			var expectedSetAttributes = OperatingSystem.IsWindows()
+				? FileAttributes.ReadOnly | FileAttributes.Archive
+				: FileAttributes.ReadOnly;
 			Assert.Equal(
-				FileAttributes.ReadOnly | FileAttributes.Archive,
+				expectedSetAttributes,
 				File.GetAttributes(file) &
 					(FileAttributes.ReadOnly | FileAttributes.Archive));
 			File.SetAttributes(file, FileAttributes.Normal);

@@ -435,6 +435,8 @@ static M68kPeepholeOptimizationMode ParsePeepholeOptimization(string value) =>
 		"fixed" or "fixed-point" or "full" =>
 			M68kPeepholeOptimizationMode.FixedPoint,
 		"bounded" or "scalable" => M68kPeepholeOptimizationMode.Bounded,
+		"disabled" or "none" or "off" =>
+			M68kPeepholeOptimizationMode.Disabled,
 		_ => throw new ArgumentException(
 			$"Unknown peephole optimization mode '{value}'.")
 	};
@@ -593,7 +595,7 @@ static void PrintUsage()
 		copper68kc @response-manifest
 		  [--platform generic|amiga]
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
-		  [--clr auto|always] [--peephole fixed-point|bounded]
+		  [--clr auto|always] [--peephole fixed-point|bounded|disabled]
 		  [--exceptions full|yolo] [--format hunk|rom|asm] [--symbols on|off]
 		  [--exports all|none] [--include-export <symbol> ...]
 		  [--runtime freestanding|application|rom]

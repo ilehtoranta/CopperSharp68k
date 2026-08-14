@@ -1060,10 +1060,11 @@ internal static class M68kByrefOwnerRooting
 			foreach (var block in function.Blocks.Where(block =>
 				block.Id != function.EntryBlockId))
 			{
-				var next = block.Predecessors.Count == 0
+				var predecessors = block.ControlFlowPredecessors.ToArray();
+				var next = predecessors.Length == 0
 					? new HashSet<int>()
-					: new HashSet<int>(dominators[block.Predecessors[0]]);
-				foreach (var predecessor in block.Predecessors.Skip(1))
+					: new HashSet<int>(dominators[predecessors[0]]);
+				foreach (var predecessor in predecessors.Skip(1))
 					next.IntersectWith(dominators[predecessor]);
 				next.Add(block.Id);
 				if (!dominators[block.Id].SetEquals(next))

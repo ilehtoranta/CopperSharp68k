@@ -98,6 +98,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveByteMasksBeforeNormalizedAdd() ||
 				TryRemoveDeadByteNormalizationBeforeFrameStore(dataflow) ||
 				TryFoldNormalizedWordRotateAdd(dataflow) ||
+				TryRemoveRedundantZeroBeforeWordMaskStore(dataflow) ||
+				TryRetargetZeroExtendedWordLoad(dataflow) ||
 				TryMaterializeZeroExtendedWordCopy(dataflow) ||
 				TryMaterializeZeroExtendedPartialLoad(dataflow) ||
 				TryFoldByteAddIntoFrameStore(dataflow) ||
@@ -127,6 +129,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldZeroExtendedWordAdd(dataflow) ||
 				TryNarrowAddition(dataflow) ||
 				TryNarrowCompareAddressImmediate() ||
+				TryNarrowZeroExtendedRegisterAnd(dataflow) ||
 				TryFoldWordConstantRegisterUse(dataflow) ||
 				TryRemoveRedundantLogicalImmediate() ||
 				TryRemoveRepeatedMaskAcrossUntouchedRegister(dataflow) ||
@@ -3939,33 +3942,168 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			M68kConditionCodeSet.Overflow |
 			M68kConditionCodeSet.Carry;
 		var instructions = dataflow.Instructions;
-		for (var index = 0; index + 1 < instructions.Count; index++)
+		for (var copyIndex = 0; copyIndex + 1 < instructions.Count; copyIndex++)
 		{
-			var copy = instructions[index];
-			var normalization = instructions[index + 1];
-			if ((copy.Opcode & 0xF1F8) != 0x2000 ||
+			var copy = instructions[copyIndex];
+			var adjacentNormalization = instructions[copyIndex + 1];
+			if ((copy.Opcode & 0xF1F8) == 0x2000 &&
+				copy.Length == 2 &&
+				(copy.Opcode & 7) != ((copy.Opcode >> 9) & 7) &&
+				!IsReferencedLabelAt(adjacentNormalization.Offset) &&
+				(adjacentNormalization.Opcode & 0xFFF8) == 0x0280 &&
+				adjacentNormalization.Length == 6 &&
+				adjacentNormalization.ExtensionLong == 0x0000FFFF &&
+				(adjacentNormalization.Opcode & 7) == ((copy.Opcode >> 9) & 7) &&
+				dataflow.TryGetFacts(adjacentNormalization.Offset, out var adjacentFacts) &&
+				(adjacentFacts.LiveConditionsAfter & logicalConditions) == 0)
+			{
+				var longSource = copy.Opcode & 7;
+				var longDestination = (copy.Opcode >> 9) & 7;
+				_buffer.WriteWord(
+					copy.Offset,
+					0x7000 | (longDestination << 9)); // MOVEQ #0,Dd
+				_buffer.WriteWord(
+					adjacentNormalization.Offset,
+					0x3000 | (longDestination << 9) | longSource); // MOVE.W Ds,Dd
+				_buffer.RemoveBytes(adjacentNormalization.Offset + 2, 4);
+				return true;
+			}
+			if ((copy.Opcode & 0xF1F8) != 0x3000 ||
 				copy.Length != 2 ||
-				(copy.Opcode & 7) == ((copy.Opcode >> 9) & 7) ||
-				IsReferencedLabelAt(normalization.Offset) ||
-				(normalization.Opcode & 0xFFF8) != 0x0280 ||
-				normalization.Length != 6 ||
-				_buffer.ReadLong(normalization.Offset + 2) != 0x0000FFFF ||
-				(normalization.Opcode & 7) != ((copy.Opcode >> 9) & 7) ||
-				!dataflow.TryGetFacts(normalization.Offset, out var facts) ||
-				(facts.LiveConditionsAfter & logicalConditions) != 0)
+				!dataflow.TryGetFacts(copy.Offset, out var copyFacts) ||
+				copyFacts.LiveConditionsAfter != M68kConditionCodeSet.None)
 			{
 				continue;
 			}
 
 			var source = copy.Opcode & 7;
 			var destination = (copy.Opcode >> 9) & 7;
+			if (source == destination)
+			{
+				continue;
+			}
+			var destinationMask = (ushort)(1 << destination);
+			for (var index = copyIndex + 1; index < instructions.Count; index++)
+			{
+				var instruction = instructions[index];
+				if (IsReferencedLabelAt(instruction.Offset) ||
+					!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+					facts.Effects.IsBarrier)
+				{
+					break;
+				}
+				if (instruction.Opcode == (ushort)(0x0280 | destination) &&
+					instruction.Length == 6 &&
+					instruction.ExtensionLong == 0x0000FFFF &&
+					(facts.LiveConditionsAfter & logicalConditions) == 0)
+				{
+					_buffer.RemoveBytes(instruction.Offset, instruction.Length);
+					_buffer.InsertBytes(copy.Offset, 2);
+					_buffer.WriteWord(
+						copy.Offset,
+						0x7000 | (destination << 9)); // MOVEQ #0,Dd
+					return true;
+				}
+
+				var isWordRegisterShift =
+					(instruction.Opcode & 0xF0C0) == 0xE040 &&
+					(instruction.Opcode & 7) == destination;
+				if (!isWordRegisterShift &&
+					((facts.Effects.DefinesData & destinationMask) != 0 ||
+					 (facts.Effects.UsesData & destinationMask) != 0))
+				{
+					break;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryRetargetZeroExtendedWordLoad(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 3 < instructions.Count; index++)
+		{
+			var clearSource = instructions[index];
+			var load = instructions[index + 1];
+			var clearDestination = instructions[index + 2];
+			var copy = instructions[index + 3];
+			if ((clearSource.Opcode & 0xF1FF) != 0x7000 ||
+				clearSource.Length != 2 ||
+				(load.Opcode & 0xF1FF) != 0x3039 ||
+				load.Length != 6 ||
+				(clearDestination.Opcode & 0xF1FF) != 0x7000 ||
+				clearDestination.Length != 2 ||
+				(copy.Opcode & 0xF1F8) != 0x3000 ||
+				copy.Length != 2)
+			{
+				continue;
+			}
+
+			var source = (clearSource.Opcode >> 9) & 7;
+			var destination = (clearDestination.Opcode >> 9) & 7;
+			if (source == destination ||
+				((load.Opcode >> 9) & 7) != source ||
+				(copy.Opcode & 7) != source ||
+				((copy.Opcode >> 9) & 7) != destination ||
+				IsReferencedLabelAt(load.Offset) ||
+				IsReferencedLabelAt(clearDestination.Offset) ||
+				IsReferencedLabelAt(copy.Offset) ||
+				!dataflow.TryGetFacts(copy.Offset, out var copyFacts) ||
+				(copyFacts.LiveDataAfter & (1 << source)) != 0)
+			{
+				continue;
+			}
+
+			// Both the original copy and the retargeted load establish flags from
+			// the same word value, so the final condition-code state is unchanged.
 			_buffer.WriteWord(
-				copy.Offset,
-				0x7000 | (destination << 9)); // MOVEQ #0,Dd
+				clearSource.Offset,
+				0x7000 | (destination << 9));
 			_buffer.WriteWord(
-				normalization.Offset,
-				0x3000 | (destination << 9) | source); // MOVE.W Ds,Dd
-			_buffer.RemoveBytes(normalization.Offset + 2, 4);
+				load.Offset,
+				(load.Opcode & 0xF1FF) | (destination << 9));
+			_buffer.RemoveBytes(clearDestination.Offset, 4);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveRedundantZeroBeforeWordMaskStore(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 4 < instructions.Count; index++)
+		{
+			var clear = instructions[index];
+			var copy = instructions[index + 1];
+			var mask = instructions[index + 2];
+			var set = instructions[index + 3];
+			var store = instructions[index + 4];
+			var destination = clear.Opcode >> 9 & 7;
+			if ((clear.Opcode & 0xF1FF) != 0x7000 || clear.Length != 2 ||
+				(copy.Opcode & 0xF1F8) != 0x3000 || copy.Length != 2 ||
+				((copy.Opcode >> 9) & 7) != destination ||
+				(mask.Opcode & 0xFFF8) != 0x0240 || mask.Length != 4 ||
+				(mask.Opcode & 7) != destination ||
+				(set.Opcode & 0xFFF8) != 0x0040 || set.Length != 4 ||
+				(set.Opcode & 7) != destination ||
+				!dataflow.TryGetFacts(store.Offset, out var storeFacts) ||
+				(storeFacts.Effects.UsesData & (1 << destination)) == 0 ||
+				(storeFacts.Effects.DefinesData & (1 << destination)) != 0 ||
+				store.Length < 4 ||
+				instructions.Skip(index + 1).Take(4)
+					.Any(instruction => IsReferencedLabelAt(instruction.Offset)))
+			{
+				continue;
+			}
+
+			// Every use after the word copy is word-sized. The copy overwrites the
+			// clear's flags, and the upper word is never observed before the store.
+			_buffer.RemoveBytes(clear.Offset, clear.Length);
 			return true;
 		}
 
@@ -5922,6 +6060,84 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryNarrowZeroExtendedRegisterAnd(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if ((instruction.Opcode & 0xF1F8) != 0xC080 ||
+				instruction.Length != 2 ||
+				IsReferencedLabelAt(instruction.Offset))
+			{
+				continue;
+			}
+
+			var source = instruction.Opcode & 7;
+			var destination = instruction.Opcode >> 9 & 7;
+			var destinationRange = dataflow.GetDataValueBefore(
+				instruction.Offset,
+				destination);
+			var definitionIndex = -1;
+			uint mask = 0;
+			for (var candidateIndex = index - 1; candidateIndex >= 0; candidateIndex--)
+			{
+				var candidate = instructions[candidateIndex];
+				if (!dataflow.TryGetFacts(candidate.Offset, out var candidateFacts) ||
+					candidateFacts.Effects.IsBarrier)
+				{
+					break;
+				}
+				if ((candidateFacts.Effects.DefinesData & (1 << source)) == 0)
+				{
+					continue;
+				}
+				if ((candidate.Opcode & 0xF1FF) == 0x203C && candidate.Length == 6)
+				{
+					mask = candidate.ExtensionLong;
+					definitionIndex = candidateIndex;
+				}
+				else if ((candidate.Opcode & 0xF1FF) == 0x303C && candidate.Length == 4)
+				{
+					mask = candidate.ExtensionWord;
+					definitionIndex = candidateIndex;
+				}
+				break;
+			}
+			if (definitionIndex < 0 || mask > 0x7FFF ||
+				(destinationRange.KnownZeroMask & 0xFFFF0000u) != 0xFFFF0000u)
+			{
+				continue;
+			}
+
+			// With a zero upper destination word and a clear mask sign bit, word
+			// and long AND produce the same 32-bit value and N/Z/V/C flags.
+			_buffer.InsertBytes(instruction.Offset + 2, 2);
+			_buffer.WriteWord(
+				instruction.Offset,
+				0x0240 | destination); // ANDI.W #mask,Dn
+			_buffer.WriteWord(instruction.Offset + 2, (ushort)mask);
+			var definition = instructions[definitionIndex];
+			if (!IsReferencedLabelAt(definition.Offset) &&
+				(definitionIndex == index - 1 ||
+				 dataflow.TryGetFacts(definition.Offset, out var definitionFacts) &&
+				 (definitionFacts.Effects.WritesConditions &
+				  definitionFacts.LiveConditionsAfter) == 0 &&
+				 !IsDataRegisterReadBeforeOverwrite(
+					 instructions,
+					 index + 1,
+					 source,
+					 dataflow)))
+			{
+				_buffer.RemoveBytes(definition.Offset, definition.Length);
+			}
+			return true;
+		}
+
+		return false;
+	}
+
 	private static bool IsDataRegisterUpperWordObservedBeforeOverwrite(
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		int startIndex,
@@ -6623,8 +6839,13 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				Math.Abs(first.Displacement) <= 8 &&
 				!_buffer.HasLabelAt(offset + 2))
 			{
-				WriteAddressAdjustment(offset, first.Register, first.Displacement);
-				_buffer.RemoveBytes(offset + 2, 2);
+				var replacementLength = WriteAddressAdjustment(
+					offset,
+					first.Register,
+					first.Displacement);
+				_buffer.RemoveBytes(
+					offset + replacementLength,
+					first.Length - replacementLength);
 				return true;
 			}
 		}

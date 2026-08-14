@@ -51,6 +51,13 @@ internal sealed class CilOptimizationPlan
 		_spanFormats.Values
 			.Select(static format => format.InlineArrayLocal)
 			.ToHashSet();
+
+	public bool IsOptimizationInterior(
+		IReadOnlyList<CilInstruction> instructions,
+		int ilOffset) =>
+		_optimizations.Values.Any(optimization =>
+			ilOffset > instructions[optimization.StartIndex].Offset &&
+			ilOffset <= instructions[optimization.EndIndex].Offset);
 }
 
 internal static class CilOptimizer

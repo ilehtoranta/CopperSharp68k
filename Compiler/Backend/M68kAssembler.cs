@@ -990,7 +990,9 @@ internal sealed class M68kAssembler
 			}
 		}
 
-		return output.ToString();
+		// Assembly is a reproducible text artifact. Keep its line endings stable
+		// across build hosts rather than inheriting the host operating system.
+		return output.ToString().ReplaceLineEndings("\r\n");
 	}
 
 	private bool TryRenderInstruction(

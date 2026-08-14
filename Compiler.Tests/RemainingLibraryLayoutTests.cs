@@ -229,7 +229,9 @@ public sealed class RemainingLibraryLayoutTests
 			{
 				failures.Add($"{type.FullName}: expected Pack=2, actual Pack={layout?.Pack}");
 			}
-			var declaredSize = (uint)type.GetField("Size")!.GetRawConstantValue()!;
+			var declaredSize = Convert.ToUInt32(
+				type.GetField("Size")!.GetRawConstantValue(),
+				System.Globalization.CultureInfo.InvariantCulture);
 			var actualSize = (uint)Marshal.SizeOf(type);
 			if (declaredSize != actualSize)
 			{

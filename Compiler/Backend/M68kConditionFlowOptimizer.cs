@@ -242,7 +242,7 @@ internal static class M68kConditionFlowOptimizer
 				blocks[successorId].Predecessors.Remove(merge.Id);
 				RemovePhiInput(blocks[successorId], merge.Id);
 			}
-			function.Blocks.Remove(merge);
+			function.RemoveBlocks(new HashSet<int> { merge.Id });
 			return true;
 		}
 		return false;

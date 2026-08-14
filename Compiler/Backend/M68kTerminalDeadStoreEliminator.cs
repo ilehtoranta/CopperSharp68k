@@ -16,7 +16,10 @@ internal enum M68kMemoryObjectKind
 	StaticField,
 	LibraryBase,
 	RuntimeSlot,
-	FrameSlot
+	FrameSlot,
+	ArgumentHome,
+	ManagedRoot,
+	UnknownHeap
 }
 
 internal readonly record struct M68kMemoryObject(
@@ -511,7 +514,7 @@ internal static class M68kTerminalDeadStoreEliminator
 	{
 		var result = function.Blocks.ToDictionary(
 			static block => block.Id,
-			block => block.Successors.ToHashSet());
+			block => block.ControlFlowSuccessors.ToHashSet());
 		var blocksByOffset = function.Blocks.ToDictionary(
 			static block => block.StartIlOffset);
 		var endFinallyBlocks = function.Blocks

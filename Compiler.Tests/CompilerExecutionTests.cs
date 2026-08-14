@@ -3517,7 +3517,7 @@ public sealed class CompilerExecutionTests
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
-	public void PromotedTransparentScalarLocalSkipsCachedPlatformBaseRegister(
+	public void TransparentScalarLocalDoesNotClobberCachedPlatformBaseRegister(
 		M68kCpuTarget target,
 		M68kCpuModel model)
 	{
@@ -3541,9 +3541,10 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(0x0000_4400u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
-		Assert.Matches(
-			@"\tmovea\.w\t#\$4400,a(?:[0-3]|[5-6])",
-			result.Text);
+		// The machine optimizer may now fold the transparent APTR local to the
+		// final D0 constant instead of materializing it in an address register.
+		// Keep the ABI invariant: A4 is the resolver's cached platform base and
+		// must never receive the local pointer value.
 		Assert.Contains("\tmovea.l\ta4,a6", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotMatch(@"\tmovea\.[wl]\t#\$(?:0000)?4400,a4", result.Text);
 	}
@@ -6915,6 +6916,37 @@ public sealed class CompilerExecutionTests
 			exception.DiagnosticId);
 		Assert.Contains("Cross-module interface implementation map",
 			exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void ConstrainedValueDispatchTraversesAReferencedInterfaceBase()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			ManagedAssemblyPaths =
+			[
+				typeof(CopperSharp.Compiler.Tests.MultiModule.IExternalValueSource)
+					.Assembly.Location
+			],
+			EntryPoint =
+				"CopperSharp.Compiler.Tests.CrossModuleConstrainedInterfaceFixture::Entry",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk
+		});
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ReferencedTransparentScalarCanBeEmbeddedInALocalValueType()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ExternalTransparentScalarFieldEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
 	}
 
 	[Theory]

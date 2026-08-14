@@ -25,7 +25,7 @@ internal static class M68kControlFlowAnalysis
 			{
 				continue;
 			}
-			foreach (var successor in blocks[blockId].Successors)
+			foreach (var successor in blocks[blockId].ControlFlowSuccessors)
 			{
 				work.Push(successor);
 			}
@@ -59,7 +59,7 @@ internal static class M68kControlFlowAnalysis
 					continue;
 				}
 				HashSet<int>? intersection = null;
-				foreach (var predecessor in block.Predecessors)
+				foreach (var predecessor in block.ControlFlowPredecessors)
 				{
 					intersection = intersection is null
 						? new HashSet<int>(dominators[predecessor])
@@ -383,12 +383,14 @@ internal static class M68kLivenessAnalysis
 			{
 				var block = function.Blocks[index];
 				var liveOut = new HashSet<int>();
-				foreach (var successorId in block.Successors)
+				foreach (var edge in block.SuccessorEdges)
 				{
+					var successorId = edge.TargetBlockId;
 					var successor = blocks[successorId];
 					var edgeLive = new HashSet<int>(result.LiveIn[successorId]);
 					edgeLive.ExceptWith(successor.Phis.Select(static phi => phi.Definition));
-					foreach (var phi in successor.Phis)
+					foreach (var phi in successor.Phis.Where(_ =>
+						edge.Kind == M68kMachineEdgeKind.Normal))
 					{
 						if (phi.Inputs.TryGetValue(block.Id, out var input))
 						{
@@ -575,6 +577,7 @@ internal static class M68kInterferenceBuilder
 						function.Values[instruction.Definitions[0]].Kind &&
 					function.Values[equivalentSource].Width ==
 						function.Values[instruction.Definitions[0]].Width;
+				var canShareCopyLocation = copySource is not null && equivalentCopy;
 				for (var leftIndex = 0; leftIndex < instruction.Uses.Length; leftIndex++)
 				{
 					for (var rightIndex = leftIndex + 1;
@@ -591,7 +594,7 @@ internal static class M68kInterferenceBuilder
 				{
 					foreach (var other in live)
 					{
-						if (other != copySource)
+						if (!canShareCopyLocation || other != copySource)
 						{
 							graph.AddEdge(definition, other);
 						}
@@ -1495,7 +1498,9 @@ internal static class M68kGraphColoringAllocator
 						$"{function.DisplayName}: non-equivalent values v{left} and " +
 						$"v{right} are simultaneously live {position} instruction " +
 						$"{instruction.Id} ({instruction.Operation}) and share " +
-						$"{leftLocation.Register}.");
+						$"{leftLocation.Register}. " +
+						$"v{left} sites: {DescribeValueSites(function, left)}; " +
+						$"v{right} sites: {DescribeValueSites(function, right)}.");
 				}
 			}
 		}

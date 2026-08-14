@@ -2,7 +2,7 @@
   {
     "Name": "fixture:ArithmeticEntry",
     "ImageBytes": 1720,
-    "CodeBytes": 1236,
+    "CodeBytes": 1234,
     "CompiledMethods": 3,
     "SpilledValues": 1,
     "MaximumSpillFrameBytes": 4,
@@ -27,14 +27,14 @@
   },
   {
     "Name": "fixture:BranchAssignedLocalsEntry",
-    "ImageBytes": 284,
-    "CodeBytes": 76,
+    "ImageBytes": 256,
+    "CodeBytes": 46,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
     "StackMemoryInstructions": 2,
     "ManagedAllocationSites": 0,
-    "Mc68000Cycles": 76,
+    "Mc68000Cycles": 20,
     "RuntimeFeatures": []
   },
   {
@@ -89,12 +89,12 @@
   },
   {
     "Name": "example:IFFInspect",
-    "ImageBytes": 8040,
-    "CodeBytes": 5646,
+    "ImageBytes": 8016,
+    "CodeBytes": 5622,
     "CompiledMethods": 24,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
-    "StackMemoryInstructions": 227,
+    "StackMemoryInstructions": 221,
     "ManagedAllocationSites": 5,
     "Mc68000Cycles": null,
     "RuntimeFeatures": [
@@ -106,12 +106,12 @@
   },
   {
     "Name": "example:MUITaskList",
-    "ImageBytes": 5672,
-    "CodeBytes": 4212,
+    "ImageBytes": 5708,
+    "CodeBytes": 4232,
     "CompiledMethods": 15,
-    "SpilledValues": 12,
-    "MaximumSpillFrameBytes": 20,
-    "StackMemoryInstructions": 191,
+    "SpilledValues": 14,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 177,
     "ManagedAllocationSites": 7,
     "Mc68000Cycles": null,
     "RuntimeFeatures": [

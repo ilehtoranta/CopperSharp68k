@@ -1308,16 +1308,6 @@ internal sealed class CompilationModule : IDisposable
 		CilInterfaceDefinition interfaceDefinition,
 		CilMethod declaration)
 	{
-		if (!string.Equals(interfaceDefinition.Identity.ModuleName, _assemblyName, StringComparison.Ordinal))
-		{
-			throw new M68kCompilationException(
-				M68kDiagnosticIds.UnsupportedPolymorphism,
-				$"Cross-module constrained interface dispatch from " +
-				$"'{_assemblyName}:{GetTypeName(Reader.GetTypeDefinition(layout.Handle))}' " +
-				$"to '{interfaceDefinition.DisplayName}' in " +
-				$"'{interfaceDefinition.Identity.ModuleName}' is not supported yet.");
-		}
-
 		if (!ImplementsInterface(layout.Handle, layout.ConstructedType, interfaceDefinition))
 		{
 			return null;
@@ -1681,18 +1671,20 @@ internal sealed class CompilationModule : IDisposable
 		foreach (var implementationHandle in type.GetInterfaceImplementations())
 		{
 			var parent = Reader.GetInterfaceImplementation(implementationHandle).Interface;
-			if (!TryResolveImplementedInterface(
+			if (!TryResolveImplementedInterfaceTarget(
 					parent,
 					constructedType,
+					out var parentModule,
 					out var parentHandle,
 					out var parentConstruction))
 			{
-				throw new M68kCompilationException(
-					M68kDiagnosticIds.UnsupportedPolymorphism,
-					$"Interface '{constructedType?.DisplayName ?? GetTypeName(type)}' inherits an interface whose exact construction cannot be resolved in its managed module.");
+				// Interface-map discovery scans unrelated managed types too. An
+				// unconfigured referenced assembly cannot contribute reachable slots;
+				// direct use will still fail at the unresolved method reference.
+				continue;
 			}
 
-			foreach (var method in GetInterfaceDefinition(
+			foreach (var method in parentModule.GetInterfaceDefinition(
 				parentHandle,
 				parentConstruction).Slots)
 			{
@@ -2368,16 +2360,78 @@ internal sealed class CompilationModule : IDisposable
 		CilType? constructedType,
 		CilInterfaceDefinition interfaceDefinition)
 	{
-		return TryResolveImplementedInterface(
+		return TryResolveImplementedInterfaceTarget(
 				implemented,
 				constructedType,
+				out var module,
 				out var interfaceHandle,
 				out var interfaceConstruction) &&
-			InterfaceExtends(
+			module.InterfaceExtends(
 				interfaceHandle,
 				interfaceConstruction,
 				interfaceDefinition,
 				new HashSet<CilTypeIdentity>());
+	}
+
+	private bool TryResolveImplementedInterfaceTarget(
+		EntityHandle implemented,
+		CilType? ownerConstruction,
+		out CompilationModule module,
+		out TypeDefinitionHandle interfaceHandle,
+		out CilType? interfaceConstruction)
+	{
+		if (implemented.Kind == HandleKind.TypeDefinition)
+		{
+			module = this;
+			interfaceHandle = (TypeDefinitionHandle)implemented;
+			interfaceConstruction = null;
+			return true;
+		}
+		if (implemented.Kind == HandleKind.TypeReference)
+		{
+			var reference = Reader.GetTypeReference((TypeReferenceHandle)implemented);
+			var referencedModule = GetOrLoadModule(
+				GetReferencedAssemblyName(reference.ResolutionScope));
+			if (referencedModule is not null)
+			{
+				var referencedName = GetTypeName(reference).Replace('/', '+');
+				foreach (var handle in referencedModule.Reader.TypeDefinitions)
+				{
+					if (string.Equals(
+						referencedModule.GetTypeName(handle).Replace('/', '+'),
+						referencedName,
+						StringComparison.Ordinal))
+					{
+						module = referencedModule;
+						interfaceHandle = handle;
+						interfaceConstruction = null;
+						return true;
+					}
+				}
+			}
+		}
+		if (implemented.Kind == HandleKind.TypeSpecification)
+		{
+			interfaceConstruction = Reader
+				.GetTypeSpecification((TypeSpecificationHandle)implemented)
+				.DecodeSignature(
+					_signatureProvider,
+					new CilGenericContext(
+						ownerConstruction?.GenericArguments ?? ImmutableArray<CilType>.Empty,
+						ImmutableArray<CilType>.Empty));
+			var target = ResolveRuntimeTypeIdentity(interfaceConstruction, _assemblyName);
+			if (target.Handle.Kind == HandleKind.TypeDefinition)
+			{
+				module = GetModule(target.ModuleName);
+				interfaceHandle = (TypeDefinitionHandle)target.Handle;
+				return true;
+			}
+		}
+
+		module = null!;
+		interfaceHandle = default;
+		interfaceConstruction = null;
+		return false;
 	}
 
 	private bool TryResolveImplementedInterface(
@@ -2439,12 +2493,13 @@ internal sealed class CompilationModule : IDisposable
 		foreach (var implementationHandle in type.GetInterfaceImplementations())
 		{
 			var parent = Reader.GetInterfaceImplementation(implementationHandle).Interface;
-			if (TryResolveImplementedInterface(
+			if (TryResolveImplementedInterfaceTarget(
 					parent,
 					interfaceConstruction,
+					out var parentModule,
 					out var parentHandle,
 					out var parentConstruction) &&
-				InterfaceExtends(
+				parentModule.InterfaceExtends(
 					parentHandle,
 					parentConstruction,
 					target,
@@ -3069,6 +3124,17 @@ internal sealed class CompilationModule : IDisposable
 			if (TypeNameMatches(definition, displayName))
 			{
 				return IsTransparentScalarType(definition);
+			}
+		}
+
+		foreach (var module in _root._modules.Values)
+		{
+			if (ReferenceEquals(module, this)) continue;
+			foreach (var handle in module.Reader.TypeDefinitions)
+			{
+				var definition = module.Reader.GetTypeDefinition(handle);
+				if (module.TypeNameMatches(definition, displayName))
+					return module.IsTransparentScalarType(definition);
 			}
 		}
 

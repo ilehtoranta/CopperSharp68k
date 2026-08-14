@@ -55,7 +55,9 @@ for other 68000-compatible memory targets.
 `--peephole fixed-point` preserves historical whole-image convergence.
 `--peephole bounded` applies a deterministic rewrite budget for very large
 closed-world graphs; skipped optional rewrites affect code quality, not program
-semantics.
+semantics. `--peephole disabled` skips optional post-allocation condition-code
+and peephole rewrites while retaining lowering, allocation, verification, and
+linking.
 HUNK output defaults to the terminating `application` lifetime. Assembly
 output defaults to `freestanding`; pass `--runtime application` only when the
 entry is invoked once and private image storage becomes unobservable after it

@@ -45,6 +45,8 @@ internal sealed class M68kOptimizerPipeline
 
 	public void Run()
 	{
+		if (_peepholeOptimization == M68kPeepholeOptimizationMode.Disabled)
+			return;
 		if (_peepholeOptimization == M68kPeepholeOptimizationMode.Bounded)
 		{
 			foreach (var pass in _passes)

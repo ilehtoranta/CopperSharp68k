@@ -302,21 +302,30 @@ public sealed class ManagedRuntimeShadowTests
 		{
 			state = state * 2_862_933_555_777_941_757UL + 3_037_000_493UL;
 			var value = BitConverter.Int64BitsToDouble(unchecked((long)state));
-			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Truncate(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Truncate(value)));
-			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Floor(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Floor(value)));
-			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Ceiling(value)), BitConverter.DoubleToInt64Bits(ShadowMath.Ceiling(value)));
+			AssertSameFloatingValue(Math.Truncate(value), ShadowMath.Truncate(value));
+			AssertSameFloatingValue(Math.Floor(value), ShadowMath.Floor(value));
+			AssertSameFloatingValue(Math.Ceiling(value), ShadowMath.Ceiling(value));
 			foreach (var mode in Enum.GetValues<MidpointRounding>())
 			{
-				var expected = BitConverter.DoubleToInt64Bits(Math.Round(value, mode));
-				var actual = BitConverter.DoubleToInt64Bits(ShadowMath.Round(value, mode));
-				if (expected != actual)
-				{
-					Assert.Fail(
-						$"Round mismatch for {mode}, input=0x{state:X16}, " +
-						$"expected=0x{unchecked((ulong)expected):X16}, actual=0x{unchecked((ulong)actual):X16}.");
-				}
+				AssertSameFloatingValue(
+					Math.Round(value, mode),
+					ShadowMath.Round(value, mode),
+					$"Round mismatch for {mode}, input=0x{state:X16}.");
 			}
 		}
+	}
+
+	private static void AssertSameFloatingValue(double expected, double actual, string? context = null)
+	{
+		if (double.IsNaN(expected))
+		{
+			Assert.True(double.IsNaN(actual), context);
+			return;
+		}
+
+		Assert.True(
+			BitConverter.DoubleToInt64Bits(expected) == BitConverter.DoubleToInt64Bits(actual),
+			context);
 	}
 
 	[Fact]

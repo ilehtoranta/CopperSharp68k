@@ -544,6 +544,23 @@ public static class CompilerFixtures
 		}
 	}
 
+	private struct ExternalTransparentScalarFieldRecord
+	{
+		public APTR Pointer;
+		public int Bias;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ExternalTransparentScalarFieldEntry()
+	{
+		var record = new ExternalTransparentScalarFieldRecord
+		{
+			Pointer = APTR.FromPointer(40),
+			Bias = 2
+		};
+		return record.Pointer.Raw + (uint)record.Bias;
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int DiscardCallResultInTryEntry()
 	{
