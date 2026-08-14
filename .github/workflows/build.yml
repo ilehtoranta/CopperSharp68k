@@ -15,10 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build and test
+  test:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.timeout }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build and fast tests
+            filter: Category!=Emulator&FullyQualifiedName!~CompilerExecutionTests
+            timeout: 15
+            artifact: fast-test-results
+          - name: Compiler execution tests
+            filter: FullyQualifiedName~CompilerExecutionTests
+            timeout: 45
+            artifact: execution-test-results
 
     steps:
       - name: Check out repository
@@ -40,14 +53,15 @@ jobs:
           dotnet test CopperSharp68k.slnx
           --configuration Debug
           --no-build
+          --filter "${{ matrix.filter }}"
           --logger "trx;LogFileName=tests.trx"
           --results-directory TestResults
 
       - name: Upload test results
-        if: ${{ !cancelled() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: ${{ matrix.artifact }}
           path: TestResults/**/*.trx
           if-no-files-found: ignore
           retention-days: 14
