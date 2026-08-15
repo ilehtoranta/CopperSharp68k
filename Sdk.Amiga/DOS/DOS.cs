@@ -1171,8 +1171,8 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetSegListAttr(
 		[M68kRegister(M68kRegister.D1)] BPTR segmentList,
-		[M68kRegister(M68kRegister.D2)] int attribute,
-		[M68kRegister(M68kRegister.D3)] uint storage,
+		[M68kRegister(M68kRegister.D2)] SegmentListTag attribute,
+		[M68kRegister(M68kRegister.D3)] APTR storage,
 		[M68kRegister(M68kRegister.D4)] int storageSize);
 
 	// MorphOS m68k ABI call.
@@ -1263,23 +1263,23 @@ public static class DOS
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1168)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint QueryCLIDataTagList(
-		[M68kRegister(M68kRegister.D1)] uint tags);
+	public static extern APTR QueryCLIDataTagList(
+		[M68kRegister(M68kRegister.D1)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1174)]
 	public static extern void FreeCLIData(
-		[M68kRegister(M68kRegister.D1)] uint data);
+		[M68kRegister(M68kRegister.D1)] APTR data);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1180)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetSegListAttrTagList(
 		[M68kRegister(M68kRegister.D1)] BPTR segmentList,
-		[M68kRegister(M68kRegister.D2)] int attribute,
-		[M68kRegister(M68kRegister.D3)] uint storage,
+		[M68kRegister(M68kRegister.D2)] SegmentListTag attribute,
+		[M68kRegister(M68kRegister.D3)] APTR storage,
 		[M68kRegister(M68kRegister.D4)] int storageSize,
-		[M68kRegister(M68kRegister.D5)] uint tags);
+		[M68kRegister(M68kRegister.D5)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1186)]

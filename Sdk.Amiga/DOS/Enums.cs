@@ -44,6 +44,37 @@ public enum DosObjectTag : uint
 	CliDefaultStack = 0x8000_0000u + 2029u,
 }
 
+/// <summary>MorphOS V51.51 QueryCLIDataTagList selectors.</summary>
+public enum CLIDataTag : uint
+{
+	CLINumber = 0x8000_0000u + 3501u,
+	CommandName = 0x8000_0000u + 3502u,
+	Sorted = 0x8000_0000u + 3503u,
+}
+
+/// <summary>MorphOS segment-list attributes and selector tags.</summary>
+public enum SegmentListTag : uint
+{
+	ObjectData = 0x8000_0000u + 3401u,
+	SegmentListType = 0x8000_0000u + 3402u,
+	DosSegmentIndex = 0x8000_0000u + 3403u,
+	ElfSegmentIndex = 0x8000_0000u + 3404u,
+	SegmentStart = 0x8000_0000u + 3405u,
+	SegmentSize = 0x8000_0000u + 3406u,
+	ElfSegmentType = 0x8000_0000u + 3407u,
+	ElfSegmentOffset = 0x8000_0000u + 3408u,
+	ElfSegmentFlags = 0x8000_0000u + 3409u,
+	ElfSegmentAddressAlignment = 0x8000_0000u + 3410u,
+	ElfSegmentName = 0x8000_0000u + 3411u,
+}
+
+public enum SegmentListType : uint
+{
+	Elf = 1,
+	PowerUp = 2,
+	Amiga = 3,
+}
+
 public enum DosDiskState : int
 {
 	WriteProtected = 80,

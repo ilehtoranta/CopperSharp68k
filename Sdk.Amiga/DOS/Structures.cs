@@ -297,6 +297,46 @@ public struct CommandLineInterface
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
+public unsafe struct CLIDataItem
+{
+	/// <summary>Fixed prefix including the first byte of the variable command.</summary>
+	public const uint MinimumSize = 19;
+	public const uint Size = 20;
+
+	public int CLINumber;
+	public int DefaultStack;
+	public int GlobalVector;
+	public uint Future;
+	public sbyte Priority;
+	public byte Flags;
+	public fixed byte Command[1];
+}
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public unsafe struct CLIData
+{
+	/// <summary>Fixed prefix including the first CLI pointer slot.</summary>
+	public const uint MinimumSize = 8;
+	public const uint Size = 8;
+
+	public uint NumberOfCLIs;
+	public fixed uint CLIs[1];
+}
+
+/// <summary>
+/// Header immediately preceding classic Amiga HUNK segment data. A public seglist
+/// BPTR addresses <see cref="Next"/>; <see cref="AllocationSize"/> is one longword
+/// before it and the segment data starts one longword after it.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct DosHunkSegmentHeader
+{
+	public const uint Size = 8;
+
+	public uint AllocationSize;
+	public BPTR Next;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct DeviceList
 {
 	public const uint Size = 44;
