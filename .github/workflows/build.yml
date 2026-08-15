@@ -15,23 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: ${{ matrix.name }}
+  fast-tests:
+    name: Build and fast tests
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.timeout }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Build and fast tests
-            filter: Category!=Emulator&FullyQualifiedName!~CompilerExecutionTests
-            timeout: 15
-            artifact: fast-test-results
-          - name: Compiler execution tests
-            filter: FullyQualifiedName~CompilerExecutionTests
-            timeout: 45
-            artifact: execution-test-results
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -53,7 +40,7 @@ jobs:
           dotnet test CopperSharp68k.slnx
           --configuration Debug
           --no-build
-          --filter "${{ matrix.filter }}"
+          --filter "Category!=Emulator&FullyQualifiedName!~CompilerExecutionTests"
           --logger "trx;LogFileName=tests.trx"
           --results-directory TestResults
 
@@ -61,7 +48,51 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: fast-test-results
+          path: TestResults/**/*.trx
+          if-no-files-found: ignore
+          retention-days: 14
+
+  execution-tests:
+    name: Compiler execution tests (${{ matrix.shard }}/16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore CopperSharp68k.slnx
+
+      - name: Build
+        run: dotnet build CopperSharp68k.slnx --configuration Debug --no-restore
+
+      - name: Test shard
+        shell: pwsh
+        run: >-
+          ./scripts/run-test-shard.ps1
+          -ShardIndex ${{ matrix.shard - 1 }}
+          -ShardCount 16
+          -Configuration Debug
+          -ResultsDirectory TestResults
+
+      - name: Upload test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-test-results-${{ matrix.shard }}
           path: TestResults/**/*.trx
           if-no-files-found: ignore
           retention-days: 14
