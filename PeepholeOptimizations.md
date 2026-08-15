@@ -1,14 +1,16 @@
-# M68k Machine Optimizer
+# Post-emission M68k Peephole Optimizer
 
-This document describes the current machine-level optimizer. It is not a
+This document describes optimization of encoded 68k instructions after register
+allocation and emission. The SSA machine-IR optimizer is documented separately
+in [MachineIrOptimizations.md](MachineIrOptimizations.md). This is not a
 catalogue of possible 68000 peepholes. New rules should be driven by generated
 code, apply generally, and preserve the compiler's calling convention and
 managed-language semantics.
 
 ## Pipeline
 
-Machine optimization runs after CIL lowering and before linking and assembly
-rendering:
+Peephole optimization runs after machine-IR optimization, ABI lowering, register
+allocation, and instruction emission, but before linking and assembly rendering:
 
 - `M68kCodeGenerator` performs transformations that require CIL types, control
   flow, method metadata, or ABI knowledge.
@@ -54,6 +56,11 @@ The optimizer currently covers these rule families:
   required condition codes;
 - long-to-word arithmetic and logical-immediate narrowing when value-range and
   condition-code analysis prove equivalence;
+- retargeting zero-extended absolute word loads from dead temporary registers,
+  and removal of upper-word clears when every subsequent operation and store is
+  word-sized;
+- replacing a long register mask with `andi.w` when the destination upper word
+  is known zero and the mask sign bit is clear, preserving both value and CCR;
 - same-register address-adjustment canonicalization:
   - `addq.l` or `subq.l` for displacements from 1 through 8;
   - `lea d16(An),An` for larger signed 16-bit displacements;
@@ -63,10 +70,10 @@ The optimizer currently covers these rule families:
 - compact register-set transfers using `movem` where the size policy selects it;
 - canonical assembly notation such as `(An)` instead of `0(An)`.
 
-The code generator additionally performs frame-layout optimization, deferred
-local initialization, register allocation for suitable locals, reusable vararg
-scratch-frame allocation, ABI-aware argument placement, small-method inlining,
-and removal of methods that are always inlined.
+The earlier machine-IR pipeline owns typed control flow, scalar and memory
+optimization, closed-world call analysis, inlining, and reachability. The code
+generator retains frame-layout optimization, reusable vararg scratch-frame
+allocation, ABI-aware argument placement, and physical register allocation.
 
 ## Safety Requirements
 
@@ -86,20 +93,16 @@ Rules must use decoded instruction effects and dataflow where correctness
 depends on liveness, aliases, ranges, or flags. Opcode adjacency alone is not
 sufficient proof.
 
-## Future Work
+## Optimization boundaries
 
-The remaining high-value opportunities are no longer primarily peepholes:
+Global machine-IR register allocation is now the default backend path; its
+architecture and acceptance measurements are documented in
+[RegisterAllocation.md](RegisterAllocation.md). Generated real-program findings
+and the generalized fixes derived from them are recorded in
+[GeneratedAssemblyAudit.md](GeneratedAssemblyAudit.md).
 
-- branch threading and jump-chain simplification;
-- unreachable basic-block elimination;
-- broader address and memory alias analysis;
-- global register allocation across basic blocks;
-- instruction scheduling and addressing-mode selection informed by a 68000
-  byte-and-cycle cost model;
-- broader interprocedural inlining and tail-call analysis;
-- broader table-driven CPU cost policies beyond the existing MC68020,
-  MC68040, and MC68060 instruction-selection rules.
-
-These should be implemented as explicit optimizer passes with control-flow and
-analysis support, not accumulated as example-specific patterns in
-`M68kPeepholeOptimizer`.
+Further high-value work such as branch threading, unreachable-block removal,
+broader alias analysis, instruction scheduling, addressing-mode selection,
+interprocedural inlining, and CPU cost modeling belongs in explicit optimizer
+passes with control-flow and analysis support. It should not accumulate as
+example-specific opcode patterns in `M68kPeepholeOptimizer`.
