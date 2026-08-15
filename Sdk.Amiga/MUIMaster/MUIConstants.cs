@@ -3302,7 +3302,7 @@ public static class TextCode
 	public const string L = "\033l";
 	public const string N = "\033n";
 	public const string PH = "\0338";
-	public const string PT = "\0332";
+	public const string PT = "\u00da";
 	public const string R = "\033r";
 	public const string U = "\033u";
 }
