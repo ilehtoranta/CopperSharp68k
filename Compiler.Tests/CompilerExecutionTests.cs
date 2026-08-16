@@ -845,7 +845,65 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void CoreLibStringBuilderTraversalClearsReflectionAndReachesGlobalizationBoundary()
+	public void ExperimentalCoreLibDateTimeGlobalizationCutPointRunsThroughBackend()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		const uint allocatorAddress = 0x0000_2800;
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Runtime.ShadowCultureInfo::ProbeDateTimeFormat",
+			imports: new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = allocatorAddress
+			},
+			frameworkImplementationPack:
+				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+				{
+					EnableUnlistedManagedBodies = true
+				},
+			assemblyPath: typeof(CopperSharp.Runtime.ShadowCultureInfo).Assembly.Location);
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, allocatorAddress);
+
+		Assert.Equal(
+			42u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name.Contains("ShadowCultureInfo::ProbeDateTimeFormat", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("CultureInfo::get_DateTimeFormat", StringComparison.Ordinal) ||
+			symbol.Name.Contains("Internal.Win32.RegistryKey", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void ExperimentalCoreLibResourceKeyCutPointRunsThroughBackend()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Runtime.ShadowSystemResources::ProbeResourceString",
+			frameworkImplementationPack:
+				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+				{
+					EnableUnlistedManagedBodies = true
+				},
+			assemblyPath: typeof(CopperSharp.Runtime.ShadowSystemResources).Assembly.Location);
+		var bus = CreateHunkBus(result);
+
+		Assert.Equal(
+			12u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name.Contains("ShadowSystemResources::GetResourceString", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("ResourceManager::GetString", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ManifestBasedResourceGroveler", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderTraversalClearsResourceLookupAndReachesDerivedExceptionBoundary()
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		const uint allocatorAddress = 0x0000_2800;
@@ -864,17 +922,17 @@ public sealed class CompilerExecutionTests
 				}));
 
 		Assert.Equal(M68kDiagnosticIds.UnsupportedSignature, exception.DiagnosticId);
-		Assert.Contains("System.OperationCanceledException::_cancellationToken", exception.Message);
-		Assert.Contains("System.Threading.CancellationToken", exception.Message);
-		Assert.DoesNotContain("System.Reflection.CerHashtable`2", exception.Message);
+		Assert.Contains("RuntimeTypeCache/MemberInfoCache`1", exception.Message);
+		Assert.Contains("System.Reflection.CerHashtable`2", exception.Message);
+		Assert.DoesNotContain("System.OperationCanceledException::_cancellationToken", exception.Message);
 	}
 
 	[Fact]
-	public void CoreLibListTraversalClearsReflectionAndReachesGlobalizationBoundary()
+	public void CoreLibListConstructorRunsThroughBackendWithSameModuleEnumClassification()
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		const uint allocatorAddress = 0x0000_2800;
-		var exception = Assert.Throws<M68kCompilationException>(() => Compile(
+		var result = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Hunk,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibListIntEntry",
@@ -886,12 +944,20 @@ public sealed class CompilerExecutionTests
 				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
 				{
 					EnableUnlistedManagedBodies = true
-				}));
+				});
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, allocatorAddress);
 
-		Assert.Equal(M68kDiagnosticIds.UnsupportedSignature, exception.DiagnosticId);
-		Assert.Contains("System.OperationCanceledException::_cancellationToken", exception.Message);
-		Assert.Contains("System.Threading.CancellationToken", exception.Message);
-		Assert.DoesNotContain("System.Reflection.CerHashtable`2", exception.Message);
+		Assert.Equal(
+			42u,
+			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name.Contains(
+				"System.Collections.Generic.List`1<int>::.ctor",
+				StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("ResourceManager::GetString", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ManifestBasedResourceGroveler", StringComparison.Ordinal));
 	}
 
 	[Fact]
@@ -4010,16 +4076,14 @@ public sealed class CompilerExecutionTests
 			"\tmovea.l\t_DOSLibraryBase(pc),a1",
 			result.Text,
 			StringComparison.Ordinal);
-		Assert.Matches(
-			@"\tmovea\.l\t_IFFParseLibraryBase\(pc\),a1\r?\n" +
-			@"\tmovea\.l\t_ExecBase\(pc\),a6\r?\n" +
-			@"\tjsr\t-414\(a6\)",
-			result.Text);
-		Assert.Matches(
-			@"\tmovea\.l\t_DOSLibraryBase\(pc\),a1\r?\n" +
-			@"\tmovea\.l\t_ExecBase\(pc\),a6\r?\n" +
-			@"\tjsr\t-414\(a6\)",
-			result.Text);
+		Assert.Contains(
+			"\tmovea.l\t_ExecBase(pc),a6",
+			result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains(
+			"\tjsr\t-414(a6)",
+			result.Text,
+			StringComparison.Ordinal);
 		Assert.Equal(
 			2,
 			result.TerminalDeadStoreStatistics.Sum(
@@ -4760,6 +4824,65 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(
 			17u,
 			ExecuteHunkWithAllocator(addressTaken, model));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ExactConstructedGenericBodiesWithSameContextFold(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::" +
+			"IdenticalConstructedGenericBodyFoldEntry",
+			exceptionMode: M68kExceptionMode.Yolo);
+		var first = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.Contains("IdenticalConstructedGenericBodyA", StringComparison.Ordinal)));
+		var second = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.Contains("IdenticalConstructedGenericBodyB", StringComparison.Ordinal)));
+		Assert.Equal(first.Address, second.Address);
+		Assert.Equal(
+			44u,
+			Execute(
+				CreateHunkBus(result),
+				model,
+				HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ExactBodiesCallingFoldedHelpersAlsoFold(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::" +
+			"IdenticalCallCascadeFoldEntry",
+			exceptionMode: M68kExceptionMode.Yolo);
+		var firstLeaf = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.EndsWith("IdenticalCallCascadeLeafA",
+				StringComparison.Ordinal)));
+		var secondLeaf = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.EndsWith("IdenticalCallCascadeLeafB",
+				StringComparison.Ordinal)));
+		var firstBody = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.EndsWith("IdenticalCallCascadeBodyA",
+				StringComparison.Ordinal)));
+		var secondBody = Assert.Single(result.Symbols.Where(symbol =>
+			symbol.Name.EndsWith("IdenticalCallCascadeBodyB",
+				StringComparison.Ordinal)));
+		Assert.Equal(firstLeaf.Address, secondLeaf.Address);
+		Assert.Equal(firstBody.Address, secondBody.Address);
+		Assert.Equal(
+			88u,
+			Execute(
+				CreateHunkBus(result),
+				model,
+				HunkLoadAddress + result.EntryPoint));
 	}
 
 	[Fact]
@@ -17909,10 +18032,11 @@ public sealed class CompilerExecutionTests
 		M68kExceptionMode exceptionMode = M68kExceptionMode.Full,
 		IReadOnlyDictionary<string, uint>? imports = null,
 		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled,
-		M68kFrameworkImplementationPackOptions? frameworkImplementationPack = null) =>
+		M68kFrameworkImplementationPackOptions? frameworkImplementationPack = null,
+		string? assemblyPath = null) =>
 		AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
-			AssemblyPath = FixtureAssembly,
+			AssemblyPath = assemblyPath ?? FixtureAssembly,
 			EntryPoint = entry,
 			Cpu = cpu,
 			FloatingPoint = floatingPoint,

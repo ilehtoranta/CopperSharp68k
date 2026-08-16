@@ -10616,7 +10616,38 @@ public static class CompilerFixtures
 	private static int IdenticalDirectBodyA(int value) => value + 7;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static int IdenticalDirectBodyB(int value) => value + 7;
+	public static int IdenticalDirectBodyB(int value) => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IdenticalCallCascadeFoldEntry() =>
+		IdenticalCallCascadeBodyA(10) + IdenticalCallCascadeBodyB(20);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalCallCascadeBodyA(int value) =>
+		IdenticalCallCascadeLeafA(value) * 2;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IdenticalCallCascadeBodyB(int value) =>
+		IdenticalCallCascadeLeafB(value) * 2;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalCallCascadeLeafA(int value) => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IdenticalCallCascadeLeafB(int value) => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IdenticalConstructedGenericBodyFoldEntry() =>
+		IdenticalConstructedGenericBodyA<int>(10) +
+		IdenticalConstructedGenericBodyB<int>(20);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalConstructedGenericBodyA<T>(int value)
+		where T : struct => value + 7;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int IdenticalConstructedGenericBodyB<T>(int value)
+		where T : struct => value + 7;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int IdenticalAddressTakenBodiesEntry()

@@ -581,6 +581,94 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void SpillReloadForOutgoingArgumentDoesNotCycle()
+	{
+		var function = new M68kMachineFunction("outgoing-argument-reload", 0);
+		var block = AddBlock(function, 0, 0);
+		var values = Enumerable.Range(0, 9)
+			.Select(_ => CreateLong(function))
+			.ToArray();
+		foreach (var value in values)
+		{
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Other,
+				0,
+				definitions: [value.Id]));
+		}
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.OutgoingArgumentPush,
+			1,
+			uses: [values[0].Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			argumentIndex: 4));
+		for (var repetition = 0; repetition < 3; repetition++)
+		{
+			foreach (var value in values.Skip(1))
+			{
+				block.Instructions.Add(function.CreateInstruction(
+					M68kMachineOperation.Other,
+					2 + repetition,
+					uses: [value.Id]));
+			}
+		}
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			5,
+			uses: [values[1].Id]));
+
+		var allocated = M68kRegisterAllocatorPipeline.Run(function);
+
+		Assert.True(allocated.Statistics.AllocationIterations > 1);
+		Assert.NotEmpty(allocated.Spills.Slots);
+	}
+
+	[Fact]
+	public void SpillRematerializationForOutgoingArgumentDoesNotCycle()
+	{
+		var function = new M68kMachineFunction("outgoing-argument-rematerialization", 0);
+		var block = AddBlock(function, 0, 0);
+		var values = Enumerable.Range(0, 9)
+			.Select(_ => CreateLong(function))
+			.ToArray();
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Constant,
+			0,
+			definitions: [values[0].Id]));
+		foreach (var value in values.Skip(1))
+		{
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Other,
+				0,
+				definitions: [value.Id]));
+		}
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.OutgoingArgumentPush,
+			1,
+			uses: [values[0].Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			argumentIndex: 4));
+		for (var repetition = 0; repetition < 3; repetition++)
+		{
+			foreach (var value in values.Skip(1))
+			{
+				block.Instructions.Add(function.CreateInstruction(
+					M68kMachineOperation.Other,
+					2 + repetition,
+					uses: [value.Id]));
+			}
+		}
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			5,
+			uses: [values[1].Id]));
+
+		var allocated = M68kRegisterAllocatorPipeline.Run(function);
+
+		Assert.True(allocated.Statistics.AllocationIterations > 1);
+		Assert.NotEmpty(allocated.Spills.RematerializedValues);
+	}
+
+	[Fact]
 	public void AddressConstraintCoalescesAnExistingAddressValue()
 	{
 		var function = new M68kMachineFunction("address-copy", 0);

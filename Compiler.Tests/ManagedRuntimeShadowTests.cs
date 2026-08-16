@@ -55,6 +55,18 @@ public sealed class ManagedRuntimeShadowTests
 		Assert.Equal("System.Exception", new ShadowException().ToString());
 
 	[Fact]
+	public void ShadowCultureInfoOmitsDateTimeGlobalization() =>
+		Assert.Null(new ShadowCultureInfo().GetDateTimeFormat());
+
+	[Fact]
+	public void ShadowSystemResourcesReturnsTheRequestedKey()
+	{
+		const string key = "Arg_IndexOutOfRangeException";
+
+		Assert.Same(key, ShadowSystemResources.GetResourceString(key));
+	}
+
+	[Fact]
 	public void ShadowIntegerFormatterPacksInvariantDecimalWithoutAllocation()
 	{
 		AssertPackedInt32(0, 1, 0x3000_0000, 0, 0);

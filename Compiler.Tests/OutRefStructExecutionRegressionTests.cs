@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Copper68k;
 using CopperSharp.Targets.Amiga;
 
@@ -26,6 +27,32 @@ public sealed class OutRefStructExecutionRegressionTests
 			RuntimeProfile = M68kRuntimeProfile.Application,
 		});
 
+		Assert.Equal(42u, Execute(result));
+	}
+
+	[Fact]
+	public void FreestandingStructFieldsDoNotRequireRuntimeTypeDescriptors()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = Assembly.GetExecutingAssembly().Location,
+			EntryPoint =
+				"CopperSharp.Compiler.Tests.OutRefStructRegressionFixture::Entry",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Freestanding,
+			MemoryManagement = M68kMemoryManagement.None,
+			ExceptionMode = M68kExceptionMode.Yolo,
+		});
+
+		Assert.DoesNotContain(
+			result.Relocations,
+			relocation => relocation.Target ==
+				"runtime:type-descriptor:System.ValueType");
+		Assert.DoesNotContain(
+			result.Relocations,
+			relocation => relocation.Target ==
+				"runtime:type-descriptor:System.Object");
 		Assert.Equal(42u, Execute(result));
 	}
 
@@ -60,6 +87,7 @@ public sealed class OutRefStructExecutionRegressionTests
 	}
 }
 
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct OutRefStructRegressionDescriptor
 {
 	public short Key;

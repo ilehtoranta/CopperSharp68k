@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using CopperSharp.Compiler.Framework;
+using CopperSharp.Compiler.Metadata;
 using CopperSharp.Targets.Amiga;
 
 namespace CopperSharp.Compiler.Tests;
@@ -45,6 +46,122 @@ public sealed class FrameworkImplementationPackTests
 			binding.Target);
 		Assert.True(binding.PreservesVirtualDispatch);
 		Assert.True(FrameworkImplementationProfile.IsTargetRuntimeOverride(binding));
+	}
+
+	[Fact]
+	public void ExperimentalProfileCutsOffCultureInfoDateTimeFormatOnlyWhenUnlistedBodiesAreEnabled()
+	{
+		var member = new FrameworkMemberId(
+			FrameworkTypeId.Named("System.Runtime", "System.Globalization.CultureInfo"),
+			"get_DateTimeFormat",
+			new FrameworkMethodSignatureId(
+				0x20,
+				0,
+				0,
+				FrameworkTypeId.Named(
+					"System.Runtime",
+					"System.Globalization.DateTimeFormatInfo"),
+				[]));
+
+		Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(
+			member,
+			enableUnlistedManagedBodies: false,
+			out _));
+		Assert.True(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(
+			member,
+			enableUnlistedManagedBodies: true,
+			out var binding));
+		Assert.Equal(FrameworkBindingKind.ShadowMethod, binding.Kind);
+		Assert.Equal(
+			"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowCultureInfo::GetDateTimeFormat",
+			binding.Target);
+		Assert.True(binding.PreservesVirtualDispatch);
+		Assert.True(FrameworkImplementationProfile.IsTargetRuntimeOverride(binding));
+	}
+
+	[Fact]
+	public void ExperimentalProfileUsesSystemResourceKeysOnlyWhenUnlistedBodiesAreEnabled()
+	{
+		var member = new FrameworkMemberId(
+			FrameworkTypeId.Named("System.Runtime", "System.SR"),
+			"GetResourceString",
+			new FrameworkMethodSignatureId(
+				0,
+				0,
+				0,
+				FrameworkTypeId.Primitive("System.String"),
+				[FrameworkTypeId.Primitive("System.String")]));
+
+		Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(
+			member,
+			enableUnlistedManagedBodies: false,
+			out _));
+		Assert.True(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(
+			member,
+			enableUnlistedManagedBodies: true,
+			out var binding));
+		Assert.Equal(FrameworkBindingKind.ShadowMethod, binding.Kind);
+		Assert.Equal(
+			"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowSystemResources::GetResourceString",
+			binding.Target);
+		Assert.False(binding.PreservesVirtualDispatch);
+		Assert.Equal(
+			FrameworkTypeInitializerPolicy.TargetOwned,
+			binding.TypeInitializerPolicy);
+		Assert.True(FrameworkImplementationProfile.IsTargetRuntimeOverride(binding));
+		Assert.False(FrameworkImplementationProfile.IsTargetRuntimeOverride(
+			binding with
+			{
+				TypeInitializerPolicy = FrameworkTypeInitializerPolicy.Implementation
+			}));
+	}
+
+	[Fact]
+	public void ExperimentalProfileOwnsSystemResourceTypeInitialization()
+	{
+		var getter = new FrameworkMemberId(
+			FrameworkTypeId.Named("System.Runtime", "System.SR"),
+			"get_Arg_IndexOutOfRangeException",
+			new FrameworkMethodSignatureId(
+				0,
+				0,
+				0,
+				FrameworkTypeId.Primitive("System.String"),
+				[]));
+
+		Assert.False(FrameworkImplementationProfile.TryCreatePinnedBinding(
+			getter,
+			fallback: null,
+			enableUnlistedManagedBodies: false,
+			out _));
+		Assert.True(FrameworkImplementationProfile.TryCreatePinnedBinding(
+			getter,
+			fallback: null,
+			enableUnlistedManagedBodies: true,
+			out var binding));
+		Assert.Equal(FrameworkBindingKind.PinnedManagedBody, binding.Kind);
+		Assert.Equal(
+			FrameworkTypeInitializerPolicy.TargetOwned,
+			binding.TypeInitializerPolicy);
+		Assert.True(FrameworkImplementationProfile.IsPinnedBinding(binding));
+	}
+
+	[Fact]
+	public void CoreLibEnumWithSameModuleSystemEnumBaseUsesUnderlyingScalarType()
+	{
+		using var pack = CoreLibPack.Create();
+		using var stream = File.OpenRead(pack.AssemblyPath);
+		using var peReader = new PEReader(stream, PEStreamOptions.PrefetchEntireImage);
+		var reader = peReader.GetMetadataReader();
+		var provider = new CilSignatureTypeProvider();
+
+		Assert.True(provider.TryGetDefinedEnumType(
+			reader,
+			"System.ExceptionArgument",
+			out var enumType));
+		Assert.True(enumType.IsEnum);
+		Assert.Equal(CilTypeKind.SignedInteger, enumType.Kind);
+		Assert.Equal(4, enumType.Size);
 	}
 
 	[Fact]
