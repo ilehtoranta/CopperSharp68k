@@ -258,11 +258,24 @@ internal sealed class CilSignatureTypeProvider :
 		out CilType underlying)
 	{
 		underlying = null!;
-		if (definition.BaseType.Kind != HandleKind.TypeReference ||
-			QualifiedName(
+		if (definition.BaseType.IsNil)
+		{
+			return false;
+		}
+		// Application enums reference System.Enum from CoreLib. CoreLib's own
+		// internal enums instead point to a definition in the same metadata module.
+		var baseTypeName = definition.BaseType.Kind switch
+		{
+			HandleKind.TypeReference => QualifiedName(
 				reader,
-				reader.GetTypeReference((TypeReferenceHandle)definition.BaseType)) !=
-			"System.Enum")
+				reader.GetTypeReference((TypeReferenceHandle)definition.BaseType)),
+			HandleKind.TypeDefinition => QualifiedName(
+				reader,
+				(TypeDefinitionHandle)definition.BaseType,
+				reader.GetTypeDefinition((TypeDefinitionHandle)definition.BaseType)),
+			_ => null
+		};
+		if (!string.Equals(baseTypeName, "System.Enum", StringComparison.Ordinal))
 		{
 			return false;
 		}

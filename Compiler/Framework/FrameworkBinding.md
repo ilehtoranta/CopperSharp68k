@@ -76,10 +76,20 @@ The next bounded gate introduced exactly one experimental cut point. While unlis
 
 That cut point clears the reflection-cache boundary for both probes. Their next common stop is now in globalization/platform reachability: numeric or resource formatting requests `CultureInfo.DateTimeFormat`, then Japanese-era initialization reaches the Windows registry and environment expansion path; `Win32Marshal.GetExceptionForWin32Error` finally requires the unsupported `System.OperationCanceledException::_cancellationToken` field of type `System.Threading.CancellationToken`. This is a separate boundary and is intentionally left unresolved by this one-cut-point spike.
 
+The following bounded gate adds one date/time-globalization cut point for the exact virtual `CultureInfo.DateTimeFormat` getter. Closed-world analysis sees that branch in `CultureInfo.GetFormat(Type)` even when the runtime request is numeric or asks for a custom formatter. The target-owned getter returns `null`, so it imports no calendar, locale, registry, environment, or formatter object graph. Numeric formatting remains on the official CoreLib `NumberFormat` path. This deliberately means date/time formatting is unsupported rather than partially emulated, and the override remains behind the same experimental switch.
+
+Both probes clear the former Windows-globalization boundary. They next converge in `System.SR` resource lookup: `ResourceManager` and `ManifestBasedResourceGroveler` use `Activator.CreateInstance` to construct a resource set, which reaches `RuntimeTypeCache.MemberInfoCache<RuntimeConstructorInfo>` and its unsupported `CerHashtable<string, RuntimeConstructorInfo[]>` field. Resource lookup is therefore the next independent cut point; it is not folded into the globalization change.
+
+The next bounded gate enables CoreLib's resource-key behavior without carrying resource files or `ResourceManager`. The exact static `System.SR.GetResourceString(string)` member maps to a target body that returns its input key. Opt-in pinned `System.SR` helper bodies also use target-owned type initialization, preventing generated `SR.get_*` properties from triggering the host resource initializer before they reach the cut point. This matches the deterministic behavior exposed by .NET's `System.Resources.UseSystemResourceKeys` switch; ordinary application-facing `ResourceManager` APIs remain outside the override.
+
+After that gate the probes no longer share a boundary. `List<int>` initially appeared to reach machine-IR lowering for a multiword `System.ExceptionArgument` value passed into `ThrowHelper`. The underlying defect was earlier in metadata decoding: CoreLib defines both `ExceptionArgument` and its `System.Enum` base in the same module, while enum detection handled only an external `TypeReference` base. Accepting the equivalent `TypeDefinition` base classifies the enum as its four-byte signed underlying scalar without relaxing any true multiword-struct rule. With that correction, the official `List<int>(capacity)` body allocates its array and runs end to end through the M68000 backend.
+
+`StringBuilder.Append(int)` remains at a separate boundary in `ExternalException.ToString`, whose derived override imports stack-trace reflection independently of the exact `Exception.ToString` cut point. It should be evaluated as its own future spike rather than hidden behind broader resource or exception substitution.
+
 The spike therefore validates on-demand identity, generic-body ingestion, and the constrained-dispatch shapes encountered by the probes, but not an end-to-end replacement for shadows. Before this path can become a supported profile feature, the compiler needs:
 
 - a small target-runtime override table for CoreLib methods that have no IL body, including bulk memory movement;
-- controlled formatting, globalization, resource, and target-OS cut points so ordinary validation branches do not import host-specific subsystems;
+- bounded handling for derived exception formatting and remaining target-OS cut points;
 - completion tests for the remaining static-abstract interface encoding shapes before advertising general static-interface support; and
 - corpus and size/cycle gates proving that closed-world CoreLib ingestion remains pay-for-play.
 

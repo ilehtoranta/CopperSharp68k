@@ -163,6 +163,37 @@ public class ShadowException
 }
 
 /// <summary>
+/// Date/time globalization boundary used by the experimental official-body profile.
+/// Numeric formatting remains on the official CoreLib path; calendar and
+/// host-locale discovery are deliberately outside the target runtime.
+/// </summary>
+public class ShadowCultureInfo
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public virtual System.Globalization.DateTimeFormatInfo? GetDateTimeFormat() => null;
+
+	// Static target entry used to exercise allocation and virtual dispatch through
+	// the native backend without adding this experimental boundary to app fixtures.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	internal static int ProbeDateTimeFormat() =>
+		new ShadowCultureInfo().GetDateTimeFormat() is null ? 42 : 0;
+}
+
+/// <summary>
+/// Deterministic CoreLib error resources for the experimental official-body profile.
+/// This matches .NET's resource-key mode without importing ResourceManager or reflection.
+/// </summary>
+public static class ShadowSystemResources
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string GetResourceString(string key) => key;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	internal static int ProbeResourceString() =>
+		GetResourceString("resource-key").Length;
+}
+
+/// <summary>
 /// Per-closed-element cache used to preserve the singleton contract of
 /// <see cref="Array.Empty{T}"/> without importing the CoreLib cache graph.
 /// </summary>

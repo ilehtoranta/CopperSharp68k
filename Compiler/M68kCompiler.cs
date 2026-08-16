@@ -469,6 +469,7 @@ public static class M68kCompiler
 				symbols,
 				linked.Relocations,
 				loopFootprints,
+				program.Assembler.PeepholeOptimizationStatistics,
 				frameworkFeatures),
 			text,
 			program.AllocationStatistics.Values.ToArray(),
@@ -515,6 +516,7 @@ public static class M68kCompiler
 				symbols,
 				linked.Relocations,
 				loopFootprints,
+				program.Assembler.PeepholeOptimizationStatistics,
 				frameworkFeatures),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
@@ -556,6 +558,7 @@ public static class M68kCompiler
 				symbols,
 				linked.Relocations,
 				loopFootprints,
+				program.Assembler.PeepholeOptimizationStatistics,
 				frameworkFeatures),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
@@ -639,6 +642,7 @@ public static class M68kCompiler
 		IReadOnlyList<M68kSymbol> symbols,
 		IReadOnlyList<M68kRelocation> relocations,
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
+		M68kPeepholeOptimizationStatistics peepholeStatistics,
 		IReadOnlyList<string> frameworkFeatures)
 	{
 		var target = request.TargetContract ?? new M68kTargetContract(
@@ -674,6 +678,14 @@ public static class M68kCompiler
 			$"symbols={symbols.Count} relocations={relocations.Count} " +
 			$"loops={loopFootprints.Count} framework-features={frameworkFeatures.Count} " +
 			$"managed-allocation-sites={frameworkAnalysis.ManagedAllocationSites.Count}");
+		map.AppendLine(
+			$"PEEPHOLE mode={request.PeepholeOptimization} " +
+			$"analyzed-bytes={peepholeStatistics.AnalyzedBytes} " +
+			$"batches={peepholeStatistics.Batches} " +
+			$"rewrites={peepholeStatistics.Rewrites} " +
+			$"rounds={peepholeStatistics.Rounds} " +
+			$"method-ranges={peepholeStatistics.MethodRanges} " +
+			$"converged={(peepholeStatistics.Converged ? "yes" : "no")}");
 		map.AppendLine("SYMBOLS");
 		foreach (var symbol in symbols)
 		{

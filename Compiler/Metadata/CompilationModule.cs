@@ -3348,6 +3348,37 @@ internal sealed class CompilationModule : IDisposable
 		};
 	}
 
+	public string ResolveTypeTokenModuleName(
+		int token,
+		CilMethod caller,
+		int ilOffset)
+	{
+		if (!string.IsNullOrEmpty(caller.ModuleName) &&
+			!string.Equals(caller.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(caller, ilOffset)
+				.ResolveTypeTokenModuleName(token, caller, ilOffset);
+		}
+
+		var handle = MetadataTokens.EntityHandle(token);
+		return handle.Kind switch
+		{
+			HandleKind.TypeDefinition => _assemblyName,
+			HandleKind.TypeReference => GetReferencedAssemblyName(
+				Reader.GetTypeReference((TypeReferenceHandle)handle).ResolutionScope),
+			HandleKind.TypeSpecification => Reader
+				.GetTypeSpecification((TypeSpecificationHandle)handle)
+				.DecodeSignature(
+					new DeclaringAssemblyTypeProvider(this),
+					caller.GenericContext) ?? caller.ModuleName,
+			_ => throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				$"Token 0x{token:X8} is not a type reference.",
+				caller.DisplayName,
+				ilOffset)
+		};
+	}
+
 	public CilRuntimeTypeTarget ResolveRuntimeTypeToken(
 		int token,
 		CilMethod caller,
@@ -6355,6 +6386,13 @@ internal sealed class CompilationModule : IDisposable
 			layout.ReferenceBitmap == 0 &&
 			offsets.Count == 1 &&
 			offsets.TryGetValue("_ticks", out var ticks) && ticks == 8)
+		{
+			return;
+		}
+		// System.SR is a static helper. Resource-key mode owns its initialization,
+		// and its implementation type has no instance state to transport.
+		if (typeName == "System.SR" && layout.Size == 8 &&
+			layout.ReferenceBitmap == 0 && offsets.Count == 0)
 		{
 			return;
 		}

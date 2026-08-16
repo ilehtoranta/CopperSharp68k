@@ -106,12 +106,12 @@
   },
   {
     "Name": "example:MUITaskList",
-    "ImageBytes": 5708,
-    "CodeBytes": 4232,
-    "CompiledMethods": 15,
+    "ImageBytes": 5376,
+    "CodeBytes": 3942,
+    "CompiledMethods": 14,
     "SpilledValues": 14,
     "MaximumSpillFrameBytes": 0,
-    "StackMemoryInstructions": 177,
+    "StackMemoryInstructions": 168,
     "ManagedAllocationSites": 7,
     "Mc68000Cycles": null,
     "RuntimeFeatures": [
