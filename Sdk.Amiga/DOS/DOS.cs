@@ -502,11 +502,11 @@ public static class DOS
 	[AmigaLvo(-438)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ReadLink(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] BPTR lock_,
 		[M68kRegister(M68kRegister.D3)] CString path,
-		[M68kRegister(M68kRegister.D4)] uint buffer,
-		[M68kRegister(M68kRegister.D5)] uint size);
+		[M68kRegister(M68kRegister.D4)] APTR buffer,
+		[M68kRegister(M68kRegister.D5)] int size);
 
 	[AmigaLvo(-444)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -1151,10 +1151,10 @@ public static class DOS
 	[AmigaLvo(-1114)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int NewReadLink(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] BPTR lock_,
 		[M68kRegister(M68kRegister.D3)] CString path,
-		[M68kRegister(M68kRegister.D4)] uint buffer,
+		[M68kRegister(M68kRegister.D4)] APTR buffer,
 		[M68kRegister(M68kRegister.D5)] int bufferSize);
 
 	// MorphOS m68k ABI call.
@@ -1162,8 +1162,8 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetFileSysAttr(
 		[M68kRegister(M68kRegister.D1)] CString deviceName,
-		[M68kRegister(M68kRegister.D2)] int attribute,
-		[M68kRegister(M68kRegister.D3)] uint storage,
+		[M68kRegister(M68kRegister.D2)] FileSystemQueryAttribute attribute,
+		[M68kRegister(M68kRegister.D3)] APTR storage,
 		[M68kRegister(M68kRegister.D4)] int storageSize);
 
 	// MorphOS m68k ABI call.
@@ -1287,7 +1287,7 @@ public static class DOS
 	public static extern int SetFilePosixDate(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] APTR date,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-1186)]
@@ -1295,7 +1295,7 @@ public static class DOS
 	public static extern int SetFilePosixDateTagList(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] APTR date,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1192)]

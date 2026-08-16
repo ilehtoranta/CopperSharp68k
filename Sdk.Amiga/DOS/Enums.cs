@@ -75,6 +75,18 @@ public enum SegmentListType : uint
 	Amiga = 3,
 }
 
+public enum FileSystemQueryAttribute : int
+{
+	MaxFileNameLength = 0,
+	MaxVolumeNameLength = 1,
+	MaxFileSize = 2,
+	IsCaseSensitive = 3,
+	DeviceType = 4,
+	Reserved1 = 5,
+	NumBlocks = 6,
+	NumBlocksUsed = 7,
+}
+
 public enum DosDiskState : int
 {
 	WriteProtected = 80,
@@ -223,4 +235,10 @@ public enum DosPacketAction : int
 	FreeRecord = 2009,
 	AddNotify = 4097,
 	RemoveNotify = 4098,
+	NewReadLink = 26406,
+	QueryAttribute = 26407,
+	ExamineObject64 = 26408,
+	ExamineNext64 = 26409,
+	ExamineFileHandle64 = 26410,
+	SetPosixDate = 26411,
 }
