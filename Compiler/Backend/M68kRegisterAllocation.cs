@@ -176,7 +176,13 @@ internal static class M68kMachineCostAnalysis
 				IsRematerializable =
 					value.IsRematerializable ||
 					rematerializable.Contains(valueId),
-				SpillWeight = Math.Max(1, weights[valueId])
+				// A reload is the result of an earlier spill decision. Selecting the
+				// short-lived reload again cannot reduce pressure and makes iterative
+				// allocation cycle forever around large outgoing calls. Prefer spilling
+				// one of its still-live neighbors so the reload has a usable scratch.
+				SpillWeight = value.IsSpillTemporary
+					? long.MaxValue
+					: Math.Max(1, weights[valueId])
 			};
 		}
 	}
@@ -770,7 +776,7 @@ internal sealed record M68kAllocatedFunction(
 
 internal static class M68kRegisterAllocatorPipeline
 {
-	private const int MaximumAllocationIterations = 16;
+	private const int MaximumAllocationIterations = 32;
 
 	public static M68kAllocatedFunction Run(
 		M68kMachineFunction function,

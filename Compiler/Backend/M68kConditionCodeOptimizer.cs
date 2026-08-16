@@ -693,27 +693,39 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 	}
 
 	public bool Changed { get; private set; }
+	public int RewriteCount { get; private set; }
 
 	public void Run()
 	{
 		Changed = false;
+		RewriteCount = 0;
 		bool changed;
 		do
 		{
 			changed = false;
-			var dataflow = M68kInstructionDataflow.Analyze(_assembler);
-			if (FoldKnownZeroBranches(dataflow) ||
-				TryRewriteSingleBitTest(dataflow))
+			_assembler.BeginInstructionAnalysisRound();
+			try
 			{
-				changed = true;
-				Changed = true;
-				continue;
-			}
+				var dataflow = M68kInstructionDataflow.Analyze(_assembler);
+				if (FoldKnownZeroBranches(dataflow) ||
+					TryRewriteSingleBitTest(dataflow))
+				{
+					changed = true;
+					Changed = true;
+					RewriteCount++;
+					continue;
+				}
 
-			if (RemoveRedundantConditionInstructions(dataflow))
+				if (RemoveRedundantConditionInstructions(dataflow))
+				{
+					changed = true;
+					Changed = true;
+					RewriteCount++;
+				}
+			}
+			finally
 			{
-				changed = true;
-				Changed = true;
+				_assembler.EndInstructionAnalysisRound();
 			}
 		}
 		while (changed);

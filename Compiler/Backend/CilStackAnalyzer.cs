@@ -1225,7 +1225,13 @@ internal static class CilStackAnalyzer
 					CilStackValueKind.AggregateAddress)
 			{
 				EnsureDepth(method, instruction, currentStack, 2);
-				var expected = new CilAggregateStackType(method.ModuleName, type);
+				var expected = CreateAggregateStackType(
+					module,
+					type,
+					module.ResolveTypeTokenModuleName(
+						(int)instruction.Operand!,
+						method,
+						instruction.Offset));
 				if (currentStack[^1] != CilStackValueKind.AggregateAddress ||
 					currentAggregateTypes[^1] != expected)
 				{
@@ -1343,6 +1349,10 @@ internal static class CilStackAnalyzer
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
+			moduleName = module.ResolveTypeTokenModuleName(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
 		}
 		else if (instruction.OpCode == OpCodes.Ldfld ||
 			instruction.OpCode == OpCodes.Ldsfld)
@@ -1360,10 +1370,18 @@ internal static class CilStackAnalyzer
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
+			moduleName = module.ResolveTypeTokenModuleName(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
 		}
 		else if (instruction.OpCode == OpCodes.Ldobj)
 		{
 			type = module.ResolveTypeToken(
+				(int)instruction.Operand!,
+				method,
+				instruction.Offset);
+			moduleName = module.ResolveTypeTokenModuleName(
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
@@ -1373,12 +1391,23 @@ internal static class CilStackAnalyzer
 			StackKindForType(module, type, moduleName) ==
 				CilStackValueKind.AggregateAddress)
 		{
-			aggregateType = new CilAggregateStackType(moduleName, type);
+			aggregateType = CreateAggregateStackType(module, type, moduleName);
 			return true;
 		}
 
 		aggregateType = default;
 		return false;
+	}
+
+	private static CilAggregateStackType CreateAggregateStackType(
+		CompilationModule module,
+		CilType type,
+		string preferredModuleName)
+	{
+		var identity = module.ResolveRuntimeTypeIdentity(type, preferredModuleName);
+		return new CilAggregateStackType(
+			identity.Handle.IsNil ? preferredModuleName : identity.ModuleName,
+			type);
 	}
 
 	private static bool IsSpanByrefConstructor(string? importName) =>

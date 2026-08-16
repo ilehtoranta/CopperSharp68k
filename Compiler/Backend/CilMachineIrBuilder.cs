@@ -4700,7 +4700,11 @@ internal static class CilMachineIrBuilder
 		var isNonThrowingAddressIntrinsic =
 			transportsManagedByrefOwner ||
 			IsNonThrowingMemoryIntrinsic(target.ImportName) ||
-			target.ImportName is
+				target.ImportName is
+				"intrinsic:copperstart-probe-cpu" or
+				"intrinsic:copperstart-disable-rom-overlay" or
+				"intrinsic:copperstart-stop" or
+				"intrinsic:copperstart-bootstrap-stack" or
 				"intrinsic:string-equality" or
 				"intrinsic:string-inequality" or
 				"intrinsic:runtime-string-hash" or

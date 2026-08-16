@@ -260,6 +260,45 @@ internal sealed class M68kAssembler
 		_bytes.Add((byte)value);
 	}
 
+	public void EmitMovecControlToData(int dataRegister, int controlRegister)
+	{
+		ValidateDataRegister(dataRegister);
+		if ((uint)controlRegister > 0xFFF)
+		{
+			throw new ArgumentOutOfRangeException(nameof(controlRegister));
+		}
+
+		// MOVEC Rc,Dn. Keep this as a compiler-owned encoding because the
+		// instruction is deliberately unavailable on a 68000 target.
+		EmitWord(0x4E7A);
+		EmitWord((ushort)((dataRegister << 12) | controlRegister));
+	}
+
+	public void EmitMovecDataToControl(int dataRegister, int controlRegister)
+	{
+		ValidateDataRegister(dataRegister);
+		if ((uint)controlRegister > 0xFFF)
+		{
+			throw new ArgumentOutOfRangeException(nameof(controlRegister));
+		}
+
+		// MOVEC Dn,Rc.
+		EmitWord(0x4E7B);
+		EmitWord((ushort)((dataRegister << 12) | controlRegister));
+	}
+
+	public void EmitMove16PostIncrement(int sourceAddressRegister, int destinationAddressRegister)
+	{
+		ValidateAddressRegister(sourceAddressRegister);
+		ValidateAddressRegister(destinationAddressRegister);
+
+		// MOVE16 (An)+,(Am)+. Keep the extension word attached to the
+		// compiler-owned instruction so peephole passes cannot reinterpret it
+		// as a standalone MOVE.L.
+		EmitWord((ushort)(0xF620 | sourceAddressRegister));
+		EmitWord((ushort)(destinationAddressRegister << 12));
+	}
+
 	public void EmitFpuDataRegisterToRegister(
 		int dataRegister,
 		int destinationFpuRegister,
@@ -423,6 +462,72 @@ internal sealed class M68kAssembler
 
 	internal IReadOnlyDictionary<string, int> AnalysisAnchors =>
 		_buffer.AnalysisAnchors;
+
+	private string? _analysisStartLabel;
+	private string? _analysisEndLabel;
+	private IReadOnlyList<string>? _analysisLabelNames;
+	private bool _cacheInstructionStream;
+	private IReadOnlyList<M68kEmittedInstruction>? _cachedInstructionStream;
+	internal long InstructionAnalysisBytes { get; private set; }
+	internal int InstructionAnalysisRounds { get; private set; }
+	internal M68kPeepholeOptimizationStatistics PeepholeOptimizationStatistics
+		{ get; set; } = M68kPeepholeOptimizationStatistics.Empty;
+
+	internal void SetAnalysisScope(
+		string? startLabel,
+		string endLabel,
+		IReadOnlyList<string> labelNames)
+	{
+		_analysisStartLabel = startLabel;
+		_analysisEndLabel = endLabel;
+		_analysisLabelNames = labelNames;
+	}
+
+	internal void ClearAnalysisScope()
+	{
+		_analysisStartLabel = null;
+		_analysisEndLabel = null;
+		_analysisLabelNames = null;
+	}
+
+	internal bool HasAnalysisScope => _analysisEndLabel is not null;
+
+	internal IReadOnlyList<string>? AnalysisLabelNames => _analysisLabelNames;
+
+	internal (int Start, int End) GetAnalysisRange()
+	{
+		var start = _analysisStartLabel is { } startLabel &&
+			_labels.TryGetValue(startLabel, out var startOffset)
+			? startOffset : 0;
+		var end = _analysisEndLabel is { } endLabel &&
+			_labels.TryGetValue(endLabel, out var endOffset)
+			? endOffset : _bytes.Count;
+		return (start, end);
+	}
+
+	internal void BeginInstructionAnalysisRound()
+	{
+		_cacheInstructionStream = true;
+		_cachedInstructionStream = null;
+	}
+
+	internal void EndInstructionAnalysisRound()
+	{
+		if (_cachedInstructionStream is { } cachedInstructionStream)
+		{
+			InstructionAnalysisBytes += cachedInstructionStream.Sum(
+				static instruction => instruction.Length);
+			InstructionAnalysisRounds++;
+		}
+		_cacheInstructionStream = false;
+		_cachedInstructionStream = null;
+	}
+
+	internal void ResetInstructionAnalysisStatistics()
+	{
+		InstructionAnalysisBytes = 0;
+		InstructionAnalysisRounds = 0;
+	}
 
 	public void OptimizeForM68000() => OptimizeForCpu(M68kCpuTarget.M68000);
 
@@ -674,13 +779,24 @@ internal sealed class M68kAssembler
 	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream(
 		int startOffset = 0)
 	{
+		var cacheRequested = _cacheInstructionStream && startOffset == 0;
+		if (cacheRequested &&
+			_cachedInstructionStream is { } cachedInstructionStream)
+		{
+			return cachedInstructionStream;
+		}
+		var (analysisStartOffset, endOffset) = GetAnalysisRange();
+		if (analysisStartOffset > startOffset)
+		{
+			startOffset = analysisStartOffset;
+		}
 		var displayLabels = new Dictionary<string, string>(StringComparer.Ordinal);
 		var addresses = _addresses.ToDictionary(static fixup => fixup.Offset);
 		var branches = _branches.ToDictionary(static fixup => fixup.OpcodeOffset);
 		var pcRelative = _pcRelative.ToDictionary(static fixup => fixup.DisplacementOffset);
 		var result = new List<M68kEmittedInstruction>();
 
-		for (var offset = startOffset; offset < _bytes.Count;)
+		for (var offset = startOffset; offset < endOffset;)
 		{
 			var decoded = TryRenderInstruction(
 				offset,
@@ -764,6 +880,10 @@ internal sealed class M68kAssembler
 			offset += Math.Max(2, length);
 		}
 
+		if (cacheRequested)
+		{
+			_cachedInstructionStream = result;
+		}
 		return result;
 	}
 
@@ -1018,7 +1138,8 @@ internal sealed class M68kAssembler
 			addresses,
 			branches,
 			pcRelative);
-		if (TryRenderControlFlow(context, out var rendered) ||
+		if (TryRenderMove16(context, out var rendered) ||
+			TryRenderControlFlow(context, out rendered) ||
 			TryRenderFpu(context, out rendered) ||
 			TryRenderFixupOperand(context, out rendered) ||
 			TryRenderMove(context, out rendered) ||
@@ -1040,6 +1161,27 @@ internal sealed class M68kAssembler
 		instruction = string.Empty;
 		length = 2;
 		return false;
+	}
+
+	private bool TryRenderMove16(
+		InstructionRenderContext context,
+		out RenderedInstruction rendered)
+	{
+		if ((context.Opcode & 0xFFF8) != 0xF620 ||
+			context.Offset + 3 >= _bytes.Count)
+		{
+			rendered = default;
+			return false;
+		}
+
+		var extension = (ushort)((_bytes[context.Offset + 2] << 8) |
+			_bytes[context.Offset + 3]);
+		var sourceRegister = context.Opcode & 7;
+		var destinationRegister = (extension >> 12) & 7;
+		rendered = new RenderedInstruction(
+			$"move16\t(a{sourceRegister})+,(a{destinationRegister})+",
+			4);
+		return true;
 	}
 
 	private bool TryRenderFpu(
@@ -2184,6 +2326,14 @@ internal sealed class M68kAssembler
 		label.Contains(":IL_", StringComparison.Ordinal);
 
 	private static void ValidateDataRegister(int register)
+	{
+		if ((uint)register > 7)
+		{
+			throw new ArgumentOutOfRangeException(nameof(register));
+		}
+	}
+
+	private static void ValidateAddressRegister(int register)
 	{
 		if ((uint)register > 7)
 		{

@@ -363,7 +363,8 @@ internal sealed partial class M68kCodeGenerator
 			{
 				throw new InvalidOperationException(
 					$"Allocated emission produced a self-move at byte offset " +
-					$"{instruction.Offset} before peephole optimization.");
+					$"{instruction.Offset} before peephole optimization " +
+					$"(opcode ${opcode:X4}).");
 			}
 			if (index + 1 >= instructions.Count ||
 				!IsPrePeepholeLongStackPush(opcode))
@@ -751,24 +752,70 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		var canonicalMethods = new List<CilMethod>();
-		foreach (var method in methods)
+		var changed = true;
+		while (changed)
 		{
-			if (!CanFoldIdenticalMethod(method, protectedMethods, addressTaken))
+			changed = false;
+			var canonicalMethods = new Dictionary<int, List<CilMethod>>();
+			foreach (var method in methods)
 			{
-				continue;
-			}
+				if (_foldedMethodAliases.ContainsKey(method.Identity) ||
+					!CanFoldIdenticalMethod(method, protectedMethods, addressTaken))
+				{
+					continue;
+				}
 
-			var canonical = canonicalMethods.FirstOrDefault(candidate =>
-				HaveIdenticalFoldableBodies(candidate, method));
-			if (canonical is null)
-			{
-				canonicalMethods.Add(method);
-				continue;
-			}
+				var foldHash = GetIdenticalMethodFoldHash(method);
+				if (!canonicalMethods.TryGetValue(foldHash, out var candidates))
+				{
+					candidates = [];
+					canonicalMethods.Add(foldHash, candidates);
+				}
 
-			_foldedMethodAliases.Add(method.Identity, canonical);
+				var canonical = candidates.FirstOrDefault(candidate =>
+					HaveIdenticalFoldableBodies(candidate, method));
+				if (canonical is null)
+				{
+					candidates.Add(method);
+					continue;
+				}
+
+				_foldedMethodAliases.Add(method.Identity, canonical);
+				changed = true;
+			}
 		}
+	}
+
+	private int GetIdenticalMethodFoldHash(CilMethod method)
+	{
+		// This is only a conservative bucket key. The complete equivalence proof
+		// below remains authoritative, so collisions can never fold unlike bodies.
+		// Including the instruction shape avoids the quadratic canonical scan that
+		// otherwise appears once constructed generic methods become eligible.
+		var hash = new HashCode();
+		hash.Add(method.ModuleName, StringComparer.Ordinal);
+		hash.Add(method.Construction, StringComparer.Ordinal);
+		hash.Add(FoldRelevantMethodAttributes(method.Attributes));
+		hash.Add(FoldRelevantTypeAttributes(method.DeclaringTypeAttributes));
+		hash.Add(method.InitializeLocals);
+		hash.Add(method.Name == ".ctor");
+		hash.Add(IsTransparentScalarDeclaringType(method));
+		hash.Add(method.Signature.Header);
+		hash.Add(method.Signature.GenericParameterCount);
+		hash.Add(method.Signature.RequiredParameterCount);
+		hash.Add(method.Signature.ParameterTypes.Length);
+		hash.Add(method.Locals.Length);
+		hash.Add(method.ParameterFlags.Length);
+		hash.Add(method.Instructions.Count);
+		foreach (var instruction in method.Instructions)
+		{
+			hash.Add(instruction.Offset);
+			hash.Add(instruction.OpCode);
+			hash.Add(instruction.NextOffset);
+			hash.Add(instruction.ConstrainedTypeToken);
+		}
+
+		return hash.ToHashCode();
 	}
 
 	private bool CanFoldIdenticalMethod(
@@ -784,7 +831,6 @@ internal sealed partial class M68kCodeGenerator
 		!method.IsVirtual &&
 		!method.IsTypeInitializer &&
 		!method.DeclaringTypeIsInterface &&
-		method.Construction.Length == 0 &&
 		method.Instructions.Count != 0 &&
 		method.ExceptionRegions.Count == 0 &&
 		!protectedMethods.Contains(method.Identity) &&
@@ -793,8 +839,11 @@ internal sealed partial class M68kCodeGenerator
 	private bool HaveIdenticalFoldableBodies(CilMethod left, CilMethod right)
 	{
 		if (left.ModuleName != right.ModuleName ||
-			left.Attributes != right.Attributes ||
-			left.DeclaringTypeAttributes != right.DeclaringTypeAttributes ||
+			left.Construction != right.Construction ||
+			FoldRelevantMethodAttributes(left.Attributes) !=
+				FoldRelevantMethodAttributes(right.Attributes) ||
+			FoldRelevantTypeAttributes(left.DeclaringTypeAttributes) !=
+				FoldRelevantTypeAttributes(right.DeclaringTypeAttributes) ||
 			left.InitializeLocals != right.InitializeLocals ||
 			(left.Name == ".ctor") != (right.Name == ".ctor") ||
 			IsTransparentScalarDeclaringType(left) !=
@@ -820,8 +869,10 @@ internal sealed partial class M68kCodeGenerator
 				leftInstruction.ConstrainedTypeToken !=
 					rightInstruction.ConstrainedTypeToken ||
 				!HaveSameInstructionOperand(
-					leftInstruction.Operand,
-					rightInstruction.Operand))
+					left,
+					leftInstruction,
+					right,
+					rightInstruction))
 			{
 				return false;
 			}
@@ -829,6 +880,14 @@ internal sealed partial class M68kCodeGenerator
 
 		return true;
 	}
+
+	private static MethodAttributes FoldRelevantMethodAttributes(
+		MethodAttributes attributes) =>
+		attributes & ~MethodAttributes.MemberAccessMask;
+
+	private static TypeAttributes FoldRelevantTypeAttributes(
+		TypeAttributes attributes) =>
+		attributes & ~TypeAttributes.VisibilityMask;
 
 	private static bool HaveSameSignature(CilMethod left, CilMethod right) =>
 		left.Signature.Header.Equals(right.Signature.Header) &&
@@ -888,8 +947,34 @@ internal sealed partial class M68kCodeGenerator
 		left.ReturnBufferStackOffset == right.ReturnBufferStackOffset &&
 		left.Arguments.SequenceEqual(right.Arguments);
 
-	private static bool HaveSameInstructionOperand(object? left, object? right) =>
-		(left, right) switch
+	private bool HaveSameInstructionOperand(
+		CilMethod leftMethod,
+		CilInstruction leftInstruction,
+		CilMethod rightMethod,
+		CilInstruction rightInstruction)
+	{
+		if (leftInstruction.OpCode == OpCodes.Call &&
+			leftInstruction.Operand is int leftToken &&
+			rightInstruction.Operand is int rightToken)
+		{
+			var leftTarget = _module.ResolveMethodToken(leftToken, leftMethod,
+				leftInstruction.Offset).Definition;
+			var rightTarget = _module.ResolveMethodToken(rightToken, rightMethod,
+				rightInstruction.Offset).Definition;
+			if (leftTarget is not null && rightTarget is not null)
+			{
+				if (leftTarget.Identity == leftMethod.Identity &&
+					rightTarget.Identity == rightMethod.Identity)
+					return true;
+				if (_foldedMethodAliases.TryGetValue(leftTarget.Identity,
+					out var leftCanonical)) leftTarget = leftCanonical;
+				if (_foldedMethodAliases.TryGetValue(rightTarget.Identity,
+					out var rightCanonical)) rightTarget = rightCanonical;
+				return leftTarget.Identity == rightTarget.Identity;
+			}
+		}
+
+		return (leftInstruction.Operand, rightInstruction.Operand) switch
 		{
 			(null, null) => true,
 			(int[] leftTargets, int[] rightTargets) =>
@@ -900,8 +985,9 @@ internal sealed partial class M68kCodeGenerator
 			(double leftValue, double rightValue) =>
 				BitConverter.DoubleToInt64Bits(leftValue) ==
 					BitConverter.DoubleToInt64Bits(rightValue),
-			_ => Equals(left, right)
+			_ => Equals(leftInstruction.Operand, rightInstruction.Operand)
 		};
+	}
 
 	private static bool RequiresVirtualDispatch(CilInstruction instruction, CilMethod method) =>
 		instruction.OpCode == OpCodes.Callvirt &&
@@ -1874,7 +1960,12 @@ internal sealed partial class M68kCodeGenerator
 				out consumed);
 		}
 
-		if (definition.IsImport)
+		if (definition.IsImport &&
+			definition.ImportName is not
+				("intrinsic:copperstart-probe-cpu" or
+				 "intrinsic:copperstart-disable-rom-overlay" or
+				 "intrinsic:copperstart-stop" or
+				 "intrinsic:copperstart-bootstrap-stack"))
 		{
 			if (Is64BitScalar(definition.Signature.ReturnType) ||
 				definition.Signature.ParameterTypes.Any(Is64BitScalar))
@@ -2753,7 +2844,12 @@ internal sealed partial class M68kCodeGenerator
 
 			EmitDirectExternalRegisterCall(caller, definition, externalCall, values);
 		}
-		else if (definition.IsImport)
+		else if (definition.IsImport &&
+			definition.ImportName is not
+				("intrinsic:copperstart-probe-cpu" or
+				 "intrinsic:copperstart-disable-rom-overlay" or
+				 "intrinsic:copperstart-stop" or
+				 "intrinsic:copperstart-bootstrap-stack"))
 		{
 			if (definition.ImportAbi is not { } importAbi ||
 				importAbi.ParameterRegisters.Count != values.Count)
@@ -5792,6 +5888,27 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitCall(CilMethod caller, CilInstruction instruction, bool pushResult = true)
 	{
 		var target = _module.ResolveMethodToken((int)instruction.Operand!, caller, instruction.Offset);
+		if (target.ImportName == "intrinsic:copperstart-probe-cpu")
+		{
+			EmitCopperStartCpuProbe(pushResult);
+			return;
+		}
+		if (target.ImportName == "intrinsic:copperstart-disable-rom-overlay")
+		{
+			EmitCopperStartDisableRomOverlay();
+			return;
+		}
+		if (target.ImportName == "intrinsic:copperstart-stop")
+		{
+			EmitCopperStartStop();
+			return;
+		}
+		if (target.ImportName == "intrinsic:copperstart-bootstrap-stack")
+		{
+			EmitCopperStartBootstrapStack();
+			return;
+		}
+
 		if (target.Definition is null)
 		{
 			if (target.ImportName == "intrinsic:runtime-throw-overflow")
@@ -6294,6 +6411,303 @@ internal sealed partial class M68kCodeGenerator
 				EmitPushD0();
 			}
 		}
+	}
+
+	private void EmitCopperStartCpuProbe(bool pushResult)
+	{
+		EmitCopperStartCpuProbeCore();
+		if (pushResult)
+		{
+			EmitPushD0();
+		}
+	}
+
+	private void EmitCopperStartDisableRomOverlay()
+	{
+		// CIA-A port A bits 0 and 1 are the reset-time ROM-overlay and output
+		// direction controls. These two absolute writes intentionally avoid A7:
+		// the reset stack points at the top of CHIP RAM, which is still covered by
+		// the Kickstart overlay until the first write clears bit 0.
+		_assembler.EmitWord(0x13FC); // MOVE.B #$03,$00BFE201.L
+		_assembler.EmitWord(0x0003);
+		_assembler.EmitLong(0x00BF_E201);
+		_assembler.EmitWord(0x13FC); // MOVE.B #$00,$00BFE001.L
+		_assembler.EmitWord(0x0000);
+		_assembler.EmitLong(0x00BF_E001);
+	}
+
+	private void EmitCopperStartStop()
+	{
+		var idle = UniqueLabel("copperstart_idle");
+		_assembler.EmitWord(0x46FC); // MOVE.W #$2700,SR
+		_assembler.EmitWord(0x2700);
+		_assembler.EmitWord(0x23FC); // MOVE.L #idle,$0000024C.L
+		_assembler.EmitAddress(idle);
+		_assembler.EmitLong(0x0000_024C);
+		_assembler.EmitWord(0x200F); // MOVE.L A7,D0
+		_assembler.EmitWord(0x23C0); // MOVE.L D0,$00000250.L
+		_assembler.EmitLong(0x0000_0250);
+		_assembler.Mark(idle);
+		_assembler.EmitWord(0x60FE); // BRA.S idle
+	}
+
+	private void EmitCopperStartBootstrapStack()
+	{
+		_assembler.EmitWord(0x2E7C); // MOVEA.L #$00078000,A7
+		_assembler.EmitLong(0x0007_8000);
+	}
+
+	private void EmitCopperStartCpuProbeAllocated(M68kRegister destination)
+	{
+		EmitCopperStartCpuProbeCore();
+		if (destination != M68kRegister.D0)
+		{
+			EmitAllocatedMove(
+				M68kRegister.D0,
+				destination,
+				M68kMachineValueWidth.Long);
+		}
+	}
+
+	private void EmitCopperStartCpuProbeCore()
+	{
+		const uint probeScratch = 0x00001000;
+		const uint illegalVectorAddress = 0x00000010;
+		const uint busErrorVectorAddress = 0x00000008;
+		const uint addressErrorVectorAddress = 0x0000000C;
+		const uint lineFVectorAddress = 0x0000002C;
+
+		var vbrFailed = UniqueLabel("copperstart_probe_vbr_failed");
+		var cacrFailed = UniqueLabel("copperstart_probe_cacr_failed");
+		var mmuFailed = UniqueLabel("copperstart_probe_mmu_failed");
+		var ec020Result = UniqueLabel("copperstart_probe_ec020_result");
+		var m68020Result = UniqueLabel("copperstart_probe_m68020_result");
+		var move16Failed = UniqueLabel("copperstart_probe_move16_failed");
+		var restoreVector = UniqueLabel("copperstart_probe_restore_vector");
+		var skipHandler = UniqueLabel("copperstart_probe_skip_handler");
+		var illegalHandler = UniqueLabel("copperstart_probe_illegal_handler");
+		var busErrorHandler = UniqueLabel("copperstart_probe_bus_error_handler");
+		var addressErrorHandler = UniqueLabel("copperstart_probe_address_error_handler");
+		var lineFHandler = UniqueLabel("copperstart_probe_linef_handler");
+
+		// A0 is the reserved probe scratch area. The first long stores the
+		// original illegal-instruction vector, the second stores the original
+		// line-F vector, the third and fourth store the original bus/address
+		// error vectors, and the fifth long is the fault flag written by a
+		// temporary handler.
+		_assembler.EmitWord(0x207C); // MOVEA.L #probeScratch,A0
+		_assembler.EmitLong(probeScratch);
+		_assembler.EmitWord(0x227C); // MOVEA.L #illegalVectorAddress,A1
+		_assembler.EmitLong(illegalVectorAddress);
+		_assembler.EmitWord(0x2211); // MOVE.L (A1),D1
+		_assembler.EmitWord(0x2081); // MOVE.L D1,(A0)
+		_assembler.EmitWord(0x227C); // MOVEA.L #lineFVectorAddress,A1
+		_assembler.EmitLong(lineFVectorAddress);
+		_assembler.EmitWord(0x2211); // MOVE.L (A1),D1
+		_assembler.EmitWord(0x2141); // MOVE.L D1,4(A0)
+		_assembler.EmitWord(4);
+		_assembler.EmitWord(0x227C); // MOVEA.L #busErrorVectorAddress,A1
+		_assembler.EmitLong(busErrorVectorAddress);
+		_assembler.EmitWord(0x2211); // MOVE.L (A1),D1
+		_assembler.EmitWord(0x2141); // MOVE.L D1,8(A0)
+		_assembler.EmitWord(8);
+		_assembler.EmitWord(0x227C); // MOVEA.L #addressErrorVectorAddress,A1
+		_assembler.EmitLong(addressErrorVectorAddress);
+		_assembler.EmitWord(0x2211); // MOVE.L (A1),D1
+		_assembler.EmitWord(0x2141); // MOVE.L D1,12(A0)
+		_assembler.EmitWord(12);
+		_assembler.EmitWord(0x203C); // MOVE.L #illegalHandler,D0
+		_assembler.EmitAddress(illegalHandler);
+		_assembler.EmitWord(0x227C); // MOVEA.L #illegalVectorAddress,A1
+		_assembler.EmitLong(illegalVectorAddress);
+		_assembler.EmitWord(0x2280); // MOVE.L D0,(A1)
+		_assembler.EmitWord(0x203C); // MOVE.L #lineFHandler,D0
+		_assembler.EmitAddress(lineFHandler);
+		_assembler.EmitWord(0x227C); // MOVEA.L #lineFVectorAddress,A1
+		_assembler.EmitLong(lineFVectorAddress);
+		_assembler.EmitWord(0x2280); // MOVE.L D0,(A1)
+		_assembler.EmitWord(0x203C); // MOVE.L #busErrorHandler,D0
+		_assembler.EmitAddress(busErrorHandler);
+		_assembler.EmitWord(0x227C); // MOVEA.L #busErrorVectorAddress,A1
+		_assembler.EmitLong(busErrorVectorAddress);
+		_assembler.EmitWord(0x2280); // MOVE.L D0,(A1)
+		_assembler.EmitWord(0x203C); // MOVE.L #addressErrorHandler,D0
+		_assembler.EmitAddress(addressErrorHandler);
+		_assembler.EmitWord(0x227C); // MOVEA.L #addressErrorVectorAddress,A1
+		_assembler.EmitLong(addressErrorVectorAddress);
+		_assembler.EmitWord(0x2280); // MOVE.L D0,(A1)
+
+		// Probe VBR first. A 68000 takes the temporary illegal handler; a
+		// 68020-family CPU returns normally and exposes VBR.
+		_assembler.EmitWord(0x42A8); // CLR.L 16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitMovecControlToData(0, 0x801); // MOVEC VBR,D0
+		_assembler.EmitWord(0x2228); // MOVE.L 16(A0),D1
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.NotEqual, vbrFailed);
+
+		// CACR is available on the 020 family. This second guarded probe is
+		// enough to distinguish the 020 baseline from a 68000-compatible
+		// fallback without executing any unguarded privileged instruction.
+		_assembler.EmitWord(0x42A8); // CLR.L 16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitMovecControlToData(1, 0x002); // MOVEC CACR,D1
+		_assembler.EmitWord(0x2228); // MOVE.L 16(A0),D1
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.NotEqual, cacrFailed);
+
+		// Probe the external address bus while the CPU is known to be in the
+		// 020 family. On a 24-bit 68EC020 the high address aliases the scratch
+		// word; on a full-address 68020 it does not. A bus/address fault leaves
+		// the result unclassified rather than guessing from open-bus data.
+		_assembler.EmitWord(0x42A8); // CLR.L 16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x42A8); // CLR.L 24(A0)
+		_assembler.EmitWord(24);
+		_assembler.EmitWord(0x263C); // MOVE.L #probePattern,D3
+		_assembler.EmitLong(0xC35A5AA3);
+		_assembler.EmitWord(0x2143); // MOVE.L D3,20(A0)
+		_assembler.EmitWord(20);
+		_assembler.EmitWord(0x247C); // MOVEA.L #$01001014,A2
+		_assembler.EmitLong(0x01001014);
+		_assembler.EmitWord(0x2612); // MOVE.L (A2),D3
+		_assembler.EmitWord(0x2228); // MOVE.L 16(A0),D1
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		var addressProbeFault = UniqueLabel("copperstart_probe_address_fault");
+		_assembler.EmitBranch(M68kCondition.NotEqual, addressProbeFault);
+		_assembler.EmitWord(0x2228); // MOVE.L 20(A0),D1
+		_assembler.EmitWord(20);
+		_assembler.EmitWord(0xB681); // CMP.L D1,D3
+		var addressProbeAliased = UniqueLabel("copperstart_probe_address_aliased");
+		_assembler.EmitBranch(M68kCondition.Equal, addressProbeAliased);
+		_assembler.EmitWord(0x7201); // MOVEQ #1,D1 (full address bus)
+		_assembler.EmitWord(0x2141); // MOVE.L D1,24(A0)
+		_assembler.EmitWord(24);
+		var addressProbeDone = UniqueLabel("copperstart_probe_address_done");
+		_assembler.EmitBranch(M68kCondition.True, addressProbeDone);
+		_assembler.Mark(addressProbeAliased);
+		_assembler.EmitWord(0x7202); // MOVEQ #2,D1 (24-bit alias)
+		_assembler.EmitWord(0x2141); // MOVE.L D1,24(A0)
+		_assembler.EmitWord(24);
+		_assembler.Mark(addressProbeDone);
+		_assembler.Mark(addressProbeFault);
+
+		// TC is present on the 68030 and 68040 MMU implementations. A 68020
+		// treats this MOVEC as an illegal instruction, while a 68030-family
+		// implementation reads the reset value without changing it.
+		_assembler.EmitWord(0x42A8); // CLR.L 16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitMovecControlToData(2, 0x003); // MOVEC TC,D2
+		_assembler.EmitWord(0x2228); // MOVE.L 16(A0),D1
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.NotEqual, mmuFailed);
+
+		// MOVE16 is a 68040-only integer instruction. The probe copies the
+		// reserved scratch block onto itself so it is non-destructive; on a
+		// 68020/030 it raises the temporary line-F exception instead.
+		_assembler.EmitWord(0x247C); // MOVEA.L #probeScratch,A2
+		_assembler.EmitLong(probeScratch);
+		_assembler.EmitMove16PostIncrement(2, 2); // MOVE16 (A2)+,(A2)+
+		_assembler.EmitWord(0x2228); // MOVE.L 16(A0),D1
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4A81); // TST.L D1
+		_assembler.EmitBranch(M68kCondition.NotEqual, move16Failed);
+		EmitCopperStartCpuProbeResult(0x00001F05, restoreVector);
+
+		_assembler.Mark(vbrFailed);
+		EmitCopperStartCpuProbeResult(0x00000101, restoreVector);
+
+		_assembler.Mark(cacrFailed);
+		EmitCopperStartCpuProbeResult(0x00000301, restoreVector);
+
+		_assembler.Mark(mmuFailed);
+		_assembler.EmitWord(0x2228); // MOVE.L 24(A0),D1
+		_assembler.EmitWord(24);
+		_assembler.EmitWord(0x7402); // MOVEQ #2,D2
+		_assembler.EmitWord(0xB481); // CMP.L D1,D2
+		_assembler.EmitBranch(M68kCondition.Equal, ec020Result);
+		_assembler.EmitWord(0x7401); // MOVEQ #1,D2
+		_assembler.EmitWord(0xB481); // CMP.L D1,D2
+		_assembler.EmitBranch(M68kCondition.Equal, m68020Result);
+		EmitCopperStartCpuProbeResult(0x00000703, restoreVector);
+
+		_assembler.Mark(ec020Result);
+		EmitCopperStartCpuProbeResult(0x00000702, restoreVector);
+
+		_assembler.Mark(m68020Result);
+		EmitCopperStartCpuProbeResult(0x00002703, restoreVector);
+
+		_assembler.Mark(move16Failed);
+		EmitCopperStartCpuProbeResult(0x00000F04, restoreVector);
+
+		_assembler.Mark(restoreVector);
+		_assembler.EmitWord(0x227C); // MOVEA.L #illegalVectorAddress,A1
+		_assembler.EmitLong(illegalVectorAddress);
+		_assembler.EmitWord(0x2210); // MOVE.L (A0),D1
+		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
+		_assembler.EmitWord(0x227C); // MOVEA.L #lineFVectorAddress,A1
+		_assembler.EmitLong(lineFVectorAddress);
+		_assembler.EmitWord(0x2268); // MOVE.L 4(A0),D1
+		_assembler.EmitWord(4);
+		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
+		_assembler.EmitWord(0x227C); // MOVEA.L #busErrorVectorAddress,A1
+		_assembler.EmitLong(busErrorVectorAddress);
+		_assembler.EmitWord(0x2268); // MOVE.L 8(A0),D1
+		_assembler.EmitWord(8);
+		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
+		_assembler.EmitWord(0x227C); // MOVEA.L #addressErrorVectorAddress,A1
+		_assembler.EmitLong(addressErrorVectorAddress);
+		_assembler.EmitWord(0x2268); // MOVE.L 12(A0),D1
+		_assembler.EmitWord(12);
+		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
+		_assembler.EmitBranch(M68kCondition.True, skipHandler);
+
+		_assembler.Mark(illegalHandler);
+		// The fixed MOVEC probe is four bytes. The 68000/020 exception frame
+		// saves the faulting PC at 2(A7), so advance it before returning with
+		// RTE.
+		EmitQuickFrameUpdate(2, 4, subtract: false); // ADDQ.L #4,2(A7)
+		_assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		_assembler.EmitWord(0x2140); // MOVE.L D0,16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4E73); // RTE
+
+		_assembler.Mark(busErrorHandler);
+		// The guarded high-address read is a two-byte MOVE.L (A2),D3.
+		EmitQuickFrameUpdate(2, 2, subtract: false); // ADDQ.L #2,2(A7)
+		_assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		_assembler.EmitWord(0x2140); // MOVE.L D0,16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4E73); // RTE
+
+		_assembler.Mark(addressErrorHandler);
+		EmitQuickFrameUpdate(2, 2, subtract: false); // ADDQ.L #2,2(A7)
+		_assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		_assembler.EmitWord(0x2140); // MOVE.L D0,16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4E73); // RTE
+
+		_assembler.Mark(lineFHandler);
+		// MOVE16 is also a four-byte probe at the point where the exception is
+		// taken (opcode plus extension word).
+		EmitQuickFrameUpdate(2, 4, subtract: false); // ADDQ.L #4,2(A7)
+		_assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		_assembler.EmitWord(0x2140); // MOVE.L D0,16(A0)
+		_assembler.EmitWord(16);
+		_assembler.EmitWord(0x4E73); // RTE
+
+		_assembler.Mark(skipHandler);
+	}
+
+	private void EmitCopperStartCpuProbeResult(uint result, string target)
+	{
+		_assembler.EmitWord(0x203C); // MOVE.L #result,D0
+		_assembler.EmitLong(result);
+		_assembler.EmitBranch(M68kCondition.True, target);
 	}
 
 	private bool TryEmitNativeShadowMathCall(CilMethod definition, bool pushResult)
@@ -8592,10 +9006,6 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var layout = _module.GetTypeLayout(field);
-		if (field.ConstructedDeclaringType is null)
-		{
-			_usedTypeLayouts.TryAdd(layout.Identity, layout);
-		}
 		var displacement = layout.FieldOffsets[field.Handle];
 		if (string.Equals(
 				field.ModuleName,

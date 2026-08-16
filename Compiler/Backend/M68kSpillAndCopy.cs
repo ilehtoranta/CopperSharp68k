@@ -455,7 +455,8 @@ internal static class M68kSpillRewriter
 			value.Width,
 			value.AllowedRegisters,
 			isGcReference: value.IsGcReference,
-			spillWeight: value.SpillWeight).Id;
+			spillWeight: value.SpillWeight,
+			isSpillTemporary: true).Id;
 	}
 
 	private static M68kMachineInstruction CreateStore(

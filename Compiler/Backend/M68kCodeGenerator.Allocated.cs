@@ -5340,6 +5340,15 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		ValidateMethodSignature(definition, isEntry: false, isExport: false);
+		if (definition.ImportName is
+			"intrinsic:copperstart-probe-cpu" or
+			"intrinsic:copperstart-disable-rom-overlay" or
+			"intrinsic:copperstart-stop" or
+			"intrinsic:copperstart-bootstrap-stack")
+		{
+			EmitAllocatedIntrinsic(caller, target, allocated, instruction);
+			return;
+		}
 		if (definition.IsImport)
 		{
 			_assembler.EmitJsr(definition.ImportName!, external: true);
@@ -5546,8 +5555,28 @@ internal sealed partial class M68kCodeGenerator
 		M68kRegister Definition() =>
 			allocated.Allocation.Registers[instruction.Definitions[0]].Register;
 
+		if (name == "intrinsic:copperstart-disable-rom-overlay")
+		{
+			EmitCopperStartDisableRomOverlay();
+			return;
+		}
+		if (name == "intrinsic:copperstart-stop")
+		{
+			EmitCopperStartStop();
+			return;
+		}
+		if (name == "intrinsic:copperstart-bootstrap-stack")
+		{
+			EmitCopperStartBootstrapStack();
+			return;
+		}
 		if (name == "intrinsic:object-ctor")
 		{
+			return;
+		}
+		if (name == "intrinsic:copperstart-probe-cpu")
+		{
+			EmitCopperStartCpuProbeAllocated(Definition());
 			return;
 		}
 		if (name.StartsWith(

@@ -275,7 +275,8 @@ internal sealed record M68kMachineValue(
 	M68kRegister? PrecoloredRegister = null,
 	bool IsGcReference = false,
 	bool IsRematerializable = false,
-	long SpillWeight = 1)
+	long SpillWeight = 1,
+	bool IsSpillTemporary = false)
 {
 	public bool IsRegisterPair => Width == M68kMachineValueWidth.LongPair;
 }
@@ -573,7 +574,8 @@ internal sealed class M68kMachineFunction
 		M68kRegister? precoloredRegister = null,
 		bool isGcReference = false,
 		bool isRematerializable = false,
-		long spillWeight = 1)
+		long spillWeight = 1,
+		bool isSpillTemporary = false)
 	{
 		var value = new M68kMachineValue(
 			_nextValueId++,
@@ -583,7 +585,8 @@ internal sealed class M68kMachineFunction
 			precoloredRegister,
 			isGcReference,
 			isRematerializable,
-			spillWeight);
+			spillWeight,
+			isSpillTemporary);
 		Values.Add(value.Id, value);
 		return value;
 	}
