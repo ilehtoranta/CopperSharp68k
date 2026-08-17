@@ -75,6 +75,7 @@ public enum SegmentListType : uint
 	Amiga = 3,
 }
 
+/// <summary>MorphOS V51 ACTION_QUERY_ATTR/GetFileSysAttr selectors.</summary>
 public enum FileSystemQueryAttribute : int
 {
 	MaxFileNameLength = 0,

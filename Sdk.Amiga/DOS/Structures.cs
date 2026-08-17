@@ -296,6 +296,7 @@ public struct CommandLineInterface
 	public BPTR Module;
 }
 
+/// <summary>MorphOS V51.51 snapshot of one command-line process.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public unsafe struct CLIDataItem
 {
@@ -311,6 +312,8 @@ public unsafe struct CLIDataItem
 	public byte Flags;
 	public fixed byte Command[1];
 }
+
+/// <summary>MorphOS V51.51 CLI snapshot and variable pointer table.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public unsafe struct CLIData
 {
