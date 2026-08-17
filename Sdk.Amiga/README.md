@@ -2,6 +2,25 @@
 
 Amiga ABI declarations for code compiled by `CopperSharp.Targets.Amiga`.
 
+## ABI integer and pointer types
+
+The SDK keeps fixed-width 68k guest values separate from pointer-sized API
+values:
+
+- `uint` and `int` represent fixed 32-bit guest fields.
+- `APTR`, `BPTR`, `STRPTR`, and `CONST_STRPTR` represent the corresponding
+  Amiga pointer encodings. `WSTRPTR` and `CONST_WSTRPTR` represent MorphOS
+  native-endian UCS-4/UTF-32 string pointers (`WCHAR` is a 32-bit `int`), not
+  UTF-16 strings.
+- `IPTR` and `SIPTR` represent MorphOS-style unsigned and signed
+  pointer-sized scalar values. They are currently emitted as 32-bit values by
+  the CopperSharp 68k compiler and are reserved for API arguments, return
+  values, and varargs—not fixed-width guest records.
+
+`AmigaVarArg` carries an `IPTR` value while retaining its `Raw` 32-bit view for
+the current 68k ABI. A future target can widen the native integer without
+changing the semantic API type.
+
 ## Start a project
 
 Install the compiler tool and project templates:

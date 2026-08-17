@@ -190,7 +190,16 @@ internal static class M68kStaticAnalyzer
 		IDictionary<CilMethodIdentity, CilMethod> usedVirtualDeclarations)
 	{
 		var op = instruction.OpCode;
-		if (op == OpCodes.Newobj || op == OpCodes.Newarr)
+		MethodReference? target = null;
+		if (op == OpCodes.Newobj)
+		{
+			target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+		}
+
+		if ((op == OpCodes.Newobj &&
+			(target is null || target.Definition is not { } constructor ||
+				!module.IsTransparentScalarConstructor(constructor))) ||
+			op == OpCodes.Newarr)
 		{
 			RequireManagedHeap(method, instruction, memoryManagement, "managed allocation");
 		}
@@ -200,11 +209,11 @@ internal static class M68kStaticAnalyzer
 			return;
 		}
 
-		var target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+		target ??= module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
 		if (op == OpCodes.Newobj &&
-			target.Definition is { IsImport: false } constructor)
+			target.Definition is { IsImport: false } layoutConstructor)
 		{
-			var layout = module.GetTypeLayout(constructor);
+			var layout = module.GetTypeLayout(layoutConstructor);
 			reachableDispatchLayouts.TryAdd(layout.Identity, layout);
 		}
 		ValidateCallDispatch(method, instruction, target);

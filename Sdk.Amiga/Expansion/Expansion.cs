@@ -23,7 +23,7 @@ public static class Expansion
 
 	[AmigaLvo(ExpansionLvo.AddConfigDev)]
 	public static void AddConfigDev(
-		[M68kRegister(M68kRegister.A0)] uint configDev)
+		[M68kRegister(M68kRegister.A0)] APTR configDev)
 	{
 	}
 
@@ -32,8 +32,8 @@ public static class Expansion
 	public static int AddBootNode(
 		[M68kRegister(M68kRegister.D0)] int bootPri,
 		[M68kRegister(M68kRegister.D1)] uint flags,
-		[M68kRegister(M68kRegister.A0)] uint deviceNode,
-		[M68kRegister(M68kRegister.A1)] uint configDev)
+		[M68kRegister(M68kRegister.A0)] APTR deviceNode,
+		[M68kRegister(M68kRegister.A1)] APTR configDev)
 	{
 		return 0;
 	}
@@ -62,21 +62,21 @@ public static class Expansion
 
 	[AmigaLvo(ExpansionLvo.ConfigBoard)]
 	public static void ConfigBoard(
-		[M68kRegister(M68kRegister.A0)] uint board,
-		[M68kRegister(M68kRegister.A1)] uint configDev)
+		[M68kRegister(M68kRegister.A0)] APTR board,
+		[M68kRegister(M68kRegister.A1)] APTR configDev)
 	{
 	}
 
 	[AmigaLvo(ExpansionLvo.ConfigChain)]
 	public static void ConfigChain(
-		[M68kRegister(M68kRegister.A0)] uint baseAddr)
+		[M68kRegister(M68kRegister.A0)] APTR baseAddr)
 	{
 	}
 
 	[AmigaLvo(ExpansionLvo.FindConfigDev)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint FindConfigDev(
-		[M68kRegister(M68kRegister.A0)] uint oldConfigDev,
+		[M68kRegister(M68kRegister.A0)] APTR oldConfigDev,
 		[M68kRegister(M68kRegister.D0)] int manufacturer,
 		[M68kRegister(M68kRegister.D1)] int product)
 	{
@@ -92,7 +92,7 @@ public static class Expansion
 
 	[AmigaLvo(ExpansionLvo.FreeConfigDev)]
 	public static void FreeConfigDev(
-		[M68kRegister(M68kRegister.A0)] uint configDev)
+		[M68kRegister(M68kRegister.A0)] APTR configDev)
 	{
 	}
 
@@ -106,7 +106,7 @@ public static class Expansion
 	[AmigaLvo(ExpansionLvo.ReadExpansionByte)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static byte ReadExpansionByte(
-		[M68kRegister(M68kRegister.A0)] uint board,
+		[M68kRegister(M68kRegister.A0)] APTR board,
 		[M68kRegister(M68kRegister.D0)] uint offset)
 	{
 		return 0;
@@ -114,20 +114,20 @@ public static class Expansion
 
 	[AmigaLvo(ExpansionLvo.ReadExpansionRom)]
 	public static void ReadExpansionRom(
-		[M68kRegister(M68kRegister.A0)] uint board,
-		[M68kRegister(M68kRegister.A1)] uint configDev)
+		[M68kRegister(M68kRegister.A0)] APTR board,
+		[M68kRegister(M68kRegister.A1)] APTR configDev)
 	{
 	}
 
 	[AmigaLvo(ExpansionLvo.RemConfigDev)]
 	public static void RemConfigDev(
-		[M68kRegister(M68kRegister.A0)] uint configDev)
+		[M68kRegister(M68kRegister.A0)] APTR configDev)
 	{
 	}
 
 	[AmigaLvo(ExpansionLvo.WriteExpansionByte)]
 	public static void WriteExpansionByte(
-		[M68kRegister(M68kRegister.A0)] uint board,
+		[M68kRegister(M68kRegister.A0)] APTR board,
 		[M68kRegister(M68kRegister.D0)] uint offset,
 		[M68kRegister(M68kRegister.D1)] uint byteValue)
 	{
@@ -145,7 +145,7 @@ public static class Expansion
 
 	[AmigaLvo(ExpansionLvo.SetCurrentBinding)]
 	public static void SetCurrentBinding(
-		[M68kRegister(M68kRegister.A0)] uint currentBinding,
+		[M68kRegister(M68kRegister.A0)] APTR currentBinding,
 		[M68kRegister(M68kRegister.D0)] uint bindingSize)
 	{
 	}
@@ -153,7 +153,7 @@ public static class Expansion
 	[AmigaLvo(ExpansionLvo.GetCurrentBinding)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint GetCurrentBinding(
-		[M68kRegister(M68kRegister.A0)] uint currentBinding,
+		[M68kRegister(M68kRegister.A0)] APTR currentBinding,
 		[M68kRegister(M68kRegister.D0)] uint bindingSize)
 	{
 		return 0;
@@ -162,7 +162,7 @@ public static class Expansion
 	[AmigaLvo(ExpansionLvo.MakeDosNode)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint MakeDosNode(
-		[M68kRegister(M68kRegister.A0)] uint parameterPacket)
+		[M68kRegister(M68kRegister.A0)] APTR parameterPacket)
 	{
 		return 0;
 	}
@@ -172,7 +172,7 @@ public static class Expansion
 	public static int AddDosNode(
 		[M68kRegister(M68kRegister.D0)] int bootPri,
 		[M68kRegister(M68kRegister.D1)] uint flags,
-		[M68kRegister(M68kRegister.A0)] uint deviceNode)
+		[M68kRegister(M68kRegister.A0)] APTR deviceNode)
 	{
 		return 0;
 	}

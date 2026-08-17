@@ -123,14 +123,14 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Read(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
 	[AmigaLvo(DosLvo.Write)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Write(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int length);
 
 	[AmigaLvo(DosLvo.Input)]
@@ -178,19 +178,19 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock);
 
 	[AmigaLvo(-108)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock);
 
 	[AmigaLvo(-114)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Info(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint parameterBlock);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR parameterBlock);
 
 	[AmigaLvo(-120)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -208,7 +208,7 @@ public static class DOS
 
 	[AmigaLvo(-138)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateProc(
+	public static extern APTR CreateProc(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int priority,
 		[M68kRegister(M68kRegister.D3)] BPTR segList,
@@ -229,7 +229,7 @@ public static class DOS
 
 	[AmigaLvo(-174)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint DeviceProc(
+	public static extern APTR DeviceProc(
 		[M68kRegister(M68kRegister.D1)] CString name);
 
 	[AmigaLvo(-180)]
@@ -247,7 +247,7 @@ public static class DOS
 	[AmigaLvo(DosLvo.DateStamp)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint DateStamp(
-		[M68kRegister(M68kRegister.D1)] uint date);
+		[M68kRegister(M68kRegister.D1)] APTR date);
 
 	[AmigaLvo(DosLvo.Delay)]
 	public static extern void Delay(
@@ -278,19 +278,19 @@ public static class DOS
 
 	[AmigaLvo(-228)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocDosObject(
+	public static extern APTR AllocDosObject(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	[AmigaLvo(-234)]
 	public static extern void FreeDosObject(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint ptr);
+		[M68kRegister(M68kRegister.D2)] APTR ptr);
 
 	[AmigaLvo(-240)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DoPkt(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] int action,
 		[M68kRegister(M68kRegister.D3)] int arg1,
 		[M68kRegister(M68kRegister.D4)] int arg2,
@@ -300,24 +300,24 @@ public static class DOS
 
 	[AmigaLvo(-246)]
 	public static extern void SendPkt(
-		[M68kRegister(M68kRegister.D1)] uint dosPacket,
-		[M68kRegister(M68kRegister.D2)] uint port,
-		[M68kRegister(M68kRegister.D3)] uint replyPort);
+		[M68kRegister(M68kRegister.D1)] APTR dosPacket,
+		[M68kRegister(M68kRegister.D2)] APTR port,
+		[M68kRegister(M68kRegister.D3)] APTR replyPort);
 
 	[AmigaLvo(-252)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint WaitPkt();
+	public static extern APTR WaitPkt();
 
 	[AmigaLvo(-258)]
 	public static extern void ReplyPkt(
-		[M68kRegister(M68kRegister.D1)] uint dosPacket,
+		[M68kRegister(M68kRegister.D1)] APTR dosPacket,
 		[M68kRegister(M68kRegister.D2)] int result1,
 		[M68kRegister(M68kRegister.D3)] int result2);
 
 	[AmigaLvo(-264)]
 	public static extern void AbortPkt(
-		[M68kRegister(M68kRegister.D1)] uint port,
-		[M68kRegister(M68kRegister.D2)] uint dosPacket);
+		[M68kRegister(M68kRegister.D1)] APTR port,
+		[M68kRegister(M68kRegister.D2)] APTR dosPacket);
 
 	[AmigaLvo(-270)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -331,7 +331,7 @@ public static class DOS
 	[AmigaLvo(-276)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int LockRecords(
-		[M68kRegister(M68kRegister.D1)] uint recordArray,
+		[M68kRegister(M68kRegister.D1)] APTR recordArray,
 		[M68kRegister(M68kRegister.D2)] uint timeout);
 
 	[AmigaLvo(-282)]
@@ -344,7 +344,7 @@ public static class DOS
 	[AmigaLvo(-288)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UnLockRecords(
-		[M68kRegister(M68kRegister.D1)] uint recordArray);
+		[M68kRegister(M68kRegister.D1)] APTR recordArray);
 
 	[AmigaLvo(DosLvo.SelectInput)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -406,14 +406,14 @@ public static class DOS
 	public static extern void VFWritef(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString format,
-		[M68kRegister(M68kRegister.D3)] uint argArray);
+		[M68kRegister(M68kRegister.D3)] APTR argArray);
 
 	[AmigaLvo(-354)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int VFPrintf(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString format,
-		[M68kRegister(M68kRegister.D3)] uint argArray);
+		[M68kRegister(M68kRegister.D3)] APTR argArray);
 
 	[AmigaLvo(DosLvo.Flush)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -424,7 +424,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetVBuf(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int type,
 		[M68kRegister(M68kRegister.D4)] int size);
 
@@ -474,7 +474,7 @@ public static class DOS
 	public static extern short SplitName(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] uint separator,
-		[M68kRegister(M68kRegister.D3)] uint buffer,
+		[M68kRegister(M68kRegister.D3)] APTR buffer,
 		[M68kRegister(M68kRegister.D4)] int oldPosition,
 		[M68kRegister(M68kRegister.D5)] int size);
 
@@ -494,10 +494,10 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExAll(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int size,
 		[M68kRegister(M68kRegister.D4)] int data,
-		[M68kRegister(M68kRegister.D5)] uint control);
+		[M68kRegister(M68kRegister.D5)] APTR control);
 
 	[AmigaLvo(-438)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -539,7 +539,7 @@ public static class DOS
 	public static extern int Fault(
 		[M68kRegister(M68kRegister.D1)] Error code,
 		[M68kRegister(M68kRegister.D2)] CString header,
-		[M68kRegister(M68kRegister.D3)] uint buffer,
+		[M68kRegister(M68kRegister.D3)] APTR buffer,
 		[M68kRegister(M68kRegister.D4)] int length);
 
 	[AmigaLvo(-474)]
@@ -558,42 +558,42 @@ public static class DOS
 
 	[AmigaLvo(-492)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint Cli();
+	public static extern APTR Cli();
 
 	[AmigaLvo(-498)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateNewProc(
-		[M68kRegister(M68kRegister.D1)] uint tags);
+	public static extern APTR CreateNewProc(
+		[M68kRegister(M68kRegister.D1)] APTR tags);
 
 	[AmigaLvo(-504)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RunCommand(
-		[M68kRegister(M68kRegister.D1)] uint segment,
+		[M68kRegister(M68kRegister.D1)] BPTR segment,
 		[M68kRegister(M68kRegister.D2)] int stack,
-		[M68kRegister(M68kRegister.D3)] uint parameters,
+		[M68kRegister(M68kRegister.D3)] APTR parameters,
 		[M68kRegister(M68kRegister.D4)] int parameterLength);
 
 	[AmigaLvo(-510)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint GetConsoleTask();
+	public static extern APTR GetConsoleTask();
 
 	[AmigaLvo(-516)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SetConsoleTask(
-		[M68kRegister(M68kRegister.D1)] uint task);
+	public static extern APTR SetConsoleTask(
+		[M68kRegister(M68kRegister.D1)] APTR task);
 
 	[AmigaLvo(-522)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint GetFileSysTask();
+	public static extern APTR GetFileSysTask();
 
 	[AmigaLvo(-528)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SetFileSysTask(
-		[M68kRegister(M68kRegister.D1)] uint task);
+	public static extern APTR SetFileSysTask(
+		[M68kRegister(M68kRegister.D1)] APTR task);
 
 	[AmigaLvo(-534)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint GetArgStr();
+	public static extern STRPTR GetArgStr();
 
 	[AmigaLvo(-540)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -602,7 +602,7 @@ public static class DOS
 
 	[AmigaLvo(-546)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindCliProc(
+	public static extern APTR FindCliProc(
 		[M68kRegister(M68kRegister.D1)] uint number);
 
 	[AmigaLvo(-552)]
@@ -617,7 +617,7 @@ public static class DOS
 	[AmigaLvo(-564)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetCurrentDirName(
-		[M68kRegister(M68kRegister.D1)] uint buffer,
+		[M68kRegister(M68kRegister.D1)] APTR buffer,
 		[M68kRegister(M68kRegister.D2)] int length);
 
 	[AmigaLvo(-570)]
@@ -628,7 +628,7 @@ public static class DOS
 	[AmigaLvo(-576)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetProgramName(
-		[M68kRegister(M68kRegister.D1)] uint buffer,
+		[M68kRegister(M68kRegister.D1)] APTR buffer,
 		[M68kRegister(M68kRegister.D2)] int length);
 
 	[AmigaLvo(-582)]
@@ -639,7 +639,7 @@ public static class DOS
 	[AmigaLvo(-588)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetPrompt(
-		[M68kRegister(M68kRegister.D1)] uint buffer,
+		[M68kRegister(M68kRegister.D1)] APTR buffer,
 		[M68kRegister(M68kRegister.D2)] int length);
 
 	[AmigaLvo(-594)]
@@ -655,7 +655,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SystemTagList(
 		[M68kRegister(M68kRegister.D1)] CString command,
-		[M68kRegister(M68kRegister.D2)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	[AmigaLvo(-612)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -689,17 +689,17 @@ public static class DOS
 
 	[AmigaLvo(-642)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint GetDeviceProc(
+	public static extern APTR GetDeviceProc(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint devProc);
+		[M68kRegister(M68kRegister.D2)] APTR devProc);
 
 	[AmigaLvo(-648)]
 	public static extern void FreeDeviceProc(
-		[M68kRegister(M68kRegister.D1)] uint devProc);
+		[M68kRegister(M68kRegister.D1)] APTR devProc);
 
 	[AmigaLvo(-654)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint LockDosList(
+	public static extern APTR LockDosList(
 		[M68kRegister(M68kRegister.D1)] uint flags);
 
 	[AmigaLvo(-660)]
@@ -708,41 +708,41 @@ public static class DOS
 
 	[AmigaLvo(-666)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AttemptLockDosList(
+	public static extern APTR AttemptLockDosList(
 		[M68kRegister(M68kRegister.D1)] uint flags);
 
 	[AmigaLvo(-672)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RemDosEntry(
-		[M68kRegister(M68kRegister.D1)] uint dosList);
+		[M68kRegister(M68kRegister.D1)] APTR dosList);
 
 	[AmigaLvo(-678)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AddDosEntry(
-		[M68kRegister(M68kRegister.D1)] uint dosList);
+		[M68kRegister(M68kRegister.D1)] APTR dosList);
 
 	[AmigaLvo(-684)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindDosEntry(
-		[M68kRegister(M68kRegister.D1)] uint dosList,
+	public static extern APTR FindDosEntry(
+		[M68kRegister(M68kRegister.D1)] APTR dosList,
 		[M68kRegister(M68kRegister.D2)] CString name,
 		[M68kRegister(M68kRegister.D3)] uint flags);
 
 	[AmigaLvo(-690)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint NextDosEntry(
-		[M68kRegister(M68kRegister.D1)] uint dosList,
+	public static extern APTR NextDosEntry(
+		[M68kRegister(M68kRegister.D1)] APTR dosList,
 		[M68kRegister(M68kRegister.D2)] uint flags);
 
 	[AmigaLvo(-696)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint MakeDosEntry(
+	public static extern APTR MakeDosEntry(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int type);
 
 	[AmigaLvo(-702)]
 	public static extern void FreeDosEntry(
-		[M68kRegister(M68kRegister.D1)] uint dosList);
+		[M68kRegister(M68kRegister.D1)] APTR dosList);
 
 	[AmigaLvo(-708)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -794,21 +794,21 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? InternalLoadSeg(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] uint table,
-		[M68kRegister(M68kRegister.A0)] uint functionArray,
-		[M68kRegister(M68kRegister.A1)] uint stack);
+		[M68kRegister(M68kRegister.D2)] APTR table,
+		[M68kRegister(M68kRegister.A0)] APTR functionArray,
+		[M68kRegister(M68kRegister.A1)] APTR stack);
 
 	[AmigaLvo(-762)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int InternalUnLoadSeg(
 		[M68kRegister(M68kRegister.D1)] BPTR segList,
-		[M68kRegister(M68kRegister.A0)] uint freeFunction);
+		[M68kRegister(M68kRegister.A0)] APTR freeFunction);
 
 	[AmigaLvo(-768)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? NewLoadSeg(
 		[M68kRegister(M68kRegister.D1)] CString file,
-		[M68kRegister(M68kRegister.D2)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	[AmigaLvo(-774)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -836,10 +836,10 @@ public static class DOS
 
 	[AmigaLvo(DosLvo.ReadArgs)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint ReadArgs(
+	public static extern APTR ReadArgs(
 		[M68kRegister(M68kRegister.D1)] CString template_,
-		[M68kRegister(M68kRegister.D2)] uint array,
-		[M68kRegister(M68kRegister.D3)] uint args);
+		[M68kRegister(M68kRegister.D2)] APTR array,
+		[M68kRegister(M68kRegister.D3)] APTR args);
 
 	[AmigaLvo(-804)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -864,22 +864,22 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MatchFirst(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
-		[M68kRegister(M68kRegister.D2)] uint anchor);
+		[M68kRegister(M68kRegister.D2)] APTR anchor);
 
 	[AmigaLvo(-828)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MatchNext(
-		[M68kRegister(M68kRegister.D1)] uint anchor);
+		[M68kRegister(M68kRegister.D1)] APTR anchor);
 
 	[AmigaLvo(-834)]
 	public static extern void MatchEnd(
-		[M68kRegister(M68kRegister.D1)] uint anchor);
+		[M68kRegister(M68kRegister.D1)] APTR anchor);
 
 	[AmigaLvo(-840)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ParsePattern(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int bufferLength);
 
 	[AmigaLvo(-846)]
@@ -890,16 +890,16 @@ public static class DOS
 
 	[AmigaLvo(-858)]
 	public static extern void FreeArgs(
-		[M68kRegister(M68kRegister.D1)] uint args);
+		[M68kRegister(M68kRegister.D1)] APTR args);
 
 	[AmigaLvo(-870)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FilePart(
+	public static extern STRPTR FilePart(
 		[M68kRegister(M68kRegister.D1)] CString path);
 
 	[AmigaLvo(-876)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint PathPart(
+	public static extern STRPTR PathPart(
 		[M68kRegister(M68kRegister.D1)] CString path);
 
 	[AmigaLvo(-882)]
@@ -912,17 +912,17 @@ public static class DOS
 	[AmigaLvo(-888)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int StartNotify(
-		[M68kRegister(M68kRegister.D1)] uint notify);
+		[M68kRegister(M68kRegister.D1)] APTR notify);
 
 	[AmigaLvo(-894)]
 	public static extern void EndNotify(
-		[M68kRegister(M68kRegister.D1)] uint notify);
+		[M68kRegister(M68kRegister.D1)] APTR notify);
 
 	[AmigaLvo(-900)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetVar(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int size,
 		[M68kRegister(M68kRegister.D4)] int flags);
 
@@ -930,7 +930,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetVar(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int size,
 		[M68kRegister(M68kRegister.D4)] int flags);
 
@@ -942,24 +942,24 @@ public static class DOS
 
 	[AmigaLvo(-918)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindVar(
+	public static extern APTR FindVar(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] uint type);
 
 	[AmigaLvo(-930)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int CliInitNewcli(
-		[M68kRegister(M68kRegister.A0)] uint dosPacket);
+		[M68kRegister(M68kRegister.A0)] APTR dosPacket);
 
 	[AmigaLvo(-936)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int CliInitRun(
-		[M68kRegister(M68kRegister.A0)] uint dosPacket);
+		[M68kRegister(M68kRegister.A0)] APTR dosPacket);
 
 	[AmigaLvo(-942)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int WriteChars(
-		[M68kRegister(M68kRegister.D1)] uint buffer,
+		[M68kRegister(M68kRegister.D1)] APTR buffer,
 		[M68kRegister(M68kRegister.D2)] uint bufferLength);
 
 	[AmigaLvo(-948)]
@@ -971,7 +971,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int VPrintf(
 		[M68kRegister(M68kRegister.D1)] CString format,
-		[M68kRegister(M68kRegister.D2)] uint argArray);
+		[M68kRegister(M68kRegister.D2)] APTR argArray);
 
 	[AmigaLvo(-954)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -987,7 +987,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ParsePatternNoCase(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int bufferLength);
 
 	[AmigaLvo(-972)]
@@ -1005,10 +1005,10 @@ public static class DOS
 	[AmigaLvo(-990)]
 	public static extern void ExAllEnd(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2)] uint buffer,
+		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int size,
 		[M68kRegister(M68kRegister.D4)] int data,
-		[M68kRegister(M68kRegister.D5)] uint control);
+		[M68kRegister(M68kRegister.D5)] APTR control);
 
 	[AmigaLvo(-996)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -1019,22 +1019,22 @@ public static class DOS
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-228)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocDosObjectTagList(
+	public static extern APTR AllocDosObjectTagList(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-240)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DoPkt0(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] int action);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-240)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DoPkt1(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] int action,
 		[M68kRegister(M68kRegister.D3)] int arg1);
 
@@ -1042,7 +1042,7 @@ public static class DOS
 	[AmigaLvo(-240)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DoPkt2(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] int action,
 		[M68kRegister(M68kRegister.D3)] int arg1,
 		[M68kRegister(M68kRegister.D4)] int arg2);
@@ -1051,7 +1051,7 @@ public static class DOS
 	[AmigaLvo(-240)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DoPkt3(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] int action,
 		[M68kRegister(M68kRegister.D3)] int arg1,
 		[M68kRegister(M68kRegister.D4)] int arg2,
@@ -1061,7 +1061,7 @@ public static class DOS
 	[AmigaLvo(-240)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int DoPkt4(
-		[M68kRegister(M68kRegister.D1)] uint port,
+		[M68kRegister(M68kRegister.D1)] APTR port,
 		[M68kRegister(M68kRegister.D2)] int action,
 		[M68kRegister(M68kRegister.D3)] int arg1,
 		[M68kRegister(M68kRegister.D4)] int arg2,
@@ -1071,34 +1071,34 @@ public static class DOS
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-498)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateNewProcTagList(
-		[M68kRegister(M68kRegister.D1)] uint tags);
+	public static extern APTR CreateNewProcTagList(
+		[M68kRegister(M68kRegister.D1)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-606)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int System(
 		[M68kRegister(M68kRegister.D1)] CString command,
-		[M68kRegister(M68kRegister.D2)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-768)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? NewLoadSegTagList(
 		[M68kRegister(M68kRegister.D1)] CString file,
-		[M68kRegister(M68kRegister.D2)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1002)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AddSegmentTagList(
-		[M68kRegister(M68kRegister.A0)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1008)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? FindSegmentTagList(
-		[M68kRegister(M68kRegister.A0)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1066)]
@@ -1130,7 +1130,7 @@ public static class DOS
 	[AmigaLvo(-1084)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int LockRecords64(
-		[M68kRegister(M68kRegister.D1)] uint recordArray,
+		[M68kRegister(M68kRegister.D1)] APTR recordArray,
 		[M68kRegister(M68kRegister.D2)] uint timeout);
 
 	// MorphOS m68k ABI call.
@@ -1145,7 +1145,7 @@ public static class DOS
 	[AmigaLvo(-1096)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int UnLockRecords64(
-		[M68kRegister(M68kRegister.D1)] uint recordArray);
+		[M68kRegister(M68kRegister.D1)] APTR recordArray);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1114)]
@@ -1180,80 +1180,80 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetDosObjectAttr(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint ptr,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR ptr,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-1132)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetDosObjectAttrTagList(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint ptr,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR ptr,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1138)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetDosObjectAttr(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint ptr,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR ptr,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-1138)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int GetDosObjectAttrTagList(
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.D2)] uint ptr,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2)] APTR ptr,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1144)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine64(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-1144)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Examine64TagList(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1150)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext64(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-1150)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExNext64TagList(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1156)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH64(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
 	[AmigaLvo(-1156)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExamineFH64TagList(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] uint fileInfoBlock,
-		[M68kRegister(M68kRegister.D3)] uint tags);
+		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR fileInfoBlock,
+		[M68kRegister(M68kRegister.D3)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-1162)]

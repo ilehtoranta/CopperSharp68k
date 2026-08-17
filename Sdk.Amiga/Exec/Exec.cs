@@ -36,7 +36,7 @@ public static class Exec
 	[AmigaLvo(ExecLvo.Supervisor)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint Supervisor(
-		[M68kRegister(M68kRegister.A5)] uint userFunction);
+		[M68kRegister(M68kRegister.A5)] APTR userFunction);
 
 	[AmigaLvo(ExecLvo.InitCode)]
 	public static extern void InitCode(
@@ -45,36 +45,36 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.InitStruct)]
 	public static extern void InitStruct(
-		[M68kRegister(M68kRegister.A1)] uint initTable,
-		[M68kRegister(M68kRegister.A2)] uint memory,
+		[M68kRegister(M68kRegister.A1)] APTR initTable,
+		[M68kRegister(M68kRegister.A2)] APTR memory,
 		[M68kRegister(M68kRegister.D0)] uint size);
 
 	[AmigaLvo(ExecLvo.MakeLibrary)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint MakeLibrary(
-		[M68kRegister(M68kRegister.A0)] uint vectors,
-		[M68kRegister(M68kRegister.A1)] uint structure,
-		[M68kRegister(M68kRegister.A2)] uint init,
+	public static extern APTR MakeLibrary(
+		[M68kRegister(M68kRegister.A0)] APTR vectors,
+		[M68kRegister(M68kRegister.A1)] APTR structure,
+		[M68kRegister(M68kRegister.A2)] APTR init,
 		[M68kRegister(M68kRegister.D0)] uint dataSize,
-		[M68kRegister(M68kRegister.D1)] uint segList);
+		[M68kRegister(M68kRegister.D1)] BPTR segList);
 
 	[AmigaLvo(ExecLvo.MakeFunctions)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint MakeFunctions(
-		[M68kRegister(M68kRegister.A0)] uint target,
-		[M68kRegister(M68kRegister.A1)] uint functionArray,
-		[M68kRegister(M68kRegister.A2)] uint functionDispBase);
+		[M68kRegister(M68kRegister.A0)] APTR target,
+		[M68kRegister(M68kRegister.A1)] APTR functionArray,
+		[M68kRegister(M68kRegister.A2)] int functionDispBase);
 
 	[AmigaLvo(ExecLvo.FindResident)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindResident(
+	public static extern APTR FindResident(
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(ExecLvo.InitResident)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint InitResident(
-		[M68kRegister(M68kRegister.A1)] uint resident,
-		[M68kRegister(M68kRegister.D1)] uint segList);
+	public static extern APTR InitResident(
+		[M68kRegister(M68kRegister.A1)] APTR resident,
+		[M68kRegister(M68kRegister.D1)] BPTR segList);
 
 	[AmigaLvo(ExecLvo.Alert)]
 	public static extern void Alert(
@@ -112,51 +112,51 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.SetIntVector)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SetIntVector(
+	public static extern APTR SetIntVector(
 		[M68kRegister(M68kRegister.D0)] int intNumber,
-		[M68kRegister(M68kRegister.A1)] uint interrupt);
+		[M68kRegister(M68kRegister.A1)] APTR interrupt);
 
 	[AmigaLvo(ExecLvo.AddIntServer)]
 	public static extern void AddIntServer(
 		[M68kRegister(M68kRegister.D0)] int intNumber,
-		[M68kRegister(M68kRegister.A1)] uint interrupt);
+		[M68kRegister(M68kRegister.A1)] APTR interrupt);
 
 	[AmigaLvo(ExecLvo.RemIntServer)]
 	public static extern void RemIntServer(
 		[M68kRegister(M68kRegister.D0)] int intNumber,
-		[M68kRegister(M68kRegister.A1)] uint interrupt);
+		[M68kRegister(M68kRegister.A1)] APTR interrupt);
 
 	[AmigaLvo(ExecLvo.Cause)]
 	public static extern void Cause(
-		[M68kRegister(M68kRegister.A1)] uint interrupt);
+		[M68kRegister(M68kRegister.A1)] APTR interrupt);
 
 	[AmigaLvo(ExecLvo.Allocate)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint Allocate(
-		[M68kRegister(M68kRegister.A0)] uint freeList,
+	public static extern APTR Allocate(
+		[M68kRegister(M68kRegister.A0)] APTR freeList,
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	[AmigaLvo(ExecLvo.Deallocate)]
 	public static extern void Deallocate(
-		[M68kRegister(M68kRegister.A0)] uint freeList,
-		[M68kRegister(M68kRegister.A1)] uint memoryBlock,
+		[M68kRegister(M68kRegister.A0)] APTR freeList,
+		[M68kRegister(M68kRegister.A1)] APTR memoryBlock,
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	[AmigaLvo(ExecLvo.AllocMem)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocMem(
+	public static extern APTR AllocMem(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] MemoryFlags attributes);
 
 	[AmigaLvo(ExecLvo.AllocAbs)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocAbs(
+	public static extern APTR AllocAbs(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
-		[M68kRegister(M68kRegister.A1)] uint location);
+		[M68kRegister(M68kRegister.A1)] APTR location);
 
 	[AmigaLvo(ExecLvo.FreeMem)]
 	public static extern void FreeMem(
-		[M68kRegister(M68kRegister.A1)] uint memoryBlock,
+		[M68kRegister(M68kRegister.A1)] APTR memoryBlock,
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	[AmigaLvo(ExecLvo.AvailMem)]
@@ -166,74 +166,74 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.AllocEntry)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocEntry(
-		[M68kRegister(M68kRegister.A0)] uint memoryList);
+	public static extern APTR AllocEntry(
+		[M68kRegister(M68kRegister.A0)] APTR memoryList);
 
 	[AmigaLvo(ExecLvo.FreeEntry)]
 	public static extern void FreeEntry(
-		[M68kRegister(M68kRegister.A0)] uint memoryList);
+		[M68kRegister(M68kRegister.A0)] APTR memoryList);
 
 	[AmigaLvo(ExecLvo.Insert)]
 	public static extern void Insert(
-		[M68kRegister(M68kRegister.A0)] uint list,
-		[M68kRegister(M68kRegister.A1)] uint node,
-		[M68kRegister(M68kRegister.A2)] uint listNode);
+		[M68kRegister(M68kRegister.A0)] APTR list,
+		[M68kRegister(M68kRegister.A1)] APTR node,
+		[M68kRegister(M68kRegister.A2)] APTR listNode);
 
 	[AmigaLvo(ExecLvo.AddHead)]
 	public static extern void AddHead(
-		[M68kRegister(M68kRegister.A0)] uint list,
-		[M68kRegister(M68kRegister.A1)] uint node);
+		[M68kRegister(M68kRegister.A0)] APTR list,
+		[M68kRegister(M68kRegister.A1)] APTR node);
 
 	[AmigaLvo(ExecLvo.AddTail)]
 	public static extern void AddTail(
-		[M68kRegister(M68kRegister.A0)] uint list,
-		[M68kRegister(M68kRegister.A1)] uint node);
+		[M68kRegister(M68kRegister.A0)] APTR list,
+		[M68kRegister(M68kRegister.A1)] APTR node);
 
 	[AmigaLvo(ExecLvo.Remove)]
 	public static extern void Remove(
-		[M68kRegister(M68kRegister.A1)] uint node);
+		[M68kRegister(M68kRegister.A1)] APTR node);
 
 	[AmigaLvo(ExecLvo.RemHead)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint RemHead(
-		[M68kRegister(M68kRegister.A0)] uint list);
+	public static extern APTR RemHead(
+		[M68kRegister(M68kRegister.A0)] APTR list);
 
 	[AmigaLvo(ExecLvo.RemTail)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint RemTail(
-		[M68kRegister(M68kRegister.A0)] uint list);
+	public static extern APTR RemTail(
+		[M68kRegister(M68kRegister.A0)] APTR list);
 
 	[AmigaLvo(ExecLvo.Enqueue)]
 	public static extern void Enqueue(
-		[M68kRegister(M68kRegister.A0)] uint list,
-		[M68kRegister(M68kRegister.A1)] uint node);
+		[M68kRegister(M68kRegister.A0)] APTR list,
+		[M68kRegister(M68kRegister.A1)] APTR node);
 
 	[AmigaLvo(ExecLvo.FindName)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindName(
-		[M68kRegister(M68kRegister.A0)] uint list,
+	public static extern APTR FindName(
+		[M68kRegister(M68kRegister.A0)] APTR list,
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(ExecLvo.AddTask)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AddTask(
-		[M68kRegister(M68kRegister.A1)] uint task,
-		[M68kRegister(M68kRegister.A2)] uint initialPc,
-		[M68kRegister(M68kRegister.A3)] uint finalPc);
+	public static extern APTR AddTask(
+		[M68kRegister(M68kRegister.A1)] APTR task,
+		[M68kRegister(M68kRegister.A2)] APTR initialPc,
+		[M68kRegister(M68kRegister.A3)] APTR finalPc);
 
 	[AmigaLvo(ExecLvo.RemTask)]
 	public static extern void RemTask(
-		[M68kRegister(M68kRegister.A1)] uint task);
+		[M68kRegister(M68kRegister.A1)] APTR task);
 
 	[AmigaLvo(ExecLvo.FindTask)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindTask(
+	public static extern APTR FindTask(
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(ExecLvo.SetTaskPri)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern sbyte SetTaskPri(
-		[M68kRegister(M68kRegister.A1)] uint task,
+		[M68kRegister(M68kRegister.A1)] APTR task,
 		[M68kRegister(M68kRegister.D0)] sbyte priority);
 
 	[AmigaLvo(ExecLvo.SetSignal)]
@@ -255,7 +255,7 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.Signal)]
 	public static extern void Signal(
-		[M68kRegister(M68kRegister.A1)] uint task,
+		[M68kRegister(M68kRegister.A1)] APTR task,
 		[M68kRegister(M68kRegister.D0)] uint signalSet);
 
 	[AmigaLvo(ExecLvo.AllocSignal)]
@@ -278,43 +278,43 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.AddPort)]
 	public static extern void AddPort(
-		[M68kRegister(M68kRegister.A1)] uint port);
+		[M68kRegister(M68kRegister.A1)] APTR port);
 
 	[AmigaLvo(ExecLvo.RemPort)]
 	public static extern void RemPort(
-		[M68kRegister(M68kRegister.A1)] uint port);
+		[M68kRegister(M68kRegister.A1)] APTR port);
 
 	[AmigaLvo(ExecLvo.PutMsg)]
 	public static extern void PutMsg(
-		[M68kRegister(M68kRegister.A0)] uint port,
-		[M68kRegister(M68kRegister.A1)] uint message);
+		[M68kRegister(M68kRegister.A0)] APTR port,
+		[M68kRegister(M68kRegister.A1)] APTR message);
 
 	[AmigaLvo(ExecLvo.GetMsg)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint GetMsg(
-		[M68kRegister(M68kRegister.A0)] uint port);
+	public static extern APTR GetMsg(
+		[M68kRegister(M68kRegister.A0)] APTR port);
 
 	[AmigaLvo(ExecLvo.ReplyMsg)]
 	public static extern void ReplyMsg(
-		[M68kRegister(M68kRegister.A1)] uint message);
+		[M68kRegister(M68kRegister.A1)] APTR message);
 
 	[AmigaLvo(ExecLvo.WaitPort)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint WaitPort(
-		[M68kRegister(M68kRegister.A0)] uint port);
+	public static extern APTR WaitPort(
+		[M68kRegister(M68kRegister.A0)] APTR port);
 
 	[AmigaLvo(ExecLvo.FindPort)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindPort(
+	public static extern APTR FindPort(
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(ExecLvo.AddLibrary)]
 	public static extern void AddLibrary(
-		[M68kRegister(M68kRegister.A1)] uint library);
+		[M68kRegister(M68kRegister.A1)] APTR library);
 
 	[AmigaLvo(ExecLvo.RemLibrary)]
 	public static extern void RemLibrary(
-		[M68kRegister(M68kRegister.A1)] uint library);
+		[M68kRegister(M68kRegister.A1)] APTR library);
 
 	[AmigaLvo(ExecLvo.OldOpenLibrary)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -327,76 +327,76 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.SetFunction)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint SetFunction(
-		[M68kRegister(M68kRegister.A1)] uint library,
+	public static extern APTR SetFunction(
+		[M68kRegister(M68kRegister.A1)] APTR library,
 		[M68kRegister(M68kRegister.A0)] int functionOffset,
-		[M68kRegister(M68kRegister.D0)] uint newFunction);
+		[M68kRegister(M68kRegister.D0)] APTR newFunction);
 
 	[AmigaLvo(ExecLvo.SumLibrary)]
 	public static extern void SumLibrary(
-		[M68kRegister(M68kRegister.A1)] uint library);
+		[M68kRegister(M68kRegister.A1)] APTR library);
 
 	[AmigaLvo(ExecLvo.AddDevice)]
 	public static extern void AddDevice(
-		[M68kRegister(M68kRegister.A1)] uint device);
+		[M68kRegister(M68kRegister.A1)] APTR device);
 
 	[AmigaLvo(ExecLvo.RemDevice)]
 	public static extern void RemDevice(
-		[M68kRegister(M68kRegister.A1)] uint device);
+		[M68kRegister(M68kRegister.A1)] APTR device);
 
 	[AmigaLvo(ExecLvo.OpenDevice)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern sbyte OpenDevice(
 		[M68kRegister(M68kRegister.A0)] CString deviceName,
 		[M68kRegister(M68kRegister.D0)] uint unit,
-		[M68kRegister(M68kRegister.A1)] uint ioRequest,
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest,
 		[M68kRegister(M68kRegister.D1)] uint flags);
 
 	[AmigaLvo(ExecLvo.CloseDevice)]
 	public static extern void CloseDevice(
-		[M68kRegister(M68kRegister.A1)] uint ioRequest);
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.DoIO)]
 	public static extern void DoIO(
-		[M68kRegister(M68kRegister.A1)] uint ioRequest);
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.SendIO)]
 	public static extern void SendIO(
-		[M68kRegister(M68kRegister.A1)] uint ioRequest);
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.CheckIO)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CheckIO(
-		[M68kRegister(M68kRegister.A1)] uint ioRequest);
+	public static extern APTR CheckIO(
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.WaitIO)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern sbyte WaitIO(
-		[M68kRegister(M68kRegister.A1)] uint ioRequest);
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.AbortIO)]
 	public static extern void AbortIO(
-		[M68kRegister(M68kRegister.A1)] uint ioRequest);
+		[M68kRegister(M68kRegister.A1)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.AddResource)]
 	public static extern void AddResource(
-		[M68kRegister(M68kRegister.A1)] uint resource);
+		[M68kRegister(M68kRegister.A1)] APTR resource);
 
 	[AmigaLvo(ExecLvo.RemResource)]
 	public static extern void RemResource(
-		[M68kRegister(M68kRegister.A1)] uint resource);
+		[M68kRegister(M68kRegister.A1)] APTR resource);
 
 	[AmigaLvo(ExecLvo.OpenResource)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint OpenResource(
+	public static extern APTR OpenResource(
 		[M68kRegister(M68kRegister.A1)] CString resourceName);
 
 	[AmigaLvo(ExecLvo.RawDoFmt)]
 	public static extern void RawDoFmt(
 		[M68kRegister(M68kRegister.A0)] CString formatString,
-		[M68kRegister(M68kRegister.A1)] uint dataStream,
-		[M68kRegister(M68kRegister.A2)] uint putCharProc,
-		[M68kRegister(M68kRegister.A3)] uint putCharData);
+		[M68kRegister(M68kRegister.A1)] APTR dataStream,
+		[M68kRegister(M68kRegister.A2)] APTR putCharProc,
+		[M68kRegister(M68kRegister.A3)] APTR putCharData);
 
 	[AmigaLvo(ExecLvo.GetCC)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -405,17 +405,17 @@ public static class Exec
 	[AmigaLvo(ExecLvo.TypeOfMem)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint TypeOfMem(
-		[M68kRegister(M68kRegister.A1)] uint address);
+		[M68kRegister(M68kRegister.A1)] APTR address);
 
 	[AmigaLvo(ExecLvo.Procure)]
 	public static extern void Procure(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore,
-		[M68kRegister(M68kRegister.A1)] uint semaphoreMessage);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore,
+		[M68kRegister(M68kRegister.A1)] APTR semaphoreMessage);
 
 	[AmigaLvo(ExecLvo.Vacate)]
 	public static extern void Vacate(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore,
-		[M68kRegister(M68kRegister.A1)] uint semaphoreMessage);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore,
+		[M68kRegister(M68kRegister.A1)] APTR semaphoreMessage);
 
 	[AmigaLvo(ExecLvo.OpenLibrary)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -436,41 +436,41 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.InitSemaphore)]
 	public static extern void InitSemaphore(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.ObtainSemaphore)]
 	public static extern void ObtainSemaphore(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.ReleaseSemaphore)]
 	public static extern void ReleaseSemaphore(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.AttemptSemaphore)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AttemptSemaphore(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.ObtainSemaphoreList)]
 	public static extern void ObtainSemaphoreList(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.ReleaseSemaphoreList)]
 	public static extern void ReleaseSemaphoreList(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.FindSemaphore)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindSemaphore(
+	public static extern APTR FindSemaphore(
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(ExecLvo.AddSemaphore)]
 	public static extern void AddSemaphore(
-		[M68kRegister(M68kRegister.A1)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A1)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.RemSemaphore)]
 	public static extern void RemSemaphore(
-		[M68kRegister(M68kRegister.A1)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A1)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.SumKickData)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -481,19 +481,19 @@ public static class Exec
 		[M68kRegister(M68kRegister.D0)] uint size,
 		[M68kRegister(M68kRegister.D1)] uint attributes,
 		[M68kRegister(M68kRegister.D2)] int priority,
-		[M68kRegister(M68kRegister.A0)] uint baseAddress,
+		[M68kRegister(M68kRegister.A0)] APTR baseAddress,
 		[M68kRegister(M68kRegister.A1)] CString name);
 
 	[AmigaLvo(ExecLvo.CopyMem)]
 	public static extern void CopyMem(
-		[M68kRegister(M68kRegister.A0)] uint source,
-		[M68kRegister(M68kRegister.A1)] uint destination,
+		[M68kRegister(M68kRegister.A0)] APTR source,
+		[M68kRegister(M68kRegister.A1)] APTR destination,
 		[M68kRegister(M68kRegister.D0)] uint size);
 
 	[AmigaLvo(ExecLvo.CopyMemQuick)]
 	public static extern void CopyMemQuick(
-		[M68kRegister(M68kRegister.A0)] uint source,
-		[M68kRegister(M68kRegister.A1)] uint destination,
+		[M68kRegister(M68kRegister.A0)] APTR source,
+		[M68kRegister(M68kRegister.A1)] APTR destination,
 		[M68kRegister(M68kRegister.D0)] uint size);
 
 	[AmigaLvo(ExecLvo.CacheClearU)]
@@ -501,7 +501,7 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.CacheClearE)]
 	public static extern void CacheClearE(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.D0)] uint length,
 		[M68kRegister(M68kRegister.D1)] uint caches);
 
@@ -513,70 +513,70 @@ public static class Exec
 
 	[AmigaLvo(ExecLvo.CreateIORequest)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateIORequest(
-		[M68kRegister(M68kRegister.A0)] uint port,
+	public static extern APTR CreateIORequest(
+		[M68kRegister(M68kRegister.A0)] APTR port,
 		[M68kRegister(M68kRegister.D0)] uint size);
 
 	[AmigaLvo(ExecLvo.DeleteIORequest)]
 	public static extern void DeleteIORequest(
-		[M68kRegister(M68kRegister.A0)] uint ioRequest);
+		[M68kRegister(M68kRegister.A0)] APTR ioRequest);
 
 	[AmigaLvo(ExecLvo.CreateMsgPort)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreateMsgPort();
+	public static extern APTR CreateMsgPort();
 
 	[AmigaLvo(ExecLvo.DeleteMsgPort)]
 	public static extern void DeleteMsgPort(
-		[M68kRegister(M68kRegister.A0)] uint port);
+		[M68kRegister(M68kRegister.A0)] APTR port);
 
 	[AmigaLvo(ExecLvo.ObtainSemaphoreShared)]
 	public static extern void ObtainSemaphoreShared(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.AllocVec)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocVec(
+	public static extern APTR AllocVec(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] uint attributes);
 
 	[AmigaLvo(ExecLvo.FreeVec)]
 	public static extern void FreeVec(
-		[M68kRegister(M68kRegister.A1)] uint memoryBlock);
+		[M68kRegister(M68kRegister.A1)] APTR memoryBlock);
 
 	[AmigaLvo(ExecLvo.CreatePool)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint CreatePool(
+	public static extern APTR CreatePool(
 		[M68kRegister(M68kRegister.D0)] uint requirements,
 		[M68kRegister(M68kRegister.D1)] uint puddleSize,
 		[M68kRegister(M68kRegister.D2)] uint threshold);
 
 	[AmigaLvo(ExecLvo.DeletePool)]
 	public static extern void DeletePool(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader);
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader);
 
 	[AmigaLvo(ExecLvo.AllocPooled)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocPooled(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader,
+	public static extern APTR AllocPooled(
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader,
 		[M68kRegister(M68kRegister.D0)] uint memorySize);
 
 	[AmigaLvo(ExecLvo.FreePooled)]
 	public static extern void FreePooled(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader,
-		[M68kRegister(M68kRegister.A1)] uint memory,
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader,
+		[M68kRegister(M68kRegister.A1)] APTR memory,
 		[M68kRegister(M68kRegister.D0)] uint memorySize);
 
 	[AmigaLvo(ExecLvo.AttemptSemaphoreShared)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AttemptSemaphoreShared(
-		[M68kRegister(M68kRegister.A0)] uint signalSemaphore);
+		[M68kRegister(M68kRegister.A0)] APTR signalSemaphore);
 
 	[AmigaLvo(ExecLvo.ColdReboot)]
 	public static extern void ColdReboot();
 
 	[AmigaLvo(ExecLvo.StackSwap)]
 	public static extern void StackSwap(
-		[M68kRegister(M68kRegister.A0)] uint newStack);
+		[M68kRegister(M68kRegister.A0)] APTR newStack);
 
 	[AmigaLvo(ExecLvo.ChildFree)]
 	public static extern void ChildFree(
@@ -599,23 +599,23 @@ public static class Exec
 	[AmigaLvo(ExecLvo.CachePreDMA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint CachePreDMA(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.A1)] uint length,
 		[M68kRegister(M68kRegister.D0)] uint flags);
 
 	[AmigaLvo(ExecLvo.CachePostDMA)]
 	public static extern void CachePostDMA(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.A1)] uint length,
 		[M68kRegister(M68kRegister.D0)] uint flags);
 
 	[AmigaLvo(ExecLvo.AddMemHandler)]
 	public static extern void AddMemHandler(
-		[M68kRegister(M68kRegister.A1)] uint memHandler);
+		[M68kRegister(M68kRegister.A1)] APTR memHandler);
 
 	[AmigaLvo(ExecLvo.RemMemHandler)]
 	public static extern void RemMemHandler(
-		[M68kRegister(M68kRegister.A1)] uint memHandler);
+		[M68kRegister(M68kRegister.A1)] APTR memHandler);
 
 	[AmigaLvo(ExecLvo.ObtainQuickVector)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -640,44 +640,44 @@ public static class Exec
 	[AmigaLvo(ExecLvo.NewGetTaskAttrsA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewGetTaskAttrsA(
-		[M68kRegister(M68kRegister.A0)] uint task,
-		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint data,
+		[M68kRegister(M68kRegister.A0)] APTR task,
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] APTR data,
 		[M68kRegister(M68kRegister.D0)] uint dataSize,
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.A2)] uint tags);
+		[M68kRegister(M68kRegister.A2)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewSetTaskAttrsA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewSetTaskAttrsA(
-		[M68kRegister(M68kRegister.A0)] uint task,
-		[M68kRegister(M68kRegister.A1)] uint data,
+		[M68kRegister(M68kRegister.A0)] APTR task,
+		[M68kRegister(M68kRegister.A1)] APTR data,
 		[M68kRegister(M68kRegister.D0)] uint dataSize,
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.A2)] uint tags);
+		[M68kRegister(M68kRegister.A2)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewSetFunction)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewSetFunction(
-		[M68kRegister(M68kRegister.A0)] uint library,
-		[M68kRegister(M68kRegister.A1)] uint function,
+		[M68kRegister(M68kRegister.A0)] APTR library,
+		[M68kRegister(M68kRegister.A1)] APTR function,
 		[M68kRegister(M68kRegister.D0)] int offset,
-		[M68kRegister(M68kRegister.A2)] uint tags);
+		[M68kRegister(M68kRegister.A2)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewCreateLibrary)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint NewCreateLibrary(
-		[M68kRegister(M68kRegister.A0)] uint tags);
+	public static extern APTR NewCreateLibrary(
+		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewPPCStackSwap)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewPPCStackSwap(
-		[M68kRegister(M68kRegister.A0)] uint newStack,
-		[M68kRegister(M68kRegister.A1)] uint function,
-		[M68kRegister(M68kRegister.A2)] uint args);
+		[M68kRegister(M68kRegister.A0)] APTR newStack,
+		[M68kRegister(M68kRegister.A1)] APTR function,
+		[M68kRegister(M68kRegister.A2)] APTR args);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.TaggedOpenLibrary)]
@@ -693,60 +693,60 @@ public static class Exec
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.CacheFlushDataArea)]
 	public static extern void CacheFlushDataArea(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.D0)] uint length);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.CacheInvalidInstArea)]
 	public static extern void CacheInvalidInstArea(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.D0)] uint length);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.CacheInvalidDataArea)]
 	public static extern void CacheInvalidDataArea(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.D0)] uint length);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.CacheFlushDataInstArea)]
 	public static extern void CacheFlushDataInstArea(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.D0)] uint length);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.CacheTrashCacheArea)]
 	public static extern void CacheTrashCacheArea(
-		[M68kRegister(M68kRegister.A0)] uint address,
+		[M68kRegister(M68kRegister.A0)] APTR address,
 		[M68kRegister(M68kRegister.D0)] uint length);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.AllocTaskPooled)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocTaskPooled(
+	public static extern APTR AllocTaskPooled(
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.FreeTaskPooled)]
 	public static extern void FreeTaskPooled(
-		[M68kRegister(M68kRegister.A1)] uint memory,
+		[M68kRegister(M68kRegister.A1)] APTR memory,
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.AllocVecTaskPooled)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocVecTaskPooled(
+	public static extern APTR AllocVecTaskPooled(
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.FreeVecTaskPooled)]
 	public static extern void FreeVecTaskPooled(
-		[M68kRegister(M68kRegister.A1)] uint memory);
+		[M68kRegister(M68kRegister.A1)] APTR memory);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.FlushPool)]
 	public static extern void FlushPool(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader);
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.FlushTaskPool)]
@@ -755,45 +755,45 @@ public static class Exec
 	// MorphOS m68k ABI call. CopperOS call.
 	[AmigaLvo(ExecLvo.AllocVecPooled)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocVecPooled(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader,
+	public static extern APTR AllocVecPooled(
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader,
 		[M68kRegister(M68kRegister.D0)] uint byteSize);
 
 	// MorphOS m68k ABI call. CopperOS call.
 	[AmigaLvo(ExecLvo.FreeVecPooled)]
 	public static extern void FreeVecPooled(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader,
-		[M68kRegister(M68kRegister.A1)] uint memory);
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader,
+		[M68kRegister(M68kRegister.A1)] APTR memory);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewGetSystemAttrsA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewGetSystemAttrsA(
-		[M68kRegister(M68kRegister.A0)] uint data,
+		[M68kRegister(M68kRegister.A0)] APTR data,
 		[M68kRegister(M68kRegister.D0)] uint dataSize,
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewSetSystemAttrsA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewSetSystemAttrsA(
-		[M68kRegister(M68kRegister.A0)] uint data,
+		[M68kRegister(M68kRegister.A0)] APTR data,
 		[M68kRegister(M68kRegister.D0)] uint dataSize,
 		[M68kRegister(M68kRegister.D1)] uint type,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewCreateTaskA)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint NewCreateTaskA(
-		[M68kRegister(M68kRegister.A0)] uint tags);
+	public static extern APTR NewCreateTaskA(
+		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	// CopperOS call. MorphOS exposes this slot through native function-pointer ABI, not m68k ABI.
 	[AmigaLvo(ExecLvo.AllocateAligned)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocateAligned(
-		[M68kRegister(M68kRegister.A0)] uint freeList,
+	public static extern APTR AllocateAligned(
+		[M68kRegister(M68kRegister.A0)] APTR freeList,
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] uint alignment,
 		[M68kRegister(M68kRegister.D2)] uint alignmentOffset);
@@ -801,7 +801,7 @@ public static class Exec
 	// CopperOS call. MorphOS exposes this slot through native function-pointer ABI, not m68k ABI.
 	[AmigaLvo(ExecLvo.AllocMemAligned)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocMemAligned(
+	public static extern APTR AllocMemAligned(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] uint attributes,
 		[M68kRegister(M68kRegister.D2)] uint alignment,
@@ -810,7 +810,7 @@ public static class Exec
 	// CopperOS call. MorphOS exposes this slot through native function-pointer ABI, not m68k ABI.
 	[AmigaLvo(ExecLvo.AllocVecAligned)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocVecAligned(
+	public static extern APTR AllocVecAligned(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] uint attributes,
 		[M68kRegister(M68kRegister.D2)] uint alignment,
@@ -819,7 +819,7 @@ public static class Exec
 	// MorphOS m68k ABI call. CopperOS call.
 	[AmigaLvo(ExecLvo.FindExecNode)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint FindExecNode(
+	public static extern APTR FindExecNode(
 		[M68kRegister(M68kRegister.D0)] uint type,
 		[M68kRegister(M68kRegister.A0)] CString name);
 
@@ -827,26 +827,26 @@ public static class Exec
 	[AmigaLvo(ExecLvo.AddExecNodeA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AddExecNodeA(
-		[M68kRegister(M68kRegister.A0)] uint node,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR node,
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.AllocVecDMA)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocVecDMA(
+	public static extern APTR AllocVecDMA(
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] uint attributes);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.FreeVecDMA)]
 	public static extern void FreeVecDMA(
-		[M68kRegister(M68kRegister.A1)] uint memory);
+		[M68kRegister(M68kRegister.A1)] APTR memory);
 
 	// CopperOS call. MorphOS exposes this slot through native function-pointer ABI, not m68k ABI.
 	[AmigaLvo(ExecLvo.AllocPooledAligned)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocPooledAligned(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader,
+	public static extern APTR AllocPooledAligned(
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader,
 		[M68kRegister(M68kRegister.D0)] uint byteSize,
 		[M68kRegister(M68kRegister.D1)] uint alignment,
 		[M68kRegister(M68kRegister.D2)] uint alignmentOffset);
@@ -855,43 +855,43 @@ public static class Exec
 	[AmigaLvo(ExecLvo.AddResident)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AddResident(
-		[M68kRegister(M68kRegister.A1)] uint resident);
+		[M68kRegister(M68kRegister.A1)] APTR resident);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.DumpTaskState)]
 	public static extern void DumpTaskState(
-		[M68kRegister(M68kRegister.A0)] uint task);
+		[M68kRegister(M68kRegister.A0)] APTR task);
 
 	// CopperOS call. MorphOS exposes this slot through native function-pointer ABI, not m68k ABI.
 	[AmigaLvo(ExecLvo.AvailPool)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint AvailPool(
-		[M68kRegister(M68kRegister.A0)] uint poolHeader,
+		[M68kRegister(M68kRegister.A0)] APTR poolHeader,
 		[M68kRegister(M68kRegister.D0)] uint flags);
 
 	// CopperOS call. MorphOS exposes this slot through native function-pointer ABI, not m68k ABI.
 	[AmigaLvo(ExecLvo.PutMsgHead)]
 	public static extern void PutMsgHead(
-		[M68kRegister(M68kRegister.A0)] uint port,
-		[M68kRegister(M68kRegister.A1)] uint message);
+		[M68kRegister(M68kRegister.A0)] APTR port,
+		[M68kRegister(M68kRegister.A1)] APTR message);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewGetTaskPIDAttrsA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewGetTaskPIDAttrsA(
 		[M68kRegister(M68kRegister.D0)] uint pid,
-		[M68kRegister(M68kRegister.A0)] uint data,
+		[M68kRegister(M68kRegister.A0)] APTR data,
 		[M68kRegister(M68kRegister.D1)] uint dataSize,
 		[M68kRegister(M68kRegister.D2)] uint type,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(ExecLvo.NewSetTaskPIDAttrsA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint NewSetTaskPIDAttrsA(
 		[M68kRegister(M68kRegister.D0)] uint pid,
-		[M68kRegister(M68kRegister.A0)] uint data,
+		[M68kRegister(M68kRegister.A0)] APTR data,
 		[M68kRegister(M68kRegister.D1)] uint dataSize,
 		[M68kRegister(M68kRegister.D2)] uint type,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 }

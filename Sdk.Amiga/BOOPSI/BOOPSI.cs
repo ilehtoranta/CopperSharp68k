@@ -22,49 +22,49 @@ public static partial class BOOPSI
 		throw new System.NotSupportedException(
 			"BOOPSI.InstanceData is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId) =>
+	public static uint DoMethod(APTR obj, uint methodId) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId, uint arg1) =>
+	public static uint DoMethod(APTR obj, uint methodId, uint arg1) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2) =>
+	public static uint DoMethod(APTR obj, uint methodId, uint arg1, uint arg2) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3) =>
+	public static uint DoMethod(APTR obj, uint methodId, uint arg1, uint arg2, uint arg3) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4) =>
+	public static uint DoMethod(APTR obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4, uint arg5) =>
+	public static uint DoMethod(APTR obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4, uint arg5) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
-	public static uint DoMethod(uint obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4, uint arg5, uint arg6) =>
+	public static uint DoMethod(APTR obj, uint methodId, uint arg1, uint arg2, uint arg3, uint arg4, uint arg5, uint arg6) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
 	public static uint DoMethod(
-		uint obj,
+		APTR obj,
 		[AmigaStackVarargs] params AmigaVarArg[] message) =>
 		throw new System.NotSupportedException("BOOPSI.DoMethod is lowered by CopperSharp.");
 
 	[M68kImport("amiga.boopsi.DoMethodA")]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint DoMethodA(
-		[M68kRegister(M68kRegister.A0)] uint obj,
-		[M68kRegister(M68kRegister.A1)] uint message);
+		[M68kRegister(M68kRegister.A0)] APTR obj,
+		[M68kRegister(M68kRegister.A1)] APTR message);
 
 	[M68kImport("amiga.boopsi.DoSuperMethodA")]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint DoSuperMethodA(
-		[M68kRegister(M68kRegister.A0)] uint cl,
-		[M68kRegister(M68kRegister.A2)] uint obj,
-		[M68kRegister(M68kRegister.A1)] uint message);
+		[M68kRegister(M68kRegister.A0)] APTR cl,
+		[M68kRegister(M68kRegister.A2)] APTR obj,
+		[M68kRegister(M68kRegister.A1)] APTR message);
 
 	[M68kImport("amiga.boopsi.CoerceMethodA")]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint CoerceMethodA(
-		[M68kRegister(M68kRegister.A0)] uint cl,
-		[M68kRegister(M68kRegister.A2)] uint obj,
-		[M68kRegister(M68kRegister.A1)] uint message);
+		[M68kRegister(M68kRegister.A0)] APTR cl,
+		[M68kRegister(M68kRegister.A2)] APTR obj,
+		[M68kRegister(M68kRegister.A1)] APTR message);
 }
