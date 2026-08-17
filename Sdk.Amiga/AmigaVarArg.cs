@@ -7,18 +7,37 @@ namespace Amiga;
 
 public readonly struct AmigaVarArg
 {
-	private readonly uint _value;
+	private readonly IPTR _value;
 
 	public AmigaVarArg(uint value) =>
+		_value = IPTR.FromUInt32(value);
+
+	public AmigaVarArg(IPTR value) =>
 		_value = value;
 
-	public uint Raw => _value;
+	public AmigaVarArg(SIPTR value) =>
+		_value = IPTR.FromUInt32(SIPTR.ToBits(value));
+
+	/// <summary>Current native-width value carried by this vararg.</summary>
+	public IPTR Value => _value;
+
+	/// <summary>
+	/// Returns the current 32-bit 68k representation. Prefer <see cref="Value"/>
+	/// for code that is intended to support a wider target.
+	/// </summary>
+	public uint Raw => IPTR.ToUInt32(_value);
 
 	public static implicit operator AmigaVarArg(uint value) =>
 		new(value);
 
 	public static implicit operator AmigaVarArg(int value) =>
 		new(unchecked((uint)value));
+
+	public static implicit operator AmigaVarArg(IPTR value) =>
+		new(value);
+
+	public static implicit operator AmigaVarArg(SIPTR value) =>
+		new(IPTR.FromUInt32(SIPTR.ToBits(value)));
 
 	public static implicit operator AmigaVarArg(APTR value) =>
 		new(value.Raw);
