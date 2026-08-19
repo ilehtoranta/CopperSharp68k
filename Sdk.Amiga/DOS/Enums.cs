@@ -11,6 +11,18 @@ public enum DosBoolean : int
 	True = -1,
 }
 
+/// <summary>Progressive ExAllData prefixes from dos/exall.h.</summary>
+public enum DosExAllDataLevel : int
+{
+	Name = 1,
+	Type = 2,
+	Size = 3,
+	Protection = 4,
+	Date = 5,
+	Comment = 6,
+	Owner = 7,
+}
+
 public enum DosObjectType : uint
 {
 	FileHandle = 0,
