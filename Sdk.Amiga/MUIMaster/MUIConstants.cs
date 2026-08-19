@@ -3547,23 +3547,23 @@ public static class Urltext
 	public static uint New(uint tags) =>
 		global::Amiga.MUIMaster.MUI_NewObjectTags(global::Amiga.CString.FromLiteral(Name), tags);
 
-	public const uint Active = 0xfec900d2u;
-	public const uint DoOpenURL = 0xfec900d8u;
-	public const uint DoVisitedPen = 0xfec900d6u;
-	public const uint FallBack = 0xfec900d5u;
+	public const uint Active = 1u;
+	public const uint DoOpenURL = 1u;
+	public const uint DoVisitedPen = 1u;
+	public const uint FallBack = 1u;
 	public static class Method
 	{
 		public const uint Copy = 0xfed10035u;
 		public const uint OpenURL = 0xfed10034u;
 	}
 	public const string Name = "Hyperlink.mcc";
-	public const uint NoMenu = 0xfec900d9u;
-	public const uint NoOpenURLPrefs = 0xfec900dcu;
+	public const uint NoMenu = 1u;
+	public const uint NoOpenURLPrefs = 1u;
 	public const uint SetMax = 0x80424d0au;
 	public const uint Text = 0x8042f8dcu;
-	public const uint Underline = 0xfec900d4u;
+	public const uint Underline = 1u;
 	public const uint Url = 0xfed10033u;
-	public const uint Visited = 0xfec900d3u;
+	public const uint Visited = 1u;
 }
 
 public static class VGraphics
