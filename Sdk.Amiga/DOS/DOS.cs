@@ -508,7 +508,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D4)] APTR buffer,
 		[M68kRegister(M68kRegister.D5)] int size);
 
-	[AmigaLvo(-444)]
+	[AmigaLvo(DosLvo.MakeLink)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MakeLink(
 		[M68kRegister(M68kRegister.D1)] CString name,
@@ -1010,7 +1010,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D4)] int data,
 		[M68kRegister(M68kRegister.D5)] APTR control);
 
-	[AmigaLvo(-996)]
+	[AmigaLvo(DosLvo.SetOwner)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetOwner(
 		[M68kRegister(M68kRegister.D1)] CString name,

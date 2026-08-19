@@ -12,6 +12,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectCopperSharpCompilerTool</TargetsForTfmSpecificContentInPackage>
+    <CopperSharpCompilerToolOutputPath Condition="'$(CopperSharpCompilerToolOutputPath)' == ''">..\Compiler.Cli\bin\$(Configuration)\net10.0</CopperSharpCompilerToolOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,8 +31,8 @@
           DependsOnTargets="Build"
           Returns="@(TfmSpecificPackageFile)">
     <ItemGroup>
-      <TfmSpecificPackageFile Include="..\Compiler.Cli\bin\$(Configuration)\net10.0\**\*"
-                              Exclude="..\Compiler.Cli\bin\$(Configuration)\net10.0\publish\**\*;..\Compiler.Cli\bin\$(Configuration)\net10.0\**\*.pdb;..\Compiler.Cli\bin\$(Configuration)\net10.0\**\*.xml">
+      <TfmSpecificPackageFile Include="$(CopperSharpCompilerToolOutputPath)\**\*"
+                              Exclude="$(CopperSharpCompilerToolOutputPath)\publish\**\*;$(CopperSharpCompilerToolOutputPath)\**\*.pdb;$(CopperSharpCompilerToolOutputPath)\**\*.xml">
         <PackagePath>tools\net10.0\any\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
       </TfmSpecificPackageFile>
     </ItemGroup>

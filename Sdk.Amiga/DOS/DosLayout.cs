@@ -26,6 +26,38 @@ public static class DosLayout
 		public const int Size = 12;
 	}
 
+	public static class DateTime
+	{
+		public const int Stamp = 0, Format = 12, Flags = 13, Day = 14,
+			Date = 18, Time = 22;
+		public const int Size = 26;
+	}
+
+	public static class InfoData
+	{
+		public const int NumberOfSoftErrors = 0, UnitNumber = 4, DiskState = 8,
+			NumberOfBlocks = 12, NumberOfBlocksUsed = 16, BytesPerBlock = 20,
+			DiskType = 24, VolumeNode = 28, InUse = 32;
+		public const int Size = 36;
+	}
+
+	public static class DosEnvec
+	{
+		public const int TableSize = 0, SizeBlock = 4, SectorOrigin = 8,
+			Surfaces = 12, SectorsPerBlock = 16, BlocksPerTrack = 20,
+			Reserved = 24, PreAlloc = 28, Interleave = 32, LowCylinder = 36,
+			HighCylinder = 40, NumberOfBuffers = 44, BufferMemoryType = 48,
+			MaximumTransfer = 52, Mask = 56, BootPriority = 60, DosType = 64,
+			Baud = 68, Control = 72, BootBlocks = 76;
+		public const int Size = 80;
+	}
+
+	public static class FileSysStartupMsg
+	{
+		public const int Unit = 0, Device = 4, Environment = 8, Flags = 12;
+		public const int Size = 16;
+	}
+
 	public static class PosixDateStamp
 	{
 		public const int Seconds = 0, Nanoseconds = 8;
@@ -62,6 +94,22 @@ public static class DosLayout
 		public const int Link = 0, Port = 4, Type = 8, Buffer = 12, Position = 16;
 		public const int End = 20, Functions = 24, Function2 = 28, Function3 = 32;
 		public const int Arguments = 36, Argument2 = 40;
+		public const int Size = 44;
+	}
+
+	public static class DeviceNode
+	{
+		public const int Next = 0, Type = 4, Task = 8, Lock = 12,
+			Handler = 16, StackSize = 20, Priority = 24, Startup = 28,
+			SegmentList = 32, GlobalVector = 36, Name = 40;
+		public const int Size = 44;
+	}
+
+	public static class DeviceList
+	{
+		public const int Next = 0, Type = 4, Task = 8, Lock = 12,
+			VolumeDate = 16, LockList = 28, DiskType = 32, Unused = 36,
+			Name = 40;
 		public const int Size = 44;
 	}
 
@@ -125,10 +173,41 @@ public static class DosLayout
 		public const int Size = 228;
 	}
 
+	public static class LocalVar
+	{
+		public const int Node = 0, Flags = 14, Value = 16, Length = 20;
+		public const int Size = 24;
+	}
+
+	public static class CLIDataItem
+	{
+		public const int CLINumber = 0, DefaultStack = 4, GlobalVector = 8,
+			Future = 12, Priority = 16, Flags = 17, Command = 18;
+		public const int MinimumSize = 19, Size = 20;
+	}
+
+	public static class CLIData
+	{
+		public const int NumberOfCLIs = 0, CLIs = 4;
+		public const int MinimumSize = 8, Size = 8;
+	}
+
+	public static class HunkSegmentHeader
+	{
+		public const int AllocationSize = 0, Next = 4, Size = 8;
+	}
+
 	public static class DosList
 	{
 		public const int Next = 0, Type = 4, Task = 8, Lock = 12, Misc = 16, Name = 40;
 		public const int Size = 44;
+	}
+
+	public static class DosListAssignData
+	{
+		public const int AssignName = 0, List = 4, Reserved0 = 8,
+			Reserved1 = 12, Reserved2 = 16, Reserved3 = 20;
+		public const int Size = 24;
 	}
 
 	public static class DevProc

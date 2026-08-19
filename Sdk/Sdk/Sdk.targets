@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <CopperSharpDotNetHost>$(NetCoreRoot)dotnet</CopperSharpDotNetHost>
+    <CopperSharpDotNetHost Condition="'$(OS)' == 'Windows_NT'">$(NetCoreRoot)dotnet.exe</CopperSharpDotNetHost>
     <_CopperSharpLegacyPropertiesUsed Condition="'$(Copper68kCompile)' == 'true' or '$(Copper68kEntry)' != '' or '$(Copper68kAdditionalArguments)' != ''">true</_CopperSharpLegacyPropertiesUsed>
     <CopperSharpCompileOnBuild Condition="'$(CopperSharpCompileOnBuild)' == '' and '$(Copper68kCompile)' == 'true'">true</CopperSharpCompileOnBuild>
     <CopperSharpCompileOnBuild Condition="'$(CopperSharpCompileOnBuild)' == ''">false</CopperSharpCompileOnBuild>
@@ -97,7 +99,7 @@
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k'"
           Inputs="$(CopperSharpResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpFrameworkImplementationManifest)"
           Outputs="$(CopperSharpOutputPath);$(CopperSharpOutputPath).map;$(CopperSharpFrameworkReportPath)">
-    <Exec Command="dotnet &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpResponseManifestPath)&quot;" />
+    <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpResponseManifestPath)&quot;" />
     <ItemGroup>
       <FileWrites Include="$(CopperSharpOutputPath);$(CopperSharpOutputPath).map;$(CopperSharpFrameworkReportPath)" />
     </ItemGroup>
@@ -151,7 +153,7 @@
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCompileOnBuild)' == 'true' and '$(_IsPublishing)' != 'true'"
           Inputs="$(CopperSharpBuildResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpFrameworkImplementationManifest)"
           Outputs="$(CopperSharpBuildOutputPath);$(CopperSharpBuildOutputPath).map;$(CopperSharpBuildFrameworkReportPath)">
-    <Exec Command="dotnet &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpBuildResponseManifestPath)&quot;" />
+    <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpBuildResponseManifestPath)&quot;" />
     <ItemGroup>
       <FileWrites Include="$(CopperSharpBuildOutputPath);$(CopperSharpBuildOutputPath).map;$(CopperSharpBuildFrameworkReportPath)" />
     </ItemGroup>

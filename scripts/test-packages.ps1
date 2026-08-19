@@ -78,11 +78,22 @@ try {
         "Compiler\CopperSharp.Compiler.csproj",
         "Compiler.Tests.PackageDependency\CopperSharp.Compiler.Tests.PackageDependency.csproj",
         "Sdk.Amiga\CopperSharp.Sdk.Amiga.csproj",
+        "Sdk.Amiga.Support\CopperSharp.Sdk.Amiga.Support.csproj",
         "Sdk\CopperSharp.Sdk.csproj",
         "Compiler.Cli\CopperSharp.Compiler.Cli.csproj",
         "Templates\CopperSharp.Templates.csproj"
     )) {
-        Invoke-DotNet pack (Join-Path $repoRoot $project) -c $Configuration -o $feed --nologo
+        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($project)
+        $packBuildRoot = Join-Path $auditRoot "pack-bin\$projectName"
+        $packArguments = @(
+            "pack", (Join-Path $repoRoot $project), "-c", $Configuration,
+            "-o", $feed, "--nologo", "-p:BaseOutputPath=$packBuildRoot\"
+        )
+        if ($project -eq "Sdk\CopperSharp.Sdk.csproj") {
+            $toolOutput = Join-Path $packBuildRoot "$Configuration\net10.0"
+            $packArguments += "-p:CopperSharpCompilerToolOutputPath=$toolOutput"
+        }
+        Invoke-DotNet @packArguments
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -119,6 +130,61 @@ try {
         finally {
             $archive.Dispose()
         }
+    }
+
+    $amigaSdkPackage = Join-Path $feed "CopperSharp.Sdk.Amiga.$packageVersion.nupkg"
+    $amigaSupportPackage = Join-Path $feed "CopperSharp.Sdk.Amiga.Support.$packageVersion.nupkg"
+    foreach ($requiredPackage in @($amigaSdkPackage, $amigaSupportPackage)) {
+        if (-not (Test-Path -LiteralPath $requiredPackage -PathType Leaf)) {
+            throw "The package audit did not produce $requiredPackage."
+        }
+    }
+
+    $amigaSdkArchive = [System.IO.Compression.ZipFile]::OpenRead($amigaSdkPackage)
+    try {
+        $amigaSdkEntries = $amigaSdkArchive.Entries.FullName
+        if ("lib/net10.0/CopperSharp.Sdk.Amiga.dll" -notin $amigaSdkEntries) {
+            throw "$amigaSdkPackage does not contain the application SDK assembly."
+        }
+        if ($amigaSdkEntries.Where({
+            $_.IndexOf("CopperSharp.Sdk.Amiga.Support", [StringComparison]::OrdinalIgnoreCase) -ge 0
+        }).Count -ne 0) {
+            throw "$amigaSdkPackage unexpectedly contains host-support artifacts."
+        }
+    }
+    finally {
+        $amigaSdkArchive.Dispose()
+    }
+
+    $amigaSupportArchive = [System.IO.Compression.ZipFile]::OpenRead($amigaSupportPackage)
+    try {
+        $amigaSupportEntries = $amigaSupportArchive.Entries.FullName
+        if ("lib/net10.0/CopperSharp.Sdk.Amiga.Support.dll" -notin $amigaSupportEntries) {
+            throw "$amigaSupportPackage does not contain the host-support assembly."
+        }
+        $supportNuspecEntries = @($amigaSupportArchive.Entries.Where({
+            $_.FullName.EndsWith('.nuspec', [StringComparison]::OrdinalIgnoreCase)
+        }))
+        if ($supportNuspecEntries.Count -ne 1) {
+            throw "$amigaSupportPackage does not contain exactly one nuspec."
+        }
+        $supportNuspecEntry = $supportNuspecEntries[0]
+        $supportReader = [System.IO.StreamReader]::new($supportNuspecEntry.Open())
+        try {
+            [xml]$supportNuspec = $supportReader.ReadToEnd()
+        }
+        finally {
+            $supportReader.Dispose()
+        }
+        $sdkDependency = $supportNuspec.SelectSingleNode(
+            "//*[local-name()='dependency' and @id='CopperSharp.Sdk.Amiga']")
+        if ($null -eq $sdkDependency -or
+            $sdkDependency.version.IndexOf($packageVersion, [StringComparison]::Ordinal) -lt 0) {
+            throw "$amigaSupportPackage does not depend on CopperSharp.Sdk.Amiga $packageVersion."
+        }
+    }
+    finally {
+        $amigaSupportArchive.Dispose()
     }
 
     $sdkPackage = Join-Path $feed "CopperSharp.Sdk.$packageVersion.nupkg"
