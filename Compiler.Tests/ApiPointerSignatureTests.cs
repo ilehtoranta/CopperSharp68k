@@ -41,6 +41,34 @@ public sealed class ApiPointerSignatureTests
 	}
 
 	[Fact]
+	public void FirstLibraryAuditUsesSemanticPointerTypes()
+	{
+		Assert.Equal(typeof(APTR), typeof(ASL).GetMethod(nameof(ASL.AllocFileRequest))!.ReturnType);
+		Assert.Equal(typeof(APTR), Parameter(typeof(ASL), nameof(ASL.FreeFileRequest), 0));
+		Assert.Equal(typeof(APTR), typeof(ASL).GetMethod(nameof(ASL.AllocAslRequest))!.ReturnType);
+		Assert.Equal(typeof(APTR), Parameter(typeof(ASL), nameof(ASL.AllocAslRequest), 1));
+
+		Assert.Equal(typeof(APTR), typeof(Bullet).GetMethod(nameof(Bullet.OpenEngine))!.ReturnType);
+		Assert.Equal(typeof(APTR), Parameter(typeof(Bullet), nameof(Bullet.SetInfoA), 0));
+		Assert.Equal(typeof(APTR), Parameter(typeof(Bullet), nameof(Bullet.SetInfoA), 1));
+
+		Assert.Equal(typeof(APTR), typeof(Commodities).GetMethod(nameof(Commodities.CreateCxObj))!.ReturnType);
+		Assert.Equal(typeof(APTR), typeof(Commodities).GetMethod(nameof(Commodities.CxBroker))!.ReturnType);
+		Assert.Equal(typeof(APTR), Parameter(typeof(Commodities), nameof(Commodities.CxBroker), 0));
+		Assert.Equal(typeof(APTR), Parameter(typeof(Commodities), nameof(Commodities.SetFilter), 0));
+		Assert.Equal(typeof(APTR), Parameter(typeof(Commodities), nameof(Commodities.CxMsgData), 0));
+
+		Assert.Equal(typeof(APTR), typeof(AmigaGuide).GetMethod(nameof(AmigaGuide.OpenAmigaGuideA))!.ReturnType);
+		Assert.Equal(typeof(APTR), Parameter(typeof(AmigaGuide), nameof(AmigaGuide.GetAmigaGuideMsg), 0));
+		Assert.Equal(typeof(BPTR), Parameter(typeof(AmigaGuide), nameof(AmigaGuide.LoadXRef), 0));
+		Assert.Equal(typeof(STRPTR), typeof(AmigaGuide).GetMethod(nameof(AmigaGuide.GetAmigaGuideString))!.ReturnType);
+
+		Assert.Equal(typeof(APTR), typeof(AmiSSLMaster).GetMethod(nameof(AmiSSLMaster.OpenAmiSSL))!.ReturnType);
+		Assert.Equal(typeof(APTR), Parameter(typeof(AmiSSLMaster), nameof(AmiSSLMaster.CloseAmiSSLCipher), 0));
+		Assert.Equal(typeof(APTR), Parameter(typeof(AmiSSLMaster), nameof(AmiSSLMaster.OpenAmiSSLTagList), 1));
+	}
+
+	[Fact]
 	public void ScalarResultsRemainFixedWidthValues()
 	{
 		Assert.Equal(typeof(uint), typeof(Exec).GetMethod(nameof(Exec.MakeFunctions))!.ReturnType);

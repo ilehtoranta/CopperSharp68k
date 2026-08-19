@@ -256,6 +256,23 @@ public enum DosConstants : int
 	PipeFile = -5,
 }
 
+public enum DosDateFormat : byte
+{
+	Dos = 0,
+	International = 1,
+	Usa = 2,
+	Canadian = 3,
+	Default = 4,
+}
+
+[System.Flags]
+public enum DosDateTimeFlags : byte
+{
+	None = 0,
+	Substitute = 1 << 0,
+	Future = 1 << 1,
+}
+
 /// <summary>Classic and MorphOS record-lock modes from dos/record.h.</summary>
 public enum DosRecordMode : uint
 {

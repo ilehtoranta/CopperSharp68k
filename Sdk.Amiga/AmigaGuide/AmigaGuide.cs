@@ -24,7 +24,7 @@ public static class AmigaGuide
 	[AmigaLvo(-36)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int LockAmigaGuideBase(
-		[M68kRegister(M68kRegister.A0)] uint handle)
+		[M68kRegister(M68kRegister.A0)] APTR handle)
 	{
 		return 0;
 	}
@@ -37,56 +37,56 @@ public static class AmigaGuide
 
 	[AmigaLvo(-54)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint OpenAmigaGuideA(
-		[M68kRegister(M68kRegister.A0)] uint newAmigaGuide,
-		[M68kRegister(M68kRegister.A1)] uint tags)
+	public static APTR OpenAmigaGuideA(
+		[M68kRegister(M68kRegister.A0)] APTR newAmigaGuide,
+		[M68kRegister(M68kRegister.A1)] APTR tags)
 	{
-		return 0;
+		return APTR.Null;
 	}
 
 	[AmigaLvo(-60)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint OpenAmigaGuideAsyncA(
-		[M68kRegister(M68kRegister.A0)] uint newAmigaGuide,
-		[M68kRegister(M68kRegister.D0)] uint tags)
+	public static APTR OpenAmigaGuideAsyncA(
+		[M68kRegister(M68kRegister.A0)] APTR newAmigaGuide,
+		[M68kRegister(M68kRegister.D0)] APTR tags)
 	{
-		return 0;
+		return APTR.Null;
 	}
 
 	[AmigaLvo(-66)]
 	public static void CloseAmigaGuide(
-		[M68kRegister(M68kRegister.A0)] uint handle)
+		[M68kRegister(M68kRegister.A0)] APTR handle)
 	{
 	}
 
 	[AmigaLvo(-72)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static uint AmigaGuideSignal(
-		[M68kRegister(M68kRegister.A0)] uint handle)
+		[M68kRegister(M68kRegister.A0)] APTR handle)
 	{
 		return 0;
 	}
 
 	[AmigaLvo(-78)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint GetAmigaGuideMsg(
-		[M68kRegister(M68kRegister.A0)] uint handle)
+	public static APTR GetAmigaGuideMsg(
+		[M68kRegister(M68kRegister.A0)] APTR handle)
 	{
-		return 0;
+		return APTR.Null;
 	}
 
 	[AmigaLvo(-84)]
 	public static void ReplyAmigaGuideMsg(
-		[M68kRegister(M68kRegister.A0)] uint message)
+		[M68kRegister(M68kRegister.A0)] APTR message)
 	{
 	}
 
 	[AmigaLvo(-90)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int SetAmigaGuideContextA(
-		[M68kRegister(M68kRegister.A0)] uint handle,
+		[M68kRegister(M68kRegister.A0)] APTR handle,
 		[M68kRegister(M68kRegister.D0)] uint context,
-		[M68kRegister(M68kRegister.D1)] uint tags)
+		[M68kRegister(M68kRegister.D1)] APTR tags)
 	{
 		return 0;
 	}
@@ -94,8 +94,8 @@ public static class AmigaGuide
 	[AmigaLvo(-96)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int SendAmigaGuideContextA(
-		[M68kRegister(M68kRegister.A0)] uint handle,
-		[M68kRegister(M68kRegister.D0)] uint tags)
+		[M68kRegister(M68kRegister.A0)] APTR handle,
+		[M68kRegister(M68kRegister.D0)] APTR tags)
 	{
 		return 0;
 	}
@@ -103,9 +103,9 @@ public static class AmigaGuide
 	[AmigaLvo(-102)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int SendAmigaGuideCmdA(
-		[M68kRegister(M68kRegister.A0)] uint handle,
+		[M68kRegister(M68kRegister.A0)] APTR handle,
 		[M68kRegister(M68kRegister.D0)] CString command,
-		[M68kRegister(M68kRegister.D1)] uint tags)
+		[M68kRegister(M68kRegister.D1)] APTR tags)
 	{
 		return 0;
 	}
@@ -113,8 +113,8 @@ public static class AmigaGuide
 	[AmigaLvo(-108)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int SetAmigaGuideAttrsA(
-		[M68kRegister(M68kRegister.A0)] uint handle,
-		[M68kRegister(M68kRegister.A1)] uint tags)
+		[M68kRegister(M68kRegister.A0)] APTR handle,
+		[M68kRegister(M68kRegister.A1)] APTR tags)
 	{
 		return 0;
 	}
@@ -123,8 +123,8 @@ public static class AmigaGuide
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int GetAmigaGuideAttr(
 		[M68kRegister(M68kRegister.D0)] uint tag,
-		[M68kRegister(M68kRegister.A0)] uint handle,
-		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] uint storage)
+		[M68kRegister(M68kRegister.A0)] APTR handle,
+		[M68kRegister(M68kRegister.A1), M68kWritesBuffer] APTR storage)
 	{
 		return 0;
 	}
@@ -132,7 +132,7 @@ public static class AmigaGuide
 	[AmigaLvo(-126)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int LoadXRef(
-		[M68kRegister(M68kRegister.A0)] uint lockPtr,
+		[M68kRegister(M68kRegister.A0)] BPTR lockPtr,
 		[M68kRegister(M68kRegister.A1)] CString name)
 	{
 		return 0;
@@ -145,52 +145,52 @@ public static class AmigaGuide
 
 	[AmigaLvo(-138)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint AddAmigaGuideHostA(
-		[M68kRegister(M68kRegister.A0)] uint hook,
+	public static APTR AddAmigaGuideHostA(
+		[M68kRegister(M68kRegister.A0)] APTR hook,
 		[M68kRegister(M68kRegister.D0)] CString name,
-		[M68kRegister(M68kRegister.A1)] uint tags)
+		[M68kRegister(M68kRegister.A1)] APTR tags)
 	{
-		return 0;
+		return APTR.Null;
 	}
 
 	[AmigaLvo(-144)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int RemoveAmigaGuideHostA(
-		[M68kRegister(M68kRegister.A0)] uint host,
-		[M68kRegister(M68kRegister.A1)] uint tags)
+		[M68kRegister(M68kRegister.A0)] APTR host,
+		[M68kRegister(M68kRegister.A1)] APTR tags)
 	{
 		return 0;
 	}
 
 	[AmigaLvo(-210)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static uint GetAmigaGuideString(
+	public static STRPTR GetAmigaGuideString(
 		[M68kRegister(M68kRegister.D0)] int id)
 	{
-		return 0;
+		return STRPTR.Null;
 	}
 
-	public static uint OpenAmigaGuide(uint newAmigaGuide, uint tags) =>
+	public static APTR OpenAmigaGuide(APTR newAmigaGuide, APTR tags) =>
 		OpenAmigaGuideA(newAmigaGuide, tags);
 
-	public static uint OpenAmigaGuideAsync(uint newAmigaGuide, uint tags) =>
+	public static APTR OpenAmigaGuideAsync(APTR newAmigaGuide, APTR tags) =>
 		OpenAmigaGuideAsyncA(newAmigaGuide, tags);
 
-	public static int SetAmigaGuideContext(uint handle, uint context, uint tags) =>
+	public static int SetAmigaGuideContext(APTR handle, uint context, APTR tags) =>
 		SetAmigaGuideContextA(handle, context, tags);
 
-	public static int SendAmigaGuideContext(uint handle, uint tags) =>
+	public static int SendAmigaGuideContext(APTR handle, APTR tags) =>
 		SendAmigaGuideContextA(handle, tags);
 
-	public static int SendAmigaGuideCmd(uint handle, CString command, uint tags) =>
+	public static int SendAmigaGuideCmd(APTR handle, CString command, APTR tags) =>
 		SendAmigaGuideCmdA(handle, command, tags);
 
-	public static int SetAmigaGuideAttrs(uint handle, uint tags) =>
+	public static int SetAmigaGuideAttrs(APTR handle, APTR tags) =>
 		SetAmigaGuideAttrsA(handle, tags);
 
-	public static uint AddAmigaGuideHost(uint hook, CString name, uint tags) =>
+	public static APTR AddAmigaGuideHost(APTR hook, CString name, APTR tags) =>
 		AddAmigaGuideHostA(hook, name, tags);
 
-	public static int RemoveAmigaGuideHost(uint host, uint tags) =>
+	public static int RemoveAmigaGuideHost(APTR host, APTR tags) =>
 		RemoveAmigaGuideHostA(host, tags);
 }

@@ -7,6 +7,8 @@ public sealed class DosLayoutTests
 {
 	[Theory]
 	[InlineData(typeof(DateStamp), typeof(DosLayout.DateStamp), 12)]
+	[InlineData(typeof(DosDateTime), typeof(DosLayout.DateTime), 26)]
+	[InlineData(typeof(InfoData), typeof(DosLayout.InfoData), 36)]
 	[InlineData(typeof(DosEnvec), typeof(DosLayout.DosEnvec), 80)]
 	[InlineData(typeof(FileSysStartupMsg), typeof(DosLayout.FileSysStartupMsg), 16)]
 	[InlineData(typeof(PosixDateStamp), typeof(DosLayout.PosixDateStamp), 12)]
@@ -154,6 +156,28 @@ public sealed class DosLayoutTests
 		};
 		DosLocalVarCodec.Write(ref memory, address, localVar);
 		Assert.Equal(localVar, DosLocalVarCodec.Read(ref memory, address));
+
+		var dateTime = new DosDateTime
+		{
+			Stamp = new DateStamp { Days = 123, Minutes = 456, Ticks = 789 },
+			Format = DosDateFormat.International,
+			Flags = DosDateTimeFlags.Substitute,
+			Day = STRPTR.FromPointer(0x1111_0000),
+			Date = STRPTR.FromPointer(0x2222_0000),
+			Time = STRPTR.FromPointer(0x3333_0000),
+		};
+		DosDateTimeCodec.Write(ref memory, address, dateTime);
+		Assert.Equal(dateTime, DosDateTimeCodec.Read(ref memory, address));
+
+		var infoData = new InfoData
+		{
+			NumberOfSoftErrors = 1, UnitNumber = 2, DiskState = 3,
+			NumberOfBlocks = 4, NumberOfBlocksUsed = 5, BytesPerBlock = 512,
+			DiskType = unchecked((int)0x444F_5301),
+			VolumeNode = BPTR.FromRaw(0x1234_5678), InUse = -1,
+		};
+		DosInfoDataCodec.Write(ref memory, address, infoData);
+		Assert.Equal(infoData, DosInfoDataCodec.Read(ref memory, address));
 
 		DosFileInfoBlockCodec.WriteDiskKey(ref memory, address, 17);
 		DosFileInfoBlockCodec.WriteDirEntryType(ref memory, address, -3);

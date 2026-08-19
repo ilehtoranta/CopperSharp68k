@@ -23,46 +23,46 @@ public static class ASL
 
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocFileRequest();
+	public static extern APTR AllocFileRequest();
 
 	[AmigaLvo(-36)]
 	public static extern void FreeFileRequest(
-		[M68kRegister(M68kRegister.A0)] uint fileRequest);
+		[M68kRegister(M68kRegister.A0)] APTR fileRequest);
 
 	[AmigaLvo(-42)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RequestFile(
-		[M68kRegister(M68kRegister.A0)] uint fileRequest);
+		[M68kRegister(M68kRegister.A0)] APTR fileRequest);
 
 	[AmigaLvo(-48)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint AllocAslRequest(
+	public static extern APTR AllocAslRequest(
 		[M68kRegister(M68kRegister.D0)] uint reqType,
-		[M68kRegister(M68kRegister.A0)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	[AmigaLvo(-54)]
 	public static extern void FreeAslRequest(
-		[M68kRegister(M68kRegister.A0)] uint requester);
+		[M68kRegister(M68kRegister.A0)] APTR requester);
 
 	[AmigaLvo(-60)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AslRequest(
-		[M68kRegister(M68kRegister.A0)] uint requester,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR requester,
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-78)]
 	public static extern void AbortAslRequest(
-		[M68kRegister(M68kRegister.A0)] uint requester);
+		[M68kRegister(M68kRegister.A0)] APTR requester);
 
 	// MorphOS m68k ABI call.
 	[AmigaLvo(-84)]
 	public static extern void ActivateAslRequest(
-		[M68kRegister(M68kRegister.A0)] uint requester);
+		[M68kRegister(M68kRegister.A0)] APTR requester);
 
-	public static uint AllocAslRequestTags(uint reqType, uint tags) =>
+	public static APTR AllocAslRequestTags(uint reqType, APTR tags) =>
 		AllocAslRequest(reqType, tags);
 
-	public static int AslRequestTags(uint requester, uint tags) =>
+	public static int AslRequestTags(APTR requester, APTR tags) =>
 		AslRequest(requester, tags);
 }

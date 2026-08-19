@@ -23,36 +23,36 @@ public static class Bullet
 
 	[AmigaLvo(-30)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint OpenEngine();
+	public static extern APTR OpenEngine();
 
 	[AmigaLvo(-36)]
 	public static extern void CloseEngine(
-		[M68kRegister(M68kRegister.A0)] uint glyphEngine);
+		[M68kRegister(M68kRegister.A0)] APTR glyphEngine);
 
 	[AmigaLvo(-42)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint SetInfoA(
-		[M68kRegister(M68kRegister.A0)] uint glyphEngine,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR glyphEngine,
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	[AmigaLvo(-48)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint ObtainInfoA(
-		[M68kRegister(M68kRegister.A0)] uint glyphEngine,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR glyphEngine,
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
 	[AmigaLvo(-54)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint ReleaseInfoA(
-		[M68kRegister(M68kRegister.A0)] uint glyphEngine,
-		[M68kRegister(M68kRegister.A1)] uint tags);
+		[M68kRegister(M68kRegister.A0)] APTR glyphEngine,
+		[M68kRegister(M68kRegister.A1)] APTR tags);
 
-	public static uint SetInfo(uint glyphEngine, uint tags) =>
+	public static uint SetInfo(APTR glyphEngine, APTR tags) =>
 		SetInfoA(glyphEngine, tags);
 
-	public static uint ObtainInfo(uint glyphEngine, uint tags) =>
+	public static uint ObtainInfo(APTR glyphEngine, APTR tags) =>
 		ObtainInfoA(glyphEngine, tags);
 
-	public static uint ReleaseInfo(uint glyphEngine, uint tags) =>
+	public static uint ReleaseInfo(APTR glyphEngine, APTR tags) =>
 		ReleaseInfoA(glyphEngine, tags);
 }
