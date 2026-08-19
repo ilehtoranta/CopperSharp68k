@@ -25,6 +25,24 @@ public enum DosObjectType : uint
 	AssignNode = 9,
 }
 
+public enum LocalVariableType : byte
+{
+	Variable = 0,
+	Alias = 1,
+}
+
+[System.Flags]
+public enum GlobalVariableFlags : uint
+{
+	None = 0,
+	Ignore = 1u << 7,
+	GlobalOnly = 1u << 8,
+	LocalOnly = 1u << 9,
+	BinaryVariable = 1u << 10,
+	DoNotNullTerminate = 1u << 11,
+	SaveVariable = 1u << 12,
+}
+
 public enum DosObjectTag : uint
 {
 	FileHandleMode = 0x8000_0000u + 2001u,
@@ -42,6 +60,70 @@ public enum DosObjectTag : uint
 	CliInteractive = 0x8000_0000u + 2027u,
 	CliBackground = 0x8000_0000u + 2028u,
 	CliDefaultStack = 0x8000_0000u + 2029u,
+	DeviceNodeName = 0x8000_0000u + 2030u,
+	DeviceNodeMessagePort = 0x8000_0000u + 2031u,
+	DeviceNodeLock = 0x8000_0000u + 2032u,
+	DeviceNodeHandler = 0x8000_0000u + 2033u,
+	DeviceNodeSegmentList = 0x8000_0000u + 2034u,
+	DeviceNodeStackSize = 0x8000_0000u + 2035u,
+	DeviceNodePriority = 0x8000_0000u + 2036u,
+	DeviceNodeStartup = 0x8000_0000u + 2037u,
+	DeviceNodeGlobalVector = 0x8000_0000u + 2038u,
+	DeviceNodeSerialId = 0x8000_0000u + 2039u,
+	DeviceNodeStartupValue = 0x8000_0000u + 2040u,
+	DeviceNodeFlags = 0x8000_0000u + 2041u,
+	DeviceNodeStatus = 0x8000_0000u + 2042u,
+	DeviceNodeExitNotifyMessage = 0x8000_0000u + 2043u,
+	FileSysStartupMessage = 0x8000_0000u + 2050u,
+	FileSysStartupDevice = 0x8000_0000u + 2051u,
+	FileSysStartupUnit = 0x8000_0000u + 2052u,
+	FileSysStartupFlags = 0x8000_0000u + 2053u,
+	DosEnvironment = 0x8000_0000u + 2060u,
+	DosEnvironmentTableSize = 0x8000_0000u + 2061u,
+	DosEnvironmentSizeBlock = 0x8000_0000u + 2062u,
+	DosEnvironmentSectorOrigin = 0x8000_0000u + 2063u,
+	DosEnvironmentSurfaces = 0x8000_0000u + 2064u,
+	DosEnvironmentNumberOfHeads = DosEnvironmentSurfaces,
+	DosEnvironmentSectorsPerBlock = 0x8000_0000u + 2065u,
+	DosEnvironmentBlocksPerTrack = 0x8000_0000u + 2066u,
+	DosEnvironmentReservedBlocks = 0x8000_0000u + 2067u,
+	DosEnvironmentPreAlloc = 0x8000_0000u + 2068u,
+	DosEnvironmentPreFac = DosEnvironmentPreAlloc,
+	DosEnvironmentInterleave = 0x8000_0000u + 2069u,
+	DosEnvironmentLowCylinder = 0x8000_0000u + 2070u,
+	DosEnvironmentHighCylinder = 0x8000_0000u + 2071u,
+	DosEnvironmentUpperCylinder = DosEnvironmentHighCylinder,
+	DosEnvironmentNumberOfBuffers = 0x8000_0000u + 2072u,
+	DosEnvironmentBufferMemoryType = 0x8000_0000u + 2073u,
+	DosEnvironmentMaximumTransfer = 0x8000_0000u + 2074u,
+	DosEnvironmentMask = 0x8000_0000u + 2075u,
+	DosEnvironmentBootPriority = 0x8000_0000u + 2076u,
+	DosEnvironmentDosType = 0x8000_0000u + 2077u,
+	DosEnvironmentBaud = 0x8000_0000u + 2078u,
+	DosEnvironmentControl = 0x8000_0000u + 2079u,
+	DosEnvironmentBootBlocks = 0x8000_0000u + 2080u,
+	FileSystemDosType = 0x8000_0000u + 2090u,
+	VolumeNodeName = 0x8000_0000u + 2100u,
+	VolumeNodeMessagePort = 0x8000_0000u + 2101u,
+	VolumeNodeLock = 0x8000_0000u + 2102u,
+	VolumeNodeLockList = 0x8000_0000u + 2103u,
+	VolumeNodeDate = 0x8000_0000u + 2104u,
+	VolumeNodeDiskType = 0x8000_0000u + 2105u,
+	AssignNodeName = 0x8000_0000u + 2120u,
+	AssignNodeMessagePort = 0x8000_0000u + 2121u,
+	AssignNodeLock = 0x8000_0000u + 2122u,
+	AssignNodeType = 0x8000_0000u + 2123u,
+	AssignNodeAssignName = 0x8000_0000u + 2124u,
+	AssignNodeAssignList = 0x8000_0000u + 2125u,
+}
+
+[System.Flags]
+public enum DeviceNodeFlags : uint
+{
+	None = 0,
+	StartOnce = 1u << 0,
+	UnloadSegmentList = 1u << 1,
+	RemoveDosList = 1u << 2,
 }
 
 /// <summary>MorphOS V51.51 QueryCLIDataTagList selectors.</summary>
