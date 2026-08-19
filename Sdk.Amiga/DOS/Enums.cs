@@ -256,6 +256,13 @@ public enum DosConstants : int
 	PipeFile = -5,
 }
 
+/// <summary>Published CHANGE_LOCK/CHANGE_FH selector for ChangeMode().</summary>
+public enum DosChangeModeTarget : int
+{
+	Lock = 0,
+	FileHandle = 1,
+}
+
 public enum DosDateFormat : byte
 {
 	Dos = 0,

@@ -253,7 +253,7 @@ public static class DOS
 	public static extern void Delay(
 		[M68kRegister(M68kRegister.D1)] int timeout);
 
-	[AmigaLvo(-204)]
+	[AmigaLvo(DosLvo.WaitForChar)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int WaitForChar(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
@@ -453,7 +453,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetFileDate(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] uint date);
+		[M68kRegister(M68kRegister.D2)] APTR date);
 
 	[AmigaLvo(DosLvo.NameFromLock)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -518,9 +518,9 @@ public static class DOS
 	[AmigaLvo(-450)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ChangeMode(
-		[M68kRegister(M68kRegister.D1)] int type,
+		[M68kRegister(M68kRegister.D1)] DosChangeModeTarget type,
 		[M68kRegister(M68kRegister.D2)] BPTR file,
-		[M68kRegister(M68kRegister.D3)] int newMode);
+		[M68kRegister(M68kRegister.D3)] LockMode newMode);
 
 	[AmigaLvo(-456)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -749,26 +749,26 @@ public static class DOS
 	public static extern int IsFileSystem(
 		[M68kRegister(M68kRegister.D1)] CString name);
 
-	[AmigaLvo(-714)]
+	[AmigaLvo(DosLvo.Format)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Format(
 		[M68kRegister(M68kRegister.D1)] CString fileSystem,
 		[M68kRegister(M68kRegister.D2)] CString volumeName,
 		[M68kRegister(M68kRegister.D3)] uint dosType);
 
-	[AmigaLvo(-720)]
+	[AmigaLvo(DosLvo.Relabel)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Relabel(
 		[M68kRegister(M68kRegister.D1)] CString drive,
 		[M68kRegister(M68kRegister.D2)] CString newName);
 
-	[AmigaLvo(-726)]
+	[AmigaLvo(DosLvo.Inhibit)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Inhibit(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] int onOff);
 
-	[AmigaLvo(-732)]
+	[AmigaLvo(DosLvo.AddBuffers)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AddBuffers(
 		[M68kRegister(M68kRegister.D1)] CString name,

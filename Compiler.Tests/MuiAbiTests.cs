@@ -54,7 +54,7 @@ public sealed class MuiAbiTests
 	[Fact]
 	public void MorphOs320ProfileAdmitsOnlyItsQualifiedVersion()
 	{
-		Assert.Equal("MorphOs320M68k", MUIProfile.Name);
+		Assert.Equal("MUI20M68k", MUIProfile.Name);
 		Assert.Equal((ushort)20, MUIProfile.MinimumVersion);
 		Assert.Equal((ushort)20, MUIProfile.LatestVersion);
 		Assert.False(MUIProfile.IsVersionAdmitted(19));
@@ -119,32 +119,6 @@ public sealed class MuiAbiTests
 		Assert.True(MUI_RenderInfoCodec.TryRead(ref memory, renderAddress, out var actualRender));
 		Assert.Equal(render.mri_RastPort.Raw, actualRender.mri_RastPort.Raw);
 		Assert.Equal(render.mri_Flags, actualRender.mri_Flags);
-	}
-
-	[Fact]
-	public void GenericMessageFieldCodecCoversEveryGeneratedFieldWidth()
-	{
-		var memory = new Memory(64);
-		var address = APTR.FromPointer(8);
-		Assert.True(MUIMessageFieldCodec.TryWriteUInt32(ref memory, address, 0, 0x8123_4567));
-		Assert.True(MUIMessageFieldCodec.TryWriteInt32(ref memory, address, 4, -123456));
-		Assert.True(MUIMessageFieldCodec.TryWriteUInt16(ref memory, address, 8, 0xABCD));
-		Assert.True(MUIMessageFieldCodec.TryWriteUInt8(ref memory, address, 10, 0xEF));
-		Assert.True(MUIMessageFieldCodec.TryWritePointer(ref memory, address, 12,
-			APTR.FromPointer(0x1020_3040)));
-		Assert.True(MUIMessageFieldCodec.TryReadUInt32(ref memory, address, 0, out var unsignedValue));
-		Assert.True(MUIMessageFieldCodec.TryReadInt32(ref memory, address, 4, out var signedValue));
-		Assert.True(MUIMessageFieldCodec.TryReadUInt16(ref memory, address, 8, out var wordValue));
-		Assert.True(MUIMessageFieldCodec.TryReadUInt8(ref memory, address, 10, out var byteValue));
-		Assert.True(MUIMessageFieldCodec.TryReadPointer(ref memory, address, 12, out var pointerValue));
-		Assert.Equal(0x8123_4567u, unsignedValue);
-		Assert.Equal(-123456, signedValue);
-		Assert.Equal((ushort)0xABCD, wordValue);
-		Assert.Equal((byte)0xEF, byteValue);
-		Assert.Equal(0x1020_3040u, pointerValue.Raw);
-		Assert.False(MUIMessageFieldCodec.TryReadUInt32(ref memory, APTR.Null, 0, out _));
-		Assert.False(MUIMessageFieldCodec.TryReadUInt16(ref memory, address, 1, out _));
-		Assert.False(MUIMessageFieldCodec.TryReadUInt32(ref memory, address, 54, out _));
 	}
 
 	[Fact]

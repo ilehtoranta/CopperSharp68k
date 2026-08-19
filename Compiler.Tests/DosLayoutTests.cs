@@ -69,6 +69,13 @@ public sealed class DosLayoutTests
 	}
 
 	[Fact]
+	public void ChangeModeTargetsMatchDosDosHeader()
+	{
+		Assert.Equal(0, (int)DosChangeModeTarget.Lock);
+		Assert.Equal(1, (int)DosChangeModeTarget.FileHandle);
+	}
+
+	[Fact]
 	public void DevProcFlagsMatchDosDosHeader()
 	{
 		Assert.Equal(1u, (uint)DevProcFlags.Unlock);

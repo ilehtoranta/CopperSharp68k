@@ -23,13 +23,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_CallHook>());
 		Assert.Equal(12u, MUIP_CallHook.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_CallHook>(nameof(MUIP_CallHook.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_CallHook.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_CallHook).GetField(nameof(MUIP_CallHook.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_CallHook>(nameof(MUIP_CallHook.Hook)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_CallHook.Hook);
 		Assert.Equal(typeof(APTR), typeof(MUIP_CallHook).GetField(nameof(MUIP_CallHook.Hook))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_CallHook>(nameof(MUIP_CallHook.param1)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_CallHook.param1);
 		Assert.Equal(typeof(uint), typeof(MUIP_CallHook).GetField(nameof(MUIP_CallHook.param1))!.FieldType);
 	}
 
@@ -39,10 +36,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Export>());
 		Assert.Equal(8u, MUIP_Export.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Export>(nameof(MUIP_Export.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Export.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Export).GetField(nameof(MUIP_Export.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Export>(nameof(MUIP_Export.dataspace)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Export.dataspace);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Export).GetField(nameof(MUIP_Export.dataspace))!.FieldType);
 	}
 
@@ -52,10 +47,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_FindObject>());
 		Assert.Equal(8u, MUIP_FindObject.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_FindObject>(nameof(MUIP_FindObject.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_FindObject.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_FindObject).GetField(nameof(MUIP_FindObject.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_FindObject>(nameof(MUIP_FindObject.findme)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_FindObject.findme);
 		Assert.Equal(typeof(APTR), typeof(MUIP_FindObject).GetField(nameof(MUIP_FindObject.findme))!.FieldType);
 	}
 
@@ -65,10 +58,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_FindUData>());
 		Assert.Equal(8u, MUIP_FindUData.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_FindUData>(nameof(MUIP_FindUData.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_FindUData.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_FindUData).GetField(nameof(MUIP_FindUData.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_FindUData>(nameof(MUIP_FindUData.udata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_FindUData.udata);
 		Assert.Equal(typeof(uint), typeof(MUIP_FindUData).GetField(nameof(MUIP_FindUData.udata))!.FieldType);
 	}
 
@@ -78,13 +69,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_GetConfigItem>());
 		Assert.Equal(12u, MUIP_GetConfigItem.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_GetConfigItem>(nameof(MUIP_GetConfigItem.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_GetConfigItem.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_GetConfigItem).GetField(nameof(MUIP_GetConfigItem.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_GetConfigItem>(nameof(MUIP_GetConfigItem.id)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_GetConfigItem.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_GetConfigItem).GetField(nameof(MUIP_GetConfigItem.id))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_GetConfigItem>(nameof(MUIP_GetConfigItem.storage)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_GetConfigItem.storage);
 		Assert.Equal(typeof(APTR), typeof(MUIP_GetConfigItem).GetField(nameof(MUIP_GetConfigItem.storage))!.FieldType);
 	}
 
@@ -94,16 +82,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_GetUData>());
 		Assert.Equal(16u, MUIP_GetUData.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_GetUData>(nameof(MUIP_GetUData.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_GetUData.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_GetUData).GetField(nameof(MUIP_GetUData.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_GetUData>(nameof(MUIP_GetUData.udata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_GetUData.udata);
 		Assert.Equal(typeof(uint), typeof(MUIP_GetUData).GetField(nameof(MUIP_GetUData.udata))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_GetUData>(nameof(MUIP_GetUData.attr)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_GetUData.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_GetUData).GetField(nameof(MUIP_GetUData.attr))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_GetUData>(nameof(MUIP_GetUData.storage)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_GetUData.storage);
 		Assert.Equal(typeof(APTR), typeof(MUIP_GetUData).GetField(nameof(MUIP_GetUData.storage))!.FieldType);
 	}
 
@@ -113,10 +97,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Import>());
 		Assert.Equal(8u, MUIP_Import.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Import>(nameof(MUIP_Import.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Import.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Import).GetField(nameof(MUIP_Import.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Import>(nameof(MUIP_Import.dataspace)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Import.dataspace);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Import).GetField(nameof(MUIP_Import.dataspace))!.FieldType);
 	}
 
@@ -126,10 +108,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_KillNotify>());
 		Assert.Equal(8u, MUIP_KillNotify.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_KillNotify>(nameof(MUIP_KillNotify.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_KillNotify.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_KillNotify).GetField(nameof(MUIP_KillNotify.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_KillNotify>(nameof(MUIP_KillNotify.TrigAttr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_KillNotify.TrigAttr);
 		Assert.Equal(typeof(uint), typeof(MUIP_KillNotify).GetField(nameof(MUIP_KillNotify.TrigAttr))!.FieldType);
 	}
 
@@ -139,13 +119,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_KillNotifyObj>());
 		Assert.Equal(12u, MUIP_KillNotifyObj.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_KillNotifyObj>(nameof(MUIP_KillNotifyObj.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_KillNotifyObj.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_KillNotifyObj).GetField(nameof(MUIP_KillNotifyObj.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_KillNotifyObj>(nameof(MUIP_KillNotifyObj.TrigAttr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_KillNotifyObj.TrigAttr);
 		Assert.Equal(typeof(uint), typeof(MUIP_KillNotifyObj).GetField(nameof(MUIP_KillNotifyObj.TrigAttr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_KillNotifyObj>(nameof(MUIP_KillNotifyObj.dest)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_KillNotifyObj.dest);
 		Assert.Equal(typeof(APTR), typeof(MUIP_KillNotifyObj).GetField(nameof(MUIP_KillNotifyObj.dest))!.FieldType);
 	}
 
@@ -155,16 +132,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_MultiSet>());
 		Assert.Equal(16u, MUIP_MultiSet.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_MultiSet>(nameof(MUIP_MultiSet.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_MultiSet.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_MultiSet).GetField(nameof(MUIP_MultiSet.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_MultiSet>(nameof(MUIP_MultiSet.attr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_MultiSet.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_MultiSet).GetField(nameof(MUIP_MultiSet.attr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_MultiSet>(nameof(MUIP_MultiSet.val)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_MultiSet.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_MultiSet).GetField(nameof(MUIP_MultiSet.val))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_MultiSet>(nameof(MUIP_MultiSet.obj)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_MultiSet.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_MultiSet).GetField(nameof(MUIP_MultiSet.obj))!.FieldType);
 	}
 
@@ -174,13 +147,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_NoNotifySet>());
 		Assert.Equal(12u, MUIP_NoNotifySet.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_NoNotifySet>(nameof(MUIP_NoNotifySet.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_NoNotifySet.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_NoNotifySet).GetField(nameof(MUIP_NoNotifySet.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_NoNotifySet>(nameof(MUIP_NoNotifySet.attr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_NoNotifySet.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_NoNotifySet).GetField(nameof(MUIP_NoNotifySet.attr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_NoNotifySet>(nameof(MUIP_NoNotifySet.val)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_NoNotifySet.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_NoNotifySet).GetField(nameof(MUIP_NoNotifySet.val))!.FieldType);
 	}
 
@@ -190,19 +160,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Notify>());
 		Assert.Equal(20u, MUIP_Notify.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Notify>(nameof(MUIP_Notify.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Notify.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Notify).GetField(nameof(MUIP_Notify.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Notify>(nameof(MUIP_Notify.TrigAttr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Notify.TrigAttr);
 		Assert.Equal(typeof(uint), typeof(MUIP_Notify).GetField(nameof(MUIP_Notify.TrigAttr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Notify>(nameof(MUIP_Notify.TrigVal)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Notify.TrigVal);
 		Assert.Equal(typeof(uint), typeof(MUIP_Notify).GetField(nameof(MUIP_Notify.TrigVal))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Notify>(nameof(MUIP_Notify.DestObj)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Notify.DestObj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Notify).GetField(nameof(MUIP_Notify.DestObj))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Notify>(nameof(MUIP_Notify.FollowParams)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Notify.FollowParams);
 		Assert.Equal(typeof(uint), typeof(MUIP_Notify).GetField(nameof(MUIP_Notify.FollowParams))!.FieldType);
 	}
 
@@ -212,13 +177,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Set>());
 		Assert.Equal(12u, MUIP_Set.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Set>(nameof(MUIP_Set.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Set.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Set).GetField(nameof(MUIP_Set.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Set>(nameof(MUIP_Set.attr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Set.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_Set).GetField(nameof(MUIP_Set.attr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Set>(nameof(MUIP_Set.val)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Set.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_Set).GetField(nameof(MUIP_Set.val))!.FieldType);
 	}
 
@@ -228,16 +190,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_SetAsString>());
 		Assert.Equal(16u, MUIP_SetAsString.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_SetAsString>(nameof(MUIP_SetAsString.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_SetAsString.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetAsString).GetField(nameof(MUIP_SetAsString.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_SetAsString>(nameof(MUIP_SetAsString.attr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_SetAsString.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetAsString).GetField(nameof(MUIP_SetAsString.attr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_SetAsString>(nameof(MUIP_SetAsString.format)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_SetAsString.format);
 		Assert.Equal(typeof(APTR), typeof(MUIP_SetAsString).GetField(nameof(MUIP_SetAsString.format))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_SetAsString>(nameof(MUIP_SetAsString.val)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_SetAsString.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetAsString).GetField(nameof(MUIP_SetAsString.val))!.FieldType);
 	}
 
@@ -247,16 +205,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_SetUData>());
 		Assert.Equal(16u, MUIP_SetUData.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_SetUData>(nameof(MUIP_SetUData.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_SetUData.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUData).GetField(nameof(MUIP_SetUData.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_SetUData>(nameof(MUIP_SetUData.udata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_SetUData.udata);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUData).GetField(nameof(MUIP_SetUData.udata))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_SetUData>(nameof(MUIP_SetUData.attr)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_SetUData.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUData).GetField(nameof(MUIP_SetUData.attr))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_SetUData>(nameof(MUIP_SetUData.val)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_SetUData.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUData).GetField(nameof(MUIP_SetUData.val))!.FieldType);
 	}
 
@@ -266,16 +220,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_SetUDataOnce>());
 		Assert.Equal(16u, MUIP_SetUDataOnce.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_SetUDataOnce>(nameof(MUIP_SetUDataOnce.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_SetUDataOnce.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUDataOnce).GetField(nameof(MUIP_SetUDataOnce.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_SetUDataOnce>(nameof(MUIP_SetUDataOnce.udata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_SetUDataOnce.udata);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUDataOnce).GetField(nameof(MUIP_SetUDataOnce.udata))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_SetUDataOnce>(nameof(MUIP_SetUDataOnce.attr)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_SetUDataOnce.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUDataOnce).GetField(nameof(MUIP_SetUDataOnce.attr))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_SetUDataOnce>(nameof(MUIP_SetUDataOnce.val)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_SetUDataOnce.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_SetUDataOnce).GetField(nameof(MUIP_SetUDataOnce.val))!.FieldType);
 	}
 
@@ -285,13 +235,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_WriteLong>());
 		Assert.Equal(12u, MUIP_WriteLong.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_WriteLong>(nameof(MUIP_WriteLong.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_WriteLong.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_WriteLong).GetField(nameof(MUIP_WriteLong.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_WriteLong>(nameof(MUIP_WriteLong.val)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_WriteLong.val);
 		Assert.Equal(typeof(uint), typeof(MUIP_WriteLong).GetField(nameof(MUIP_WriteLong.val))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_WriteLong>(nameof(MUIP_WriteLong.memory)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_WriteLong.memory);
 		Assert.Equal(typeof(APTR), typeof(MUIP_WriteLong).GetField(nameof(MUIP_WriteLong.memory))!.FieldType);
 	}
 
@@ -301,13 +248,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_WriteString>());
 		Assert.Equal(12u, MUIP_WriteString.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_WriteString>(nameof(MUIP_WriteString.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_WriteString.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_WriteString).GetField(nameof(MUIP_WriteString.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_WriteString>(nameof(MUIP_WriteString.str)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_WriteString.str);
 		Assert.Equal(typeof(APTR), typeof(MUIP_WriteString).GetField(nameof(MUIP_WriteString.str))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_WriteString>(nameof(MUIP_WriteString.memory)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_WriteString.memory);
 		Assert.Equal(typeof(APTR), typeof(MUIP_WriteString).GetField(nameof(MUIP_WriteString.memory))!.FieldType);
 	}
 
@@ -317,10 +261,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Family_AddHead>());
 		Assert.Equal(8u, MUIP_Family_AddHead.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_AddHead>(nameof(MUIP_Family_AddHead.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_AddHead.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_AddHead).GetField(nameof(MUIP_Family_AddHead.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_AddHead>(nameof(MUIP_Family_AddHead.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_AddHead.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_AddHead).GetField(nameof(MUIP_Family_AddHead.obj))!.FieldType);
 	}
 
@@ -330,10 +272,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Family_AddTail>());
 		Assert.Equal(8u, MUIP_Family_AddTail.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_AddTail>(nameof(MUIP_Family_AddTail.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_AddTail.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_AddTail).GetField(nameof(MUIP_Family_AddTail.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_AddTail>(nameof(MUIP_Family_AddTail.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_AddTail.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_AddTail).GetField(nameof(MUIP_Family_AddTail.obj))!.FieldType);
 	}
 
@@ -343,7 +283,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Family_DoChildMethods>());
 		Assert.Equal(4u, MUIP_Family_DoChildMethods.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_DoChildMethods>(nameof(MUIP_Family_DoChildMethods.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_DoChildMethods.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_DoChildMethods).GetField(nameof(MUIP_Family_DoChildMethods.MethodID))!.FieldType);
 	}
 
@@ -353,13 +292,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Family_GetChild>());
 		Assert.Equal(12u, MUIP_Family_GetChild.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_GetChild>(nameof(MUIP_Family_GetChild.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_GetChild.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_GetChild).GetField(nameof(MUIP_Family_GetChild.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_GetChild>(nameof(MUIP_Family_GetChild.nr)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_GetChild.nr);
 		Assert.Equal(typeof(int), typeof(MUIP_Family_GetChild).GetField(nameof(MUIP_Family_GetChild.nr))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Family_GetChild>(nameof(MUIP_Family_GetChild.@ref)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Family_GetChild.@ref);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_GetChild).GetField(nameof(MUIP_Family_GetChild.@ref))!.FieldType);
 	}
 
@@ -369,13 +305,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Family_Insert>());
 		Assert.Equal(12u, MUIP_Family_Insert.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_Insert>(nameof(MUIP_Family_Insert.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_Insert.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_Insert).GetField(nameof(MUIP_Family_Insert.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_Insert>(nameof(MUIP_Family_Insert.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_Insert.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_Insert).GetField(nameof(MUIP_Family_Insert.obj))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Family_Insert>(nameof(MUIP_Family_Insert.pred)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Family_Insert.pred);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_Insert).GetField(nameof(MUIP_Family_Insert.pred))!.FieldType);
 	}
 
@@ -385,10 +318,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Family_Remove>());
 		Assert.Equal(8u, MUIP_Family_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_Remove>(nameof(MUIP_Family_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_Remove).GetField(nameof(MUIP_Family_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_Remove>(nameof(MUIP_Family_Remove.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_Remove.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_Remove).GetField(nameof(MUIP_Family_Remove.obj))!.FieldType);
 	}
 
@@ -398,13 +329,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Family_Reorder>());
 		Assert.Equal(12u, MUIP_Family_Reorder.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_Reorder>(nameof(MUIP_Family_Reorder.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_Reorder.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_Reorder).GetField(nameof(MUIP_Family_Reorder.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_Reorder>(nameof(MUIP_Family_Reorder.after)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_Reorder.after);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_Reorder).GetField(nameof(MUIP_Family_Reorder.after))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Family_Reorder>(nameof(MUIP_Family_Reorder.array)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Family_Reorder.array);
 		var fixed_array = typeof(MUIP_Family_Reorder).GetField(nameof(MUIP_Family_Reorder.array))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(uint), fixed_array.ElementType);
 		Assert.Equal(1, fixed_array.Length);
@@ -416,10 +344,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Family_Sort>());
 		Assert.Equal(8u, MUIP_Family_Sort.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_Sort>(nameof(MUIP_Family_Sort.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_Sort.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_Sort).GetField(nameof(MUIP_Family_Sort.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_Sort>(nameof(MUIP_Family_Sort.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_Sort.obj);
 		var fixed_obj = typeof(MUIP_Family_Sort).GetField(nameof(MUIP_Family_Sort.obj))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(uint), fixed_obj.ElementType);
 		Assert.Equal(1, fixed_obj.Length);
@@ -431,10 +357,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Family_Transfer>());
 		Assert.Equal(8u, MUIP_Family_Transfer.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Family_Transfer>(nameof(MUIP_Family_Transfer.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Family_Transfer.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Family_Transfer).GetField(nameof(MUIP_Family_Transfer.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Family_Transfer>(nameof(MUIP_Family_Transfer.family)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Family_Transfer.family);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Family_Transfer).GetField(nameof(MUIP_Family_Transfer.family))!.FieldType);
 	}
 
@@ -444,7 +368,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Menustrip_ExitChange>());
 		Assert.Equal(4u, MUIP_Menustrip_ExitChange.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Menustrip_ExitChange>(nameof(MUIP_Menustrip_ExitChange.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Menustrip_ExitChange.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Menustrip_ExitChange).GetField(nameof(MUIP_Menustrip_ExitChange.MethodID))!.FieldType);
 	}
 
@@ -454,7 +377,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Menustrip_InitChange>());
 		Assert.Equal(4u, MUIP_Menustrip_InitChange.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Menustrip_InitChange>(nameof(MUIP_Menustrip_InitChange.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Menustrip_InitChange.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Menustrip_InitChange).GetField(nameof(MUIP_Menustrip_InitChange.MethodID))!.FieldType);
 	}
 
@@ -464,19 +386,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Menustrip_Popup>());
 		Assert.Equal(20u, MUIP_Menustrip_Popup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Menustrip_Popup>(nameof(MUIP_Menustrip_Popup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Menustrip_Popup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Menustrip_Popup).GetField(nameof(MUIP_Menustrip_Popup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Menustrip_Popup>(nameof(MUIP_Menustrip_Popup.parent)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Menustrip_Popup.parent);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Menustrip_Popup).GetField(nameof(MUIP_Menustrip_Popup.parent))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Menustrip_Popup>(nameof(MUIP_Menustrip_Popup.flags)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Menustrip_Popup.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Menustrip_Popup).GetField(nameof(MUIP_Menustrip_Popup.flags))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Menustrip_Popup>(nameof(MUIP_Menustrip_Popup.x)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Menustrip_Popup.x);
 		Assert.Equal(typeof(int), typeof(MUIP_Menustrip_Popup).GetField(nameof(MUIP_Menustrip_Popup.x))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Menustrip_Popup>(nameof(MUIP_Menustrip_Popup.y)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Menustrip_Popup.y);
 		Assert.Equal(typeof(int), typeof(MUIP_Menustrip_Popup).GetField(nameof(MUIP_Menustrip_Popup.y))!.FieldType);
 	}
 
@@ -486,7 +403,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Menustrip_WillOpen>());
 		Assert.Equal(4u, MUIP_Menustrip_WillOpen.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Menustrip_WillOpen>(nameof(MUIP_Menustrip_WillOpen.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Menustrip_WillOpen.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Menustrip_WillOpen).GetField(nameof(MUIP_Menustrip_WillOpen.MethodID))!.FieldType);
 	}
 
@@ -496,10 +412,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_AboutMUI>());
 		Assert.Equal(8u, MUIP_Application_AboutMUI.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_AboutMUI>(nameof(MUIP_Application_AboutMUI.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_AboutMUI.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_AboutMUI).GetField(nameof(MUIP_Application_AboutMUI.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_AboutMUI>(nameof(MUIP_Application_AboutMUI.refwindow)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_AboutMUI.refwindow);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_AboutMUI).GetField(nameof(MUIP_Application_AboutMUI.refwindow))!.FieldType);
 	}
 
@@ -509,10 +423,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_AddInputHandler>());
 		Assert.Equal(8u, MUIP_Application_AddInputHandler.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_AddInputHandler>(nameof(MUIP_Application_AddInputHandler.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_AddInputHandler.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_AddInputHandler).GetField(nameof(MUIP_Application_AddInputHandler.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_AddInputHandler>(nameof(MUIP_Application_AddInputHandler.ihnode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_AddInputHandler.ihnode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_AddInputHandler).GetField(nameof(MUIP_Application_AddInputHandler.ihnode))!.FieldType);
 	}
 
@@ -522,10 +434,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_BuildSettingsPanel>());
 		Assert.Equal(8u, MUIP_Application_BuildSettingsPanel.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_BuildSettingsPanel>(nameof(MUIP_Application_BuildSettingsPanel.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_BuildSettingsPanel.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_BuildSettingsPanel).GetField(nameof(MUIP_Application_BuildSettingsPanel.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_BuildSettingsPanel>(nameof(MUIP_Application_BuildSettingsPanel.number)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_BuildSettingsPanel.number);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_BuildSettingsPanel).GetField(nameof(MUIP_Application_BuildSettingsPanel.number))!.FieldType);
 	}
 
@@ -535,7 +445,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Application_CheckRefresh>());
 		Assert.Equal(4u, MUIP_Application_CheckRefresh.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_CheckRefresh>(nameof(MUIP_Application_CheckRefresh.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_CheckRefresh.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_CheckRefresh).GetField(nameof(MUIP_Application_CheckRefresh.MethodID))!.FieldType);
 	}
 
@@ -545,10 +454,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_DefaultConfigItem>());
 		Assert.Equal(8u, MUIP_Application_DefaultConfigItem.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_DefaultConfigItem>(nameof(MUIP_Application_DefaultConfigItem.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_DefaultConfigItem.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_DefaultConfigItem).GetField(nameof(MUIP_Application_DefaultConfigItem.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_DefaultConfigItem>(nameof(MUIP_Application_DefaultConfigItem.cfgid)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_DefaultConfigItem.cfgid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_DefaultConfigItem).GetField(nameof(MUIP_Application_DefaultConfigItem.cfgid))!.FieldType);
 	}
 
@@ -558,10 +465,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_GetMenuCheck>());
 		Assert.Equal(8u, MUIP_Application_GetMenuCheck.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_GetMenuCheck>(nameof(MUIP_Application_GetMenuCheck.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_GetMenuCheck.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_GetMenuCheck).GetField(nameof(MUIP_Application_GetMenuCheck.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_GetMenuCheck>(nameof(MUIP_Application_GetMenuCheck.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_GetMenuCheck.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_GetMenuCheck).GetField(nameof(MUIP_Application_GetMenuCheck.MenuID))!.FieldType);
 	}
 
@@ -571,10 +476,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_GetMenuState>());
 		Assert.Equal(8u, MUIP_Application_GetMenuState.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_GetMenuState>(nameof(MUIP_Application_GetMenuState.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_GetMenuState.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_GetMenuState).GetField(nameof(MUIP_Application_GetMenuState.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_GetMenuState>(nameof(MUIP_Application_GetMenuState.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_GetMenuState.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_GetMenuState).GetField(nameof(MUIP_Application_GetMenuState.MenuID))!.FieldType);
 	}
 
@@ -584,10 +487,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_Input>());
 		Assert.Equal(8u, MUIP_Application_Input.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_Input>(nameof(MUIP_Application_Input.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_Input.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_Input).GetField(nameof(MUIP_Application_Input.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_Input>(nameof(MUIP_Application_Input.signal)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_Input.signal);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_Input).GetField(nameof(MUIP_Application_Input.signal))!.FieldType);
 	}
 
@@ -597,7 +498,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Application_InputBuffered>());
 		Assert.Equal(4u, MUIP_Application_InputBuffered.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_InputBuffered>(nameof(MUIP_Application_InputBuffered.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_InputBuffered.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_InputBuffered).GetField(nameof(MUIP_Application_InputBuffered.MethodID))!.FieldType);
 	}
 
@@ -607,10 +507,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_Load>());
 		Assert.Equal(8u, MUIP_Application_Load.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_Load>(nameof(MUIP_Application_Load.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_Load.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_Load).GetField(nameof(MUIP_Application_Load.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_Load>(nameof(MUIP_Application_Load.name)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_Load.name);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_Load).GetField(nameof(MUIP_Application_Load.name))!.FieldType);
 	}
 
@@ -620,10 +518,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_NewInput>());
 		Assert.Equal(8u, MUIP_Application_NewInput.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_NewInput>(nameof(MUIP_Application_NewInput.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_NewInput.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_NewInput).GetField(nameof(MUIP_Application_NewInput.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_NewInput>(nameof(MUIP_Application_NewInput.signal)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_NewInput.signal);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_NewInput).GetField(nameof(MUIP_Application_NewInput.signal))!.FieldType);
 	}
 
@@ -633,13 +529,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Application_OpenConfigWindow>());
 		Assert.Equal(12u, MUIP_Application_OpenConfigWindow.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_OpenConfigWindow>(nameof(MUIP_Application_OpenConfigWindow.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_OpenConfigWindow.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_OpenConfigWindow).GetField(nameof(MUIP_Application_OpenConfigWindow.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_OpenConfigWindow>(nameof(MUIP_Application_OpenConfigWindow.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_OpenConfigWindow.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_OpenConfigWindow).GetField(nameof(MUIP_Application_OpenConfigWindow.flags))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_OpenConfigWindow>(nameof(MUIP_Application_OpenConfigWindow.classid)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_OpenConfigWindow.classid);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_OpenConfigWindow).GetField(nameof(MUIP_Application_OpenConfigWindow.classid))!.FieldType);
 	}
 
@@ -649,13 +542,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Application_PushMethod>());
 		Assert.Equal(12u, MUIP_Application_PushMethod.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_PushMethod>(nameof(MUIP_Application_PushMethod.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_PushMethod.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_PushMethod).GetField(nameof(MUIP_Application_PushMethod.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_PushMethod>(nameof(MUIP_Application_PushMethod.dest)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_PushMethod.dest);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_PushMethod).GetField(nameof(MUIP_Application_PushMethod.dest))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_PushMethod>(nameof(MUIP_Application_PushMethod.count)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_PushMethod.count);
 		Assert.Equal(typeof(int), typeof(MUIP_Application_PushMethod).GetField(nameof(MUIP_Application_PushMethod.count))!.FieldType);
 	}
 
@@ -665,10 +555,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_RemInputHandler>());
 		Assert.Equal(8u, MUIP_Application_RemInputHandler.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_RemInputHandler>(nameof(MUIP_Application_RemInputHandler.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_RemInputHandler.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_RemInputHandler).GetField(nameof(MUIP_Application_RemInputHandler.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_RemInputHandler>(nameof(MUIP_Application_RemInputHandler.ihnode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_RemInputHandler.ihnode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_RemInputHandler).GetField(nameof(MUIP_Application_RemInputHandler.ihnode))!.FieldType);
 	}
 
@@ -678,10 +566,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_ReturnID>());
 		Assert.Equal(8u, MUIP_Application_ReturnID.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_ReturnID>(nameof(MUIP_Application_ReturnID.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_ReturnID.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_ReturnID).GetField(nameof(MUIP_Application_ReturnID.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_ReturnID>(nameof(MUIP_Application_ReturnID.retid)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_ReturnID.retid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_ReturnID).GetField(nameof(MUIP_Application_ReturnID.retid))!.FieldType);
 	}
 
@@ -691,7 +577,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Application_Run>());
 		Assert.Equal(4u, MUIP_Application_Run.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_Run>(nameof(MUIP_Application_Run.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_Run.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_Run).GetField(nameof(MUIP_Application_Run.MethodID))!.FieldType);
 	}
 
@@ -701,10 +586,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Application_Save>());
 		Assert.Equal(8u, MUIP_Application_Save.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_Save>(nameof(MUIP_Application_Save.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_Save.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_Save).GetField(nameof(MUIP_Application_Save.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_Save>(nameof(MUIP_Application_Save.name)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_Save.name);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_Save).GetField(nameof(MUIP_Application_Save.name))!.FieldType);
 	}
 
@@ -714,13 +597,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Application_SetConfigItem>());
 		Assert.Equal(12u, MUIP_Application_SetConfigItem.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_SetConfigItem>(nameof(MUIP_Application_SetConfigItem.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_SetConfigItem.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_SetConfigItem).GetField(nameof(MUIP_Application_SetConfigItem.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_SetConfigItem>(nameof(MUIP_Application_SetConfigItem.item)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_SetConfigItem.item);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_SetConfigItem).GetField(nameof(MUIP_Application_SetConfigItem.item))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_SetConfigItem>(nameof(MUIP_Application_SetConfigItem.data)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_SetConfigItem.data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_SetConfigItem).GetField(nameof(MUIP_Application_SetConfigItem.data))!.FieldType);
 	}
 
@@ -730,13 +610,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Application_SetMenuCheck>());
 		Assert.Equal(12u, MUIP_Application_SetMenuCheck.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_SetMenuCheck>(nameof(MUIP_Application_SetMenuCheck.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_SetMenuCheck.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_SetMenuCheck).GetField(nameof(MUIP_Application_SetMenuCheck.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_SetMenuCheck>(nameof(MUIP_Application_SetMenuCheck.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_SetMenuCheck.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_SetMenuCheck).GetField(nameof(MUIP_Application_SetMenuCheck.MenuID))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_SetMenuCheck>(nameof(MUIP_Application_SetMenuCheck.stat)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_SetMenuCheck.stat);
 		Assert.Equal(typeof(int), typeof(MUIP_Application_SetMenuCheck).GetField(nameof(MUIP_Application_SetMenuCheck.stat))!.FieldType);
 	}
 
@@ -746,13 +623,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Application_SetMenuState>());
 		Assert.Equal(12u, MUIP_Application_SetMenuState.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_SetMenuState>(nameof(MUIP_Application_SetMenuState.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_SetMenuState.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_SetMenuState).GetField(nameof(MUIP_Application_SetMenuState.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_SetMenuState>(nameof(MUIP_Application_SetMenuState.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_SetMenuState.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_SetMenuState).GetField(nameof(MUIP_Application_SetMenuState.MenuID))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_SetMenuState>(nameof(MUIP_Application_SetMenuState.stat)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_SetMenuState.stat);
 		Assert.Equal(typeof(int), typeof(MUIP_Application_SetMenuState).GetField(nameof(MUIP_Application_SetMenuState.stat))!.FieldType);
 	}
 
@@ -762,19 +636,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Application_ShowHelp>());
 		Assert.Equal(20u, MUIP_Application_ShowHelp.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_ShowHelp>(nameof(MUIP_Application_ShowHelp.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_ShowHelp.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_ShowHelp).GetField(nameof(MUIP_Application_ShowHelp.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_ShowHelp>(nameof(MUIP_Application_ShowHelp.window)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_ShowHelp.window);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_ShowHelp).GetField(nameof(MUIP_Application_ShowHelp.window))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_ShowHelp>(nameof(MUIP_Application_ShowHelp.name)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_ShowHelp.name);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_ShowHelp).GetField(nameof(MUIP_Application_ShowHelp.name))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Application_ShowHelp>(nameof(MUIP_Application_ShowHelp.node)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Application_ShowHelp.node);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_ShowHelp).GetField(nameof(MUIP_Application_ShowHelp.node))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Application_ShowHelp>(nameof(MUIP_Application_ShowHelp.line)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Application_ShowHelp.line);
 		Assert.Equal(typeof(int), typeof(MUIP_Application_ShowHelp).GetField(nameof(MUIP_Application_ShowHelp.line))!.FieldType);
 	}
 
@@ -784,16 +653,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Application_UnpushMethod>());
 		Assert.Equal(16u, MUIP_Application_UnpushMethod.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Application_UnpushMethod>(nameof(MUIP_Application_UnpushMethod.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Application_UnpushMethod.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_UnpushMethod).GetField(nameof(MUIP_Application_UnpushMethod.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Application_UnpushMethod>(nameof(MUIP_Application_UnpushMethod.targetobj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Application_UnpushMethod.targetobj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Application_UnpushMethod).GetField(nameof(MUIP_Application_UnpushMethod.targetobj))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Application_UnpushMethod>(nameof(MUIP_Application_UnpushMethod.methodid)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Application_UnpushMethod.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_UnpushMethod).GetField(nameof(MUIP_Application_UnpushMethod.methodid))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Application_UnpushMethod>(nameof(MUIP_Application_UnpushMethod.method)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Application_UnpushMethod.method);
 		Assert.Equal(typeof(uint), typeof(MUIP_Application_UnpushMethod).GetField(nameof(MUIP_Application_UnpushMethod.method))!.FieldType);
 	}
 
@@ -803,10 +668,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Window_AddEventHandler>());
 		Assert.Equal(8u, MUIP_Window_AddEventHandler.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_AddEventHandler>(nameof(MUIP_Window_AddEventHandler.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_AddEventHandler.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_AddEventHandler).GetField(nameof(MUIP_Window_AddEventHandler.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_AddEventHandler>(nameof(MUIP_Window_AddEventHandler.ehnode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_AddEventHandler.ehnode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Window_AddEventHandler).GetField(nameof(MUIP_Window_AddEventHandler.ehnode))!.FieldType);
 	}
 
@@ -816,7 +679,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Window_Cleanup>());
 		Assert.Equal(4u, MUIP_Window_Cleanup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_Cleanup>(nameof(MUIP_Window_Cleanup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_Cleanup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_Cleanup).GetField(nameof(MUIP_Window_Cleanup.MethodID))!.FieldType);
 	}
 
@@ -826,10 +688,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Window_GetMenuCheck>());
 		Assert.Equal(8u, MUIP_Window_GetMenuCheck.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_GetMenuCheck>(nameof(MUIP_Window_GetMenuCheck.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_GetMenuCheck.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_GetMenuCheck).GetField(nameof(MUIP_Window_GetMenuCheck.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_GetMenuCheck>(nameof(MUIP_Window_GetMenuCheck.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_GetMenuCheck.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_GetMenuCheck).GetField(nameof(MUIP_Window_GetMenuCheck.MenuID))!.FieldType);
 	}
 
@@ -839,10 +699,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Window_GetMenuState>());
 		Assert.Equal(8u, MUIP_Window_GetMenuState.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_GetMenuState>(nameof(MUIP_Window_GetMenuState.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_GetMenuState.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_GetMenuState).GetField(nameof(MUIP_Window_GetMenuState.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_GetMenuState>(nameof(MUIP_Window_GetMenuState.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_GetMenuState.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_GetMenuState).GetField(nameof(MUIP_Window_GetMenuState.MenuID))!.FieldType);
 	}
 
@@ -852,10 +710,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Window_RemEventHandler>());
 		Assert.Equal(8u, MUIP_Window_RemEventHandler.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_RemEventHandler>(nameof(MUIP_Window_RemEventHandler.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_RemEventHandler.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_RemEventHandler).GetField(nameof(MUIP_Window_RemEventHandler.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_RemEventHandler>(nameof(MUIP_Window_RemEventHandler.ehnode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_RemEventHandler.ehnode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Window_RemEventHandler).GetField(nameof(MUIP_Window_RemEventHandler.ehnode))!.FieldType);
 	}
 
@@ -865,7 +721,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Window_ScreenToBack>());
 		Assert.Equal(4u, MUIP_Window_ScreenToBack.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_ScreenToBack>(nameof(MUIP_Window_ScreenToBack.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_ScreenToBack.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_ScreenToBack).GetField(nameof(MUIP_Window_ScreenToBack.MethodID))!.FieldType);
 	}
 
@@ -875,7 +730,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Window_ScreenToFront>());
 		Assert.Equal(4u, MUIP_Window_ScreenToFront.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_ScreenToFront>(nameof(MUIP_Window_ScreenToFront.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_ScreenToFront.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_ScreenToFront).GetField(nameof(MUIP_Window_ScreenToFront.MethodID))!.FieldType);
 	}
 
@@ -885,10 +739,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Window_SetCycleChain>());
 		Assert.Equal(8u, MUIP_Window_SetCycleChain.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_SetCycleChain>(nameof(MUIP_Window_SetCycleChain.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_SetCycleChain.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_SetCycleChain).GetField(nameof(MUIP_Window_SetCycleChain.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_SetCycleChain>(nameof(MUIP_Window_SetCycleChain.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_SetCycleChain.obj);
 		var fixed_obj = typeof(MUIP_Window_SetCycleChain).GetField(nameof(MUIP_Window_SetCycleChain.obj))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(uint), fixed_obj.ElementType);
 		Assert.Equal(1, fixed_obj.Length);
@@ -900,13 +752,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Window_SetMenuCheck>());
 		Assert.Equal(12u, MUIP_Window_SetMenuCheck.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_SetMenuCheck>(nameof(MUIP_Window_SetMenuCheck.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_SetMenuCheck.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_SetMenuCheck).GetField(nameof(MUIP_Window_SetMenuCheck.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_SetMenuCheck>(nameof(MUIP_Window_SetMenuCheck.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_SetMenuCheck.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_SetMenuCheck).GetField(nameof(MUIP_Window_SetMenuCheck.MenuID))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Window_SetMenuCheck>(nameof(MUIP_Window_SetMenuCheck.stat)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Window_SetMenuCheck.stat);
 		Assert.Equal(typeof(int), typeof(MUIP_Window_SetMenuCheck).GetField(nameof(MUIP_Window_SetMenuCheck.stat))!.FieldType);
 	}
 
@@ -916,13 +765,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Window_SetMenuState>());
 		Assert.Equal(12u, MUIP_Window_SetMenuState.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_SetMenuState>(nameof(MUIP_Window_SetMenuState.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_SetMenuState.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_SetMenuState).GetField(nameof(MUIP_Window_SetMenuState.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_SetMenuState>(nameof(MUIP_Window_SetMenuState.MenuID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_SetMenuState.MenuID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_SetMenuState).GetField(nameof(MUIP_Window_SetMenuState.MenuID))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Window_SetMenuState>(nameof(MUIP_Window_SetMenuState.stat)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Window_SetMenuState.stat);
 		Assert.Equal(typeof(int), typeof(MUIP_Window_SetMenuState).GetField(nameof(MUIP_Window_SetMenuState.stat))!.FieldType);
 	}
 
@@ -932,7 +778,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Window_Setup>());
 		Assert.Equal(4u, MUIP_Window_Setup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_Setup>(nameof(MUIP_Window_Setup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_Setup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_Setup).GetField(nameof(MUIP_Window_Setup.MethodID))!.FieldType);
 	}
 
@@ -942,10 +787,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Window_Snapshot>());
 		Assert.Equal(8u, MUIP_Window_Snapshot.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_Snapshot>(nameof(MUIP_Window_Snapshot.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_Snapshot.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_Snapshot).GetField(nameof(MUIP_Window_Snapshot.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Window_Snapshot>(nameof(MUIP_Window_Snapshot.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Window_Snapshot.flags);
 		Assert.Equal(typeof(int), typeof(MUIP_Window_Snapshot).GetField(nameof(MUIP_Window_Snapshot.flags))!.FieldType);
 	}
 
@@ -955,7 +798,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Window_ToBack>());
 		Assert.Equal(4u, MUIP_Window_ToBack.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_ToBack>(nameof(MUIP_Window_ToBack.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_ToBack.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_ToBack).GetField(nameof(MUIP_Window_ToBack.MethodID))!.FieldType);
 	}
 
@@ -965,7 +807,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Window_ToFront>());
 		Assert.Equal(4u, MUIP_Window_ToFront.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Window_ToFront>(nameof(MUIP_Window_ToFront.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Window_ToFront.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Window_ToFront).GetField(nameof(MUIP_Window_ToFront.MethodID))!.FieldType);
 	}
 
@@ -975,10 +816,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_AskMinMax>());
 		Assert.Equal(8u, MUIP_AskMinMax.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_AskMinMax>(nameof(MUIP_AskMinMax.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_AskMinMax.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_AskMinMax).GetField(nameof(MUIP_AskMinMax.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_AskMinMax>(nameof(MUIP_AskMinMax.MinMaxInfo)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_AskMinMax.MinMaxInfo);
 		Assert.Equal(typeof(APTR), typeof(MUIP_AskMinMax).GetField(nameof(MUIP_AskMinMax.MinMaxInfo))!.FieldType);
 	}
 
@@ -988,28 +827,20 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(32, Marshal.SizeOf<MUIP_Backfill>());
 		Assert.Equal(32u, MUIP_Backfill.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Backfill.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.left)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Backfill.left);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.left))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.top)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Backfill.top);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.top))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.right)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Backfill.right);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.right))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.bottom)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Backfill.bottom);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.bottom))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.xoffset)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Backfill.xoffset);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.xoffset))!.FieldType);
 		Assert.Equal((nint)24, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.yoffset)));
-		Assert.Equal(24u, MUIMessageLayout.MUIP_Backfill.yoffset);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.yoffset))!.FieldType);
 		Assert.Equal((nint)28, Marshal.OffsetOf<MUIP_Backfill>(nameof(MUIP_Backfill.brightness)));
-		Assert.Equal(28u, MUIMessageLayout.MUIP_Backfill.brightness);
 		Assert.Equal(typeof(int), typeof(MUIP_Backfill).GetField(nameof(MUIP_Backfill.brightness))!.FieldType);
 	}
 
@@ -1019,16 +850,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_CheckShortHelp>());
 		Assert.Equal(16u, MUIP_CheckShortHelp.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_CheckShortHelp>(nameof(MUIP_CheckShortHelp.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_CheckShortHelp.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_CheckShortHelp).GetField(nameof(MUIP_CheckShortHelp.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_CheckShortHelp>(nameof(MUIP_CheckShortHelp.help)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_CheckShortHelp.help);
 		Assert.Equal(typeof(APTR), typeof(MUIP_CheckShortHelp).GetField(nameof(MUIP_CheckShortHelp.help))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_CheckShortHelp>(nameof(MUIP_CheckShortHelp.mx)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_CheckShortHelp.mx);
 		Assert.Equal(typeof(int), typeof(MUIP_CheckShortHelp).GetField(nameof(MUIP_CheckShortHelp.mx))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_CheckShortHelp>(nameof(MUIP_CheckShortHelp.my)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_CheckShortHelp.my);
 		Assert.Equal(typeof(int), typeof(MUIP_CheckShortHelp).GetField(nameof(MUIP_CheckShortHelp.my))!.FieldType);
 	}
 
@@ -1038,7 +865,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Cleanup>());
 		Assert.Equal(4u, MUIP_Cleanup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Cleanup>(nameof(MUIP_Cleanup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Cleanup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Cleanup).GetField(nameof(MUIP_Cleanup.MethodID))!.FieldType);
 	}
 
@@ -1048,10 +874,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_CloseCustomFont>());
 		Assert.Equal(8u, MUIP_CloseCustomFont.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_CloseCustomFont>(nameof(MUIP_CloseCustomFont.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_CloseCustomFont.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_CloseCustomFont).GetField(nameof(MUIP_CloseCustomFont.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_CloseCustomFont>(nameof(MUIP_CloseCustomFont.font)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_CloseCustomFont.font);
 		Assert.Equal(typeof(APTR), typeof(MUIP_CloseCustomFont).GetField(nameof(MUIP_CloseCustomFont.font))!.FieldType);
 	}
 
@@ -1061,22 +885,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(24, Marshal.SizeOf<MUIP_ContextMenuAdd>());
 		Assert.Equal(24u, MUIP_ContextMenuAdd.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_ContextMenuAdd>(nameof(MUIP_ContextMenuAdd.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_ContextMenuAdd.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_ContextMenuAdd).GetField(nameof(MUIP_ContextMenuAdd.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_ContextMenuAdd>(nameof(MUIP_ContextMenuAdd.menustrip)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_ContextMenuAdd.menustrip);
 		Assert.Equal(typeof(APTR), typeof(MUIP_ContextMenuAdd).GetField(nameof(MUIP_ContextMenuAdd.menustrip))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_ContextMenuAdd>(nameof(MUIP_ContextMenuAdd.mx)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_ContextMenuAdd.mx);
 		Assert.Equal(typeof(int), typeof(MUIP_ContextMenuAdd).GetField(nameof(MUIP_ContextMenuAdd.mx))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_ContextMenuAdd>(nameof(MUIP_ContextMenuAdd.my)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_ContextMenuAdd.my);
 		Assert.Equal(typeof(int), typeof(MUIP_ContextMenuAdd).GetField(nameof(MUIP_ContextMenuAdd.my))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_ContextMenuAdd>(nameof(MUIP_ContextMenuAdd.mxp)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_ContextMenuAdd.mxp);
 		Assert.Equal(typeof(APTR), typeof(MUIP_ContextMenuAdd).GetField(nameof(MUIP_ContextMenuAdd.mxp))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_ContextMenuAdd>(nameof(MUIP_ContextMenuAdd.myp)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_ContextMenuAdd.myp);
 		Assert.Equal(typeof(APTR), typeof(MUIP_ContextMenuAdd).GetField(nameof(MUIP_ContextMenuAdd.myp))!.FieldType);
 	}
 
@@ -1086,13 +904,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_ContextMenuBuild>());
 		Assert.Equal(12u, MUIP_ContextMenuBuild.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_ContextMenuBuild>(nameof(MUIP_ContextMenuBuild.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_ContextMenuBuild.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_ContextMenuBuild).GetField(nameof(MUIP_ContextMenuBuild.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_ContextMenuBuild>(nameof(MUIP_ContextMenuBuild.mx)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_ContextMenuBuild.mx);
 		Assert.Equal(typeof(int), typeof(MUIP_ContextMenuBuild).GetField(nameof(MUIP_ContextMenuBuild.mx))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_ContextMenuBuild>(nameof(MUIP_ContextMenuBuild.my)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_ContextMenuBuild.my);
 		Assert.Equal(typeof(int), typeof(MUIP_ContextMenuBuild).GetField(nameof(MUIP_ContextMenuBuild.my))!.FieldType);
 	}
 
@@ -1102,10 +917,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_ContextMenuChoice>());
 		Assert.Equal(8u, MUIP_ContextMenuChoice.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_ContextMenuChoice>(nameof(MUIP_ContextMenuChoice.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_ContextMenuChoice.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_ContextMenuChoice).GetField(nameof(MUIP_ContextMenuChoice.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_ContextMenuChoice>(nameof(MUIP_ContextMenuChoice.item)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_ContextMenuChoice.item);
 		Assert.Equal(typeof(APTR), typeof(MUIP_ContextMenuChoice).GetField(nameof(MUIP_ContextMenuChoice.item))!.FieldType);
 	}
 
@@ -1115,19 +928,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_CreateBubble>());
 		Assert.Equal(20u, MUIP_CreateBubble.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_CreateBubble>(nameof(MUIP_CreateBubble.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_CreateBubble.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_CreateBubble).GetField(nameof(MUIP_CreateBubble.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_CreateBubble>(nameof(MUIP_CreateBubble.x)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_CreateBubble.x);
 		Assert.Equal(typeof(int), typeof(MUIP_CreateBubble).GetField(nameof(MUIP_CreateBubble.x))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_CreateBubble>(nameof(MUIP_CreateBubble.y)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_CreateBubble.y);
 		Assert.Equal(typeof(int), typeof(MUIP_CreateBubble).GetField(nameof(MUIP_CreateBubble.y))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_CreateBubble>(nameof(MUIP_CreateBubble.txt)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_CreateBubble.txt);
 		Assert.Equal(typeof(APTR), typeof(MUIP_CreateBubble).GetField(nameof(MUIP_CreateBubble.txt))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_CreateBubble>(nameof(MUIP_CreateBubble.flags)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_CreateBubble.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_CreateBubble).GetField(nameof(MUIP_CreateBubble.flags))!.FieldType);
 	}
 
@@ -1137,16 +945,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_CreateDragImage>());
 		Assert.Equal(16u, MUIP_CreateDragImage.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_CreateDragImage>(nameof(MUIP_CreateDragImage.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_CreateDragImage.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_CreateDragImage).GetField(nameof(MUIP_CreateDragImage.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_CreateDragImage>(nameof(MUIP_CreateDragImage.touchx)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_CreateDragImage.touchx);
 		Assert.Equal(typeof(int), typeof(MUIP_CreateDragImage).GetField(nameof(MUIP_CreateDragImage.touchx))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_CreateDragImage>(nameof(MUIP_CreateDragImage.touchy)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_CreateDragImage.touchy);
 		Assert.Equal(typeof(int), typeof(MUIP_CreateDragImage).GetField(nameof(MUIP_CreateDragImage.touchy))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_CreateDragImage>(nameof(MUIP_CreateDragImage.flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_CreateDragImage.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_CreateDragImage).GetField(nameof(MUIP_CreateDragImage.flags))!.FieldType);
 	}
 
@@ -1156,13 +960,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_CreateShortHelp>());
 		Assert.Equal(12u, MUIP_CreateShortHelp.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_CreateShortHelp>(nameof(MUIP_CreateShortHelp.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_CreateShortHelp.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_CreateShortHelp).GetField(nameof(MUIP_CreateShortHelp.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_CreateShortHelp>(nameof(MUIP_CreateShortHelp.mx)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_CreateShortHelp.mx);
 		Assert.Equal(typeof(int), typeof(MUIP_CreateShortHelp).GetField(nameof(MUIP_CreateShortHelp.mx))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_CreateShortHelp>(nameof(MUIP_CreateShortHelp.my)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_CreateShortHelp.my);
 		Assert.Equal(typeof(int), typeof(MUIP_CreateShortHelp).GetField(nameof(MUIP_CreateShortHelp.my))!.FieldType);
 	}
 
@@ -1172,10 +973,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_DeleteBubble>());
 		Assert.Equal(8u, MUIP_DeleteBubble.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DeleteBubble>(nameof(MUIP_DeleteBubble.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DeleteBubble.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DeleteBubble).GetField(nameof(MUIP_DeleteBubble.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DeleteBubble>(nameof(MUIP_DeleteBubble.bubble)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DeleteBubble.bubble);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DeleteBubble).GetField(nameof(MUIP_DeleteBubble.bubble))!.FieldType);
 	}
 
@@ -1185,10 +984,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_DeleteDragImage>());
 		Assert.Equal(8u, MUIP_DeleteDragImage.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DeleteDragImage>(nameof(MUIP_DeleteDragImage.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DeleteDragImage.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DeleteDragImage).GetField(nameof(MUIP_DeleteDragImage.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DeleteDragImage>(nameof(MUIP_DeleteDragImage.di)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DeleteDragImage.di);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DeleteDragImage).GetField(nameof(MUIP_DeleteDragImage.di))!.FieldType);
 	}
 
@@ -1198,10 +995,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_DeleteShortHelp>());
 		Assert.Equal(8u, MUIP_DeleteShortHelp.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DeleteShortHelp>(nameof(MUIP_DeleteShortHelp.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DeleteShortHelp.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DeleteShortHelp).GetField(nameof(MUIP_DeleteShortHelp.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DeleteShortHelp>(nameof(MUIP_DeleteShortHelp.help)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DeleteShortHelp.help);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DeleteShortHelp).GetField(nameof(MUIP_DeleteShortHelp.help))!.FieldType);
 	}
 
@@ -1211,16 +1006,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_DoDrag>());
 		Assert.Equal(16u, MUIP_DoDrag.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DoDrag>(nameof(MUIP_DoDrag.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DoDrag.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DoDrag).GetField(nameof(MUIP_DoDrag.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DoDrag>(nameof(MUIP_DoDrag.touchx)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DoDrag.touchx);
 		Assert.Equal(typeof(int), typeof(MUIP_DoDrag).GetField(nameof(MUIP_DoDrag.touchx))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_DoDrag>(nameof(MUIP_DoDrag.touchy)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_DoDrag.touchy);
 		Assert.Equal(typeof(int), typeof(MUIP_DoDrag).GetField(nameof(MUIP_DoDrag.touchy))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_DoDrag>(nameof(MUIP_DoDrag.flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_DoDrag.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_DoDrag).GetField(nameof(MUIP_DoDrag.flags))!.FieldType);
 	}
 
@@ -1230,10 +1021,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_DragBegin>());
 		Assert.Equal(8u, MUIP_DragBegin.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DragBegin>(nameof(MUIP_DragBegin.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DragBegin.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragBegin).GetField(nameof(MUIP_DragBegin.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DragBegin>(nameof(MUIP_DragBegin.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DragBegin.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragBegin).GetField(nameof(MUIP_DragBegin.obj))!.FieldType);
 	}
 
@@ -1243,19 +1032,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_DragDrop>());
 		Assert.Equal(20u, MUIP_DragDrop.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DragDrop>(nameof(MUIP_DragDrop.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DragDrop.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragDrop).GetField(nameof(MUIP_DragDrop.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DragDrop>(nameof(MUIP_DragDrop.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DragDrop.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragDrop).GetField(nameof(MUIP_DragDrop.obj))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_DragDrop>(nameof(MUIP_DragDrop.x)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_DragDrop.x);
 		Assert.Equal(typeof(int), typeof(MUIP_DragDrop).GetField(nameof(MUIP_DragDrop.x))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_DragDrop>(nameof(MUIP_DragDrop.y)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_DragDrop.y);
 		Assert.Equal(typeof(int), typeof(MUIP_DragDrop).GetField(nameof(MUIP_DragDrop.y))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_DragDrop>(nameof(MUIP_DragDrop.qualifier)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_DragDrop.qualifier);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragDrop).GetField(nameof(MUIP_DragDrop.qualifier))!.FieldType);
 	}
 
@@ -1265,28 +1049,20 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(32, Marshal.SizeOf<MUIP_DragEvent>());
 		Assert.Equal(32u, MUIP_DragEvent.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DragEvent.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.objwindow)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DragEvent.objwindow);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.objwindow))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.obj)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_DragEvent.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.obj))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.di)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_DragEvent.di);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.di))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.imsg)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_DragEvent.imsg);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.imsg))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.muikey)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_DragEvent.muikey);
 		Assert.Equal(typeof(int), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.muikey))!.FieldType);
 		Assert.Equal((nint)24, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.mouseptrtype)));
-		Assert.Equal(24u, MUIMessageLayout.MUIP_DragEvent.mouseptrtype);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.mouseptrtype))!.FieldType);
 		Assert.Equal((nint)28, Marshal.OffsetOf<MUIP_DragEvent>(nameof(MUIP_DragEvent.flags)));
-		Assert.Equal(28u, MUIMessageLayout.MUIP_DragEvent.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragEvent).GetField(nameof(MUIP_DragEvent.flags))!.FieldType);
 	}
 
@@ -1296,13 +1072,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_DragFinish>());
 		Assert.Equal(12u, MUIP_DragFinish.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DragFinish>(nameof(MUIP_DragFinish.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DragFinish.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragFinish).GetField(nameof(MUIP_DragFinish.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DragFinish>(nameof(MUIP_DragFinish.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DragFinish.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragFinish).GetField(nameof(MUIP_DragFinish.obj))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_DragFinish>(nameof(MUIP_DragFinish.dropfollows)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_DragFinish.dropfollows);
 		Assert.Equal(typeof(int), typeof(MUIP_DragFinish).GetField(nameof(MUIP_DragFinish.dropfollows))!.FieldType);
 	}
 
@@ -1312,10 +1085,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_DragQuery>());
 		Assert.Equal(8u, MUIP_DragQuery.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DragQuery>(nameof(MUIP_DragQuery.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DragQuery.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragQuery).GetField(nameof(MUIP_DragQuery.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DragQuery>(nameof(MUIP_DragQuery.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DragQuery.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragQuery).GetField(nameof(MUIP_DragQuery.obj))!.FieldType);
 	}
 
@@ -1325,22 +1096,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(24, Marshal.SizeOf<MUIP_DragReport>());
 		Assert.Equal(24u, MUIP_DragReport.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DragReport>(nameof(MUIP_DragReport.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DragReport.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragReport).GetField(nameof(MUIP_DragReport.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DragReport>(nameof(MUIP_DragReport.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DragReport.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_DragReport).GetField(nameof(MUIP_DragReport.obj))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_DragReport>(nameof(MUIP_DragReport.x)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_DragReport.x);
 		Assert.Equal(typeof(int), typeof(MUIP_DragReport).GetField(nameof(MUIP_DragReport.x))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_DragReport>(nameof(MUIP_DragReport.y)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_DragReport.y);
 		Assert.Equal(typeof(int), typeof(MUIP_DragReport).GetField(nameof(MUIP_DragReport.y))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_DragReport>(nameof(MUIP_DragReport.update)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_DragReport.update);
 		Assert.Equal(typeof(int), typeof(MUIP_DragReport).GetField(nameof(MUIP_DragReport.update))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_DragReport>(nameof(MUIP_DragReport.qualifier)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_DragReport.qualifier);
 		Assert.Equal(typeof(uint), typeof(MUIP_DragReport).GetField(nameof(MUIP_DragReport.qualifier))!.FieldType);
 	}
 
@@ -1350,10 +1115,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Draw>());
 		Assert.Equal(8u, MUIP_Draw.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Draw>(nameof(MUIP_Draw.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Draw.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Draw).GetField(nameof(MUIP_Draw.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Draw>(nameof(MUIP_Draw.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Draw.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Draw).GetField(nameof(MUIP_Draw.flags))!.FieldType);
 	}
 
@@ -1363,28 +1126,20 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(32, Marshal.SizeOf<MUIP_DrawBackground>());
 		Assert.Equal(32u, MUIP_DrawBackground.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_DrawBackground.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.left)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_DrawBackground.left);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.left))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.top)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_DrawBackground.top);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.top))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.width)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_DrawBackground.width);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.width))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.height)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_DrawBackground.height);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.height))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.xoffset)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_DrawBackground.xoffset);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.xoffset))!.FieldType);
 		Assert.Equal((nint)24, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.yoffset)));
-		Assert.Equal(24u, MUIMessageLayout.MUIP_DrawBackground.yoffset);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.yoffset))!.FieldType);
 		Assert.Equal((nint)28, Marshal.OffsetOf<MUIP_DrawBackground>(nameof(MUIP_DrawBackground.flags)));
-		Assert.Equal(28u, MUIMessageLayout.MUIP_DrawBackground.flags);
 		Assert.Equal(typeof(int), typeof(MUIP_DrawBackground).GetField(nameof(MUIP_DrawBackground.flags))!.FieldType);
 	}
 
@@ -1394,7 +1149,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_ExitResize>());
 		Assert.Equal(4u, MUIP_ExitResize.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_ExitResize>(nameof(MUIP_ExitResize.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_ExitResize.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_ExitResize).GetField(nameof(MUIP_ExitResize.MethodID))!.FieldType);
 	}
 
@@ -1404,10 +1158,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_GoActive>());
 		Assert.Equal(8u, MUIP_GoActive.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_GoActive>(nameof(MUIP_GoActive.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_GoActive.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_GoActive).GetField(nameof(MUIP_GoActive.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_GoActive>(nameof(MUIP_GoActive.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_GoActive.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_GoActive).GetField(nameof(MUIP_GoActive.flags))!.FieldType);
 	}
 
@@ -1417,10 +1169,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_GoInactive>());
 		Assert.Equal(8u, MUIP_GoInactive.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_GoInactive>(nameof(MUIP_GoInactive.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_GoInactive.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_GoInactive).GetField(nameof(MUIP_GoInactive.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_GoInactive>(nameof(MUIP_GoInactive.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_GoInactive.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_GoInactive).GetField(nameof(MUIP_GoInactive.flags))!.FieldType);
 	}
 
@@ -1430,16 +1180,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_HandleEvent>());
 		Assert.Equal(16u, MUIP_HandleEvent.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_HandleEvent>(nameof(MUIP_HandleEvent.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_HandleEvent.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_HandleEvent).GetField(nameof(MUIP_HandleEvent.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_HandleEvent>(nameof(MUIP_HandleEvent.imsg)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_HandleEvent.imsg);
 		Assert.Equal(typeof(APTR), typeof(MUIP_HandleEvent).GetField(nameof(MUIP_HandleEvent.imsg))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_HandleEvent>(nameof(MUIP_HandleEvent.muikey)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_HandleEvent.muikey);
 		Assert.Equal(typeof(int), typeof(MUIP_HandleEvent).GetField(nameof(MUIP_HandleEvent.muikey))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_HandleEvent>(nameof(MUIP_HandleEvent.ehn)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_HandleEvent.ehn);
 		Assert.Equal(typeof(APTR), typeof(MUIP_HandleEvent).GetField(nameof(MUIP_HandleEvent.ehn))!.FieldType);
 	}
 
@@ -1449,13 +1195,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_HandleInput>());
 		Assert.Equal(12u, MUIP_HandleInput.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_HandleInput>(nameof(MUIP_HandleInput.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_HandleInput.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_HandleInput).GetField(nameof(MUIP_HandleInput.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_HandleInput>(nameof(MUIP_HandleInput.imsg)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_HandleInput.imsg);
 		Assert.Equal(typeof(APTR), typeof(MUIP_HandleInput).GetField(nameof(MUIP_HandleInput.imsg))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_HandleInput>(nameof(MUIP_HandleInput.muikey)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_HandleInput.muikey);
 		Assert.Equal(typeof(int), typeof(MUIP_HandleInput).GetField(nameof(MUIP_HandleInput.muikey))!.FieldType);
 	}
 
@@ -1465,7 +1208,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Hide>());
 		Assert.Equal(4u, MUIP_Hide.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hide>(nameof(MUIP_Hide.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hide.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hide).GetField(nameof(MUIP_Hide.MethodID))!.FieldType);
 	}
 
@@ -1475,10 +1217,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_InitResize>());
 		Assert.Equal(8u, MUIP_InitResize.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_InitResize>(nameof(MUIP_InitResize.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_InitResize.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_InitResize).GetField(nameof(MUIP_InitResize.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_InitResize>(nameof(MUIP_InitResize.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_InitResize.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_InitResize).GetField(nameof(MUIP_InitResize.flags))!.FieldType);
 	}
 
@@ -1488,22 +1228,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(24, Marshal.SizeOf<MUIP_Layout>());
 		Assert.Equal(24u, MUIP_Layout.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Layout>(nameof(MUIP_Layout.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Layout.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Layout).GetField(nameof(MUIP_Layout.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Layout>(nameof(MUIP_Layout.left)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Layout.left);
 		Assert.Equal(typeof(int), typeof(MUIP_Layout).GetField(nameof(MUIP_Layout.left))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Layout>(nameof(MUIP_Layout.top)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Layout.top);
 		Assert.Equal(typeof(int), typeof(MUIP_Layout).GetField(nameof(MUIP_Layout.top))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Layout>(nameof(MUIP_Layout.width)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Layout.width);
 		Assert.Equal(typeof(int), typeof(MUIP_Layout).GetField(nameof(MUIP_Layout.width))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Layout>(nameof(MUIP_Layout.height)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Layout.height);
 		Assert.Equal(typeof(int), typeof(MUIP_Layout).GetField(nameof(MUIP_Layout.height))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Layout>(nameof(MUIP_Layout.flags)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Layout.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Layout).GetField(nameof(MUIP_Layout.flags))!.FieldType);
 	}
 
@@ -1513,10 +1247,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_OpenCustomFont>());
 		Assert.Equal(8u, MUIP_OpenCustomFont.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_OpenCustomFont>(nameof(MUIP_OpenCustomFont.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_OpenCustomFont.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_OpenCustomFont).GetField(nameof(MUIP_OpenCustomFont.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_OpenCustomFont>(nameof(MUIP_OpenCustomFont.spec)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_OpenCustomFont.spec);
 		Assert.Equal(typeof(APTR), typeof(MUIP_OpenCustomFont).GetField(nameof(MUIP_OpenCustomFont.spec))!.FieldType);
 	}
 
@@ -1526,10 +1258,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Relayout>());
 		Assert.Equal(8u, MUIP_Relayout.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Relayout>(nameof(MUIP_Relayout.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Relayout.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Relayout).GetField(nameof(MUIP_Relayout.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Relayout>(nameof(MUIP_Relayout.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Relayout.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Relayout).GetField(nameof(MUIP_Relayout.flags))!.FieldType);
 	}
 
@@ -1539,10 +1269,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Setup>());
 		Assert.Equal(8u, MUIP_Setup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Setup>(nameof(MUIP_Setup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Setup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Setup).GetField(nameof(MUIP_Setup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Setup>(nameof(MUIP_Setup.RenderInfo)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Setup.RenderInfo);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Setup).GetField(nameof(MUIP_Setup.RenderInfo))!.FieldType);
 	}
 
@@ -1552,10 +1280,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Show>());
 		Assert.Equal(8u, MUIP_Show.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Show>(nameof(MUIP_Show.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Show.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Show).GetField(nameof(MUIP_Show.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Show>(nameof(MUIP_Show.clip)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Show.clip);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Show).GetField(nameof(MUIP_Show.clip))!.FieldType);
 	}
 
@@ -1565,31 +1291,22 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(36, Marshal.SizeOf<MUIP_Text>());
 		Assert.Equal(36u, MUIP_Text.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Text.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Text).GetField(nameof(MUIP_Text.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.left)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Text.left);
 		Assert.Equal(typeof(int), typeof(MUIP_Text).GetField(nameof(MUIP_Text.left))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.top)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Text.top);
 		Assert.Equal(typeof(int), typeof(MUIP_Text).GetField(nameof(MUIP_Text.top))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.width)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Text.width);
 		Assert.Equal(typeof(int), typeof(MUIP_Text).GetField(nameof(MUIP_Text.width))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.height)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Text.height);
 		Assert.Equal(typeof(int), typeof(MUIP_Text).GetField(nameof(MUIP_Text.height))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.text)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Text.text);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Text).GetField(nameof(MUIP_Text.text))!.FieldType);
 		Assert.Equal((nint)24, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.len)));
-		Assert.Equal(24u, MUIMessageLayout.MUIP_Text.len);
 		Assert.Equal(typeof(int), typeof(MUIP_Text).GetField(nameof(MUIP_Text.len))!.FieldType);
 		Assert.Equal((nint)28, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.preparse)));
-		Assert.Equal(28u, MUIMessageLayout.MUIP_Text.preparse);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Text).GetField(nameof(MUIP_Text.preparse))!.FieldType);
 		Assert.Equal((nint)32, Marshal.OffsetOf<MUIP_Text>(nameof(MUIP_Text.flags)));
-		Assert.Equal(32u, MUIMessageLayout.MUIP_Text.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Text).GetField(nameof(MUIP_Text.flags))!.FieldType);
 	}
 
@@ -1599,19 +1316,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_TextDim>());
 		Assert.Equal(20u, MUIP_TextDim.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_TextDim>(nameof(MUIP_TextDim.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_TextDim.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_TextDim).GetField(nameof(MUIP_TextDim.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_TextDim>(nameof(MUIP_TextDim.text)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_TextDim.text);
 		Assert.Equal(typeof(APTR), typeof(MUIP_TextDim).GetField(nameof(MUIP_TextDim.text))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_TextDim>(nameof(MUIP_TextDim.len)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_TextDim.len);
 		Assert.Equal(typeof(int), typeof(MUIP_TextDim).GetField(nameof(MUIP_TextDim.len))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_TextDim>(nameof(MUIP_TextDim.preparse)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_TextDim.preparse);
 		Assert.Equal(typeof(APTR), typeof(MUIP_TextDim).GetField(nameof(MUIP_TextDim.preparse))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_TextDim>(nameof(MUIP_TextDim.flags)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_TextDim.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_TextDim).GetField(nameof(MUIP_TextDim.flags))!.FieldType);
 	}
 
@@ -1621,21 +1333,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(332, Marshal.SizeOf<MUIP_UpdateConfig>());
 		Assert.Equal(332u, MUIP_UpdateConfig.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_UpdateConfig>(nameof(MUIP_UpdateConfig.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_UpdateConfig.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_UpdateConfig).GetField(nameof(MUIP_UpdateConfig.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_UpdateConfig>(nameof(MUIP_UpdateConfig.cfgid)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_UpdateConfig.cfgid);
 		Assert.Equal(typeof(uint), typeof(MUIP_UpdateConfig).GetField(nameof(MUIP_UpdateConfig.cfgid))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_UpdateConfig>(nameof(MUIP_UpdateConfig.redrawcount)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_UpdateConfig.redrawcount);
 		Assert.Equal(typeof(int), typeof(MUIP_UpdateConfig).GetField(nameof(MUIP_UpdateConfig.redrawcount))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_UpdateConfig>(nameof(MUIP_UpdateConfig.redrawobj)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_UpdateConfig.redrawobj);
 		var fixed_redrawobj = typeof(MUIP_UpdateConfig).GetField(nameof(MUIP_UpdateConfig.redrawobj))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(uint), fixed_redrawobj.ElementType);
 		Assert.Equal(64, fixed_redrawobj.Length);
 		Assert.Equal((nint)268, Marshal.OffsetOf<MUIP_UpdateConfig>(nameof(MUIP_UpdateConfig.redrawflags)));
-		Assert.Equal(268u, MUIMessageLayout.MUIP_UpdateConfig.redrawflags);
 		var fixed_redrawflags = typeof(MUIP_UpdateConfig).GetField(nameof(MUIP_UpdateConfig.redrawflags))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(byte), fixed_redrawflags.ElementType);
 		Assert.Equal(64, fixed_redrawflags.Length);
@@ -1647,10 +1354,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Prop_Decrease>());
 		Assert.Equal(8u, MUIP_Prop_Decrease.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Prop_Decrease>(nameof(MUIP_Prop_Decrease.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Prop_Decrease.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Prop_Decrease).GetField(nameof(MUIP_Prop_Decrease.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Prop_Decrease>(nameof(MUIP_Prop_Decrease.amount)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Prop_Decrease.amount);
 		Assert.Equal(typeof(int), typeof(MUIP_Prop_Decrease).GetField(nameof(MUIP_Prop_Decrease.amount))!.FieldType);
 	}
 
@@ -1660,10 +1365,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Prop_Increase>());
 		Assert.Equal(8u, MUIP_Prop_Increase.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Prop_Increase>(nameof(MUIP_Prop_Increase.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Prop_Increase.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Prop_Increase).GetField(nameof(MUIP_Prop_Increase.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Prop_Increase>(nameof(MUIP_Prop_Increase.amount)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Prop_Increase.amount);
 		Assert.Equal(typeof(int), typeof(MUIP_Prop_Increase).GetField(nameof(MUIP_Prop_Increase.amount))!.FieldType);
 	}
 
@@ -1673,10 +1376,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Numeric_Decrease>());
 		Assert.Equal(8u, MUIP_Numeric_Decrease.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Numeric_Decrease>(nameof(MUIP_Numeric_Decrease.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Numeric_Decrease.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Numeric_Decrease).GetField(nameof(MUIP_Numeric_Decrease.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Numeric_Decrease>(nameof(MUIP_Numeric_Decrease.amount)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Numeric_Decrease.amount);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_Decrease).GetField(nameof(MUIP_Numeric_Decrease.amount))!.FieldType);
 	}
 
@@ -1686,10 +1387,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Numeric_Increase>());
 		Assert.Equal(8u, MUIP_Numeric_Increase.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Numeric_Increase>(nameof(MUIP_Numeric_Increase.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Numeric_Increase.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Numeric_Increase).GetField(nameof(MUIP_Numeric_Increase.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Numeric_Increase>(nameof(MUIP_Numeric_Increase.amount)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Numeric_Increase.amount);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_Increase).GetField(nameof(MUIP_Numeric_Increase.amount))!.FieldType);
 	}
 
@@ -1699,16 +1398,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Numeric_ScaleToValue>());
 		Assert.Equal(16u, MUIP_Numeric_ScaleToValue.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Numeric_ScaleToValue>(nameof(MUIP_Numeric_ScaleToValue.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Numeric_ScaleToValue.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Numeric_ScaleToValue).GetField(nameof(MUIP_Numeric_ScaleToValue.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Numeric_ScaleToValue>(nameof(MUIP_Numeric_ScaleToValue.scalemin)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Numeric_ScaleToValue.scalemin);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_ScaleToValue).GetField(nameof(MUIP_Numeric_ScaleToValue.scalemin))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Numeric_ScaleToValue>(nameof(MUIP_Numeric_ScaleToValue.scalemax)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Numeric_ScaleToValue.scalemax);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_ScaleToValue).GetField(nameof(MUIP_Numeric_ScaleToValue.scalemax))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Numeric_ScaleToValue>(nameof(MUIP_Numeric_ScaleToValue.scale)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Numeric_ScaleToValue.scale);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_ScaleToValue).GetField(nameof(MUIP_Numeric_ScaleToValue.scale))!.FieldType);
 	}
 
@@ -1718,7 +1413,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Numeric_SetDefault>());
 		Assert.Equal(4u, MUIP_Numeric_SetDefault.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Numeric_SetDefault>(nameof(MUIP_Numeric_SetDefault.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Numeric_SetDefault.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Numeric_SetDefault).GetField(nameof(MUIP_Numeric_SetDefault.MethodID))!.FieldType);
 	}
 
@@ -1728,10 +1422,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Numeric_Stringify>());
 		Assert.Equal(8u, MUIP_Numeric_Stringify.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Numeric_Stringify>(nameof(MUIP_Numeric_Stringify.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Numeric_Stringify.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Numeric_Stringify).GetField(nameof(MUIP_Numeric_Stringify.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Numeric_Stringify>(nameof(MUIP_Numeric_Stringify.value)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Numeric_Stringify.value);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_Stringify).GetField(nameof(MUIP_Numeric_Stringify.value))!.FieldType);
 	}
 
@@ -1741,13 +1433,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Numeric_ValueToScale>());
 		Assert.Equal(12u, MUIP_Numeric_ValueToScale.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Numeric_ValueToScale>(nameof(MUIP_Numeric_ValueToScale.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Numeric_ValueToScale.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Numeric_ValueToScale).GetField(nameof(MUIP_Numeric_ValueToScale.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Numeric_ValueToScale>(nameof(MUIP_Numeric_ValueToScale.scalemin)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Numeric_ValueToScale.scalemin);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_ValueToScale).GetField(nameof(MUIP_Numeric_ValueToScale.scalemin))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Numeric_ValueToScale>(nameof(MUIP_Numeric_ValueToScale.scalemax)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Numeric_ValueToScale.scalemax);
 		Assert.Equal(typeof(int), typeof(MUIP_Numeric_ValueToScale).GetField(nameof(MUIP_Numeric_ValueToScale.scalemax))!.FieldType);
 	}
 
@@ -1757,10 +1446,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Pendisplay_SetColormap>());
 		Assert.Equal(8u, MUIP_Pendisplay_SetColormap.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Pendisplay_SetColormap>(nameof(MUIP_Pendisplay_SetColormap.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Pendisplay_SetColormap.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Pendisplay_SetColormap).GetField(nameof(MUIP_Pendisplay_SetColormap.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Pendisplay_SetColormap>(nameof(MUIP_Pendisplay_SetColormap.colormap)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Pendisplay_SetColormap.colormap);
 		Assert.Equal(typeof(int), typeof(MUIP_Pendisplay_SetColormap).GetField(nameof(MUIP_Pendisplay_SetColormap.colormap))!.FieldType);
 	}
 
@@ -1770,10 +1457,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Pendisplay_SetMUIPen>());
 		Assert.Equal(8u, MUIP_Pendisplay_SetMUIPen.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Pendisplay_SetMUIPen>(nameof(MUIP_Pendisplay_SetMUIPen.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Pendisplay_SetMUIPen.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Pendisplay_SetMUIPen).GetField(nameof(MUIP_Pendisplay_SetMUIPen.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Pendisplay_SetMUIPen>(nameof(MUIP_Pendisplay_SetMUIPen.muipen)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Pendisplay_SetMUIPen.muipen);
 		Assert.Equal(typeof(int), typeof(MUIP_Pendisplay_SetMUIPen).GetField(nameof(MUIP_Pendisplay_SetMUIPen.muipen))!.FieldType);
 	}
 
@@ -1783,16 +1468,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Pendisplay_SetRGB>());
 		Assert.Equal(16u, MUIP_Pendisplay_SetRGB.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Pendisplay_SetRGB>(nameof(MUIP_Pendisplay_SetRGB.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Pendisplay_SetRGB.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Pendisplay_SetRGB).GetField(nameof(MUIP_Pendisplay_SetRGB.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Pendisplay_SetRGB>(nameof(MUIP_Pendisplay_SetRGB.red)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Pendisplay_SetRGB.red);
 		Assert.Equal(typeof(uint), typeof(MUIP_Pendisplay_SetRGB).GetField(nameof(MUIP_Pendisplay_SetRGB.red))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Pendisplay_SetRGB>(nameof(MUIP_Pendisplay_SetRGB.green)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Pendisplay_SetRGB.green);
 		Assert.Equal(typeof(uint), typeof(MUIP_Pendisplay_SetRGB).GetField(nameof(MUIP_Pendisplay_SetRGB.green))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Pendisplay_SetRGB>(nameof(MUIP_Pendisplay_SetRGB.blue)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Pendisplay_SetRGB.blue);
 		Assert.Equal(typeof(uint), typeof(MUIP_Pendisplay_SetRGB).GetField(nameof(MUIP_Pendisplay_SetRGB.blue))!.FieldType);
 	}
 
@@ -1802,10 +1483,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Group_AddHead>());
 		Assert.Equal(8u, MUIP_Group_AddHead.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_AddHead>(nameof(MUIP_Group_AddHead.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_AddHead.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_AddHead).GetField(nameof(MUIP_Group_AddHead.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_AddHead>(nameof(MUIP_Group_AddHead.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_AddHead.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Group_AddHead).GetField(nameof(MUIP_Group_AddHead.obj))!.FieldType);
 	}
 
@@ -1815,10 +1494,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Group_AddTail>());
 		Assert.Equal(8u, MUIP_Group_AddTail.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_AddTail>(nameof(MUIP_Group_AddTail.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_AddTail.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_AddTail).GetField(nameof(MUIP_Group_AddTail.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_AddTail>(nameof(MUIP_Group_AddTail.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_AddTail.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Group_AddTail).GetField(nameof(MUIP_Group_AddTail.obj))!.FieldType);
 	}
 
@@ -1828,7 +1505,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Group_ExitChange>());
 		Assert.Equal(4u, MUIP_Group_ExitChange.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_ExitChange>(nameof(MUIP_Group_ExitChange.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_ExitChange.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_ExitChange).GetField(nameof(MUIP_Group_ExitChange.MethodID))!.FieldType);
 	}
 
@@ -1838,10 +1514,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Group_ExitChange2>());
 		Assert.Equal(8u, MUIP_Group_ExitChange2.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_ExitChange2>(nameof(MUIP_Group_ExitChange2.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_ExitChange2.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_ExitChange2).GetField(nameof(MUIP_Group_ExitChange2.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_ExitChange2>(nameof(MUIP_Group_ExitChange2.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_ExitChange2.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_ExitChange2).GetField(nameof(MUIP_Group_ExitChange2.flags))!.FieldType);
 	}
 
@@ -1851,7 +1525,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Group_InitChange>());
 		Assert.Equal(4u, MUIP_Group_InitChange.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_InitChange>(nameof(MUIP_Group_InitChange.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_InitChange.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_InitChange).GetField(nameof(MUIP_Group_InitChange.MethodID))!.FieldType);
 	}
 
@@ -1861,13 +1534,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Group_MoveMember>());
 		Assert.Equal(12u, MUIP_Group_MoveMember.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_MoveMember>(nameof(MUIP_Group_MoveMember.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_MoveMember.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_MoveMember).GetField(nameof(MUIP_Group_MoveMember.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_MoveMember>(nameof(MUIP_Group_MoveMember.o)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_MoveMember.o);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Group_MoveMember).GetField(nameof(MUIP_Group_MoveMember.o))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Group_MoveMember>(nameof(MUIP_Group_MoveMember.pos)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Group_MoveMember.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_Group_MoveMember).GetField(nameof(MUIP_Group_MoveMember.pos))!.FieldType);
 	}
 
@@ -1877,10 +1547,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Group_Remove>());
 		Assert.Equal(8u, MUIP_Group_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_Remove>(nameof(MUIP_Group_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_Remove).GetField(nameof(MUIP_Group_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_Remove>(nameof(MUIP_Group_Remove.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_Remove.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Group_Remove).GetField(nameof(MUIP_Group_Remove.obj))!.FieldType);
 	}
 
@@ -1890,13 +1558,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Group_Reorder>());
 		Assert.Equal(12u, MUIP_Group_Reorder.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_Reorder>(nameof(MUIP_Group_Reorder.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_Reorder.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_Reorder).GetField(nameof(MUIP_Group_Reorder.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_Reorder>(nameof(MUIP_Group_Reorder.after)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_Reorder.after);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Group_Reorder).GetField(nameof(MUIP_Group_Reorder.after))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Group_Reorder>(nameof(MUIP_Group_Reorder.array)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Group_Reorder.array);
 		var fixed_array = typeof(MUIP_Group_Reorder).GetField(nameof(MUIP_Group_Reorder.array))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(uint), fixed_array.ElementType);
 		Assert.Equal(1, fixed_array.Length);
@@ -1908,10 +1573,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Group_Sort>());
 		Assert.Equal(8u, MUIP_Group_Sort.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Group_Sort>(nameof(MUIP_Group_Sort.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Group_Sort.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Group_Sort).GetField(nameof(MUIP_Group_Sort.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Group_Sort>(nameof(MUIP_Group_Sort.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Group_Sort.obj);
 		var fixed_obj = typeof(MUIP_Group_Sort).GetField(nameof(MUIP_Group_Sort.obj))!.GetCustomAttribute<FixedBufferAttribute>()!;
 		Assert.Equal(typeof(uint), fixed_obj.ElementType);
 		Assert.Equal(1, fixed_obj.Length);
@@ -1923,7 +1586,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_List_Clear>());
 		Assert.Equal(4u, MUIP_List_Clear.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Clear>(nameof(MUIP_List_Clear.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Clear.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Clear).GetField(nameof(MUIP_List_Clear.MethodID))!.FieldType);
 	}
 
@@ -1933,16 +1595,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_List_Compare>());
 		Assert.Equal(16u, MUIP_List_Compare.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Compare>(nameof(MUIP_List_Compare.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Compare.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Compare).GetField(nameof(MUIP_List_Compare.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Compare>(nameof(MUIP_List_Compare.entry1)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Compare.entry1);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Compare).GetField(nameof(MUIP_List_Compare.entry1))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Compare>(nameof(MUIP_List_Compare.entry2)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Compare.entry2);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Compare).GetField(nameof(MUIP_List_Compare.entry2))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_Compare>(nameof(MUIP_List_Compare.column)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_Compare.column);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Compare).GetField(nameof(MUIP_List_Compare.column))!.FieldType);
 	}
 
@@ -1952,13 +1610,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_Construct>());
 		Assert.Equal(12u, MUIP_List_Construct.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Construct>(nameof(MUIP_List_Construct.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Construct.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Construct).GetField(nameof(MUIP_List_Construct.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Construct>(nameof(MUIP_List_Construct.entry)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Construct.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Construct).GetField(nameof(MUIP_List_Construct.entry))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Construct>(nameof(MUIP_List_Construct.pool)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Construct.pool);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Construct).GetField(nameof(MUIP_List_Construct.pool))!.FieldType);
 	}
 
@@ -1968,16 +1623,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_List_CreateEditObject>());
 		Assert.Equal(16u, MUIP_List_CreateEditObject.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_CreateEditObject>(nameof(MUIP_List_CreateEditObject.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_CreateEditObject.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_CreateEditObject).GetField(nameof(MUIP_List_CreateEditObject.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_CreateEditObject>(nameof(MUIP_List_CreateEditObject.row)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_CreateEditObject.row);
 		Assert.Equal(typeof(int), typeof(MUIP_List_CreateEditObject).GetField(nameof(MUIP_List_CreateEditObject.row))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_CreateEditObject>(nameof(MUIP_List_CreateEditObject.column)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_CreateEditObject.column);
 		Assert.Equal(typeof(int), typeof(MUIP_List_CreateEditObject).GetField(nameof(MUIP_List_CreateEditObject.column))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_CreateEditObject>(nameof(MUIP_List_CreateEditObject.entry)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_CreateEditObject.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_CreateEditObject).GetField(nameof(MUIP_List_CreateEditObject.entry))!.FieldType);
 	}
 
@@ -1987,13 +1638,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_CreateImage>());
 		Assert.Equal(12u, MUIP_List_CreateImage.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_CreateImage>(nameof(MUIP_List_CreateImage.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_CreateImage.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_CreateImage).GetField(nameof(MUIP_List_CreateImage.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_CreateImage>(nameof(MUIP_List_CreateImage.obj)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_CreateImage.obj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_CreateImage).GetField(nameof(MUIP_List_CreateImage.obj))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_CreateImage>(nameof(MUIP_List_CreateImage.flags)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_CreateImage.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_CreateImage).GetField(nameof(MUIP_List_CreateImage.flags))!.FieldType);
 	}
 
@@ -2003,10 +1651,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_List_DeleteImage>());
 		Assert.Equal(8u, MUIP_List_DeleteImage.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_DeleteImage>(nameof(MUIP_List_DeleteImage.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_DeleteImage.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_DeleteImage).GetField(nameof(MUIP_List_DeleteImage.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_DeleteImage>(nameof(MUIP_List_DeleteImage.listimg)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_DeleteImage.listimg);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_DeleteImage).GetField(nameof(MUIP_List_DeleteImage.listimg))!.FieldType);
 	}
 
@@ -2016,13 +1662,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_Destruct>());
 		Assert.Equal(12u, MUIP_List_Destruct.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Destruct>(nameof(MUIP_List_Destruct.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Destruct.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Destruct).GetField(nameof(MUIP_List_Destruct.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Destruct>(nameof(MUIP_List_Destruct.entry)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Destruct.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Destruct).GetField(nameof(MUIP_List_Destruct.entry))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Destruct>(nameof(MUIP_List_Destruct.pool)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Destruct.pool);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Destruct).GetField(nameof(MUIP_List_Destruct.pool))!.FieldType);
 	}
 
@@ -2032,16 +1675,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_List_Display>());
 		Assert.Equal(16u, MUIP_List_Display.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Display>(nameof(MUIP_List_Display.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Display.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Display).GetField(nameof(MUIP_List_Display.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Display>(nameof(MUIP_List_Display.entry)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Display.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Display).GetField(nameof(MUIP_List_Display.entry))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Display>(nameof(MUIP_List_Display.array)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Display.array);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Display).GetField(nameof(MUIP_List_Display.array))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_Display>(nameof(MUIP_List_Display.row)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_Display.row);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Display).GetField(nameof(MUIP_List_Display.row))!.FieldType);
 	}
 
@@ -2051,13 +1690,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_Edit>());
 		Assert.Equal(12u, MUIP_List_Edit.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Edit>(nameof(MUIP_List_Edit.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Edit.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Edit).GetField(nameof(MUIP_List_Edit.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Edit>(nameof(MUIP_List_Edit.row)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Edit.row);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Edit).GetField(nameof(MUIP_List_Edit.row))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Edit>(nameof(MUIP_List_Edit.column)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Edit.column);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Edit).GetField(nameof(MUIP_List_Edit.column))!.FieldType);
 	}
 
@@ -2067,19 +1703,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_List_EditDone>());
 		Assert.Equal(20u, MUIP_List_EditDone.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_EditDone>(nameof(MUIP_List_EditDone.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_EditDone.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_EditDone).GetField(nameof(MUIP_List_EditDone.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_EditDone>(nameof(MUIP_List_EditDone.row)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_EditDone.row);
 		Assert.Equal(typeof(int), typeof(MUIP_List_EditDone).GetField(nameof(MUIP_List_EditDone.row))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_EditDone>(nameof(MUIP_List_EditDone.column)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_EditDone.column);
 		Assert.Equal(typeof(int), typeof(MUIP_List_EditDone).GetField(nameof(MUIP_List_EditDone.column))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_EditDone>(nameof(MUIP_List_EditDone.entry)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_EditDone.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_EditDone).GetField(nameof(MUIP_List_EditDone.entry))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_List_EditDone>(nameof(MUIP_List_EditDone.editobj)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_List_EditDone.editobj);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_EditDone).GetField(nameof(MUIP_List_EditDone.editobj))!.FieldType);
 	}
 
@@ -2089,10 +1720,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_List_EndEdit>());
 		Assert.Equal(8u, MUIP_List_EndEdit.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_EndEdit>(nameof(MUIP_List_EndEdit.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_EndEdit.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_EndEdit).GetField(nameof(MUIP_List_EndEdit.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_EndEdit>(nameof(MUIP_List_EndEdit.mode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_EndEdit.mode);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_EndEdit).GetField(nameof(MUIP_List_EndEdit.mode))!.FieldType);
 	}
 
@@ -2102,13 +1731,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_Exchange>());
 		Assert.Equal(12u, MUIP_List_Exchange.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Exchange>(nameof(MUIP_List_Exchange.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Exchange.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Exchange).GetField(nameof(MUIP_List_Exchange.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Exchange>(nameof(MUIP_List_Exchange.pos1)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Exchange.pos1);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Exchange).GetField(nameof(MUIP_List_Exchange.pos1))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Exchange>(nameof(MUIP_List_Exchange.pos2)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Exchange.pos2);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Exchange).GetField(nameof(MUIP_List_Exchange.pos2))!.FieldType);
 	}
 
@@ -2118,13 +1744,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_GetEntry>());
 		Assert.Equal(12u, MUIP_List_GetEntry.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_GetEntry>(nameof(MUIP_List_GetEntry.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_GetEntry.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_GetEntry).GetField(nameof(MUIP_List_GetEntry.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_GetEntry>(nameof(MUIP_List_GetEntry.pos)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_GetEntry.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_GetEntry).GetField(nameof(MUIP_List_GetEntry.pos))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_GetEntry>(nameof(MUIP_List_GetEntry.entry)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_GetEntry.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_GetEntry).GetField(nameof(MUIP_List_GetEntry.entry))!.FieldType);
 	}
 
@@ -2134,16 +1757,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_List_Insert>());
 		Assert.Equal(16u, MUIP_List_Insert.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Insert>(nameof(MUIP_List_Insert.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Insert.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Insert).GetField(nameof(MUIP_List_Insert.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Insert>(nameof(MUIP_List_Insert.entries)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Insert.entries);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Insert).GetField(nameof(MUIP_List_Insert.entries))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Insert>(nameof(MUIP_List_Insert.count)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Insert.count);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Insert).GetField(nameof(MUIP_List_Insert.count))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_Insert>(nameof(MUIP_List_Insert.pos)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_Insert.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Insert).GetField(nameof(MUIP_List_Insert.pos))!.FieldType);
 	}
 
@@ -2153,13 +1772,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_InsertSingle>());
 		Assert.Equal(12u, MUIP_List_InsertSingle.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_InsertSingle>(nameof(MUIP_List_InsertSingle.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_InsertSingle.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_InsertSingle).GetField(nameof(MUIP_List_InsertSingle.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_InsertSingle>(nameof(MUIP_List_InsertSingle.entry)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_InsertSingle.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_InsertSingle).GetField(nameof(MUIP_List_InsertSingle.entry))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_InsertSingle>(nameof(MUIP_List_InsertSingle.pos)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_InsertSingle.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_InsertSingle).GetField(nameof(MUIP_List_InsertSingle.pos))!.FieldType);
 	}
 
@@ -2169,10 +1785,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_List_Jump>());
 		Assert.Equal(8u, MUIP_List_Jump.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Jump>(nameof(MUIP_List_Jump.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Jump.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Jump).GetField(nameof(MUIP_List_Jump.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Jump>(nameof(MUIP_List_Jump.pos)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Jump.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Jump).GetField(nameof(MUIP_List_Jump.pos))!.FieldType);
 	}
 
@@ -2182,13 +1796,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_Move>());
 		Assert.Equal(12u, MUIP_List_Move.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Move>(nameof(MUIP_List_Move.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Move.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Move).GetField(nameof(MUIP_List_Move.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Move>(nameof(MUIP_List_Move.from)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Move.from);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Move).GetField(nameof(MUIP_List_Move.from))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Move>(nameof(MUIP_List_Move.to)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Move.to);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Move).GetField(nameof(MUIP_List_Move.to))!.FieldType);
 	}
 
@@ -2198,10 +1809,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_List_NextSelected>());
 		Assert.Equal(8u, MUIP_List_NextSelected.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_NextSelected>(nameof(MUIP_List_NextSelected.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_NextSelected.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_NextSelected).GetField(nameof(MUIP_List_NextSelected.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_NextSelected>(nameof(MUIP_List_NextSelected.pos)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_NextSelected.pos);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_NextSelected).GetField(nameof(MUIP_List_NextSelected.pos))!.FieldType);
 	}
 
@@ -2211,13 +1820,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_List_Redraw>());
 		Assert.Equal(12u, MUIP_List_Redraw.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Redraw>(nameof(MUIP_List_Redraw.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Redraw.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Redraw).GetField(nameof(MUIP_List_Redraw.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Redraw>(nameof(MUIP_List_Redraw.pos)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Redraw.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Redraw).GetField(nameof(MUIP_List_Redraw.pos))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Redraw>(nameof(MUIP_List_Redraw.entry)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Redraw.entry);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Redraw).GetField(nameof(MUIP_List_Redraw.entry))!.FieldType);
 	}
 
@@ -2227,10 +1833,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_List_Remove>());
 		Assert.Equal(8u, MUIP_List_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Remove>(nameof(MUIP_List_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Remove).GetField(nameof(MUIP_List_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Remove>(nameof(MUIP_List_Remove.pos)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Remove.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Remove).GetField(nameof(MUIP_List_Remove.pos))!.FieldType);
 	}
 
@@ -2240,16 +1844,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_List_Select>());
 		Assert.Equal(16u, MUIP_List_Select.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Select>(nameof(MUIP_List_Select.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Select.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Select).GetField(nameof(MUIP_List_Select.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_Select>(nameof(MUIP_List_Select.pos)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_Select.pos);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Select).GetField(nameof(MUIP_List_Select.pos))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_Select>(nameof(MUIP_List_Select.seltype)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_Select.seltype);
 		Assert.Equal(typeof(int), typeof(MUIP_List_Select).GetField(nameof(MUIP_List_Select.seltype))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_Select>(nameof(MUIP_List_Select.state)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_Select.state);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_Select).GetField(nameof(MUIP_List_Select.state))!.FieldType);
 	}
 
@@ -2259,7 +1859,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_List_Sort>());
 		Assert.Equal(4u, MUIP_List_Sort.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_Sort>(nameof(MUIP_List_Sort.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_Sort.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_Sort).GetField(nameof(MUIP_List_Sort.MethodID))!.FieldType);
 	}
 
@@ -2269,10 +1868,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_List_SortEntries>());
 		Assert.Equal(8u, MUIP_List_SortEntries.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_SortEntries>(nameof(MUIP_List_SortEntries.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_SortEntries.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_SortEntries).GetField(nameof(MUIP_List_SortEntries.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_SortEntries>(nameof(MUIP_List_SortEntries.entries)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_SortEntries.entries);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_SortEntries).GetField(nameof(MUIP_List_SortEntries.entries))!.FieldType);
 	}
 
@@ -2282,16 +1879,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_List_TestPos>());
 		Assert.Equal(16u, MUIP_List_TestPos.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_List_TestPos>(nameof(MUIP_List_TestPos.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_List_TestPos.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_List_TestPos).GetField(nameof(MUIP_List_TestPos.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_List_TestPos>(nameof(MUIP_List_TestPos.x)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_List_TestPos.x);
 		Assert.Equal(typeof(int), typeof(MUIP_List_TestPos).GetField(nameof(MUIP_List_TestPos.x))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_List_TestPos>(nameof(MUIP_List_TestPos.y)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_List_TestPos.y);
 		Assert.Equal(typeof(int), typeof(MUIP_List_TestPos).GetField(nameof(MUIP_List_TestPos.y))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_List_TestPos>(nameof(MUIP_List_TestPos.res)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_List_TestPos.res);
 		Assert.Equal(typeof(APTR), typeof(MUIP_List_TestPos).GetField(nameof(MUIP_List_TestPos.res))!.FieldType);
 	}
 
@@ -2301,10 +1894,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Floattext_Append>());
 		Assert.Equal(8u, MUIP_Floattext_Append.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Floattext_Append>(nameof(MUIP_Floattext_Append.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Floattext_Append.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Floattext_Append).GetField(nameof(MUIP_Floattext_Append.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Floattext_Append>(nameof(MUIP_Floattext_Append.Text)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Floattext_Append.Text);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Floattext_Append).GetField(nameof(MUIP_Floattext_Append.Text))!.FieldType);
 	}
 
@@ -2314,13 +1905,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Dirlist_Rename>());
 		Assert.Equal(12u, MUIP_Dirlist_Rename.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dirlist_Rename>(nameof(MUIP_Dirlist_Rename.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dirlist_Rename.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dirlist_Rename).GetField(nameof(MUIP_Dirlist_Rename.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dirlist_Rename>(nameof(MUIP_Dirlist_Rename.row)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dirlist_Rename.row);
 		Assert.Equal(typeof(int), typeof(MUIP_Dirlist_Rename).GetField(nameof(MUIP_Dirlist_Rename.row))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Dirlist_Rename>(nameof(MUIP_Dirlist_Rename.newname)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Dirlist_Rename.newname);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dirlist_Rename).GetField(nameof(MUIP_Dirlist_Rename.newname))!.FieldType);
 	}
 
@@ -2330,7 +1918,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Dirlist_ReRead>());
 		Assert.Equal(4u, MUIP_Dirlist_ReRead.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dirlist_ReRead>(nameof(MUIP_Dirlist_ReRead.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dirlist_ReRead.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dirlist_ReRead).GetField(nameof(MUIP_Dirlist_ReRead.MethodID))!.FieldType);
 	}
 
@@ -2340,13 +1927,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Dirlist_SetComment>());
 		Assert.Equal(12u, MUIP_Dirlist_SetComment.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dirlist_SetComment>(nameof(MUIP_Dirlist_SetComment.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dirlist_SetComment.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dirlist_SetComment).GetField(nameof(MUIP_Dirlist_SetComment.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dirlist_SetComment>(nameof(MUIP_Dirlist_SetComment.row)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dirlist_SetComment.row);
 		Assert.Equal(typeof(int), typeof(MUIP_Dirlist_SetComment).GetField(nameof(MUIP_Dirlist_SetComment.row))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Dirlist_SetComment>(nameof(MUIP_Dirlist_SetComment.comment)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Dirlist_SetComment.comment);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dirlist_SetComment).GetField(nameof(MUIP_Dirlist_SetComment.comment))!.FieldType);
 	}
 
@@ -2356,13 +1940,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Dirlist_SetProtection>());
 		Assert.Equal(12u, MUIP_Dirlist_SetProtection.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dirlist_SetProtection>(nameof(MUIP_Dirlist_SetProtection.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dirlist_SetProtection.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dirlist_SetProtection).GetField(nameof(MUIP_Dirlist_SetProtection.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dirlist_SetProtection>(nameof(MUIP_Dirlist_SetProtection.row)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dirlist_SetProtection.row);
 		Assert.Equal(typeof(int), typeof(MUIP_Dirlist_SetProtection).GetField(nameof(MUIP_Dirlist_SetProtection.row))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Dirlist_SetProtection>(nameof(MUIP_Dirlist_SetProtection.flags)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Dirlist_SetProtection.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dirlist_SetProtection).GetField(nameof(MUIP_Dirlist_SetProtection.flags))!.FieldType);
 	}
 
@@ -2372,10 +1953,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Mccprefs_ConfigToGadgets>());
 		Assert.Equal(8u, MUIP_Mccprefs_ConfigToGadgets.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Mccprefs_ConfigToGadgets>(nameof(MUIP_Mccprefs_ConfigToGadgets.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Mccprefs_ConfigToGadgets.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Mccprefs_ConfigToGadgets).GetField(nameof(MUIP_Mccprefs_ConfigToGadgets.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Mccprefs_ConfigToGadgets>(nameof(MUIP_Mccprefs_ConfigToGadgets.configdata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Mccprefs_ConfigToGadgets.configdata);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Mccprefs_ConfigToGadgets).GetField(nameof(MUIP_Mccprefs_ConfigToGadgets.configdata))!.FieldType);
 	}
 
@@ -2385,13 +1964,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Mccprefs_GadgetsToConfig>());
 		Assert.Equal(12u, MUIP_Mccprefs_GadgetsToConfig.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Mccprefs_GadgetsToConfig>(nameof(MUIP_Mccprefs_GadgetsToConfig.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Mccprefs_GadgetsToConfig.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Mccprefs_GadgetsToConfig).GetField(nameof(MUIP_Mccprefs_GadgetsToConfig.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Mccprefs_GadgetsToConfig>(nameof(MUIP_Mccprefs_GadgetsToConfig.configdata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Mccprefs_GadgetsToConfig.configdata);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Mccprefs_GadgetsToConfig).GetField(nameof(MUIP_Mccprefs_GadgetsToConfig.configdata))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Mccprefs_GadgetsToConfig>(nameof(MUIP_Mccprefs_GadgetsToConfig.originator)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Mccprefs_GadgetsToConfig.originator);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Mccprefs_GadgetsToConfig).GetField(nameof(MUIP_Mccprefs_GadgetsToConfig.originator))!.FieldType);
 	}
 
@@ -2401,25 +1977,18 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(28, Marshal.SizeOf<MUIP_Mccprefs_RegisterGadget>());
 		Assert.Equal(28u, MUIP_Mccprefs_RegisterGadget.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.gadget)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.gadget);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.gadget))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.id)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.id))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.@params)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.@params);
 		Assert.Equal(typeof(uint), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.@params))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.title)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.title);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.title))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.attr)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.attr);
 		Assert.Equal(typeof(uint), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.attr))!.FieldType);
 		Assert.Equal((nint)24, Marshal.OffsetOf<MUIP_Mccprefs_RegisterGadget>(nameof(MUIP_Mccprefs_RegisterGadget.label)));
-		Assert.Equal(24u, MUIMessageLayout.MUIP_Mccprefs_RegisterGadget.label);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Mccprefs_RegisterGadget).GetField(nameof(MUIP_Mccprefs_RegisterGadget.label))!.FieldType);
 	}
 
@@ -2429,10 +1998,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Settingsgroup_ConfigToGadgets>());
 		Assert.Equal(8u, MUIP_Settingsgroup_ConfigToGadgets.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Settingsgroup_ConfigToGadgets>(nameof(MUIP_Settingsgroup_ConfigToGadgets.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Settingsgroup_ConfigToGadgets.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Settingsgroup_ConfigToGadgets).GetField(nameof(MUIP_Settingsgroup_ConfigToGadgets.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Settingsgroup_ConfigToGadgets>(nameof(MUIP_Settingsgroup_ConfigToGadgets.configdata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Settingsgroup_ConfigToGadgets.configdata);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Settingsgroup_ConfigToGadgets).GetField(nameof(MUIP_Settingsgroup_ConfigToGadgets.configdata))!.FieldType);
 	}
 
@@ -2442,13 +2009,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Settingsgroup_GadgetsToConfig>());
 		Assert.Equal(12u, MUIP_Settingsgroup_GadgetsToConfig.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Settingsgroup_GadgetsToConfig>(nameof(MUIP_Settingsgroup_GadgetsToConfig.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Settingsgroup_GadgetsToConfig.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Settingsgroup_GadgetsToConfig).GetField(nameof(MUIP_Settingsgroup_GadgetsToConfig.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Settingsgroup_GadgetsToConfig>(nameof(MUIP_Settingsgroup_GadgetsToConfig.configdata)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Settingsgroup_GadgetsToConfig.configdata);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Settingsgroup_GadgetsToConfig).GetField(nameof(MUIP_Settingsgroup_GadgetsToConfig.configdata))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Settingsgroup_GadgetsToConfig>(nameof(MUIP_Settingsgroup_GadgetsToConfig.originator)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Settingsgroup_GadgetsToConfig.originator);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Settingsgroup_GadgetsToConfig).GetField(nameof(MUIP_Settingsgroup_GadgetsToConfig.originator))!.FieldType);
 	}
 
@@ -2458,10 +2022,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Popstring_Close>());
 		Assert.Equal(8u, MUIP_Popstring_Close.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Popstring_Close>(nameof(MUIP_Popstring_Close.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Popstring_Close.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Popstring_Close).GetField(nameof(MUIP_Popstring_Close.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Popstring_Close>(nameof(MUIP_Popstring_Close.result)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Popstring_Close.result);
 		Assert.Equal(typeof(int), typeof(MUIP_Popstring_Close).GetField(nameof(MUIP_Popstring_Close.result))!.FieldType);
 	}
 
@@ -2471,7 +2033,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Popstring_Open>());
 		Assert.Equal(4u, MUIP_Popstring_Open.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Popstring_Open>(nameof(MUIP_Popstring_Open.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Popstring_Open.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Popstring_Open).GetField(nameof(MUIP_Popstring_Open.MethodID))!.FieldType);
 	}
 
@@ -2481,7 +2042,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Semaphore_Attempt>());
 		Assert.Equal(4u, MUIP_Semaphore_Attempt.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Semaphore_Attempt>(nameof(MUIP_Semaphore_Attempt.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Semaphore_Attempt.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Semaphore_Attempt).GetField(nameof(MUIP_Semaphore_Attempt.MethodID))!.FieldType);
 	}
 
@@ -2491,7 +2051,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Semaphore_AttemptShared>());
 		Assert.Equal(4u, MUIP_Semaphore_AttemptShared.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Semaphore_AttemptShared>(nameof(MUIP_Semaphore_AttemptShared.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Semaphore_AttemptShared.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Semaphore_AttemptShared).GetField(nameof(MUIP_Semaphore_AttemptShared.MethodID))!.FieldType);
 	}
 
@@ -2501,7 +2060,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Semaphore_Obtain>());
 		Assert.Equal(4u, MUIP_Semaphore_Obtain.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Semaphore_Obtain>(nameof(MUIP_Semaphore_Obtain.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Semaphore_Obtain.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Semaphore_Obtain).GetField(nameof(MUIP_Semaphore_Obtain.MethodID))!.FieldType);
 	}
 
@@ -2511,7 +2069,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Semaphore_ObtainShared>());
 		Assert.Equal(4u, MUIP_Semaphore_ObtainShared.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Semaphore_ObtainShared>(nameof(MUIP_Semaphore_ObtainShared.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Semaphore_ObtainShared.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Semaphore_ObtainShared).GetField(nameof(MUIP_Semaphore_ObtainShared.MethodID))!.FieldType);
 	}
 
@@ -2521,7 +2078,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Semaphore_Release>());
 		Assert.Equal(4u, MUIP_Semaphore_Release.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Semaphore_Release>(nameof(MUIP_Semaphore_Release.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Semaphore_Release.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Semaphore_Release).GetField(nameof(MUIP_Semaphore_Release.MethodID))!.FieldType);
 	}
 
@@ -2531,16 +2087,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Dataspace_Add>());
 		Assert.Equal(16u, MUIP_Dataspace_Add.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_Add>(nameof(MUIP_Dataspace_Add.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_Add.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Add).GetField(nameof(MUIP_Dataspace_Add.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_Add>(nameof(MUIP_Dataspace_Add.data)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_Add.data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dataspace_Add).GetField(nameof(MUIP_Dataspace_Add.data))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Dataspace_Add>(nameof(MUIP_Dataspace_Add.len)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Dataspace_Add.len);
 		Assert.Equal(typeof(int), typeof(MUIP_Dataspace_Add).GetField(nameof(MUIP_Dataspace_Add.len))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Dataspace_Add>(nameof(MUIP_Dataspace_Add.id)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Dataspace_Add.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Add).GetField(nameof(MUIP_Dataspace_Add.id))!.FieldType);
 	}
 
@@ -2550,7 +2102,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Dataspace_Clear>());
 		Assert.Equal(4u, MUIP_Dataspace_Clear.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_Clear>(nameof(MUIP_Dataspace_Clear.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_Clear.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Clear).GetField(nameof(MUIP_Dataspace_Clear.MethodID))!.FieldType);
 	}
 
@@ -2560,10 +2111,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Dataspace_Find>());
 		Assert.Equal(8u, MUIP_Dataspace_Find.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_Find>(nameof(MUIP_Dataspace_Find.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_Find.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Find).GetField(nameof(MUIP_Dataspace_Find.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_Find>(nameof(MUIP_Dataspace_Find.id)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_Find.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Find).GetField(nameof(MUIP_Dataspace_Find.id))!.FieldType);
 	}
 
@@ -2573,13 +2122,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Dataspace_Get>());
 		Assert.Equal(12u, MUIP_Dataspace_Get.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_Get>(nameof(MUIP_Dataspace_Get.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_Get.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Get).GetField(nameof(MUIP_Dataspace_Get.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_Get>(nameof(MUIP_Dataspace_Get.id)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_Get.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Get).GetField(nameof(MUIP_Dataspace_Get.id))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Dataspace_Get>(nameof(MUIP_Dataspace_Get.size)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Dataspace_Get.size);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dataspace_Get).GetField(nameof(MUIP_Dataspace_Get.size))!.FieldType);
 	}
 
@@ -2589,10 +2135,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Dataspace_Merge>());
 		Assert.Equal(8u, MUIP_Dataspace_Merge.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_Merge>(nameof(MUIP_Dataspace_Merge.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_Merge.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Merge).GetField(nameof(MUIP_Dataspace_Merge.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_Merge>(nameof(MUIP_Dataspace_Merge.dataspace)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_Merge.dataspace);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dataspace_Merge).GetField(nameof(MUIP_Dataspace_Merge.dataspace))!.FieldType);
 	}
 
@@ -2602,10 +2146,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Dataspace_ReadIFF>());
 		Assert.Equal(8u, MUIP_Dataspace_ReadIFF.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_ReadIFF>(nameof(MUIP_Dataspace_ReadIFF.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_ReadIFF.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_ReadIFF).GetField(nameof(MUIP_Dataspace_ReadIFF.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_ReadIFF>(nameof(MUIP_Dataspace_ReadIFF.handle)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_ReadIFF.handle);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dataspace_ReadIFF).GetField(nameof(MUIP_Dataspace_ReadIFF.handle))!.FieldType);
 	}
 
@@ -2615,10 +2157,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Dataspace_Remove>());
 		Assert.Equal(8u, MUIP_Dataspace_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_Remove>(nameof(MUIP_Dataspace_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Remove).GetField(nameof(MUIP_Dataspace_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_Remove>(nameof(MUIP_Dataspace_Remove.id)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_Remove.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_Remove).GetField(nameof(MUIP_Dataspace_Remove.id))!.FieldType);
 	}
 
@@ -2628,16 +2168,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Dataspace_WriteIFF>());
 		Assert.Equal(16u, MUIP_Dataspace_WriteIFF.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Dataspace_WriteIFF>(nameof(MUIP_Dataspace_WriteIFF.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Dataspace_WriteIFF.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_WriteIFF).GetField(nameof(MUIP_Dataspace_WriteIFF.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Dataspace_WriteIFF>(nameof(MUIP_Dataspace_WriteIFF.handle)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Dataspace_WriteIFF.handle);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Dataspace_WriteIFF).GetField(nameof(MUIP_Dataspace_WriteIFF.handle))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Dataspace_WriteIFF>(nameof(MUIP_Dataspace_WriteIFF.type)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Dataspace_WriteIFF.type);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_WriteIFF).GetField(nameof(MUIP_Dataspace_WriteIFF.type))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Dataspace_WriteIFF>(nameof(MUIP_Dataspace_WriteIFF.id)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Dataspace_WriteIFF.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Dataspace_WriteIFF).GetField(nameof(MUIP_Dataspace_WriteIFF.id))!.FieldType);
 	}
 
@@ -2647,13 +2183,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Panel_Run>());
 		Assert.Equal(12u, MUIP_Panel_Run.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Panel_Run>(nameof(MUIP_Panel_Run.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Panel_Run.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Panel_Run).GetField(nameof(MUIP_Panel_Run.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Panel_Run>(nameof(MUIP_Panel_Run.app)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Panel_Run.app);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Panel_Run).GetField(nameof(MUIP_Panel_Run.app))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Panel_Run>(nameof(MUIP_Panel_Run.win)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Panel_Run.win);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Panel_Run).GetField(nameof(MUIP_Panel_Run.win))!.FieldType);
 	}
 
@@ -2663,13 +2196,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Filepanel_AddRow>());
 		Assert.Equal(12u, MUIP_Filepanel_AddRow.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Filepanel_AddRow>(nameof(MUIP_Filepanel_AddRow.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Filepanel_AddRow.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Filepanel_AddRow).GetField(nameof(MUIP_Filepanel_AddRow.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Filepanel_AddRow>(nameof(MUIP_Filepanel_AddRow.label)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Filepanel_AddRow.label);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Filepanel_AddRow).GetField(nameof(MUIP_Filepanel_AddRow.label))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Filepanel_AddRow>(nameof(MUIP_Filepanel_AddRow.contents)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Filepanel_AddRow.contents);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Filepanel_AddRow).GetField(nameof(MUIP_Filepanel_AddRow.contents))!.FieldType);
 	}
 
@@ -2679,10 +2209,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Process_Kill>());
 		Assert.Equal(8u, MUIP_Process_Kill.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Process_Kill>(nameof(MUIP_Process_Kill.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Process_Kill.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Process_Kill).GetField(nameof(MUIP_Process_Kill.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Process_Kill>(nameof(MUIP_Process_Kill.maxdelay)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Process_Kill.maxdelay);
 		Assert.Equal(typeof(int), typeof(MUIP_Process_Kill).GetField(nameof(MUIP_Process_Kill.maxdelay))!.FieldType);
 	}
 
@@ -2692,7 +2220,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Process_Launch>());
 		Assert.Equal(4u, MUIP_Process_Launch.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Process_Launch>(nameof(MUIP_Process_Launch.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Process_Launch.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Process_Launch).GetField(nameof(MUIP_Process_Launch.MethodID))!.FieldType);
 	}
 
@@ -2702,13 +2229,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Process_Process>());
 		Assert.Equal(12u, MUIP_Process_Process.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Process_Process>(nameof(MUIP_Process_Process.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Process_Process.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Process_Process).GetField(nameof(MUIP_Process_Process.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Process_Process>(nameof(MUIP_Process_Process.kill)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Process_Process.kill);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Process_Process).GetField(nameof(MUIP_Process_Process.kill))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Process_Process>(nameof(MUIP_Process_Process.proc)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Process_Process.proc);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Process_Process).GetField(nameof(MUIP_Process_Process.proc))!.FieldType);
 	}
 
@@ -2718,10 +2242,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Process_Signal>());
 		Assert.Equal(8u, MUIP_Process_Signal.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Process_Signal>(nameof(MUIP_Process_Signal.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Process_Signal.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Process_Signal).GetField(nameof(MUIP_Process_Signal.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Process_Signal>(nameof(MUIP_Process_Signal.sigs)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Process_Signal.sigs);
 		Assert.Equal(typeof(uint), typeof(MUIP_Process_Signal).GetField(nameof(MUIP_Process_Signal.sigs))!.FieldType);
 	}
 
@@ -2731,10 +2253,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Title_Close>());
 		Assert.Equal(8u, MUIP_Title_Close.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Title_Close>(nameof(MUIP_Title_Close.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Title_Close.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Title_Close).GetField(nameof(MUIP_Title_Close.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Title_Close>(nameof(MUIP_Title_Close.tito)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Title_Close.tito);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Title_Close).GetField(nameof(MUIP_Title_Close.tito))!.FieldType);
 	}
 
@@ -2744,10 +2264,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Title_FindPage>());
 		Assert.Equal(8u, MUIP_Title_FindPage.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Title_FindPage>(nameof(MUIP_Title_FindPage.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Title_FindPage.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Title_FindPage).GetField(nameof(MUIP_Title_FindPage.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Title_FindPage>(nameof(MUIP_Title_FindPage.titlebutton)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Title_FindPage.titlebutton);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Title_FindPage).GetField(nameof(MUIP_Title_FindPage.titlebutton))!.FieldType);
 	}
 
@@ -2757,7 +2275,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Title_New>());
 		Assert.Equal(4u, MUIP_Title_New.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Title_New>(nameof(MUIP_Title_New.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Title_New.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Title_New).GetField(nameof(MUIP_Title_New.MethodID))!.FieldType);
 	}
 
@@ -2767,10 +2284,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Switchpanel_Create>());
 		Assert.Equal(8u, MUIP_Switchpanel_Create.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Switchpanel_Create>(nameof(MUIP_Switchpanel_Create.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Switchpanel_Create.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Switchpanel_Create).GetField(nameof(MUIP_Switchpanel_Create.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Switchpanel_Create>(nameof(MUIP_Switchpanel_Create.switchitem)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Switchpanel_Create.switchitem);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Switchpanel_Create).GetField(nameof(MUIP_Switchpanel_Create.switchitem))!.FieldType);
 	}
 
@@ -2780,7 +2295,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Switchitem_Create>());
 		Assert.Equal(4u, MUIP_Switchitem_Create.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Switchitem_Create>(nameof(MUIP_Switchitem_Create.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Switchitem_Create.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Switchitem_Create).GetField(nameof(MUIP_Switchitem_Create.MethodID))!.FieldType);
 	}
 
@@ -2790,7 +2304,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Datamap_Clear>());
 		Assert.Equal(4u, MUIP_Datamap_Clear.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_Clear>(nameof(MUIP_Datamap_Clear.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_Clear.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_Clear).GetField(nameof(MUIP_Datamap_Clear.MethodID))!.FieldType);
 	}
 
@@ -2800,10 +2313,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Datamap_Find>());
 		Assert.Equal(8u, MUIP_Datamap_Find.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_Find>(nameof(MUIP_Datamap_Find.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_Find.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_Find).GetField(nameof(MUIP_Datamap_Find.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Datamap_Find>(nameof(MUIP_Datamap_Find.key)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Datamap_Find.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Find).GetField(nameof(MUIP_Datamap_Find.key))!.FieldType);
 	}
 
@@ -2813,13 +2324,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Datamap_Get>());
 		Assert.Equal(12u, MUIP_Datamap_Get.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_Get>(nameof(MUIP_Datamap_Get.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_Get.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_Get).GetField(nameof(MUIP_Datamap_Get.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Datamap_Get>(nameof(MUIP_Datamap_Get.key)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Datamap_Get.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Get).GetField(nameof(MUIP_Datamap_Get.key))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Datamap_Get>(nameof(MUIP_Datamap_Get.size)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Datamap_Get.size);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Get).GetField(nameof(MUIP_Datamap_Get.size))!.FieldType);
 	}
 
@@ -2829,10 +2337,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Datamap_Iterate>());
 		Assert.Equal(8u, MUIP_Datamap_Iterate.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_Iterate>(nameof(MUIP_Datamap_Iterate.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_Iterate.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_Iterate).GetField(nameof(MUIP_Datamap_Iterate.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Datamap_Iterate>(nameof(MUIP_Datamap_Iterate.counter)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Datamap_Iterate.counter);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Iterate).GetField(nameof(MUIP_Datamap_Iterate.counter))!.FieldType);
 	}
 
@@ -2842,10 +2348,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Datamap_IterationKey>());
 		Assert.Equal(8u, MUIP_Datamap_IterationKey.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_IterationKey>(nameof(MUIP_Datamap_IterationKey.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_IterationKey.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_IterationKey).GetField(nameof(MUIP_Datamap_IterationKey.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Datamap_IterationKey>(nameof(MUIP_Datamap_IterationKey.counter)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Datamap_IterationKey.counter);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_IterationKey).GetField(nameof(MUIP_Datamap_IterationKey.counter))!.FieldType);
 	}
 
@@ -2855,10 +2359,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Datamap_Remove>());
 		Assert.Equal(8u, MUIP_Datamap_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_Remove>(nameof(MUIP_Datamap_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_Remove).GetField(nameof(MUIP_Datamap_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Datamap_Remove>(nameof(MUIP_Datamap_Remove.key)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Datamap_Remove.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Remove).GetField(nameof(MUIP_Datamap_Remove.key))!.FieldType);
 	}
 
@@ -2868,16 +2370,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Datamap_Set>());
 		Assert.Equal(16u, MUIP_Datamap_Set.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Datamap_Set>(nameof(MUIP_Datamap_Set.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Datamap_Set.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Datamap_Set).GetField(nameof(MUIP_Datamap_Set.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Datamap_Set>(nameof(MUIP_Datamap_Set.data)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Datamap_Set.data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Set).GetField(nameof(MUIP_Datamap_Set.data))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Datamap_Set>(nameof(MUIP_Datamap_Set.len)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Datamap_Set.len);
 		Assert.Equal(typeof(int), typeof(MUIP_Datamap_Set).GetField(nameof(MUIP_Datamap_Set.len))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Datamap_Set>(nameof(MUIP_Datamap_Set.key)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Datamap_Set.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Datamap_Set).GetField(nameof(MUIP_Datamap_Set.key))!.FieldType);
 	}
 
@@ -2887,7 +2385,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Slave_Cleanup>());
 		Assert.Equal(4u, MUIP_Slave_Cleanup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Slave_Cleanup>(nameof(MUIP_Slave_Cleanup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Slave_Cleanup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_Cleanup).GetField(nameof(MUIP_Slave_Cleanup.MethodID))!.FieldType);
 	}
 
@@ -2897,13 +2394,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Slave_Dispatch>());
 		Assert.Equal(12u, MUIP_Slave_Dispatch.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Slave_Dispatch>(nameof(MUIP_Slave_Dispatch.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Slave_Dispatch.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_Dispatch).GetField(nameof(MUIP_Slave_Dispatch.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Slave_Dispatch>(nameof(MUIP_Slave_Dispatch.flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Slave_Dispatch.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_Dispatch).GetField(nameof(MUIP_Slave_Dispatch.flags))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Slave_Dispatch>(nameof(MUIP_Slave_Dispatch.count)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Slave_Dispatch.count);
 		Assert.Equal(typeof(int), typeof(MUIP_Slave_Dispatch).GetField(nameof(MUIP_Slave_Dispatch.count))!.FieldType);
 	}
 
@@ -2913,10 +2407,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Slave_Error>());
 		Assert.Equal(8u, MUIP_Slave_Error.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Slave_Error>(nameof(MUIP_Slave_Error.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Slave_Error.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_Error).GetField(nameof(MUIP_Slave_Error.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Slave_Error>(nameof(MUIP_Slave_Error.FailedDispatch)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Slave_Error.FailedDispatch);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Slave_Error).GetField(nameof(MUIP_Slave_Error.FailedDispatch))!.FieldType);
 	}
 
@@ -2926,7 +2418,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Slave_Setup>());
 		Assert.Equal(4u, MUIP_Slave_Setup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Slave_Setup>(nameof(MUIP_Slave_Setup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Slave_Setup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_Setup).GetField(nameof(MUIP_Slave_Setup.MethodID))!.FieldType);
 	}
 
@@ -2936,10 +2427,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Slave_SignalsReceived>());
 		Assert.Equal(8u, MUIP_Slave_SignalsReceived.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Slave_SignalsReceived>(nameof(MUIP_Slave_SignalsReceived.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Slave_SignalsReceived.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_SignalsReceived).GetField(nameof(MUIP_Slave_SignalsReceived.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Slave_SignalsReceived>(nameof(MUIP_Slave_SignalsReceived.sigmask)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Slave_SignalsReceived.sigmask);
 		Assert.Equal(typeof(uint), typeof(MUIP_Slave_SignalsReceived).GetField(nameof(MUIP_Slave_SignalsReceived.sigmask))!.FieldType);
 	}
 
@@ -2949,7 +2438,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Objectmap_Clear>());
 		Assert.Equal(4u, MUIP_Objectmap_Clear.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Objectmap_Clear>(nameof(MUIP_Objectmap_Clear.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Objectmap_Clear.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Objectmap_Clear).GetField(nameof(MUIP_Objectmap_Clear.MethodID))!.FieldType);
 	}
 
@@ -2959,10 +2447,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Objectmap_Find>());
 		Assert.Equal(8u, MUIP_Objectmap_Find.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Objectmap_Find>(nameof(MUIP_Objectmap_Find.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Objectmap_Find.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Objectmap_Find).GetField(nameof(MUIP_Objectmap_Find.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Objectmap_Find>(nameof(MUIP_Objectmap_Find.key)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Objectmap_Find.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Objectmap_Find).GetField(nameof(MUIP_Objectmap_Find.key))!.FieldType);
 	}
 
@@ -2972,10 +2458,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Objectmap_Iterate>());
 		Assert.Equal(8u, MUIP_Objectmap_Iterate.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Objectmap_Iterate>(nameof(MUIP_Objectmap_Iterate.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Objectmap_Iterate.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Objectmap_Iterate).GetField(nameof(MUIP_Objectmap_Iterate.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Objectmap_Iterate>(nameof(MUIP_Objectmap_Iterate.counter)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Objectmap_Iterate.counter);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Objectmap_Iterate).GetField(nameof(MUIP_Objectmap_Iterate.counter))!.FieldType);
 	}
 
@@ -2985,10 +2469,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Objectmap_IterationKey>());
 		Assert.Equal(8u, MUIP_Objectmap_IterationKey.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Objectmap_IterationKey>(nameof(MUIP_Objectmap_IterationKey.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Objectmap_IterationKey.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Objectmap_IterationKey).GetField(nameof(MUIP_Objectmap_IterationKey.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Objectmap_IterationKey>(nameof(MUIP_Objectmap_IterationKey.counter)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Objectmap_IterationKey.counter);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Objectmap_IterationKey).GetField(nameof(MUIP_Objectmap_IterationKey.counter))!.FieldType);
 	}
 
@@ -2998,10 +2480,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Objectmap_Remove>());
 		Assert.Equal(8u, MUIP_Objectmap_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Objectmap_Remove>(nameof(MUIP_Objectmap_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Objectmap_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Objectmap_Remove).GetField(nameof(MUIP_Objectmap_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Objectmap_Remove>(nameof(MUIP_Objectmap_Remove.key)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Objectmap_Remove.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Objectmap_Remove).GetField(nameof(MUIP_Objectmap_Remove.key))!.FieldType);
 	}
 
@@ -3011,13 +2491,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Objectmap_Set>());
 		Assert.Equal(12u, MUIP_Objectmap_Set.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Objectmap_Set>(nameof(MUIP_Objectmap_Set.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Objectmap_Set.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Objectmap_Set).GetField(nameof(MUIP_Objectmap_Set.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Objectmap_Set>(nameof(MUIP_Objectmap_Set.o)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Objectmap_Set.o);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Objectmap_Set).GetField(nameof(MUIP_Objectmap_Set.o))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Objectmap_Set>(nameof(MUIP_Objectmap_Set.key)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Objectmap_Set.key);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Objectmap_Set).GetField(nameof(MUIP_Objectmap_Set.key))!.FieldType);
 	}
 
@@ -3027,7 +2504,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_ExternalEdit>());
 		Assert.Equal(4u, MUIP_Textinput_ExternalEdit.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_ExternalEdit>(nameof(MUIP_Textinput_ExternalEdit.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_ExternalEdit.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_ExternalEdit).GetField(nameof(MUIP_Textinput_ExternalEdit.MethodID))!.FieldType);
 	}
 
@@ -3037,28 +2513,20 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(32, Marshal.SizeOf<MUIP_Textinputscroll_Inform>());
 		Assert.Equal(32u, MUIP_Textinputscroll_Inform.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinputscroll_Inform.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.xo)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinputscroll_Inform.xo);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.xo))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.yo)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinputscroll_Inform.yo);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.yo))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.xs)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Textinputscroll_Inform.xs);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.xs))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.ys)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Textinputscroll_Inform.ys);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.ys))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.xv)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Textinputscroll_Inform.xv);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.xv))!.FieldType);
 		Assert.Equal((nint)24, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.yv)));
-		Assert.Equal(24u, MUIMessageLayout.MUIP_Textinputscroll_Inform.yv);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.yv))!.FieldType);
 		Assert.Equal((nint)28, Marshal.OffsetOf<MUIP_Textinputscroll_Inform>(nameof(MUIP_Textinputscroll_Inform.noedit)));
-		Assert.Equal(28u, MUIMessageLayout.MUIP_Textinputscroll_Inform.noedit);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputscroll_Inform).GetField(nameof(MUIP_Textinputscroll_Inform.noedit))!.FieldType);
 	}
 
@@ -3068,10 +2536,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinputmcp_GrabCols>());
 		Assert.Equal(8u, MUIP_Textinputmcp_GrabCols.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinputmcp_GrabCols>(nameof(MUIP_Textinputmcp_GrabCols.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinputmcp_GrabCols.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_GrabCols).GetField(nameof(MUIP_Textinputmcp_GrabCols.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinputmcp_GrabCols>(nameof(MUIP_Textinputmcp_GrabCols.notall)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinputmcp_GrabCols.notall);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_GrabCols).GetField(nameof(MUIP_Textinputmcp_GrabCols.notall))!.FieldType);
 	}
 
@@ -3081,7 +2547,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_Blink>());
 		Assert.Equal(4u, MUIP_Textinput_Blink.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_Blink>(nameof(MUIP_Textinput_Blink.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_Blink.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_Blink).GetField(nameof(MUIP_Textinput_Blink.MethodID))!.FieldType);
 	}
 
@@ -3091,10 +2556,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinput_SaveToFile>());
 		Assert.Equal(8u, MUIP_Textinput_SaveToFile.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_SaveToFile>(nameof(MUIP_Textinput_SaveToFile.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_SaveToFile.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_SaveToFile).GetField(nameof(MUIP_Textinput_SaveToFile.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_SaveToFile>(nameof(MUIP_Textinput_SaveToFile.filename)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_SaveToFile.filename);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_SaveToFile).GetField(nameof(MUIP_Textinput_SaveToFile.filename))!.FieldType);
 	}
 
@@ -3104,10 +2567,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinput_LoadFromFile>());
 		Assert.Equal(8u, MUIP_Textinput_LoadFromFile.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_LoadFromFile>(nameof(MUIP_Textinput_LoadFromFile.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_LoadFromFile.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_LoadFromFile).GetField(nameof(MUIP_Textinput_LoadFromFile.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_LoadFromFile>(nameof(MUIP_Textinput_LoadFromFile.filename)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_LoadFromFile.filename);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_LoadFromFile).GetField(nameof(MUIP_Textinput_LoadFromFile.filename))!.FieldType);
 	}
 
@@ -3117,10 +2578,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinput_ExternalEditDone>());
 		Assert.Equal(8u, MUIP_Textinput_ExternalEditDone.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_ExternalEditDone>(nameof(MUIP_Textinput_ExternalEditDone.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_ExternalEditDone.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_ExternalEditDone).GetField(nameof(MUIP_Textinput_ExternalEditDone.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_ExternalEditDone>(nameof(MUIP_Textinput_ExternalEditDone.changed)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_ExternalEditDone.changed);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_ExternalEditDone).GetField(nameof(MUIP_Textinput_ExternalEditDone.changed))!.FieldType);
 	}
 
@@ -3130,7 +2589,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoRevert>());
 		Assert.Equal(4u, MUIP_Textinput_DoRevert.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoRevert>(nameof(MUIP_Textinput_DoRevert.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoRevert.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoRevert).GetField(nameof(MUIP_Textinput_DoRevert.MethodID))!.FieldType);
 	}
 
@@ -3140,7 +2598,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoDelLine>());
 		Assert.Equal(4u, MUIP_Textinput_DoDelLine.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoDelLine>(nameof(MUIP_Textinput_DoDelLine.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoDelLine.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoDelLine).GetField(nameof(MUIP_Textinput_DoDelLine.MethodID))!.FieldType);
 	}
 
@@ -3150,7 +2607,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoCutLine>());
 		Assert.Equal(4u, MUIP_Textinput_DoCutLine.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoCutLine>(nameof(MUIP_Textinput_DoCutLine.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoCutLine.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoCutLine).GetField(nameof(MUIP_Textinput_DoCutLine.MethodID))!.FieldType);
 	}
 
@@ -3160,7 +2616,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoMarkStart>());
 		Assert.Equal(4u, MUIP_Textinput_DoMarkStart.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoMarkStart>(nameof(MUIP_Textinput_DoMarkStart.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoMarkStart.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoMarkStart).GetField(nameof(MUIP_Textinput_DoMarkStart.MethodID))!.FieldType);
 	}
 
@@ -3170,7 +2625,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoMarkAll>());
 		Assert.Equal(4u, MUIP_Textinput_DoMarkAll.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoMarkAll>(nameof(MUIP_Textinput_DoMarkAll.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoMarkAll.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoMarkAll).GetField(nameof(MUIP_Textinput_DoMarkAll.MethodID))!.FieldType);
 	}
 
@@ -3180,7 +2634,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoCut>());
 		Assert.Equal(4u, MUIP_Textinput_DoCut.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoCut>(nameof(MUIP_Textinput_DoCut.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoCut.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoCut).GetField(nameof(MUIP_Textinput_DoCut.MethodID))!.FieldType);
 	}
 
@@ -3190,7 +2643,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoCopyCut>());
 		Assert.Equal(4u, MUIP_Textinput_DoCopyCut.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoCopyCut>(nameof(MUIP_Textinput_DoCopyCut.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoCopyCut.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoCopyCut).GetField(nameof(MUIP_Textinput_DoCopyCut.MethodID))!.FieldType);
 	}
 
@@ -3200,7 +2652,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoCopy>());
 		Assert.Equal(4u, MUIP_Textinput_DoCopy.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoCopy>(nameof(MUIP_Textinput_DoCopy.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoCopy.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoCopy).GetField(nameof(MUIP_Textinput_DoCopy.MethodID))!.FieldType);
 	}
 
@@ -3210,7 +2661,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoPaste>());
 		Assert.Equal(4u, MUIP_Textinput_DoPaste.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoPaste>(nameof(MUIP_Textinput_DoPaste.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoPaste.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoPaste).GetField(nameof(MUIP_Textinput_DoPaste.MethodID))!.FieldType);
 	}
 
@@ -3220,13 +2670,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Textinput_AppendText>());
 		Assert.Equal(12u, MUIP_Textinput_AppendText.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_AppendText>(nameof(MUIP_Textinput_AppendText.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_AppendText.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_AppendText).GetField(nameof(MUIP_Textinput_AppendText.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_AppendText>(nameof(MUIP_Textinput_AppendText.text)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_AppendText.text);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_AppendText).GetField(nameof(MUIP_Textinput_AppendText.text))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinput_AppendText>(nameof(MUIP_Textinput_AppendText.len)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinput_AppendText.len);
 		Assert.Equal(typeof(int), typeof(MUIP_Textinput_AppendText).GetField(nameof(MUIP_Textinput_AppendText.len))!.FieldType);
 	}
 
@@ -3236,10 +2683,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinputmcp_LAct>());
 		Assert.Equal(8u, MUIP_Textinputmcp_LAct.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinputmcp_LAct>(nameof(MUIP_Textinputmcp_LAct.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinputmcp_LAct.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_LAct).GetField(nameof(MUIP_Textinputmcp_LAct.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinputmcp_LAct>(nameof(MUIP_Textinputmcp_LAct.which)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinputmcp_LAct.which);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_LAct).GetField(nameof(MUIP_Textinputmcp_LAct.which))!.FieldType);
 	}
 
@@ -3249,7 +2694,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinputmcp_LCopy>());
 		Assert.Equal(4u, MUIP_Textinputmcp_LCopy.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinputmcp_LCopy>(nameof(MUIP_Textinputmcp_LCopy.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinputmcp_LCopy.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_LCopy).GetField(nameof(MUIP_Textinputmcp_LCopy.MethodID))!.FieldType);
 	}
 
@@ -3259,7 +2703,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinputmcp_LAdd>());
 		Assert.Equal(4u, MUIP_Textinputmcp_LAdd.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinputmcp_LAdd>(nameof(MUIP_Textinputmcp_LAdd.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinputmcp_LAdd.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_LAdd).GetField(nameof(MUIP_Textinputmcp_LAdd.MethodID))!.FieldType);
 	}
 
@@ -3269,7 +2712,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoToggleWordwrap>());
 		Assert.Equal(4u, MUIP_Textinput_DoToggleWordwrap.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoToggleWordwrap>(nameof(MUIP_Textinput_DoToggleWordwrap.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoToggleWordwrap.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoToggleWordwrap).GetField(nameof(MUIP_Textinput_DoToggleWordwrap.MethodID))!.FieldType);
 	}
 
@@ -3279,10 +2721,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinput_Acknowledge>());
 		Assert.Equal(8u, MUIP_Textinput_Acknowledge.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_Acknowledge>(nameof(MUIP_Textinput_Acknowledge.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_Acknowledge.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_Acknowledge).GetField(nameof(MUIP_Textinput_Acknowledge.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_Acknowledge>(nameof(MUIP_Textinput_Acknowledge.contents)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_Acknowledge.contents);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_Acknowledge).GetField(nameof(MUIP_Textinput_Acknowledge.contents))!.FieldType);
 	}
 
@@ -3292,16 +2732,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Textinput_TranslateEvent>());
 		Assert.Equal(16u, MUIP_Textinput_TranslateEvent.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_TranslateEvent>(nameof(MUIP_Textinput_TranslateEvent.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_TranslateEvent.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_TranslateEvent).GetField(nameof(MUIP_Textinput_TranslateEvent.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_TranslateEvent>(nameof(MUIP_Textinput_TranslateEvent.ie)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_TranslateEvent.ie);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_TranslateEvent).GetField(nameof(MUIP_Textinput_TranslateEvent.ie))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinput_TranslateEvent>(nameof(MUIP_Textinput_TranslateEvent.mappedstring)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinput_TranslateEvent.mappedstring);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_TranslateEvent).GetField(nameof(MUIP_Textinput_TranslateEvent.mappedstring))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Textinput_TranslateEvent>(nameof(MUIP_Textinput_TranslateEvent.mappedlen)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Textinput_TranslateEvent.mappedlen);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_TranslateEvent).GetField(nameof(MUIP_Textinput_TranslateEvent.mappedlen))!.FieldType);
 	}
 
@@ -3311,13 +2747,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Textinput_InsertText>());
 		Assert.Equal(12u, MUIP_Textinput_InsertText.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_InsertText>(nameof(MUIP_Textinput_InsertText.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_InsertText.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_InsertText).GetField(nameof(MUIP_Textinput_InsertText.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_InsertText>(nameof(MUIP_Textinput_InsertText.text)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_InsertText.text);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_InsertText).GetField(nameof(MUIP_Textinput_InsertText.text))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinput_InsertText>(nameof(MUIP_Textinput_InsertText.len)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinput_InsertText.len);
 		Assert.Equal(typeof(int), typeof(MUIP_Textinput_InsertText).GetField(nameof(MUIP_Textinput_InsertText.len))!.FieldType);
 	}
 
@@ -3327,7 +2760,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoLeft>());
 		Assert.Equal(4u, MUIP_Textinput_DoLeft.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoLeft>(nameof(MUIP_Textinput_DoLeft.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoLeft.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoLeft).GetField(nameof(MUIP_Textinput_DoLeft.MethodID))!.FieldType);
 	}
 
@@ -3337,7 +2769,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoRight>());
 		Assert.Equal(4u, MUIP_Textinput_DoRight.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoRight>(nameof(MUIP_Textinput_DoRight.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoRight.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoRight).GetField(nameof(MUIP_Textinput_DoRight.MethodID))!.FieldType);
 	}
 
@@ -3347,7 +2778,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoUp>());
 		Assert.Equal(4u, MUIP_Textinput_DoUp.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoUp>(nameof(MUIP_Textinput_DoUp.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoUp.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoUp).GetField(nameof(MUIP_Textinput_DoUp.MethodID))!.FieldType);
 	}
 
@@ -3357,7 +2787,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoDown>());
 		Assert.Equal(4u, MUIP_Textinput_DoDown.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoDown>(nameof(MUIP_Textinput_DoDown.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoDown.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoDown).GetField(nameof(MUIP_Textinput_DoDown.MethodID))!.FieldType);
 	}
 
@@ -3367,7 +2796,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoLineStart>());
 		Assert.Equal(4u, MUIP_Textinput_DoLineStart.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoLineStart>(nameof(MUIP_Textinput_DoLineStart.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoLineStart.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoLineStart).GetField(nameof(MUIP_Textinput_DoLineStart.MethodID))!.FieldType);
 	}
 
@@ -3377,7 +2805,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoLineEnd>());
 		Assert.Equal(4u, MUIP_Textinput_DoLineEnd.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoLineEnd>(nameof(MUIP_Textinput_DoLineEnd.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoLineEnd.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoLineEnd).GetField(nameof(MUIP_Textinput_DoLineEnd.MethodID))!.FieldType);
 	}
 
@@ -3387,7 +2814,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoTop>());
 		Assert.Equal(4u, MUIP_Textinput_DoTop.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoTop>(nameof(MUIP_Textinput_DoTop.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoTop.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoTop).GetField(nameof(MUIP_Textinput_DoTop.MethodID))!.FieldType);
 	}
 
@@ -3397,7 +2823,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoBottom>());
 		Assert.Equal(4u, MUIP_Textinput_DoBottom.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoBottom>(nameof(MUIP_Textinput_DoBottom.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoBottom.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoBottom).GetField(nameof(MUIP_Textinput_DoBottom.MethodID))!.FieldType);
 	}
 
@@ -3407,7 +2832,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoPageUp>());
 		Assert.Equal(4u, MUIP_Textinput_DoPageUp.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoPageUp>(nameof(MUIP_Textinput_DoPageUp.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoPageUp.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoPageUp).GetField(nameof(MUIP_Textinput_DoPageUp.MethodID))!.FieldType);
 	}
 
@@ -3417,7 +2841,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoPageDown>());
 		Assert.Equal(4u, MUIP_Textinput_DoPageDown.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoPageDown>(nameof(MUIP_Textinput_DoPageDown.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoPageDown.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoPageDown).GetField(nameof(MUIP_Textinput_DoPageDown.MethodID))!.FieldType);
 	}
 
@@ -3427,7 +2850,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoPopup>());
 		Assert.Equal(4u, MUIP_Textinput_DoPopup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoPopup>(nameof(MUIP_Textinput_DoPopup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoPopup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoPopup).GetField(nameof(MUIP_Textinput_DoPopup.MethodID))!.FieldType);
 	}
 
@@ -3437,7 +2859,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoPrevWord>());
 		Assert.Equal(4u, MUIP_Textinput_DoPrevWord.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoPrevWord>(nameof(MUIP_Textinput_DoPrevWord.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoPrevWord.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoPrevWord).GetField(nameof(MUIP_Textinput_DoPrevWord.MethodID))!.FieldType);
 	}
 
@@ -3447,7 +2868,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoNextWord>());
 		Assert.Equal(4u, MUIP_Textinput_DoNextWord.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoNextWord>(nameof(MUIP_Textinput_DoNextWord.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoNextWord.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoNextWord).GetField(nameof(MUIP_Textinput_DoNextWord.MethodID))!.FieldType);
 	}
 
@@ -3457,7 +2877,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoDel>());
 		Assert.Equal(4u, MUIP_Textinput_DoDel.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoDel>(nameof(MUIP_Textinput_DoDel.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoDel.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoDel).GetField(nameof(MUIP_Textinput_DoDel.MethodID))!.FieldType);
 	}
 
@@ -3467,7 +2886,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoDelEOL>());
 		Assert.Equal(4u, MUIP_Textinput_DoDelEOL.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoDelEOL>(nameof(MUIP_Textinput_DoDelEOL.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoDelEOL.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoDelEOL).GetField(nameof(MUIP_Textinput_DoDelEOL.MethodID))!.FieldType);
 	}
 
@@ -3477,7 +2895,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoBS>());
 		Assert.Equal(4u, MUIP_Textinput_DoBS.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoBS>(nameof(MUIP_Textinput_DoBS.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoBS.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoBS).GetField(nameof(MUIP_Textinput_DoBS.MethodID))!.FieldType);
 	}
 
@@ -3487,7 +2904,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoBSSOL>());
 		Assert.Equal(4u, MUIP_Textinput_DoBSSOL.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoBSSOL>(nameof(MUIP_Textinput_DoBSSOL.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoBSSOL.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoBSSOL).GetField(nameof(MUIP_Textinput_DoBSSOL.MethodID))!.FieldType);
 	}
 
@@ -3497,16 +2913,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Textinput_DoubleClick>());
 		Assert.Equal(16u, MUIP_Textinput_DoubleClick.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoubleClick>(nameof(MUIP_Textinput_DoubleClick.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoubleClick.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoubleClick).GetField(nameof(MUIP_Textinput_DoubleClick.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_DoubleClick>(nameof(MUIP_Textinput_DoubleClick.xp)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_DoubleClick.xp);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoubleClick).GetField(nameof(MUIP_Textinput_DoubleClick.xp))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinput_DoubleClick>(nameof(MUIP_Textinput_DoubleClick.yp)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinput_DoubleClick.yp);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoubleClick).GetField(nameof(MUIP_Textinput_DoubleClick.yp))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Textinput_DoubleClick>(nameof(MUIP_Textinput_DoubleClick.cnt)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Textinput_DoubleClick.cnt);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoubleClick).GetField(nameof(MUIP_Textinput_DoubleClick.cnt))!.FieldType);
 	}
 
@@ -3516,7 +2928,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoDelWord>());
 		Assert.Equal(4u, MUIP_Textinput_DoDelWord.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoDelWord>(nameof(MUIP_Textinput_DoDelWord.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoDelWord.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoDelWord).GetField(nameof(MUIP_Textinput_DoDelWord.MethodID))!.FieldType);
 	}
 
@@ -3526,7 +2937,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoBSWord>());
 		Assert.Equal(4u, MUIP_Textinput_DoBSWord.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoBSWord>(nameof(MUIP_Textinput_DoBSWord.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoBSWord.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoBSWord).GetField(nameof(MUIP_Textinput_DoBSWord.MethodID))!.FieldType);
 	}
 
@@ -3536,7 +2946,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoInsertFile>());
 		Assert.Equal(4u, MUIP_Textinput_DoInsertFile.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoInsertFile>(nameof(MUIP_Textinput_DoInsertFile.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoInsertFile.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoInsertFile).GetField(nameof(MUIP_Textinput_DoInsertFile.MethodID))!.FieldType);
 	}
 
@@ -3546,10 +2955,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinput_InsertFromFile>());
 		Assert.Equal(8u, MUIP_Textinput_InsertFromFile.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_InsertFromFile>(nameof(MUIP_Textinput_InsertFromFile.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_InsertFromFile.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_InsertFromFile).GetField(nameof(MUIP_Textinput_InsertFromFile.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_InsertFromFile>(nameof(MUIP_Textinput_InsertFromFile.filename)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_InsertFromFile.filename);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_InsertFromFile).GetField(nameof(MUIP_Textinput_InsertFromFile.filename))!.FieldType);
 	}
 
@@ -3559,13 +2966,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Textinput_HandleChar>());
 		Assert.Equal(12u, MUIP_Textinput_HandleChar.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_HandleChar>(nameof(MUIP_Textinput_HandleChar.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_HandleChar.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_HandleChar).GetField(nameof(MUIP_Textinput_HandleChar.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_HandleChar>(nameof(MUIP_Textinput_HandleChar.ch)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_HandleChar.ch);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_HandleChar).GetField(nameof(MUIP_Textinput_HandleChar.ch))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinput_HandleChar>(nameof(MUIP_Textinput_HandleChar.quiet)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinput_HandleChar.quiet);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_HandleChar).GetField(nameof(MUIP_Textinput_HandleChar.quiet))!.FieldType);
 	}
 
@@ -3575,10 +2979,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Textinput_HandleURL>());
 		Assert.Equal(8u, MUIP_Textinput_HandleURL.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_HandleURL>(nameof(MUIP_Textinput_HandleURL.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_HandleURL.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_HandleURL).GetField(nameof(MUIP_Textinput_HandleURL.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_HandleURL>(nameof(MUIP_Textinput_HandleURL.url)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_HandleURL.url);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_HandleURL).GetField(nameof(MUIP_Textinput_HandleURL.url))!.FieldType);
 	}
 
@@ -3588,7 +2990,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_HandleRexxSignal>());
 		Assert.Equal(4u, MUIP_Textinput_HandleRexxSignal.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_HandleRexxSignal>(nameof(MUIP_Textinput_HandleRexxSignal.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_HandleRexxSignal.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_HandleRexxSignal).GetField(nameof(MUIP_Textinput_HandleRexxSignal.MethodID))!.FieldType);
 	}
 
@@ -3598,16 +2999,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Textinput_HandleMisspell>());
 		Assert.Equal(16u, MUIP_Textinput_HandleMisspell.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_HandleMisspell>(nameof(MUIP_Textinput_HandleMisspell.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_HandleMisspell.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_HandleMisspell).GetField(nameof(MUIP_Textinput_HandleMisspell.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Textinput_HandleMisspell>(nameof(MUIP_Textinput_HandleMisspell.word)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Textinput_HandleMisspell.word);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_HandleMisspell).GetField(nameof(MUIP_Textinput_HandleMisspell.word))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Textinput_HandleMisspell>(nameof(MUIP_Textinput_HandleMisspell.pos)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Textinput_HandleMisspell.pos);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_HandleMisspell).GetField(nameof(MUIP_Textinput_HandleMisspell.pos))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Textinput_HandleMisspell>(nameof(MUIP_Textinput_HandleMisspell.correction)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Textinput_HandleMisspell.correction);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Textinput_HandleMisspell).GetField(nameof(MUIP_Textinput_HandleMisspell.correction))!.FieldType);
 	}
 
@@ -3617,7 +3014,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoToggleCase>());
 		Assert.Equal(4u, MUIP_Textinput_DoToggleCase.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoToggleCase>(nameof(MUIP_Textinput_DoToggleCase.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoToggleCase.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoToggleCase).GetField(nameof(MUIP_Textinput_DoToggleCase.MethodID))!.FieldType);
 	}
 
@@ -3627,7 +3023,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoToggleCaseEOW>());
 		Assert.Equal(4u, MUIP_Textinput_DoToggleCaseEOW.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoToggleCaseEOW>(nameof(MUIP_Textinput_DoToggleCaseEOW.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoToggleCaseEOW.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoToggleCaseEOW).GetField(nameof(MUIP_Textinput_DoToggleCaseEOW.MethodID))!.FieldType);
 	}
 
@@ -3637,7 +3032,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoIncrementDec>());
 		Assert.Equal(4u, MUIP_Textinput_DoIncrementDec.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoIncrementDec>(nameof(MUIP_Textinput_DoIncrementDec.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoIncrementDec.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoIncrementDec).GetField(nameof(MUIP_Textinput_DoIncrementDec.MethodID))!.FieldType);
 	}
 
@@ -3647,7 +3041,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoDecrementDec>());
 		Assert.Equal(4u, MUIP_Textinput_DoDecrementDec.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoDecrementDec>(nameof(MUIP_Textinput_DoDecrementDec.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoDecrementDec.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoDecrementDec).GetField(nameof(MUIP_Textinput_DoDecrementDec.MethodID))!.FieldType);
 	}
 
@@ -3657,7 +3050,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinputmcp_DefaultKeys>());
 		Assert.Equal(4u, MUIP_Textinputmcp_DefaultKeys.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinputmcp_DefaultKeys>(nameof(MUIP_Textinputmcp_DefaultKeys.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinputmcp_DefaultKeys.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinputmcp_DefaultKeys).GetField(nameof(MUIP_Textinputmcp_DefaultKeys.MethodID))!.FieldType);
 	}
 
@@ -3667,7 +3059,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoUndo>());
 		Assert.Equal(4u, MUIP_Textinput_DoUndo.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoUndo>(nameof(MUIP_Textinput_DoUndo.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoUndo.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoUndo).GetField(nameof(MUIP_Textinput_DoUndo.MethodID))!.FieldType);
 	}
 
@@ -3677,7 +3068,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoRedo>());
 		Assert.Equal(4u, MUIP_Textinput_DoRedo.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoRedo>(nameof(MUIP_Textinput_DoRedo.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoRedo.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoRedo).GetField(nameof(MUIP_Textinput_DoRedo.MethodID))!.FieldType);
 	}
 
@@ -3687,7 +3077,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoTab>());
 		Assert.Equal(4u, MUIP_Textinput_DoTab.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoTab>(nameof(MUIP_Textinput_DoTab.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoTab.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoTab).GetField(nameof(MUIP_Textinput_DoTab.MethodID))!.FieldType);
 	}
 
@@ -3697,7 +3086,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoNextGadget>());
 		Assert.Equal(4u, MUIP_Textinput_DoNextGadget.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoNextGadget>(nameof(MUIP_Textinput_DoNextGadget.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoNextGadget.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoNextGadget).GetField(nameof(MUIP_Textinput_DoNextGadget.MethodID))!.FieldType);
 	}
 
@@ -3707,7 +3095,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoSetBookmark1>());
 		Assert.Equal(4u, MUIP_Textinput_DoSetBookmark1.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoSetBookmark1>(nameof(MUIP_Textinput_DoSetBookmark1.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoSetBookmark1.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoSetBookmark1).GetField(nameof(MUIP_Textinput_DoSetBookmark1.MethodID))!.FieldType);
 	}
 
@@ -3717,7 +3104,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoSetBookmark2>());
 		Assert.Equal(4u, MUIP_Textinput_DoSetBookmark2.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoSetBookmark2>(nameof(MUIP_Textinput_DoSetBookmark2.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoSetBookmark2.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoSetBookmark2).GetField(nameof(MUIP_Textinput_DoSetBookmark2.MethodID))!.FieldType);
 	}
 
@@ -3727,7 +3113,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoSetBookmark3>());
 		Assert.Equal(4u, MUIP_Textinput_DoSetBookmark3.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoSetBookmark3>(nameof(MUIP_Textinput_DoSetBookmark3.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoSetBookmark3.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoSetBookmark3).GetField(nameof(MUIP_Textinput_DoSetBookmark3.MethodID))!.FieldType);
 	}
 
@@ -3737,7 +3122,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoGotoBookmark1>());
 		Assert.Equal(4u, MUIP_Textinput_DoGotoBookmark1.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoGotoBookmark1>(nameof(MUIP_Textinput_DoGotoBookmark1.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoGotoBookmark1.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoGotoBookmark1).GetField(nameof(MUIP_Textinput_DoGotoBookmark1.MethodID))!.FieldType);
 	}
 
@@ -3747,7 +3131,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoGotoBookmark2>());
 		Assert.Equal(4u, MUIP_Textinput_DoGotoBookmark2.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoGotoBookmark2>(nameof(MUIP_Textinput_DoGotoBookmark2.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoGotoBookmark2.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoGotoBookmark2).GetField(nameof(MUIP_Textinput_DoGotoBookmark2.MethodID))!.FieldType);
 	}
 
@@ -3757,7 +3140,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Textinput_DoGotoBookmark3>());
 		Assert.Equal(4u, MUIP_Textinput_DoGotoBookmark3.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Textinput_DoGotoBookmark3>(nameof(MUIP_Textinput_DoGotoBookmark3.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Textinput_DoGotoBookmark3.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Textinput_DoGotoBookmark3).GetField(nameof(MUIP_Textinput_DoGotoBookmark3.MethodID))!.FieldType);
 	}
 
@@ -3767,7 +3149,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Busy_Move>());
 		Assert.Equal(4u, MUIP_Busy_Move.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Busy_Move>(nameof(MUIP_Busy_Move.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Busy_Move.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Busy_Move).GetField(nameof(MUIP_Busy_Move.MethodID))!.FieldType);
 	}
 
@@ -3777,7 +3158,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Calendar_ReadSystemDate>());
 		Assert.Equal(4u, MUIP_Calendar_ReadSystemDate.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Calendar_ReadSystemDate>(nameof(MUIP_Calendar_ReadSystemDate.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Calendar_ReadSystemDate.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_ReadSystemDate).GetField(nameof(MUIP_Calendar_ReadSystemDate.MethodID))!.FieldType);
 	}
 
@@ -3787,13 +3167,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Calendar_GetDaysInMonth>());
 		Assert.Equal(12u, MUIP_Calendar_GetDaysInMonth.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Calendar_GetDaysInMonth>(nameof(MUIP_Calendar_GetDaysInMonth.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Calendar_GetDaysInMonth.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_GetDaysInMonth).GetField(nameof(MUIP_Calendar_GetDaysInMonth.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Calendar_GetDaysInMonth>(nameof(MUIP_Calendar_GetDaysInMonth.Month)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Calendar_GetDaysInMonth.Month);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_GetDaysInMonth).GetField(nameof(MUIP_Calendar_GetDaysInMonth.Month))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Calendar_GetDaysInMonth>(nameof(MUIP_Calendar_GetDaysInMonth.Year)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Calendar_GetDaysInMonth.Year);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_GetDaysInMonth).GetField(nameof(MUIP_Calendar_GetDaysInMonth.Year))!.FieldType);
 	}
 
@@ -3803,16 +3180,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Calendar_Notification>());
 		Assert.Equal(16u, MUIP_Calendar_Notification.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Calendar_Notification>(nameof(MUIP_Calendar_Notification.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Calendar_Notification.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_Notification).GetField(nameof(MUIP_Calendar_Notification.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Calendar_Notification>(nameof(MUIP_Calendar_Notification.NotificationMode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Calendar_Notification.NotificationMode);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_Notification).GetField(nameof(MUIP_Calendar_Notification.NotificationMode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Calendar_Notification>(nameof(MUIP_Calendar_Notification.CalendarDate)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Calendar_Notification.CalendarDate);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Calendar_Notification).GetField(nameof(MUIP_Calendar_Notification.CalendarDate))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Calendar_Notification>(nameof(MUIP_Calendar_Notification.EventID)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Calendar_Notification.EventID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calendar_Notification).GetField(nameof(MUIP_Calendar_Notification.EventID))!.FieldType);
 	}
 
@@ -3822,19 +3195,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Calltips_SetRectangle>());
 		Assert.Equal(20u, MUIP_Calltips_SetRectangle.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Calltips_SetRectangle>(nameof(MUIP_Calltips_SetRectangle.id)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Calltips_SetRectangle.id);
 		Assert.Equal(typeof(uint), typeof(MUIP_Calltips_SetRectangle).GetField(nameof(MUIP_Calltips_SetRectangle.id))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Calltips_SetRectangle>(nameof(MUIP_Calltips_SetRectangle.MinX)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Calltips_SetRectangle.MinX);
 		Assert.Equal(typeof(int), typeof(MUIP_Calltips_SetRectangle).GetField(nameof(MUIP_Calltips_SetRectangle.MinX))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Calltips_SetRectangle>(nameof(MUIP_Calltips_SetRectangle.MinY)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Calltips_SetRectangle.MinY);
 		Assert.Equal(typeof(int), typeof(MUIP_Calltips_SetRectangle).GetField(nameof(MUIP_Calltips_SetRectangle.MinY))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Calltips_SetRectangle>(nameof(MUIP_Calltips_SetRectangle.MaxX)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Calltips_SetRectangle.MaxX);
 		Assert.Equal(typeof(int), typeof(MUIP_Calltips_SetRectangle).GetField(nameof(MUIP_Calltips_SetRectangle.MaxX))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Calltips_SetRectangle>(nameof(MUIP_Calltips_SetRectangle.MaxY)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Calltips_SetRectangle.MaxY);
 		Assert.Equal(typeof(int), typeof(MUIP_Calltips_SetRectangle).GetField(nameof(MUIP_Calltips_SetRectangle.MaxY))!.FieldType);
 	}
 
@@ -3844,10 +3212,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Chart_ClearGroup>());
 		Assert.Equal(8u, MUIP_Chart_ClearGroup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_ClearGroup>(nameof(MUIP_Chart_ClearGroup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_ClearGroup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_ClearGroup).GetField(nameof(MUIP_Chart_ClearGroup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_ClearGroup>(nameof(MUIP_Chart_ClearGroup.GroupNumber)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_ClearGroup.GroupNumber);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_ClearGroup).GetField(nameof(MUIP_Chart_ClearGroup.GroupNumber))!.FieldType);
 	}
 
@@ -3857,16 +3223,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Chart_GetGroup>());
 		Assert.Equal(16u, MUIP_Chart_GetGroup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_GetGroup>(nameof(MUIP_Chart_GetGroup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_GetGroup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_GetGroup).GetField(nameof(MUIP_Chart_GetGroup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_GetGroup>(nameof(MUIP_Chart_GetGroup.GroupNumber)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_GetGroup.GroupNumber);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_GetGroup).GetField(nameof(MUIP_Chart_GetGroup.GroupNumber))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Chart_GetGroup>(nameof(MUIP_Chart_GetGroup.Label)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Chart_GetGroup.Label);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_GetGroup).GetField(nameof(MUIP_Chart_GetGroup.Label))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Chart_GetGroup>(nameof(MUIP_Chart_GetGroup.Values)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Chart_GetGroup.Values);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_GetGroup).GetField(nameof(MUIP_Chart_GetGroup.Values))!.FieldType);
 	}
 
@@ -3876,16 +3238,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Chart_InsertGroup>());
 		Assert.Equal(16u, MUIP_Chart_InsertGroup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_InsertGroup>(nameof(MUIP_Chart_InsertGroup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_InsertGroup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_InsertGroup).GetField(nameof(MUIP_Chart_InsertGroup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_InsertGroup>(nameof(MUIP_Chart_InsertGroup.GroupNumber)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_InsertGroup.GroupNumber);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_InsertGroup).GetField(nameof(MUIP_Chart_InsertGroup.GroupNumber))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Chart_InsertGroup>(nameof(MUIP_Chart_InsertGroup.Label)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Chart_InsertGroup.Label);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_InsertGroup).GetField(nameof(MUIP_Chart_InsertGroup.Label))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Chart_InsertGroup>(nameof(MUIP_Chart_InsertGroup.Values)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Chart_InsertGroup.Values);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_InsertGroup).GetField(nameof(MUIP_Chart_InsertGroup.Values))!.FieldType);
 	}
 
@@ -3895,13 +3253,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Chart_GetMinMax>());
 		Assert.Equal(12u, MUIP_Chart_GetMinMax.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_GetMinMax>(nameof(MUIP_Chart_GetMinMax.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_GetMinMax.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_GetMinMax).GetField(nameof(MUIP_Chart_GetMinMax.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_GetMinMax>(nameof(MUIP_Chart_GetMinMax.MinimumValue)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_GetMinMax.MinimumValue);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_GetMinMax).GetField(nameof(MUIP_Chart_GetMinMax.MinimumValue))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Chart_GetMinMax>(nameof(MUIP_Chart_GetMinMax.MaximumValue)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Chart_GetMinMax.MaximumValue);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_GetMinMax).GetField(nameof(MUIP_Chart_GetMinMax.MaximumValue))!.FieldType);
 	}
 
@@ -3911,10 +3266,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Chart_RemoveGroup>());
 		Assert.Equal(8u, MUIP_Chart_RemoveGroup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_RemoveGroup>(nameof(MUIP_Chart_RemoveGroup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_RemoveGroup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_RemoveGroup).GetField(nameof(MUIP_Chart_RemoveGroup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_RemoveGroup>(nameof(MUIP_Chart_RemoveGroup.GroupNumber)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_RemoveGroup.GroupNumber);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_RemoveGroup).GetField(nameof(MUIP_Chart_RemoveGroup.GroupNumber))!.FieldType);
 	}
 
@@ -3924,19 +3277,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Chart_ReplaceInGroup>());
 		Assert.Equal(20u, MUIP_Chart_ReplaceInGroup.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_ReplaceInGroup>(nameof(MUIP_Chart_ReplaceInGroup.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_ReplaceInGroup.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_ReplaceInGroup).GetField(nameof(MUIP_Chart_ReplaceInGroup.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_ReplaceInGroup>(nameof(MUIP_Chart_ReplaceInGroup.GroupNumber)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_ReplaceInGroup.GroupNumber);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_ReplaceInGroup).GetField(nameof(MUIP_Chart_ReplaceInGroup.GroupNumber))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Chart_ReplaceInGroup>(nameof(MUIP_Chart_ReplaceInGroup.Index)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Chart_ReplaceInGroup.Index);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_ReplaceInGroup).GetField(nameof(MUIP_Chart_ReplaceInGroup.Index))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Chart_ReplaceInGroup>(nameof(MUIP_Chart_ReplaceInGroup.Count)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Chart_ReplaceInGroup.Count);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_ReplaceInGroup).GetField(nameof(MUIP_Chart_ReplaceInGroup.Count))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Chart_ReplaceInGroup>(nameof(MUIP_Chart_ReplaceInGroup.NewValue)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Chart_ReplaceInGroup.NewValue);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_ReplaceInGroup).GetField(nameof(MUIP_Chart_ReplaceInGroup.NewValue))!.FieldType);
 	}
 
@@ -3946,10 +3294,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Chart_SetMax>());
 		Assert.Equal(8u, MUIP_Chart_SetMax.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Chart_SetMax>(nameof(MUIP_Chart_SetMax.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Chart_SetMax.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Chart_SetMax).GetField(nameof(MUIP_Chart_SetMax.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Chart_SetMax>(nameof(MUIP_Chart_SetMax.MaximumValue)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Chart_SetMax.MaximumValue);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Chart_SetMax).GetField(nameof(MUIP_Chart_SetMax.MaximumValue))!.FieldType);
 	}
 
@@ -3959,16 +3305,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Clock_OffsetFromTime>());
 		Assert.Equal(16u, MUIP_Clock_OffsetFromTime.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Clock_OffsetFromTime>(nameof(MUIP_Clock_OffsetFromTime.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Clock_OffsetFromTime.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Clock_OffsetFromTime).GetField(nameof(MUIP_Clock_OffsetFromTime.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Clock_OffsetFromTime>(nameof(MUIP_Clock_OffsetFromTime.hour)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Clock_OffsetFromTime.hour);
 		Assert.Equal(typeof(int), typeof(MUIP_Clock_OffsetFromTime).GetField(nameof(MUIP_Clock_OffsetFromTime.hour))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Clock_OffsetFromTime>(nameof(MUIP_Clock_OffsetFromTime.min)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Clock_OffsetFromTime.min);
 		Assert.Equal(typeof(int), typeof(MUIP_Clock_OffsetFromTime).GetField(nameof(MUIP_Clock_OffsetFromTime.min))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Clock_OffsetFromTime>(nameof(MUIP_Clock_OffsetFromTime.sec)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Clock_OffsetFromTime.sec);
 		Assert.Equal(typeof(int), typeof(MUIP_Clock_OffsetFromTime).GetField(nameof(MUIP_Clock_OffsetFromTime.sec))!.FieldType);
 	}
 
@@ -3978,10 +3320,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Cpumonitor_Clone>());
 		Assert.Equal(8u, MUIP_Cpumonitor_Clone.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Cpumonitor_Clone>(nameof(MUIP_Cpumonitor_Clone.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Cpumonitor_Clone.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Cpumonitor_Clone).GetField(nameof(MUIP_Cpumonitor_Clone.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Cpumonitor_Clone>(nameof(MUIP_Cpumonitor_Clone.target)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Cpumonitor_Clone.target);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Cpumonitor_Clone).GetField(nameof(MUIP_Cpumonitor_Clone.target))!.FieldType);
 	}
 
@@ -3991,13 +3331,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Graph_AddEntry>());
 		Assert.Equal(12u, MUIP_Graph_AddEntry.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Graph_AddEntry>(nameof(MUIP_Graph_AddEntry.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Graph_AddEntry.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Graph_AddEntry).GetField(nameof(MUIP_Graph_AddEntry.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Graph_AddEntry>(nameof(MUIP_Graph_AddEntry.value)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Graph_AddEntry.value);
 		Assert.Equal(typeof(uint), typeof(MUIP_Graph_AddEntry).GetField(nameof(MUIP_Graph_AddEntry.value))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Graph_AddEntry>(nameof(MUIP_Graph_AddEntry.value_back)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Graph_AddEntry.value_back);
 		Assert.Equal(typeof(uint), typeof(MUIP_Graph_AddEntry).GetField(nameof(MUIP_Graph_AddEntry.value_back))!.FieldType);
 	}
 
@@ -4007,7 +3344,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Graph_Reset>());
 		Assert.Equal(4u, MUIP_Graph_Reset.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Graph_Reset>(nameof(MUIP_Graph_Reset.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Graph_Reset.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Graph_Reset).GetField(nameof(MUIP_Graph_Reset.methodid))!.FieldType);
 	}
 
@@ -4017,10 +3353,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Graph_Clone>());
 		Assert.Equal(8u, MUIP_Graph_Clone.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Graph_Clone>(nameof(MUIP_Graph_Clone.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Graph_Clone.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Graph_Clone).GetField(nameof(MUIP_Graph_Clone.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Graph_Clone>(nameof(MUIP_Graph_Clone.target)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Graph_Clone.target);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Graph_Clone).GetField(nameof(MUIP_Graph_Clone.target))!.FieldType);
 	}
 
@@ -4030,16 +3364,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Hex_Read>());
 		Assert.Equal(16u, MUIP_Hex_Read.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_Read>(nameof(MUIP_Hex_Read.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_Read.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Read).GetField(nameof(MUIP_Hex_Read.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_Read>(nameof(MUIP_Hex_Read.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_Read.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Read).GetField(nameof(MUIP_Hex_Read.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_Read>(nameof(MUIP_Hex_Read.Output)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_Read.Output);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Read).GetField(nameof(MUIP_Hex_Read.Output))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_Read>(nameof(MUIP_Hex_Read.Size)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_Read.Size);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Read).GetField(nameof(MUIP_Hex_Read.Size))!.FieldType);
 	}
 
@@ -4049,16 +3379,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Hex_Write>());
 		Assert.Equal(16u, MUIP_Hex_Write.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_Write>(nameof(MUIP_Hex_Write.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_Write.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Write).GetField(nameof(MUIP_Hex_Write.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_Write>(nameof(MUIP_Hex_Write.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_Write.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Write).GetField(nameof(MUIP_Hex_Write.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_Write>(nameof(MUIP_Hex_Write.ModifiedBytes)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_Write.ModifiedBytes);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Write).GetField(nameof(MUIP_Hex_Write.ModifiedBytes))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_Write>(nameof(MUIP_Hex_Write.Count)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_Write.Count);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Write).GetField(nameof(MUIP_Hex_Write.Count))!.FieldType);
 	}
 
@@ -4068,10 +3394,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_Load>());
 		Assert.Equal(8u, MUIP_Hex_Load.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_Load>(nameof(MUIP_Hex_Load.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_Load.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Load).GetField(nameof(MUIP_Hex_Load.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_Load>(nameof(MUIP_Hex_Load.file)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_Load.file);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Load).GetField(nameof(MUIP_Hex_Load.file))!.FieldType);
 	}
 
@@ -4081,16 +3405,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Hex_LoadMemory>());
 		Assert.Equal(16u, MUIP_Hex_LoadMemory.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_LoadMemory>(nameof(MUIP_Hex_LoadMemory.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_LoadMemory.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_LoadMemory).GetField(nameof(MUIP_Hex_LoadMemory.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_LoadMemory>(nameof(MUIP_Hex_LoadMemory.Memory)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_LoadMemory.Memory);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_LoadMemory).GetField(nameof(MUIP_Hex_LoadMemory.Memory))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_LoadMemory>(nameof(MUIP_Hex_LoadMemory.Length)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_LoadMemory.Length);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_LoadMemory).GetField(nameof(MUIP_Hex_LoadMemory.Length))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_LoadMemory>(nameof(MUIP_Hex_LoadMemory.Copy)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_LoadMemory.Copy);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_LoadMemory).GetField(nameof(MUIP_Hex_LoadMemory.Copy))!.FieldType);
 	}
 
@@ -4100,13 +3420,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_LoadAbstract>());
 		Assert.Equal(12u, MUIP_Hex_LoadAbstract.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_LoadAbstract>(nameof(MUIP_Hex_LoadAbstract.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_LoadAbstract.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_LoadAbstract).GetField(nameof(MUIP_Hex_LoadAbstract.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_LoadAbstract>(nameof(MUIP_Hex_LoadAbstract.Length)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_LoadAbstract.Length);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_LoadAbstract).GetField(nameof(MUIP_Hex_LoadAbstract.Length))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_LoadAbstract>(nameof(MUIP_Hex_LoadAbstract.DisplayOffset)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_LoadAbstract.DisplayOffset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_LoadAbstract).GetField(nameof(MUIP_Hex_LoadAbstract.DisplayOffset))!.FieldType);
 	}
 
@@ -4116,13 +3433,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_AbstractDataChanged>());
 		Assert.Equal(12u, MUIP_Hex_AbstractDataChanged.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_AbstractDataChanged>(nameof(MUIP_Hex_AbstractDataChanged.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_AbstractDataChanged.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_AbstractDataChanged).GetField(nameof(MUIP_Hex_AbstractDataChanged.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_AbstractDataChanged>(nameof(MUIP_Hex_AbstractDataChanged.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_AbstractDataChanged.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_AbstractDataChanged).GetField(nameof(MUIP_Hex_AbstractDataChanged.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_AbstractDataChanged>(nameof(MUIP_Hex_AbstractDataChanged.Length)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_AbstractDataChanged.Length);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_AbstractDataChanged).GetField(nameof(MUIP_Hex_AbstractDataChanged.Length))!.FieldType);
 	}
 
@@ -4132,19 +3446,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Hex_AddAnnotation>());
 		Assert.Equal(20u, MUIP_Hex_AddAnnotation.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_AddAnnotation>(nameof(MUIP_Hex_AddAnnotation.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_AddAnnotation.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_AddAnnotation).GetField(nameof(MUIP_Hex_AddAnnotation.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_AddAnnotation>(nameof(MUIP_Hex_AddAnnotation.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_AddAnnotation.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_AddAnnotation).GetField(nameof(MUIP_Hex_AddAnnotation.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_AddAnnotation>(nameof(MUIP_Hex_AddAnnotation.EndOffset)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_AddAnnotation.EndOffset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_AddAnnotation).GetField(nameof(MUIP_Hex_AddAnnotation.EndOffset))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_AddAnnotation>(nameof(MUIP_Hex_AddAnnotation.xRGB)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_AddAnnotation.xRGB);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_AddAnnotation).GetField(nameof(MUIP_Hex_AddAnnotation.xRGB))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Hex_AddAnnotation>(nameof(MUIP_Hex_AddAnnotation.UniqueID)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Hex_AddAnnotation.UniqueID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_AddAnnotation).GetField(nameof(MUIP_Hex_AddAnnotation.UniqueID))!.FieldType);
 	}
 
@@ -4154,10 +3463,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_RemoveAnnotation>());
 		Assert.Equal(8u, MUIP_Hex_RemoveAnnotation.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_RemoveAnnotation>(nameof(MUIP_Hex_RemoveAnnotation.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_RemoveAnnotation.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_RemoveAnnotation).GetField(nameof(MUIP_Hex_RemoveAnnotation.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_RemoveAnnotation>(nameof(MUIP_Hex_RemoveAnnotation.UniqueID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_RemoveAnnotation.UniqueID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_RemoveAnnotation).GetField(nameof(MUIP_Hex_RemoveAnnotation.UniqueID))!.FieldType);
 	}
 
@@ -4167,10 +3474,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_GetMessageForAnnotation>());
 		Assert.Equal(8u, MUIP_Hex_GetMessageForAnnotation.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_GetMessageForAnnotation>(nameof(MUIP_Hex_GetMessageForAnnotation.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_GetMessageForAnnotation.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetMessageForAnnotation).GetField(nameof(MUIP_Hex_GetMessageForAnnotation.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_GetMessageForAnnotation>(nameof(MUIP_Hex_GetMessageForAnnotation.UniqueID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_GetMessageForAnnotation.UniqueID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetMessageForAnnotation).GetField(nameof(MUIP_Hex_GetMessageForAnnotation.UniqueID))!.FieldType);
 	}
 
@@ -4180,10 +3485,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_ShowAnnotation>());
 		Assert.Equal(8u, MUIP_Hex_ShowAnnotation.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_ShowAnnotation>(nameof(MUIP_Hex_ShowAnnotation.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_ShowAnnotation.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ShowAnnotation).GetField(nameof(MUIP_Hex_ShowAnnotation.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_ShowAnnotation>(nameof(MUIP_Hex_ShowAnnotation.UniqueID)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_ShowAnnotation.UniqueID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ShowAnnotation).GetField(nameof(MUIP_Hex_ShowAnnotation.UniqueID))!.FieldType);
 	}
 
@@ -4193,13 +3496,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_GetMarked>());
 		Assert.Equal(12u, MUIP_Hex_GetMarked.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_GetMarked>(nameof(MUIP_Hex_GetMarked.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_GetMarked.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetMarked).GetField(nameof(MUIP_Hex_GetMarked.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_GetMarked>(nameof(MUIP_Hex_GetMarked.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_GetMarked.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetMarked).GetField(nameof(MUIP_Hex_GetMarked.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_GetMarked>(nameof(MUIP_Hex_GetMarked.EndOffset)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_GetMarked.EndOffset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetMarked).GetField(nameof(MUIP_Hex_GetMarked.EndOffset))!.FieldType);
 	}
 
@@ -4209,16 +3509,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Hex_SetMarked>());
 		Assert.Equal(16u, MUIP_Hex_SetMarked.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_SetMarked>(nameof(MUIP_Hex_SetMarked.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_SetMarked.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_SetMarked).GetField(nameof(MUIP_Hex_SetMarked.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_SetMarked>(nameof(MUIP_Hex_SetMarked.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_SetMarked.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_SetMarked).GetField(nameof(MUIP_Hex_SetMarked.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_SetMarked>(nameof(MUIP_Hex_SetMarked.EndOffset)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_SetMarked.EndOffset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_SetMarked).GetField(nameof(MUIP_Hex_SetMarked.EndOffset))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_SetMarked>(nameof(MUIP_Hex_SetMarked.SuppressNotification)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_SetMarked.SuppressNotification);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_SetMarked).GetField(nameof(MUIP_Hex_SetMarked.SuppressNotification))!.FieldType);
 	}
 
@@ -4228,13 +3524,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_GetCursor>());
 		Assert.Equal(12u, MUIP_Hex_GetCursor.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_GetCursor>(nameof(MUIP_Hex_GetCursor.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_GetCursor.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetCursor).GetField(nameof(MUIP_Hex_GetCursor.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_GetCursor>(nameof(MUIP_Hex_GetCursor.CursorPosition)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_GetCursor.CursorPosition);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetCursor).GetField(nameof(MUIP_Hex_GetCursor.CursorPosition))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_GetCursor>(nameof(MUIP_Hex_GetCursor.BytesAtCursor)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_GetCursor.BytesAtCursor);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetCursor).GetField(nameof(MUIP_Hex_GetCursor.BytesAtCursor))!.FieldType);
 	}
 
@@ -4244,13 +3537,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_SetCursor>());
 		Assert.Equal(12u, MUIP_Hex_SetCursor.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_SetCursor>(nameof(MUIP_Hex_SetCursor.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_SetCursor.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_SetCursor).GetField(nameof(MUIP_Hex_SetCursor.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_SetCursor>(nameof(MUIP_Hex_SetCursor.CursorPosition)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_SetCursor.CursorPosition);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_SetCursor).GetField(nameof(MUIP_Hex_SetCursor.CursorPosition))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_SetCursor>(nameof(MUIP_Hex_SetCursor.SuppressNotification)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_SetCursor.SuppressNotification);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_SetCursor).GetField(nameof(MUIP_Hex_SetCursor.SuppressNotification))!.FieldType);
 	}
 
@@ -4260,13 +3550,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_GetCursorBytes>());
 		Assert.Equal(12u, MUIP_Hex_GetCursorBytes.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_GetCursorBytes>(nameof(MUIP_Hex_GetCursorBytes.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_GetCursorBytes.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetCursorBytes).GetField(nameof(MUIP_Hex_GetCursorBytes.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_GetCursorBytes>(nameof(MUIP_Hex_GetCursorBytes.BytesAtCursor)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_GetCursorBytes.BytesAtCursor);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetCursorBytes).GetField(nameof(MUIP_Hex_GetCursorBytes.BytesAtCursor))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_GetCursorBytes>(nameof(MUIP_Hex_GetCursorBytes.ByteCount)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_GetCursorBytes.ByteCount);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetCursorBytes).GetField(nameof(MUIP_Hex_GetCursorBytes.ByteCount))!.FieldType);
 	}
 
@@ -4276,10 +3563,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_GetLength>());
 		Assert.Equal(8u, MUIP_Hex_GetLength.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_GetLength>(nameof(MUIP_Hex_GetLength.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_GetLength.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetLength).GetField(nameof(MUIP_Hex_GetLength.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_GetLength>(nameof(MUIP_Hex_GetLength.Length)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_GetLength.Length);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetLength).GetField(nameof(MUIP_Hex_GetLength.Length))!.FieldType);
 	}
 
@@ -4289,16 +3574,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Hex_HitTest>());
 		Assert.Equal(16u, MUIP_Hex_HitTest.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_HitTest>(nameof(MUIP_Hex_HitTest.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_HitTest.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_HitTest).GetField(nameof(MUIP_Hex_HitTest.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_HitTest>(nameof(MUIP_Hex_HitTest.X)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_HitTest.X);
 		Assert.Equal(typeof(int), typeof(MUIP_Hex_HitTest).GetField(nameof(MUIP_Hex_HitTest.X))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_HitTest>(nameof(MUIP_Hex_HitTest.Y)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_HitTest.Y);
 		Assert.Equal(typeof(int), typeof(MUIP_Hex_HitTest).GetField(nameof(MUIP_Hex_HitTest.Y))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_HitTest>(nameof(MUIP_Hex_HitTest.Offset)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_HitTest.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_HitTest).GetField(nameof(MUIP_Hex_HitTest.Offset))!.FieldType);
 	}
 
@@ -4308,13 +3589,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_SetVisibleOffset>());
 		Assert.Equal(12u, MUIP_Hex_SetVisibleOffset.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_SetVisibleOffset>(nameof(MUIP_Hex_SetVisibleOffset.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_SetVisibleOffset.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_SetVisibleOffset).GetField(nameof(MUIP_Hex_SetVisibleOffset.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_SetVisibleOffset>(nameof(MUIP_Hex_SetVisibleOffset.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_SetVisibleOffset.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_SetVisibleOffset).GetField(nameof(MUIP_Hex_SetVisibleOffset.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_SetVisibleOffset>(nameof(MUIP_Hex_SetVisibleOffset.SuppressNotification)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_SetVisibleOffset.SuppressNotification);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_SetVisibleOffset).GetField(nameof(MUIP_Hex_SetVisibleOffset.SuppressNotification))!.FieldType);
 	}
 
@@ -4324,10 +3602,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_GetVisibleOffset>());
 		Assert.Equal(8u, MUIP_Hex_GetVisibleOffset.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_GetVisibleOffset>(nameof(MUIP_Hex_GetVisibleOffset.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_GetVisibleOffset.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_GetVisibleOffset).GetField(nameof(MUIP_Hex_GetVisibleOffset.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_GetVisibleOffset>(nameof(MUIP_Hex_GetVisibleOffset.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_GetVisibleOffset.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_GetVisibleOffset).GetField(nameof(MUIP_Hex_GetVisibleOffset.Offset))!.FieldType);
 	}
 
@@ -4337,19 +3613,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(20, Marshal.SizeOf<MUIP_Hex_ReadData>());
 		Assert.Equal(20u, MUIP_Hex_ReadData.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_ReadData>(nameof(MUIP_Hex_ReadData.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_ReadData.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadData).GetField(nameof(MUIP_Hex_ReadData.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_ReadData>(nameof(MUIP_Hex_ReadData.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_ReadData.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_ReadData).GetField(nameof(MUIP_Hex_ReadData.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_ReadData>(nameof(MUIP_Hex_ReadData.Output)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_ReadData.Output);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_ReadData).GetField(nameof(MUIP_Hex_ReadData.Output))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_ReadData>(nameof(MUIP_Hex_ReadData.Size)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_ReadData.Size);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadData).GetField(nameof(MUIP_Hex_ReadData.Size))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Hex_ReadData>(nameof(MUIP_Hex_ReadData.ReplyMethodID)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Hex_ReadData.ReplyMethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadData).GetField(nameof(MUIP_Hex_ReadData.ReplyMethodID))!.FieldType);
 	}
 
@@ -4359,13 +3630,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hex_ReadDataCompleted>());
 		Assert.Equal(12u, MUIP_Hex_ReadDataCompleted.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_ReadDataCompleted>(nameof(MUIP_Hex_ReadDataCompleted.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_ReadDataCompleted.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadDataCompleted).GetField(nameof(MUIP_Hex_ReadDataCompleted.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_ReadDataCompleted>(nameof(MUIP_Hex_ReadDataCompleted.Size)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_ReadDataCompleted.Size);
 		Assert.Equal(typeof(int), typeof(MUIP_Hex_ReadDataCompleted).GetField(nameof(MUIP_Hex_ReadDataCompleted.Size))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_ReadDataCompleted>(nameof(MUIP_Hex_ReadDataCompleted.ReplyMethodID)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_ReadDataCompleted.ReplyMethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadDataCompleted).GetField(nameof(MUIP_Hex_ReadDataCompleted.ReplyMethodID))!.FieldType);
 	}
 
@@ -4375,10 +3643,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hex_ReadDataReply>());
 		Assert.Equal(8u, MUIP_Hex_ReadDataReply.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_ReadDataReply>(nameof(MUIP_Hex_ReadDataReply.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_ReadDataReply.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadDataReply).GetField(nameof(MUIP_Hex_ReadDataReply.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_ReadDataReply>(nameof(MUIP_Hex_ReadDataReply.Size)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_ReadDataReply.Size);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_ReadDataReply).GetField(nameof(MUIP_Hex_ReadDataReply.Size))!.FieldType);
 	}
 
@@ -4388,16 +3654,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Hex_Edit>());
 		Assert.Equal(16u, MUIP_Hex_Edit.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hex_Edit>(nameof(MUIP_Hex_Edit.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hex_Edit.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Edit).GetField(nameof(MUIP_Hex_Edit.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hex_Edit>(nameof(MUIP_Hex_Edit.Offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hex_Edit.Offset);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Edit).GetField(nameof(MUIP_Hex_Edit.Offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hex_Edit>(nameof(MUIP_Hex_Edit.Data)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hex_Edit.Data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hex_Edit).GetField(nameof(MUIP_Hex_Edit.Data))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Hex_Edit>(nameof(MUIP_Hex_Edit.Size)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Hex_Edit.Size);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hex_Edit).GetField(nameof(MUIP_Hex_Edit.Size))!.FieldType);
 	}
 
@@ -4407,7 +3669,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Hyperlink_Follow>());
 		Assert.Equal(4u, MUIP_Hyperlink_Follow.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hyperlink_Follow>(nameof(MUIP_Hyperlink_Follow.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hyperlink_Follow.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hyperlink_Follow).GetField(nameof(MUIP_Hyperlink_Follow.MethodID))!.FieldType);
 	}
 
@@ -4417,10 +3678,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Hyperlink_Copy>());
 		Assert.Equal(8u, MUIP_Hyperlink_Copy.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hyperlink_Copy>(nameof(MUIP_Hyperlink_Copy.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hyperlink_Copy.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hyperlink_Copy).GetField(nameof(MUIP_Hyperlink_Copy.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hyperlink_Copy>(nameof(MUIP_Hyperlink_Copy.CliboardUnit)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hyperlink_Copy.CliboardUnit);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hyperlink_Copy).GetField(nameof(MUIP_Hyperlink_Copy.CliboardUnit))!.FieldType);
 	}
 
@@ -4430,13 +3689,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hyperlink_Encode>());
 		Assert.Equal(12u, MUIP_Hyperlink_Encode.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hyperlink_Encode>(nameof(MUIP_Hyperlink_Encode.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hyperlink_Encode.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hyperlink_Encode).GetField(nameof(MUIP_Hyperlink_Encode.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hyperlink_Encode>(nameof(MUIP_Hyperlink_Encode.InputString)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hyperlink_Encode.InputString);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hyperlink_Encode).GetField(nameof(MUIP_Hyperlink_Encode.InputString))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hyperlink_Encode>(nameof(MUIP_Hyperlink_Encode.OutputBuffer)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hyperlink_Encode.OutputBuffer);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hyperlink_Encode).GetField(nameof(MUIP_Hyperlink_Encode.OutputBuffer))!.FieldType);
 	}
 
@@ -4446,13 +3702,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Hyperlink_Decode>());
 		Assert.Equal(12u, MUIP_Hyperlink_Decode.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Hyperlink_Decode>(nameof(MUIP_Hyperlink_Decode.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Hyperlink_Decode.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Hyperlink_Decode).GetField(nameof(MUIP_Hyperlink_Decode.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Hyperlink_Decode>(nameof(MUIP_Hyperlink_Decode.InputString)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Hyperlink_Decode.InputString);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hyperlink_Decode).GetField(nameof(MUIP_Hyperlink_Decode.InputString))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Hyperlink_Decode>(nameof(MUIP_Hyperlink_Decode.OutputBuffer)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Hyperlink_Decode.OutputBuffer);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Hyperlink_Decode).GetField(nameof(MUIP_Hyperlink_Decode.OutputBuffer))!.FieldType);
 	}
 
@@ -4462,16 +3715,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Lamp_SetRGB>());
 		Assert.Equal(16u, MUIP_Lamp_SetRGB.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Lamp_SetRGB>(nameof(MUIP_Lamp_SetRGB.mid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Lamp_SetRGB.mid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Lamp_SetRGB).GetField(nameof(MUIP_Lamp_SetRGB.mid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Lamp_SetRGB>(nameof(MUIP_Lamp_SetRGB.red)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Lamp_SetRGB.red);
 		Assert.Equal(typeof(uint), typeof(MUIP_Lamp_SetRGB).GetField(nameof(MUIP_Lamp_SetRGB.red))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Lamp_SetRGB>(nameof(MUIP_Lamp_SetRGB.green)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Lamp_SetRGB.green);
 		Assert.Equal(typeof(uint), typeof(MUIP_Lamp_SetRGB).GetField(nameof(MUIP_Lamp_SetRGB.green))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Lamp_SetRGB>(nameof(MUIP_Lamp_SetRGB.blue)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Lamp_SetRGB.blue);
 		Assert.Equal(typeof(uint), typeof(MUIP_Lamp_SetRGB).GetField(nameof(MUIP_Lamp_SetRGB.blue))!.FieldType);
 	}
 
@@ -4481,16 +3730,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_Close>());
 		Assert.Equal(16u, MUIP_Listtree_Close.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Close>(nameof(MUIP_Listtree_Close.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Close.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Close).GetField(nameof(MUIP_Listtree_Close.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Close>(nameof(MUIP_Listtree_Close.ListNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Close.ListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Close).GetField(nameof(MUIP_Listtree_Close.ListNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Close>(nameof(MUIP_Listtree_Close.TreeNode)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Close.TreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Close).GetField(nameof(MUIP_Listtree_Close.TreeNode))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Close>(nameof(MUIP_Listtree_Close.Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Close.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Close).GetField(nameof(MUIP_Listtree_Close.Flags))!.FieldType);
 	}
 
@@ -4500,22 +3745,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(24, Marshal.SizeOf<MUIP_Listtree_Exchange>());
 		Assert.Equal(24u, MUIP_Listtree_Exchange.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Exchange>(nameof(MUIP_Listtree_Exchange.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Exchange.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Exchange).GetField(nameof(MUIP_Listtree_Exchange.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Exchange>(nameof(MUIP_Listtree_Exchange.ListNode1)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Exchange.ListNode1);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Exchange).GetField(nameof(MUIP_Listtree_Exchange.ListNode1))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Exchange>(nameof(MUIP_Listtree_Exchange.TreeNode1)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Exchange.TreeNode1);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Exchange).GetField(nameof(MUIP_Listtree_Exchange.TreeNode1))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Exchange>(nameof(MUIP_Listtree_Exchange.ListNode2)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Exchange.ListNode2);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Exchange).GetField(nameof(MUIP_Listtree_Exchange.ListNode2))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Listtree_Exchange>(nameof(MUIP_Listtree_Exchange.TreeNode2)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Listtree_Exchange.TreeNode2);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Exchange).GetField(nameof(MUIP_Listtree_Exchange.TreeNode2))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Listtree_Exchange>(nameof(MUIP_Listtree_Exchange.Flags)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Listtree_Exchange.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Exchange).GetField(nameof(MUIP_Listtree_Exchange.Flags))!.FieldType);
 	}
 
@@ -4525,16 +3764,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_FindName>());
 		Assert.Equal(16u, MUIP_Listtree_FindName.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_FindName>(nameof(MUIP_Listtree_FindName.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_FindName.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_FindName).GetField(nameof(MUIP_Listtree_FindName.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_FindName>(nameof(MUIP_Listtree_FindName.ListNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_FindName.ListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_FindName).GetField(nameof(MUIP_Listtree_FindName.ListNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_FindName>(nameof(MUIP_Listtree_FindName.Name)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_FindName.Name);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_FindName).GetField(nameof(MUIP_Listtree_FindName.Name))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_FindName>(nameof(MUIP_Listtree_FindName.Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_FindName.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_FindName).GetField(nameof(MUIP_Listtree_FindName.Flags))!.FieldType);
 	}
 
@@ -4544,16 +3779,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_GetEntry>());
 		Assert.Equal(16u, MUIP_Listtree_GetEntry.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_GetEntry>(nameof(MUIP_Listtree_GetEntry.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_GetEntry.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_GetEntry).GetField(nameof(MUIP_Listtree_GetEntry.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_GetEntry>(nameof(MUIP_Listtree_GetEntry.Node)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_GetEntry.Node);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_GetEntry).GetField(nameof(MUIP_Listtree_GetEntry.Node))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_GetEntry>(nameof(MUIP_Listtree_GetEntry.Position)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_GetEntry.Position);
 		Assert.Equal(typeof(int), typeof(MUIP_Listtree_GetEntry).GetField(nameof(MUIP_Listtree_GetEntry.Position))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_GetEntry>(nameof(MUIP_Listtree_GetEntry.Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_GetEntry.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_GetEntry).GetField(nameof(MUIP_Listtree_GetEntry.Flags))!.FieldType);
 	}
 
@@ -4563,13 +3794,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Listtree_GetNr>());
 		Assert.Equal(12u, MUIP_Listtree_GetNr.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_GetNr>(nameof(MUIP_Listtree_GetNr.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_GetNr.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_GetNr).GetField(nameof(MUIP_Listtree_GetNr.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_GetNr>(nameof(MUIP_Listtree_GetNr.TreeNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_GetNr.TreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_GetNr).GetField(nameof(MUIP_Listtree_GetNr.TreeNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_GetNr>(nameof(MUIP_Listtree_GetNr.Flags)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_GetNr.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_GetNr).GetField(nameof(MUIP_Listtree_GetNr.Flags))!.FieldType);
 	}
 
@@ -4579,22 +3807,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(24, Marshal.SizeOf<MUIP_Listtree_Insert>());
 		Assert.Equal(24u, MUIP_Listtree_Insert.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Insert>(nameof(MUIP_Listtree_Insert.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Insert.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Insert).GetField(nameof(MUIP_Listtree_Insert.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Insert>(nameof(MUIP_Listtree_Insert.Name)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Insert.Name);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Insert).GetField(nameof(MUIP_Listtree_Insert.Name))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Insert>(nameof(MUIP_Listtree_Insert.User)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Insert.User);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Insert).GetField(nameof(MUIP_Listtree_Insert.User))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Insert>(nameof(MUIP_Listtree_Insert.ListNode)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Insert.ListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Insert).GetField(nameof(MUIP_Listtree_Insert.ListNode))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Listtree_Insert>(nameof(MUIP_Listtree_Insert.PrevNode)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Listtree_Insert.PrevNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Insert).GetField(nameof(MUIP_Listtree_Insert.PrevNode))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Listtree_Insert>(nameof(MUIP_Listtree_Insert.Flags)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Listtree_Insert.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Insert).GetField(nameof(MUIP_Listtree_Insert.Flags))!.FieldType);
 	}
 
@@ -4604,22 +3826,16 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(24, Marshal.SizeOf<MUIP_Listtree_Move>());
 		Assert.Equal(24u, MUIP_Listtree_Move.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Move>(nameof(MUIP_Listtree_Move.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Move.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Move).GetField(nameof(MUIP_Listtree_Move.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Move>(nameof(MUIP_Listtree_Move.OldListNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Move.OldListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Move).GetField(nameof(MUIP_Listtree_Move.OldListNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Move>(nameof(MUIP_Listtree_Move.OldTreeNode)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Move.OldTreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Move).GetField(nameof(MUIP_Listtree_Move.OldTreeNode))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Move>(nameof(MUIP_Listtree_Move.NewListNode)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Move.NewListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Move).GetField(nameof(MUIP_Listtree_Move.NewListNode))!.FieldType);
 		Assert.Equal((nint)16, Marshal.OffsetOf<MUIP_Listtree_Move>(nameof(MUIP_Listtree_Move.NewTreeNode)));
-		Assert.Equal(16u, MUIMessageLayout.MUIP_Listtree_Move.NewTreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Move).GetField(nameof(MUIP_Listtree_Move.NewTreeNode))!.FieldType);
 		Assert.Equal((nint)20, Marshal.OffsetOf<MUIP_Listtree_Move>(nameof(MUIP_Listtree_Move.Flags)));
-		Assert.Equal(20u, MUIMessageLayout.MUIP_Listtree_Move.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Move).GetField(nameof(MUIP_Listtree_Move.Flags))!.FieldType);
 	}
 
@@ -4629,16 +3845,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_Open>());
 		Assert.Equal(16u, MUIP_Listtree_Open.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Open>(nameof(MUIP_Listtree_Open.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Open.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Open).GetField(nameof(MUIP_Listtree_Open.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Open>(nameof(MUIP_Listtree_Open.ListNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Open.ListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Open).GetField(nameof(MUIP_Listtree_Open.ListNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Open>(nameof(MUIP_Listtree_Open.TreeNode)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Open.TreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Open).GetField(nameof(MUIP_Listtree_Open.TreeNode))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Open>(nameof(MUIP_Listtree_Open.Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Open.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Open).GetField(nameof(MUIP_Listtree_Open.Flags))!.FieldType);
 	}
 
@@ -4648,16 +3860,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_Remove>());
 		Assert.Equal(16u, MUIP_Listtree_Remove.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Remove>(nameof(MUIP_Listtree_Remove.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Remove.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Remove).GetField(nameof(MUIP_Listtree_Remove.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Remove>(nameof(MUIP_Listtree_Remove.ListNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Remove.ListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Remove).GetField(nameof(MUIP_Listtree_Remove.ListNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Remove>(nameof(MUIP_Listtree_Remove.TreeNode)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Remove.TreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Remove).GetField(nameof(MUIP_Listtree_Remove.TreeNode))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Remove>(nameof(MUIP_Listtree_Remove.Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Remove.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Remove).GetField(nameof(MUIP_Listtree_Remove.Flags))!.FieldType);
 	}
 
@@ -4667,16 +3875,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_Rename>());
 		Assert.Equal(16u, MUIP_Listtree_Rename.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Rename>(nameof(MUIP_Listtree_Rename.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Rename.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Rename).GetField(nameof(MUIP_Listtree_Rename.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Rename>(nameof(MUIP_Listtree_Rename.TreeNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Rename.TreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Rename).GetField(nameof(MUIP_Listtree_Rename.TreeNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Rename>(nameof(MUIP_Listtree_Rename.NewName)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Rename.NewName);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Rename).GetField(nameof(MUIP_Listtree_Rename.NewName))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_Rename>(nameof(MUIP_Listtree_Rename.Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_Rename.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Rename).GetField(nameof(MUIP_Listtree_Rename.Flags))!.FieldType);
 	}
 
@@ -4686,13 +3890,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Listtree_SetDropMark>());
 		Assert.Equal(12u, MUIP_Listtree_SetDropMark.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_SetDropMark>(nameof(MUIP_Listtree_SetDropMark.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_SetDropMark.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_SetDropMark).GetField(nameof(MUIP_Listtree_SetDropMark.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_SetDropMark>(nameof(MUIP_Listtree_SetDropMark.Entry)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_SetDropMark.Entry);
 		Assert.Equal(typeof(int), typeof(MUIP_Listtree_SetDropMark).GetField(nameof(MUIP_Listtree_SetDropMark.Entry))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_SetDropMark>(nameof(MUIP_Listtree_SetDropMark.Values)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_SetDropMark.Values);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_SetDropMark).GetField(nameof(MUIP_Listtree_SetDropMark.Values))!.FieldType);
 	}
 
@@ -4702,13 +3903,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Listtree_Sort>());
 		Assert.Equal(12u, MUIP_Listtree_Sort.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_Sort>(nameof(MUIP_Listtree_Sort.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_Sort.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Sort).GetField(nameof(MUIP_Listtree_Sort.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_Sort>(nameof(MUIP_Listtree_Sort.ListNode)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_Sort.ListNode);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_Sort).GetField(nameof(MUIP_Listtree_Sort.ListNode))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_Sort>(nameof(MUIP_Listtree_Sort.Flags)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_Sort.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_Sort).GetField(nameof(MUIP_Listtree_Sort.Flags))!.FieldType);
 	}
 
@@ -4718,16 +3916,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Listtree_TestPos>());
 		Assert.Equal(16u, MUIP_Listtree_TestPos.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Listtree_TestPos>(nameof(MUIP_Listtree_TestPos.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Listtree_TestPos.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Listtree_TestPos).GetField(nameof(MUIP_Listtree_TestPos.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Listtree_TestPos>(nameof(MUIP_Listtree_TestPos.X)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Listtree_TestPos.X);
 		Assert.Equal(typeof(int), typeof(MUIP_Listtree_TestPos).GetField(nameof(MUIP_Listtree_TestPos.X))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Listtree_TestPos>(nameof(MUIP_Listtree_TestPos.Y)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Listtree_TestPos.Y);
 		Assert.Equal(typeof(int), typeof(MUIP_Listtree_TestPos).GetField(nameof(MUIP_Listtree_TestPos.Y))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Listtree_TestPos>(nameof(MUIP_Listtree_TestPos.Result)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Listtree_TestPos.Result);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Listtree_TestPos).GetField(nameof(MUIP_Listtree_TestPos.Result))!.FieldType);
 	}
 
@@ -4737,19 +3931,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(18, Marshal.SizeOf<MUIS_Listtree_TreeNode>());
 		Assert.Equal(18u, MUIS_Listtree_TreeNode.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIS_Listtree_TreeNode>(nameof(MUIS_Listtree_TreeNode.tn_Private1)));
-		Assert.Equal(0u, MUIMessageLayout.MUIS_Listtree_TreeNode.tn_Private1);
 		Assert.Equal(typeof(int), typeof(MUIS_Listtree_TreeNode).GetField(nameof(MUIS_Listtree_TreeNode.tn_Private1))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIS_Listtree_TreeNode>(nameof(MUIS_Listtree_TreeNode.tn_Private2)));
-		Assert.Equal(4u, MUIMessageLayout.MUIS_Listtree_TreeNode.tn_Private2);
 		Assert.Equal(typeof(int), typeof(MUIS_Listtree_TreeNode).GetField(nameof(MUIS_Listtree_TreeNode.tn_Private2))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIS_Listtree_TreeNode>(nameof(MUIS_Listtree_TreeNode.tn_Name)));
-		Assert.Equal(8u, MUIMessageLayout.MUIS_Listtree_TreeNode.tn_Name);
 		Assert.Equal(typeof(APTR), typeof(MUIS_Listtree_TreeNode).GetField(nameof(MUIS_Listtree_TreeNode.tn_Name))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIS_Listtree_TreeNode>(nameof(MUIS_Listtree_TreeNode.tn_Flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIS_Listtree_TreeNode.tn_Flags);
 		Assert.Equal(typeof(ushort), typeof(MUIS_Listtree_TreeNode).GetField(nameof(MUIS_Listtree_TreeNode.tn_Flags))!.FieldType);
 		Assert.Equal((nint)14, Marshal.OffsetOf<MUIS_Listtree_TreeNode>(nameof(MUIS_Listtree_TreeNode.tn_User)));
-		Assert.Equal(14u, MUIMessageLayout.MUIS_Listtree_TreeNode.tn_User);
 		Assert.Equal(typeof(APTR), typeof(MUIS_Listtree_TreeNode).GetField(nameof(MUIS_Listtree_TreeNode.tn_User))!.FieldType);
 	}
 
@@ -4759,16 +3948,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIS_Listtree_TestPos_Result>());
 		Assert.Equal(12u, MUIS_Listtree_TestPos_Result.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIS_Listtree_TestPos_Result>(nameof(MUIS_Listtree_TestPos_Result.tpr_TreeNode)));
-		Assert.Equal(0u, MUIMessageLayout.MUIS_Listtree_TestPos_Result.tpr_TreeNode);
 		Assert.Equal(typeof(APTR), typeof(MUIS_Listtree_TestPos_Result).GetField(nameof(MUIS_Listtree_TestPos_Result.tpr_TreeNode))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIS_Listtree_TestPos_Result>(nameof(MUIS_Listtree_TestPos_Result.tpr_Flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIS_Listtree_TestPos_Result.tpr_Flags);
 		Assert.Equal(typeof(ushort), typeof(MUIS_Listtree_TestPos_Result).GetField(nameof(MUIS_Listtree_TestPos_Result.tpr_Flags))!.FieldType);
 		Assert.Equal((nint)6, Marshal.OffsetOf<MUIS_Listtree_TestPos_Result>(nameof(MUIS_Listtree_TestPos_Result.tpr_ListEntry)));
-		Assert.Equal(6u, MUIMessageLayout.MUIS_Listtree_TestPos_Result.tpr_ListEntry);
 		Assert.Equal(typeof(int), typeof(MUIS_Listtree_TestPos_Result).GetField(nameof(MUIS_Listtree_TestPos_Result.tpr_ListEntry))!.FieldType);
 		Assert.Equal((nint)10, Marshal.OffsetOf<MUIS_Listtree_TestPos_Result>(nameof(MUIS_Listtree_TestPos_Result.tpr_ListFlags)));
-		Assert.Equal(10u, MUIMessageLayout.MUIS_Listtree_TestPos_Result.tpr_ListFlags);
 		Assert.Equal(typeof(ushort), typeof(MUIS_Listtree_TestPos_Result).GetField(nameof(MUIS_Listtree_TestPos_Result.tpr_ListFlags))!.FieldType);
 	}
 
@@ -4778,13 +3963,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_Piano_KeyEvent>());
 		Assert.Equal(12u, MUIP_Piano_KeyEvent.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Piano_KeyEvent>(nameof(MUIP_Piano_KeyEvent.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Piano_KeyEvent.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_Piano_KeyEvent).GetField(nameof(MUIP_Piano_KeyEvent.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Piano_KeyEvent>(nameof(MUIP_Piano_KeyEvent.key)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Piano_KeyEvent.key);
 		Assert.Equal(typeof(int), typeof(MUIP_Piano_KeyEvent).GetField(nameof(MUIP_Piano_KeyEvent.key))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Piano_KeyEvent>(nameof(MUIP_Piano_KeyEvent.status)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Piano_KeyEvent.status);
 		Assert.Equal(typeof(int), typeof(MUIP_Piano_KeyEvent).GetField(nameof(MUIP_Piano_KeyEvent.status))!.FieldType);
 	}
 
@@ -4794,13 +3976,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_PowerTerm_Write>());
 		Assert.Equal(12u, MUIP_PowerTerm_Write.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_Write>(nameof(MUIP_PowerTerm_Write.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_Write.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Write).GetField(nameof(MUIP_PowerTerm_Write.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_Write>(nameof(MUIP_PowerTerm_Write.data)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_Write.data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_PowerTerm_Write).GetField(nameof(MUIP_PowerTerm_Write.data))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_PowerTerm_Write>(nameof(MUIP_PowerTerm_Write.length)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_PowerTerm_Write.length);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Write).GetField(nameof(MUIP_PowerTerm_Write.length))!.FieldType);
 	}
 
@@ -4810,7 +3989,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_PowerTerm_OutFlush>());
 		Assert.Equal(4u, MUIP_PowerTerm_OutFlush.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_OutFlush>(nameof(MUIP_PowerTerm_OutFlush.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_OutFlush.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_OutFlush).GetField(nameof(MUIP_PowerTerm_OutFlush.methodid))!.FieldType);
 	}
 
@@ -4820,7 +3998,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_PowerTerm_Reset>());
 		Assert.Equal(4u, MUIP_PowerTerm_Reset.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_Reset>(nameof(MUIP_PowerTerm_Reset.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_Reset.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Reset).GetField(nameof(MUIP_PowerTerm_Reset.methodid))!.FieldType);
 	}
 
@@ -4830,10 +4007,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_SelectToClip>());
 		Assert.Equal(8u, MUIP_PowerTerm_SelectToClip.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_SelectToClip>(nameof(MUIP_PowerTerm_SelectToClip.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_SelectToClip.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SelectToClip).GetField(nameof(MUIP_PowerTerm_SelectToClip.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_SelectToClip>(nameof(MUIP_PowerTerm_SelectToClip.unit)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_SelectToClip.unit);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SelectToClip).GetField(nameof(MUIP_PowerTerm_SelectToClip.unit))!.FieldType);
 	}
 
@@ -4843,10 +4018,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_PasteFromClip>());
 		Assert.Equal(8u, MUIP_PowerTerm_PasteFromClip.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_PasteFromClip>(nameof(MUIP_PowerTerm_PasteFromClip.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_PasteFromClip.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_PasteFromClip).GetField(nameof(MUIP_PowerTerm_PasteFromClip.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_PasteFromClip>(nameof(MUIP_PowerTerm_PasteFromClip.unit)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_PasteFromClip.unit);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_PasteFromClip).GetField(nameof(MUIP_PowerTerm_PasteFromClip.unit))!.FieldType);
 	}
 
@@ -4856,10 +4029,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_SavePlain>());
 		Assert.Equal(8u, MUIP_PowerTerm_SavePlain.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_SavePlain>(nameof(MUIP_PowerTerm_SavePlain.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_SavePlain.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SavePlain).GetField(nameof(MUIP_PowerTerm_SavePlain.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_SavePlain>(nameof(MUIP_PowerTerm_SavePlain.filename)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_SavePlain.filename);
 		Assert.Equal(typeof(APTR), typeof(MUIP_PowerTerm_SavePlain).GetField(nameof(MUIP_PowerTerm_SavePlain.filename))!.FieldType);
 	}
 
@@ -4869,10 +4040,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_SaveStyle>());
 		Assert.Equal(8u, MUIP_PowerTerm_SaveStyle.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_SaveStyle>(nameof(MUIP_PowerTerm_SaveStyle.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_SaveStyle.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SaveStyle).GetField(nameof(MUIP_PowerTerm_SaveStyle.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_SaveStyle>(nameof(MUIP_PowerTerm_SaveStyle.filename)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_SaveStyle.filename);
 		Assert.Equal(typeof(APTR), typeof(MUIP_PowerTerm_SaveStyle).GetField(nameof(MUIP_PowerTerm_SaveStyle.filename))!.FieldType);
 	}
 
@@ -4882,13 +4051,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_PowerTerm_SetAbsXY>());
 		Assert.Equal(12u, MUIP_PowerTerm_SetAbsXY.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_SetAbsXY>(nameof(MUIP_PowerTerm_SetAbsXY.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_SetAbsXY.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SetAbsXY).GetField(nameof(MUIP_PowerTerm_SetAbsXY.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_SetAbsXY>(nameof(MUIP_PowerTerm_SetAbsXY.cols)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_SetAbsXY.cols);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SetAbsXY).GetField(nameof(MUIP_PowerTerm_SetAbsXY.cols))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_PowerTerm_SetAbsXY>(nameof(MUIP_PowerTerm_SetAbsXY.rows)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_PowerTerm_SetAbsXY.rows);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SetAbsXY).GetField(nameof(MUIP_PowerTerm_SetAbsXY.rows))!.FieldType);
 	}
 
@@ -4898,10 +4064,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_SavePlainFH>());
 		Assert.Equal(8u, MUIP_PowerTerm_SavePlainFH.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_SavePlainFH>(nameof(MUIP_PowerTerm_SavePlainFH.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_SavePlainFH.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SavePlainFH).GetField(nameof(MUIP_PowerTerm_SavePlainFH.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_SavePlainFH>(nameof(MUIP_PowerTerm_SavePlainFH.fh)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_SavePlainFH.fh);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SavePlainFH).GetField(nameof(MUIP_PowerTerm_SavePlainFH.fh))!.FieldType);
 	}
 
@@ -4911,10 +4075,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_SaveStyleFH>());
 		Assert.Equal(8u, MUIP_PowerTerm_SaveStyleFH.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_SaveStyleFH>(nameof(MUIP_PowerTerm_SaveStyleFH.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_SaveStyleFH.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SaveStyleFH).GetField(nameof(MUIP_PowerTerm_SaveStyleFH.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_SaveStyleFH>(nameof(MUIP_PowerTerm_SaveStyleFH.fh)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_SaveStyleFH.fh);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_SaveStyleFH).GetField(nameof(MUIP_PowerTerm_SaveStyleFH.fh))!.FieldType);
 	}
 
@@ -4924,7 +4086,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_PowerTerm_FlushReview>());
 		Assert.Equal(4u, MUIP_PowerTerm_FlushReview.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_FlushReview>(nameof(MUIP_PowerTerm_FlushReview.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_FlushReview.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_FlushReview).GetField(nameof(MUIP_PowerTerm_FlushReview.methodid))!.FieldType);
 	}
 
@@ -4934,13 +4095,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_PowerTerm_Scroll>());
 		Assert.Equal(12u, MUIP_PowerTerm_Scroll.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_Scroll>(nameof(MUIP_PowerTerm_Scroll.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_Scroll.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Scroll).GetField(nameof(MUIP_PowerTerm_Scroll.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_Scroll>(nameof(MUIP_PowerTerm_Scroll.offset)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_Scroll.offset);
 		Assert.Equal(typeof(int), typeof(MUIP_PowerTerm_Scroll).GetField(nameof(MUIP_PowerTerm_Scroll.offset))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_PowerTerm_Scroll>(nameof(MUIP_PowerTerm_Scroll.mode)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_PowerTerm_Scroll.mode);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Scroll).GetField(nameof(MUIP_PowerTerm_Scroll.mode))!.FieldType);
 	}
 
@@ -4950,13 +4108,10 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(12, Marshal.SizeOf<MUIP_PowerTerm_AddOut>());
 		Assert.Equal(12u, MUIP_PowerTerm_AddOut.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_AddOut>(nameof(MUIP_PowerTerm_AddOut.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_AddOut.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_AddOut).GetField(nameof(MUIP_PowerTerm_AddOut.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_AddOut>(nameof(MUIP_PowerTerm_AddOut.data)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_AddOut.data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_PowerTerm_AddOut).GetField(nameof(MUIP_PowerTerm_AddOut.data))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_PowerTerm_AddOut>(nameof(MUIP_PowerTerm_AddOut.length)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_PowerTerm_AddOut.length);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_AddOut).GetField(nameof(MUIP_PowerTerm_AddOut.length))!.FieldType);
 	}
 
@@ -4966,16 +4121,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_PowerTerm_WriteUnicode>());
 		Assert.Equal(16u, MUIP_PowerTerm_WriteUnicode.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_WriteUnicode>(nameof(MUIP_PowerTerm_WriteUnicode.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_WriteUnicode.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_WriteUnicode).GetField(nameof(MUIP_PowerTerm_WriteUnicode.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_WriteUnicode>(nameof(MUIP_PowerTerm_WriteUnicode.data)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_WriteUnicode.data);
 		Assert.Equal(typeof(APTR), typeof(MUIP_PowerTerm_WriteUnicode).GetField(nameof(MUIP_PowerTerm_WriteUnicode.data))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_PowerTerm_WriteUnicode>(nameof(MUIP_PowerTerm_WriteUnicode.length)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_PowerTerm_WriteUnicode.length);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_WriteUnicode).GetField(nameof(MUIP_PowerTerm_WriteUnicode.length))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_PowerTerm_WriteUnicode>(nameof(MUIP_PowerTerm_WriteUnicode.format)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_PowerTerm_WriteUnicode.format);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_WriteUnicode).GetField(nameof(MUIP_PowerTerm_WriteUnicode.format))!.FieldType);
 	}
 
@@ -4985,16 +4136,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_PowerTerm_Search>());
 		Assert.Equal(16u, MUIP_PowerTerm_Search.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_Search>(nameof(MUIP_PowerTerm_Search.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_Search.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Search).GetField(nameof(MUIP_PowerTerm_Search.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_Search>(nameof(MUIP_PowerTerm_Search.searchstring)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_Search.searchstring);
 		Assert.Equal(typeof(APTR), typeof(MUIP_PowerTerm_Search).GetField(nameof(MUIP_PowerTerm_Search.searchstring))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_PowerTerm_Search>(nameof(MUIP_PowerTerm_Search.mode)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_PowerTerm_Search.mode);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Search).GetField(nameof(MUIP_PowerTerm_Search.mode))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_PowerTerm_Search>(nameof(MUIP_PowerTerm_Search.flags)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_PowerTerm_Search.flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Search).GetField(nameof(MUIP_PowerTerm_Search.flags))!.FieldType);
 	}
 
@@ -5004,7 +4151,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_PowerTerm_Duplicate>());
 		Assert.Equal(4u, MUIP_PowerTerm_Duplicate.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_Duplicate>(nameof(MUIP_PowerTerm_Duplicate.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_Duplicate.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Duplicate).GetField(nameof(MUIP_PowerTerm_Duplicate.methodid))!.FieldType);
 	}
 
@@ -5014,10 +4160,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_PowerTerm_Select>());
 		Assert.Equal(8u, MUIP_PowerTerm_Select.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_PowerTerm_Select>(nameof(MUIP_PowerTerm_Select.methodid)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_PowerTerm_Select.methodid);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Select).GetField(nameof(MUIP_PowerTerm_Select.methodid))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_PowerTerm_Select>(nameof(MUIP_PowerTerm_Select.selecttype)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_PowerTerm_Select.selecttype);
 		Assert.Equal(typeof(uint), typeof(MUIP_PowerTerm_Select).GetField(nameof(MUIP_PowerTerm_Select.selecttype))!.FieldType);
 	}
 
@@ -5027,19 +4171,14 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUI_RawimageData>());
 		Assert.Equal(16u, MUI_RawimageData.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUI_RawimageData>(nameof(MUI_RawimageData.ri_Width)));
-		Assert.Equal(0u, MUIMessageLayout.MUI_RawimageData.ri_Width);
 		Assert.Equal(typeof(uint), typeof(MUI_RawimageData).GetField(nameof(MUI_RawimageData.ri_Width))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUI_RawimageData>(nameof(MUI_RawimageData.ri_Height)));
-		Assert.Equal(4u, MUIMessageLayout.MUI_RawimageData.ri_Height);
 		Assert.Equal(typeof(uint), typeof(MUI_RawimageData).GetField(nameof(MUI_RawimageData.ri_Height))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUI_RawimageData>(nameof(MUI_RawimageData.ri_Format)));
-		Assert.Equal(8u, MUIMessageLayout.MUI_RawimageData.ri_Format);
 		Assert.Equal(typeof(uint), typeof(MUI_RawimageData).GetField(nameof(MUI_RawimageData.ri_Format))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUI_RawimageData>(nameof(MUI_RawimageData.ri_Size)));
-		Assert.Equal(12u, MUIMessageLayout.MUI_RawimageData.ri_Size);
 		Assert.Equal(typeof(uint), typeof(MUI_RawimageData).GetField(nameof(MUI_RawimageData.ri_Size))!.FieldType);
 		Assert.Equal(16u, MUI_RawimageData.ri_DataOffset);
-		Assert.Equal(16u, MUIMessageLayout.MUI_RawimageData.ri_Data);
 	}
 
 	[Fact]
@@ -5048,16 +4187,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Scintilla_Command>());
 		Assert.Equal(16u, MUIP_Scintilla_Command.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_Command>(nameof(MUIP_Scintilla_Command.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_Command.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_Command).GetField(nameof(MUIP_Scintilla_Command.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Scintilla_Command>(nameof(MUIP_Scintilla_Command.iMessage)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Scintilla_Command.iMessage);
 		Assert.Equal(typeof(int), typeof(MUIP_Scintilla_Command).GetField(nameof(MUIP_Scintilla_Command.iMessage))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Scintilla_Command>(nameof(MUIP_Scintilla_Command.wParam)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Scintilla_Command.wParam);
 		Assert.Equal(typeof(int), typeof(MUIP_Scintilla_Command).GetField(nameof(MUIP_Scintilla_Command.wParam))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Scintilla_Command>(nameof(MUIP_Scintilla_Command.lParam)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Scintilla_Command.lParam);
 		Assert.Equal(typeof(int), typeof(MUIP_Scintilla_Command).GetField(nameof(MUIP_Scintilla_Command.lParam))!.FieldType);
 	}
 
@@ -5067,16 +4202,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Scintilla_RexxCommand>());
 		Assert.Equal(16u, MUIP_Scintilla_RexxCommand.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_RexxCommand>(nameof(MUIP_Scintilla_RexxCommand.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_RexxCommand.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_RexxCommand).GetField(nameof(MUIP_Scintilla_RexxCommand.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Scintilla_RexxCommand>(nameof(MUIP_Scintilla_RexxCommand.rxmsg)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Scintilla_RexxCommand.rxmsg);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Scintilla_RexxCommand).GetField(nameof(MUIP_Scintilla_RexxCommand.rxmsg))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Scintilla_RexxCommand>(nameof(MUIP_Scintilla_RexxCommand.args)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Scintilla_RexxCommand.args);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Scintilla_RexxCommand).GetField(nameof(MUIP_Scintilla_RexxCommand.args))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Scintilla_RexxCommand>(nameof(MUIP_Scintilla_RexxCommand.resultptr)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Scintilla_RexxCommand.resultptr);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Scintilla_RexxCommand).GetField(nameof(MUIP_Scintilla_RexxCommand.resultptr))!.FieldType);
 	}
 
@@ -5086,10 +4217,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Scintilla_CallTip>());
 		Assert.Equal(8u, MUIP_Scintilla_CallTip.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_CallTip>(nameof(MUIP_Scintilla_CallTip.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_CallTip.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_CallTip).GetField(nameof(MUIP_Scintilla_CallTip.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Scintilla_CallTip>(nameof(MUIP_Scintilla_CallTip.mousepointer)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Scintilla_CallTip.mousepointer);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_CallTip).GetField(nameof(MUIP_Scintilla_CallTip.mousepointer))!.FieldType);
 	}
 
@@ -5099,10 +4228,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Scintilla_AutoComplete>());
 		Assert.Equal(8u, MUIP_Scintilla_AutoComplete.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_AutoComplete>(nameof(MUIP_Scintilla_AutoComplete.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_AutoComplete.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_AutoComplete).GetField(nameof(MUIP_Scintilla_AutoComplete.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Scintilla_AutoComplete>(nameof(MUIP_Scintilla_AutoComplete.autopopup)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Scintilla_AutoComplete.autopopup);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_AutoComplete).GetField(nameof(MUIP_Scintilla_AutoComplete.autopopup))!.FieldType);
 	}
 
@@ -5112,10 +4239,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Scintilla_BindWithProjectIndex>());
 		Assert.Equal(8u, MUIP_Scintilla_BindWithProjectIndex.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_BindWithProjectIndex>(nameof(MUIP_Scintilla_BindWithProjectIndex.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_BindWithProjectIndex.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_BindWithProjectIndex).GetField(nameof(MUIP_Scintilla_BindWithProjectIndex.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Scintilla_BindWithProjectIndex>(nameof(MUIP_Scintilla_BindWithProjectIndex.ProjectIndex)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Scintilla_BindWithProjectIndex.ProjectIndex);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Scintilla_BindWithProjectIndex).GetField(nameof(MUIP_Scintilla_BindWithProjectIndex.ProjectIndex))!.FieldType);
 	}
 
@@ -5125,7 +4250,6 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(4, Marshal.SizeOf<MUIP_Scintilla_RefreshProjectIndex>());
 		Assert.Equal(4u, MUIP_Scintilla_RefreshProjectIndex.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_RefreshProjectIndex>(nameof(MUIP_Scintilla_RefreshProjectIndex.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_RefreshProjectIndex.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_RefreshProjectIndex).GetField(nameof(MUIP_Scintilla_RefreshProjectIndex.MethodID))!.FieldType);
 	}
 
@@ -5135,16 +4259,12 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(16, Marshal.SizeOf<MUIP_Scintilla_ContextMenuAdd>());
 		Assert.Equal(16u, MUIP_Scintilla_ContextMenuAdd.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Scintilla_ContextMenuAdd>(nameof(MUIP_Scintilla_ContextMenuAdd.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Scintilla_ContextMenuAdd.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_ContextMenuAdd).GetField(nameof(MUIP_Scintilla_ContextMenuAdd.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Scintilla_ContextMenuAdd>(nameof(MUIP_Scintilla_ContextMenuAdd.ContextMenu)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Scintilla_ContextMenuAdd.ContextMenu);
 		Assert.Equal(typeof(APTR), typeof(MUIP_Scintilla_ContextMenuAdd).GetField(nameof(MUIP_Scintilla_ContextMenuAdd.ContextMenu))!.FieldType);
 		Assert.Equal((nint)8, Marshal.OffsetOf<MUIP_Scintilla_ContextMenuAdd>(nameof(MUIP_Scintilla_ContextMenuAdd.x)));
-		Assert.Equal(8u, MUIMessageLayout.MUIP_Scintilla_ContextMenuAdd.x);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_ContextMenuAdd).GetField(nameof(MUIP_Scintilla_ContextMenuAdd.x))!.FieldType);
 		Assert.Equal((nint)12, Marshal.OffsetOf<MUIP_Scintilla_ContextMenuAdd>(nameof(MUIP_Scintilla_ContextMenuAdd.y)));
-		Assert.Equal(12u, MUIMessageLayout.MUIP_Scintilla_ContextMenuAdd.y);
 		Assert.Equal(typeof(uint), typeof(MUIP_Scintilla_ContextMenuAdd).GetField(nameof(MUIP_Scintilla_ContextMenuAdd.y))!.FieldType);
 	}
 
@@ -5154,10 +4274,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Urltext_OpenURL>());
 		Assert.Equal(8u, MUIP_Urltext_OpenURL.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Urltext_OpenURL>(nameof(MUIP_Urltext_OpenURL.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Urltext_OpenURL.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Urltext_OpenURL).GetField(nameof(MUIP_Urltext_OpenURL.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Urltext_OpenURL>(nameof(MUIP_Urltext_OpenURL.Flags)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Urltext_OpenURL.Flags);
 		Assert.Equal(typeof(uint), typeof(MUIP_Urltext_OpenURL).GetField(nameof(MUIP_Urltext_OpenURL.Flags))!.FieldType);
 	}
 
@@ -5167,10 +4285,8 @@ public sealed class MuiMessageAbiTests
 		Assert.Equal(8, Marshal.SizeOf<MUIP_Urltext_Copy>());
 		Assert.Equal(8u, MUIP_Urltext_Copy.AbiSize);
 		Assert.Equal((nint)0, Marshal.OffsetOf<MUIP_Urltext_Copy>(nameof(MUIP_Urltext_Copy.MethodID)));
-		Assert.Equal(0u, MUIMessageLayout.MUIP_Urltext_Copy.MethodID);
 		Assert.Equal(typeof(uint), typeof(MUIP_Urltext_Copy).GetField(nameof(MUIP_Urltext_Copy.MethodID))!.FieldType);
 		Assert.Equal((nint)4, Marshal.OffsetOf<MUIP_Urltext_Copy>(nameof(MUIP_Urltext_Copy.ClipboardUnit)));
-		Assert.Equal(4u, MUIMessageLayout.MUIP_Urltext_Copy.ClipboardUnit);
 		Assert.Equal(typeof(uint), typeof(MUIP_Urltext_Copy).GetField(nameof(MUIP_Urltext_Copy.ClipboardUnit))!.FieldType);
 	}
 

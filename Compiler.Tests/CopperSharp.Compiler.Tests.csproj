@@ -33,6 +33,7 @@
     <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
     <ProjectReference Include="..\Runtime.AmigaPal\CopperSharp.Runtime.AmigaPal.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\CopperSharp.Sdk.Amiga.csproj" />
+    <ProjectReference Include="..\Sdk.Amiga.Support\CopperSharp.Sdk.Amiga.Support.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\DOS\DOS.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\FileStats\FileStats.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\IFFInspect\IFFInspect.csproj" />

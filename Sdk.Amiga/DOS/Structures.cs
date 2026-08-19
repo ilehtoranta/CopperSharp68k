@@ -37,6 +37,21 @@ public struct DateStamp
 	public int Ticks;
 }
 
+/// <summary>Published dos/datetime.h DateTime record.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct DosDateTime
+{
+	public const uint Size = 26;
+	public const uint StringLength = 16;
+
+	public DateStamp Stamp;
+	public DosDateFormat Format;
+	public DosDateTimeFlags Flags;
+	public STRPTR Day;
+	public STRPTR Date;
+	public STRPTR Time;
+}
+
 /// <summary>MorphOS UTC timestamp used by the m68k DOS ABI.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct PosixDateStamp
@@ -386,6 +401,20 @@ public struct DosListHandler
 	public BPTR GlobalVector;
 }
 
+/// <summary>Named view of the 24-byte assign arm in the public DosList union.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct DosListAssignData
+{
+	public const uint Size = 24;
+
+	public APTR AssignName;
+	public APTR List;
+	public uint Reserved0;
+	public uint Reserved1;
+	public uint Reserved2;
+	public uint Reserved3;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct DosList
 {
@@ -463,4 +492,15 @@ public struct Process
 	public MinList LocalVariables;
 	public uint ShellPrivate;
 	public BPTR CurrentError;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct LocalVar
+{
+	public const uint Size = 24;
+
+	public Node Node;
+	public ushort Flags;
+	public APTR Value;
+	public uint Length;
 }
