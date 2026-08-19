@@ -7,12 +7,16 @@ public sealed class DosLayoutTests
 {
 	[Theory]
 	[InlineData(typeof(DateStamp), typeof(DosLayout.DateStamp), 12)]
+	[InlineData(typeof(DosEnvec), typeof(DosLayout.DosEnvec), 80)]
+	[InlineData(typeof(FileSysStartupMsg), typeof(DosLayout.FileSysStartupMsg), 16)]
 	[InlineData(typeof(PosixDateStamp), typeof(DosLayout.PosixDateStamp), 12)]
 	[InlineData(typeof(CSource), typeof(DosLayout.CSource), 12)]
 	[InlineData(typeof(RDArgs), typeof(DosLayout.RDArgs), 32)]
 	[InlineData(typeof(RecordLock), typeof(DosLayout.RecordLock), 16)]
 	[InlineData(typeof(RecordLock64), typeof(DosLayout.RecordLock64), 24)]
 	[InlineData(typeof(FileHandle), typeof(DosLayout.FileHandle), 44)]
+	[InlineData(typeof(DeviceNode), typeof(DosLayout.DeviceNode), 44)]
+	[InlineData(typeof(DeviceList), typeof(DosLayout.DeviceList), 44)]
 	[InlineData(typeof(DosPacket), typeof(DosLayout.DosPacket), 48)]
 	[InlineData(typeof(StandardPacket), typeof(DosLayout.StandardPacket), 68)]
 	[InlineData(typeof(FileLock), typeof(DosLayout.FileLock), 20)]
@@ -20,9 +24,11 @@ public sealed class DosLayoutTests
 	[InlineData(typeof(DosAttrBuffer), typeof(DosLayout.DosAttrBuffer), 8)]
 	[InlineData(typeof(CommandLineInterface), typeof(DosLayout.CommandLineInterface), 64)]
 	[InlineData(typeof(Process), typeof(DosLayout.Process), 228)]
+	[InlineData(typeof(LocalVar), typeof(DosLayout.LocalVar), 24)]
 	[InlineData(typeof(RootNode), typeof(DosLayout.RootNode), 56)]
 	[InlineData(typeof(DosInfo), typeof(DosLayout.DosInfo), 158)]
 	[InlineData(typeof(DosList), typeof(DosLayout.DosList), 44)]
+	[InlineData(typeof(DosListAssignData), typeof(DosLayout.DosListAssignData), 24)]
 	[InlineData(typeof(DevProc), typeof(DosLayout.DevProc), 16)]
 	[InlineData(typeof(AssignList), typeof(DosLayout.AssignList), 8)]
 	public void LayoutConstantsCoverEveryPublishedField(Type structure, Type layout,
@@ -131,6 +137,23 @@ public sealed class DosLayoutTests
 		};
 		DosDevProcCodec.Write(ref memory, address, devProc);
 		Assert.Equal(devProc, DosDevProcCodec.Read(ref memory, address));
+
+		var localVar = new LocalVar
+		{
+			Node = new Node
+			{
+				Successor = APTR.FromPointer(0x1111_0000),
+				Predecessor = APTR.FromPointer(0x2222_0000),
+				Type = (byte)LocalVariableType.Alias,
+				Priority = -3,
+				Name = STRPTR.FromPointer(0x3333_0000),
+			},
+			Flags = (ushort)GlobalVariableFlags.BinaryVariable,
+			Value = APTR.FromPointer(0x4444_0000),
+			Length = 9,
+		};
+		DosLocalVarCodec.Write(ref memory, address, localVar);
+		Assert.Equal(localVar, DosLocalVarCodec.Read(ref memory, address));
 
 		DosFileInfoBlockCodec.WriteDiskKey(ref memory, address, 17);
 		DosFileInfoBlockCodec.WriteDirEntryType(ref memory, address, -3);
