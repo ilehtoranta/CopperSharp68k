@@ -83,7 +83,7 @@ jobs:
         shell: pwsh
         run: >-
           ./scripts/run-test-shard.ps1
-          -ShardIndex ${{ matrix.shard - 1 }}
+          -ShardNumber ${{ matrix.shard }}
           -ShardCount 16
           -Configuration Debug
           -ResultsDirectory TestResults
