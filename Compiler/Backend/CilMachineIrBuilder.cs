@@ -4,6 +4,7 @@
  */
 
 using System.Collections.Immutable;
+using System.Reflection;
 using System.Reflection.Emit;
 using CopperSharp.Compiler.Metadata;
 
@@ -283,6 +284,7 @@ internal static class CilMachineIrBuilder
 					push.ArgumentIndex != 4 ||
 					push.Uses.Length != 1 ||
 					function.Values[push.Uses[0]].IsGcReference ||
+					ForwardsToAggressiveGuestMemoryWrapper(block, index, push.IlOffset) ||
 					!TryGetIncomingArgument(push.Uses[0], out var argumentIndex) ||
 					argumentIndex >= argumentRegisters.Count ||
 					argumentRegisters[argumentIndex] is not null)
@@ -303,6 +305,57 @@ internal static class CilMachineIrBuilder
 					SpillSlotIndex = argumentIndex
 				};
 			}
+		}
+
+		bool ForwardsToAggressiveGuestMemoryWrapper(
+			M68kMachineBlock block,
+			int pushIndex,
+			int ilOffset)
+		{
+			if (!M68kMachineInliningPolicy.AllowsGuestMemoryWrapper(method))
+			{
+				return false;
+			}
+			var call = block.Instructions
+				.Skip(pushIndex + 1)
+				.TakeWhile(instruction => instruction.IlOffset == ilOffset)
+				.FirstOrDefault(static instruction =>
+					instruction.Operation == M68kMachineOperation.Call);
+			if (call?.Origin?.SourceInstruction is not
+				{ Operand: int token } source)
+			{
+				return false;
+			}
+			var reference = module.ResolveMethodToken(token, method, source.Offset);
+			var candidate = reference.Definition;
+			if (source.ConstrainedTypeToken is { } constrainedTypeToken &&
+				candidate is not null)
+			{
+				if (!module.TryResolveConstrainedValueInterfaceImplementation(
+						method, constrainedTypeToken, source.Offset, candidate,
+						out candidate))
+					return false;
+			}
+			if (candidate is null ||
+				(candidate.ImplAttributes & MethodImplAttributes.AggressiveInlining) == 0 ||
+				candidate.Instructions.Count > 8 ||
+				candidate.Instructions.LastOrDefault()?.OpCode != OpCodes.Ret)
+			{
+				return false;
+			}
+			var calls = candidate.Instructions.Where(instruction =>
+				instruction.OpCode == OpCodes.Call ||
+				instruction.OpCode == OpCodes.Callvirt).ToArray();
+			if (calls is not [var intrinsic] || intrinsic.Operand is not int intrinsicToken)
+			{
+				return false;
+			}
+			var intrinsicReference = module.ResolveMethodToken(
+				intrinsicToken,
+				candidate,
+				intrinsic.Offset);
+			return M68kMachineInliningPolicy.IsGuestMemoryIntrinsic(
+				intrinsicReference.ImportName);
 		}
 
 		bool TryGetIncomingArgument(int initialValue, out int argumentIndex)
@@ -823,8 +876,16 @@ internal static class CilMachineIrBuilder
 		M68kMachineFunction function,
 		CilMethod method,
 		int size,
-		IReadOnlyList<int>? gcReferenceOffsets = null)
+		IReadOnlyList<int>? gcReferenceOffsets = null,
+		bool reusableDirectReturn = false)
 	{
+		var reusableKey = (size, string.Join(',', gcReferenceOffsets ?? []));
+		if (reusableDirectReturn &&
+			function.ReusableAggregateReturnHomes.TryGetValue(reusableKey,
+				out var reusableHome))
+		{
+			return reusableHome;
+		}
 		var homeIndex = function.LocalHomes.Keys
 			.Where(index => index >= method.Locals.Length)
 			.DefaultIfEmpty(method.Locals.Length - 1)
@@ -837,7 +898,45 @@ internal static class CilMachineIrBuilder
 				IsGcReference: false,
 				Initialize: gcReferenceOffsets is { Count: > 0 },
 				GcReferenceOffsets: gcReferenceOffsets));
+		if (reusableDirectReturn)
+			function.ReusableAggregateReturnHomes.Add(reusableKey, homeIndex);
 		return homeIndex;
+	}
+
+	private static bool IsDirectAggregateReturn(CilMethod method,
+		CilInstruction call)
+	{
+		CilInstruction? NextNonNop(int offset)
+		{
+			while (true)
+			{
+				var instruction = method.Instructions.FirstOrDefault(candidate =>
+					candidate.Offset == offset);
+				if (instruction?.OpCode != OpCodes.Nop) return instruction;
+				offset = instruction.NextOffset;
+			}
+		}
+
+		var next = NextNonNop(call.NextOffset);
+		if (next?.OpCode == OpCodes.Ret) return true;
+		if (next is null || !TryGetStoreLocalIndex(next, out var returnedLocal))
+			return false;
+
+		next = NextNonNop(next.NextOffset);
+		if (next is not null &&
+			(next.OpCode == OpCodes.Br || next.OpCode == OpCodes.Br_S))
+		{
+			if (next.Operand is not int returnOffset) return false;
+			next = NextNonNop(returnOffset);
+		}
+
+		if (next is null ||
+			!TryGetLoadLocalIndex(next, out var loadedLocal) ||
+			loadedLocal != returnedLocal)
+			return false;
+
+		next = NextNonNop(next.NextOffset);
+		return next?.OpCode == OpCodes.Ret;
 	}
 
 	private static CilType ArgumentType(CilMethod method, int argumentIndex)
@@ -4565,7 +4664,8 @@ internal static class CilMachineIrBuilder
 				GcReferenceOffsets(
 					module,
 					effectiveReturnType,
-					target.Definition?.ModuleName ?? caller.ModuleName));
+					target.Definition?.ModuleName ?? caller.ModuleName),
+				reusableDirectReturn: IsDirectAggregateReturn(caller, instruction));
 			var returnAddress = function.CreateValue(
 				CilStackValueKind.AggregateAddress,
 				M68kMachineValueWidth.Long,

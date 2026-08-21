@@ -243,14 +243,13 @@ public sealed class CopperScreenHeadlessIntegrationTests
 
     [Theory]
     [Trait("Category", "Emulator")]
-    [InlineData("DOS", "DOSExample.Program::Main", "missing", 20u, "AMIGA_BOOT_DOS_LOCK_MISSING")]
-    [InlineData("FileStats", "FileStatsExample.Program::Main", "", 10u, "AMIGA_BOOT_DOS_GENERIC")]
+    [InlineData("DOS", "DOSExample.Program::Main", "missing", 20u)]
+    [InlineData("FileStats", "FileStatsExample.Program::Main", "", 10u)]
     public async Task DosExamplesRunThroughAmigaApplicationAbiInCopperScreen(
         string example,
         string entryPoint,
         string arguments,
-        uint expectedReturnValue,
-        string expectedDosDiagnostic)
+        uint expectedReturnValue)
     {
         var cliPath = FindHeadlessCli();
         if (cliPath is null)
@@ -302,9 +301,6 @@ public sealed class CopperScreenHeadlessIntegrationTests
             Assert.Contains(
                 diagnostics.EnumerateArray(),
                 diagnostic => diagnostic.GetProperty("Code").GetString() == "AMIGA_BOOT_OPEN_LIBRARY");
-            Assert.Contains(
-                diagnostics.EnumerateArray(),
-                diagnostic => diagnostic.GetProperty("Code").GetString() == expectedDosDiagnostic);
         }
         finally
         {

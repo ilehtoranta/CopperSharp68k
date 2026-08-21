@@ -684,36 +684,48 @@ internal static class M68kInterferenceBuilder
 
 		// Incoming arguments are materialized together by the allocated prologue.
 		// Their post-entry homes must therefore remain distinct even when their
-		// first managed uses occur at different points in the entry block.
+		// first managed uses occur at different points in the entry block. A
+		// spill-generated Argument scratch is not such a home: its adjacent
+		// SpillStore ends the value immediately, so normal liveness may reuse it.
 		var entry = function.Blocks.Single(block =>
 			block.Id == function.EntryBlockId);
-		var incomingHomes = entry.Instructions
-			.Where(static instruction =>
-				instruction.Operation == M68kMachineOperation.Argument &&
-				instruction.Definitions.Length == 1)
-			.Select(argument =>
+		var incomingHomeList = new List<int>();
+		for (var index = 0; index < entry.Instructions.Count; index++)
+		{
+			var argument = entry.Instructions[index];
+			if (argument.Operation != M68kMachineOperation.Argument ||
+				argument.Definitions.Length != 1) continue;
+			var incoming = argument.Definitions[0];
+			var incomingValue = function.Values[incoming];
+			var directScalarSpill = incomingValue.IsSpillTemporary &&
+				incomingValue.Width == M68kMachineValueWidth.Long &&
+				index + 1 < entry.Instructions.Count &&
+				entry.Instructions[index + 1] is
+				{
+					Operation: M68kMachineOperation.SpillStore,
+					Uses: [var stored]
+				} && stored == incoming;
+			if (directScalarSpill) continue;
+			if (incomingValue.PrecoloredRegister is null)
 			{
-				var incoming = argument.Definitions[0];
-				if (function.Values[incoming].PrecoloredRegister is null)
-				{
-					return incoming;
-				}
+				incomingHomeList.Add(incoming);
+				continue;
+			}
 
-				var copies = entry.Instructions.Where(instruction =>
-					instruction.Operation == M68kMachineOperation.Copy &&
-					instruction.IlOffset == entry.StartIlOffset &&
-					instruction.Uses is [var source] &&
-					source == incoming &&
-					instruction.Definitions.Length == 1).ToArray();
-				if (copies.Length != 1)
-				{
-					throw new InvalidOperationException(
-						"Register argument does not have one canonical entry copy.");
-				}
-				return copies[0].Definitions[0];
-			})
-			.Distinct()
-			.ToArray();
+			var copies = entry.Instructions.Where(instruction =>
+				instruction.Operation == M68kMachineOperation.Copy &&
+				instruction.IlOffset == entry.StartIlOffset &&
+				instruction.Uses is [var source] &&
+				source == incoming &&
+				instruction.Definitions.Length == 1).ToArray();
+			if (copies.Length != 1)
+			{
+				throw new InvalidOperationException(
+					"Register argument does not have one canonical entry copy.");
+			}
+			incomingHomeList.Add(copies[0].Definitions[0]);
+		}
+		var incomingHomes = incomingHomeList.Distinct().ToArray();
 		for (var left = 0; left < incomingHomes.Length; left++)
 		{
 			for (var right = left + 1; right < incomingHomes.Length; right++)
@@ -876,12 +888,26 @@ internal static class M68kRegisterAllocatorPipeline
 						.Take(12)
 						.Select(value =>
 						{
-							var uses = function.Blocks
-								.SelectMany(static block => block.Instructions)
-								.Where(instruction => instruction.Uses.Contains(value))
-								.Select(static instruction => instruction.Operation)
-								.Distinct();
-							return $"V{value}[{string.Join("/", uses)}]";
+							var machineValue = function.Values[value];
+							var sites = function.Blocks
+								.SelectMany(block => block.Instructions
+									.Where(instruction => instruction.Uses.Contains(value) ||
+										instruction.Definitions.Contains(value))
+									.Select(instruction =>
+										$"B{block.Id}:I{instruction.Id}:{instruction.Operation}"));
+							var neighbors = interference.Neighbors(value)
+								.Order()
+								.Take(12)
+								.Select(neighbor =>
+								{
+									var adjacent = function.Values[neighbor];
+									return $"V{neighbor}:{adjacent.AllowedRegisters}:" +
+										$"temp={adjacent.IsSpillTemporary}";
+								});
+							return $"V{value}[allowed={machineValue.AllowedRegisters};" +
+								$"temp={machineValue.IsSpillTemporary};" +
+								$"sites={string.Join("/", sites)};" +
+								$"neighbors={string.Join("/", neighbors)}]";
 						}));
 				throw new InvalidOperationException(
 					$"Register allocation for '{function.DisplayName}' did not converge " +
@@ -1002,6 +1028,8 @@ internal static class M68kGraphColoringAllocator
 
 		public bool IsRematerializable { get; set; }
 
+		public bool IsSpillTemporary { get; set; }
+
 		public bool PreferAddressRegisters { get; set; }
 
 		public bool IsPair => Width == M68kMachineValueWidth.LongPair;
@@ -1083,7 +1111,11 @@ internal static class M68kGraphColoringAllocator
 				.Where(group =>
 					EffectiveDegree(groups, groupNeighbors, remaining, group) <
 					AvailableColorCount(group))
-				.OrderBy(static group => group.Id)
+				// Spill-generated reload/store scratch values must be colored before
+				// their live-through neighbors. Push them last so stack coloring pops
+				// them first and spills an ordinary neighbor when pressure is exact.
+				.OrderBy(static group => group.IsSpillTemporary)
+				.ThenBy(static group => group.Id)
 				.FirstOrDefault();
 			var selected = simplifiable?.Id ??
 				remaining
@@ -1218,6 +1250,7 @@ internal static class M68kGraphColoringAllocator
 				PrecoloredRegister = value.PrecoloredRegister,
 				SpillWeight = value.SpillWeight,
 				IsRematerializable = value.IsRematerializable,
+				IsSpillTemporary = value.IsSpillTemporary,
 				PreferAddressRegisters = value.Kind is
 					CilStackValueKind.Reference or
 					CilStackValueKind.ManagedPointer
@@ -1274,6 +1307,7 @@ internal static class M68kGraphColoringAllocator
 				: keep.SpillWeight + remove.SpillWeight;
 			keep.IsRematerializable &=
 				remove.IsRematerializable;
+			keep.IsSpillTemporary |= remove.IsSpillTemporary;
 			keep.PreferAddressRegisters |= remove.PreferAddressRegisters;
 			foreach (var member in remove.Members)
 			{

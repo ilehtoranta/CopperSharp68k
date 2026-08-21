@@ -55,9 +55,11 @@ public sealed partial class CopperBarsAssemblyTests
 	{
 		var result = Compile(M68kOutputFormat.Hunk);
 
-		Assert.True(result.Code.Length <= 1_287, $"Code budget exceeded: {result.Code.Length} bytes.");
-		Assert.True(result.Image.Length <= 1_352, $"Stripped HUNK budget exceeded: {result.Image.Length} bytes.");
-		Assert.Equal(3, result.Relocations.Count);
+		// Writable library bases now live outside ROM/code. Absolute references
+		// preserve that section boundary and account for the additional fixups.
+		Assert.True(result.Code.Length <= 1_322, $"Code budget exceeded: {result.Code.Length} bytes.");
+		Assert.True(result.Image.Length <= 1_476, $"Stripped HUNK budget exceeded: {result.Image.Length} bytes.");
+		Assert.Equal(25, result.Relocations.Count);
 	}
 
 	[Fact]

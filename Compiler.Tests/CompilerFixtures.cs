@@ -7,6 +7,68 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class CompilerFixtures
 {
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint AggressiveGuestRead(APTR address, int offset) =>
+		APTR.ReadUInt32(address, offset);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void AggressiveGuestWrite(
+		APTR address,
+		int offset,
+		uint value) =>
+		APTR.WriteUInt32(address, offset, value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AggressiveGuestWriteReadEntry()
+	{
+		var address = APTR.FromPointer(0x0000_3000);
+		AggressiveGuestWrite(address, 12, 0x1122_3344);
+		return AggressiveGuestRead(address, 12);
+	}
+
+	private interface IGuestMemoryFixture
+	{
+		uint Read(APTR address, int offset);
+		void Write(APTR address, int offset, uint value);
+	}
+
+	private readonly struct AggressiveGuestMemoryFixture(uint reserved) :
+		IGuestMemoryFixture
+	{
+		private readonly uint _reserved = reserved;
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public uint Read(APTR address, int offset) =>
+			APTR.ReadUInt32(address, offset);
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void Write(APTR address, int offset, uint value) =>
+			APTR.WriteUInt32(address, offset, value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint AggressiveConstrainedGuestPassThrough<T>(
+		ref T memory,
+		APTR address,
+		int offset,
+		uint value)
+		where T : struct, IGuestMemoryFixture
+	{
+		memory.Write(address, offset, value);
+		return memory.Read(address, offset);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AggressiveConstrainedGuestPassThroughEntry()
+	{
+		var memory = new AggressiveGuestMemoryFixture(0);
+		return AggressiveConstrainedGuestPassThrough(
+			ref memory,
+			APTR.FromPointer(0x0000_3000),
+			20,
+			0x99AA_BBCC);
+	}
+
 	private enum ListByteState : byte
 	{
 		First = 0xA5,
@@ -34,6 +96,14 @@ public static class CompilerFixtures
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int MultiModuleGenericEntry() => ExternalMethods.AddOne<uint>(41);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint MultiModuleAggressiveGuestReadEntry()
+	{
+		var address = APTR.FromPointer(0x0000_3000);
+		APTR.WriteUInt32(address, 8, 0xCAFE_BABE);
+		return ExternalMethods.ReadGuestUInt32(address, 8);
+	}
 
 	private sealed class FixtureException : Exception
 	{
@@ -117,6 +187,36 @@ public static class CompilerFixtures
 		}
 		return result + value;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AllocatedSparseSwitchEntry()
+	{
+		var sum = SparseSwitch(0) + SparseSwitch(6) + SparseSwitch(90) +
+			SparseSwitch(1);
+		return sum == 18 ? 42 : sum;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int SparseSwitch(int value) => value switch
+	{
+		0 => 1,
+		6 => 2,
+		12 => 3,
+		18 => 4,
+		24 => 5,
+		30 => 6,
+		36 => 7,
+		42 => 8,
+		48 => 9,
+		54 => 10,
+		60 => 11,
+		66 => 12,
+		72 => 13,
+		78 => 14,
+		84 => 15,
+		90 => 16,
+		_ => -1,
+	};
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int LoopCarriedInitializerEntry()
@@ -1025,6 +1125,10 @@ public static class CompilerFixtures
 			value = (value << 3) ^ (value + 14);
 			value = (value << 3) ^ (value + 15);
 			value = (value << 3) ^ (value + 16);
+			value = (value << 3) ^ (value + 17);
+			value = (value << 3) ^ (value + 18);
+			value = (value << 3) ^ (value + 19);
+			value = (value << 3) ^ (value + 20);
 		}
 		return value;
 	}
@@ -1056,6 +1160,10 @@ public static class CompilerFixtures
 			value = (value << 3) ^ (value + 15);
 			value = (value << 3) ^ (value + 16);
 			value = (value << 3) ^ (value + 17);
+			value = (value << 3) ^ (value + 18);
+			value = (value << 3) ^ (value + 19);
+			value = (value << 3) ^ (value + 20);
+			value = (value << 3) ^ (value + 21);
 		}
 		return value;
 	}
@@ -1089,6 +1197,11 @@ public static class CompilerFixtures
 			value = (value << 3) ^ (value + 17);
 			value = (value << 3) ^ (value + 18);
 			value = (value << 3) ^ (value + 19);
+			value = (value << 3) ^ (value + 20);
+			value = (value << 3) ^ (value + 21);
+			value = (value << 3) ^ (value + 22);
+			value = (value << 3) ^ (value + 23);
+			value = (value << 3) ^ (value + 24);
 		}
 		return value;
 	}
@@ -1592,6 +1705,12 @@ public static class CompilerFixtures
 		CallerProvidedVectors.Add(APTR.FromPointer(0x0000_3400), 19, 23);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CallAmigaIndirectSubroutine() =>
+		AmigaIndirectVectors.Add(
+			APTR.FromPointer(0x0000_3500), 19, 23,
+			APTR.FromPointer(0x0000_3600));
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallInvalidLibrarySignature() => InvalidVectors.MissingRegister(42);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -1691,6 +1810,17 @@ public static class CompilerFixtures
 			[M68kRegister(M68kRegister.A6)] APTR deviceBase,
 			[M68kRegister(M68kRegister.D0)] int left,
 			[M68kRegister(M68kRegister.D1)] int right);
+	}
+
+	public static class AmigaIndirectVectors
+	{
+		[AmigaIndirectCall(M68kRegister.A3)]
+		[return: M68kRegister(M68kRegister.D0)]
+		public static extern int Add(
+			[M68kRegister(M68kRegister.A3)] APTR entry,
+			[M68kRegister(M68kRegister.D0)] int left,
+			[M68kRegister(M68kRegister.D1)] int right,
+			[M68kRegister(M68kRegister.A6)] APTR context);
 	}
 
 	[AmigaLibrary("invalid.library", AmigaLibraryBasePolicy.Manual)]
@@ -10466,6 +10596,14 @@ public static class CompilerFixtures
 		BoxedPair first,
 		BoxedPair second) =>
 		condition ? first : second;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static BoxedPair DirectMultiwordBranchReturn(bool second)
+	{
+		if (second)
+			return ReturnConstructedMultiword();
+		return ReturnMultiwordArgument(new BoxedPair(19, 23));
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int MultiwordReturnEntry()

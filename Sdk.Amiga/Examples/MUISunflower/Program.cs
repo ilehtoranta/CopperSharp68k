@@ -14,6 +14,21 @@ public static class Program
 	[M68kEntryPoint]
 	public static uint Main()
 	{
+		var muiBase = Exec.OpenLibrary(MUIMaster.Name, 0);
+		if (!muiBase.HasValue)
+		{
+			return 20;
+		}
+
+		MUIMaster.MUIMasterLibraryBase = muiBase.Value;
+		var result = Run();
+		Exec.CloseLibrary(MUIMaster.MUIMasterLibraryBase);
+		MUIMaster.MUIMasterLibraryBase = APTR.Null;
+		return result;
+	}
+
+	private static uint Run()
+	{
 		CString title = "MUI Sunflower";
 		var button = MUIButton("Grow");
 		var label = MUIText("A tiny MUI window from CopperSharp.Sdk.Amiga.");

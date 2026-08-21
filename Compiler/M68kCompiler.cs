@@ -394,11 +394,12 @@ public static class M68kCompiler
 		}
 
 		if (request.RuntimeProfile == M68kRuntimeProfile.Rom &&
-			request.OutputFormat != M68kOutputFormat.KickstartRom)
+			request.OutputFormat is not M68kOutputFormat.KickstartRom and
+				not M68kOutputFormat.Assembly)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidOutputOptions,
-				"ROM runtime profile requires Kickstart ROM output.");
+				"ROM runtime profile requires Kickstart ROM or assembly output.");
 		}
 
 		if (GetEffectiveMemoryManagement(request) == M68kMemoryManagement.BumpAllocator)
@@ -466,10 +467,14 @@ public static class M68kCompiler
 				entryOffset,
 				image.Length,
 				linked.Bytes.Length,
+				linked.DataStartOffset,
+				linked.WritableDataStartOffset,
+				linked.BssStartOffset,
 				symbols,
 				linked.Relocations,
 				loopFootprints,
 				program.Assembler.PeepholeOptimizationStatistics,
+				program.MachineOptimizationStatistics,
 				frameworkFeatures),
 			text,
 			program.AllocationStatistics.Values.ToArray(),
@@ -513,10 +518,14 @@ public static class M68kCompiler
 				entryOffset,
 				image.Length,
 				linked.Bytes.Length,
+				linked.DataStartOffset,
+				linked.WritableDataStartOffset,
+				linked.BssStartOffset,
 				symbols,
 				linked.Relocations,
 				loopFootprints,
 				program.Assembler.PeepholeOptimizationStatistics,
+				program.MachineOptimizationStatistics,
 				frameworkFeatures),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
@@ -555,10 +564,14 @@ public static class M68kCompiler
 				entryPoint,
 				image.Length,
 				linked.Bytes.Length,
+				linked.DataStartOffset,
+				linked.WritableDataStartOffset,
+				linked.BssStartOffset,
 				symbols,
 				linked.Relocations,
 				loopFootprints,
 				program.Assembler.PeepholeOptimizationStatistics,
+				program.MachineOptimizationStatistics,
 				frameworkFeatures),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
@@ -604,7 +617,8 @@ public static class M68kCompiler
 		}
 
 		foreach (var platformBase in program.PlatformBases.Where(
-			item => item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot))
+			item => item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				item.Label is not null))
 		{
 			result.Add(new M68kSymbol(
 				platformBase.Binding.SlotSymbol!,
@@ -639,10 +653,14 @@ public static class M68kCompiler
 		uint entryPoint,
 		int artifactBytes,
 		int codeBytes,
+		int? dataStartOffset,
+		int? writableDataStartOffset,
+		int? bssStartOffset,
 		IReadOnlyList<M68kSymbol> symbols,
 		IReadOnlyList<M68kRelocation> relocations,
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
 		M68kPeepholeOptimizationStatistics peepholeStatistics,
+		M68kMachineModuleOptimizationStatistics machineStatistics,
 		IReadOnlyList<string> frameworkFeatures)
 	{
 		var target = request.TargetContract ?? new M68kTargetContract(
@@ -650,6 +668,20 @@ public static class M68kCompiler
 			"CopperSharp.Compiler",
 			CompilerPackageVersion);
 		var contract = frameworkAnalysis.Contract;
+		var dataStart = Math.Clamp(dataStartOffset ?? codeBytes, 0, codeBytes);
+		var writableDataStart = Math.Clamp(
+			writableDataStartOffset ?? codeBytes,
+			dataStart,
+			codeBytes);
+		var bssStart = Math.Clamp(
+			bssStartOffset ?? codeBytes,
+			writableDataStart,
+			codeBytes);
+		var romCodeBytes = dataStart;
+		var romReadOnlyDataBytes = writableDataStart - dataStart;
+		var initializedRamBytes = bssStart - writableDataStart;
+		var bssBytes = codeBytes - bssStart;
+		var romBytes = codeBytes - bssBytes;
 		var map = new StringBuilder();
 		map.AppendLine($"COMPILER CopperSharp.Compiler {CompilerPackageVersion}");
 		map.AppendLine(
@@ -675,6 +707,9 @@ public static class M68kCompiler
 		map.AppendLine($"ENTRY {entryPoint:X8}");
 		map.AppendLine(
 			$"METRICS artifact-bytes={artifactBytes} code-bytes={codeBytes} " +
+			$"rom-bytes={romBytes} rom-code-bytes={romCodeBytes} " +
+			$"rom-rodata-bytes={romReadOnlyDataBytes} " +
+			$"initialized-ram-bytes={initializedRamBytes} bss-bytes={bssBytes} " +
 			$"symbols={symbols.Count} relocations={relocations.Count} " +
 			$"loops={loopFootprints.Count} framework-features={frameworkFeatures.Count} " +
 			$"managed-allocation-sites={frameworkAnalysis.ManagedAllocationSites.Count}");
@@ -686,6 +721,13 @@ public static class M68kCompiler
 			$"rounds={peepholeStatistics.Rounds} " +
 			$"method-ranges={peepholeStatistics.MethodRanges} " +
 			$"converged={(peepholeStatistics.Converged ? "yes" : "no")}");
+		map.AppendLine(
+			$"MACHINE scc={machineStatistics.StronglyConnectedComponents} " +
+			$"devirtualized-calls={machineStatistics.DevirtualizedCalls} " +
+			$"inlined-calls={machineStatistics.InlinedCalls} " +
+			$"retained-methods={machineStatistics.RetainedMethods} " +
+			$"estimated-cost-before={machineStatistics.EstimatedPreOptimizationCost} " +
+			$"estimated-cost-after={machineStatistics.EstimatedPostOptimizationCost}");
 		map.AppendLine("SYMBOLS");
 		foreach (var symbol in symbols)
 		{

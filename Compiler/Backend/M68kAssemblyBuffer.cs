@@ -23,11 +23,15 @@ internal sealed class M68kAssemblyBuffer
 
 	internal int? DataStartOffset { get; private set; }
 
+	internal int? WritableDataStartOffset { get; private set; }
+
 	internal int? BssStartOffset { get; private set; }
 
 	internal bool HasLabelAt(int offset) => Labels.Values.Contains(offset);
 
 	internal void MarkDataStart() => DataStartOffset ??= Bytes.Count;
+
+	internal void MarkWritableDataStart() => WritableDataStartOffset ??= Bytes.Count;
 
 	internal void MarkBssStart() => BssStartOffset ??= Bytes.Count;
 
@@ -49,6 +53,11 @@ internal sealed class M68kAssemblyBuffer
 		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= offset)
 		{
 			DataStartOffset = dataStartOffset + count;
+		}
+		if (WritableDataStartOffset is { } writableDataStartOffset &&
+			writableDataStartOffset >= offset)
+		{
+			WritableDataStartOffset = writableDataStartOffset + count;
 		}
 		if (BssStartOffset is { } bssStartOffset && bssStartOffset >= offset)
 		{
@@ -118,6 +127,11 @@ internal sealed class M68kAssemblyBuffer
 		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= end)
 		{
 			DataStartOffset = dataStartOffset - count;
+		}
+		if (WritableDataStartOffset is { } writableDataStartOffset &&
+			writableDataStartOffset >= end)
+		{
+			WritableDataStartOffset = writableDataStartOffset - count;
 		}
 		if (BssStartOffset is { } bssStartOffset && bssStartOffset >= end)
 		{
@@ -191,6 +205,181 @@ internal sealed class M68kAssemblyBuffer
 			var effects = InstructionEffectOverrides[instructionOffset];
 			InstructionEffectOverrides.Remove(instructionOffset);
 			InstructionEffectOverrides.Add(instructionOffset - count, effects);
+		}
+	}
+
+	internal void RemoveByteRanges(
+		IReadOnlyList<(int Offset, int Count)> ranges)
+	{
+		if (ranges.Count == 0)
+		{
+			return;
+		}
+
+		var ordered = ranges.OrderBy(static range => range.Offset).ToArray();
+		var removedBefore = new int[ordered.Length + 1];
+		var totalRemoved = 0;
+		var previousEnd = 0;
+		for (var index = 0; index < ordered.Length; index++)
+		{
+			var range = ordered[index];
+			var end = checked(range.Offset + range.Count);
+			if (range.Count <= 0 || range.Offset < previousEnd || end > Bytes.Count)
+			{
+				throw new ArgumentOutOfRangeException(
+					nameof(ranges),
+					"Removed byte ranges must be positive, ordered, non-overlapping, and inside the assembly buffer.");
+			}
+			totalRemoved = checked(totalRemoved + range.Count);
+			removedBefore[index + 1] = totalRemoved;
+			previousEnd = end;
+		}
+
+		var compacted = new byte[Bytes.Count - totalRemoved];
+		var sourceOffset = 0;
+		var destinationOffset = 0;
+		foreach (var range in ordered)
+		{
+			var retained = range.Offset - sourceOffset;
+			Bytes.CopyTo(sourceOffset, compacted, destinationOffset, retained);
+			sourceOffset = range.Offset + range.Count;
+			destinationOffset += retained;
+		}
+		Bytes.CopyTo(
+			sourceOffset,
+			compacted,
+			destinationOffset,
+			Bytes.Count - sourceOffset);
+		Bytes.Clear();
+		Bytes.AddRange(compacted);
+
+		DataStartOffset = MapSectionOffset(DataStartOffset);
+		WritableDataStartOffset = MapSectionOffset(WritableDataStartOffset);
+		BssStartOffset = MapSectionOffset(BssStartOffset);
+
+		foreach (var label in Labels.Keys.ToArray())
+		{
+			Labels[label] = MapOffset(Labels[label]);
+		}
+		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
+		{
+			AnalysisAnchors[anchor] = MapAnchorOffset(AnalysisAnchors[anchor]);
+		}
+
+		for (var index = Branches.Count - 1; index >= 0; index--)
+		{
+			var branch = Branches[index];
+			if (IsRemoved(branch.OpcodeOffset))
+			{
+				Branches.RemoveAt(index);
+			}
+			else
+			{
+				Branches[index] = branch with
+				{
+					OpcodeOffset = MapOffset(branch.OpcodeOffset)
+				};
+			}
+		}
+		for (var index = Addresses.Count - 1; index >= 0; index--)
+		{
+			var address = Addresses[index];
+			if (IsRemoved(address.Offset))
+			{
+				Addresses.RemoveAt(index);
+			}
+			else
+			{
+				Addresses[index] = address with { Offset = MapOffset(address.Offset) };
+			}
+		}
+		for (var index = PcRelative.Count - 1; index >= 0; index--)
+		{
+			var fixup = PcRelative[index];
+			if (IsRemoved(fixup.DisplacementOffset))
+			{
+				PcRelative.RemoveAt(index);
+			}
+			else
+			{
+				PcRelative[index] = fixup with
+				{
+					DisplacementOffset = MapOffset(fixup.DisplacementOffset)
+				};
+			}
+		}
+
+		var effects = InstructionEffectOverrides.ToArray();
+		InstructionEffectOverrides.Clear();
+		foreach (var effect in effects)
+		{
+			if (!IsRemoved(effect.Key))
+			{
+				InstructionEffectOverrides.Add(MapOffset(effect.Key), effect.Value);
+			}
+		}
+
+		int? MapSectionOffset(int? offset) =>
+			offset is { } value ? MapOffset(value) : null;
+
+		int MapOffset(int value)
+		{
+			var low = 0;
+			var high = ordered.Length;
+			while (low < high)
+			{
+				var middle = low + ((high - low) / 2);
+				if (ordered[middle].Offset + ordered[middle].Count <= value)
+				{
+					low = middle + 1;
+				}
+				else
+				{
+					high = middle;
+				}
+			}
+
+			return value - removedBefore[low];
+		}
+
+		int MapAnchorOffset(int value)
+		{
+			foreach (var range in ordered)
+			{
+				if (value <= range.Offset)
+				{
+					break;
+				}
+				if (value < range.Offset + range.Count)
+				{
+					return MapOffset(range.Offset);
+				}
+			}
+			return MapOffset(value);
+		}
+
+		bool IsRemoved(int value)
+		{
+			var low = 0;
+			var high = ordered.Length;
+			while (low < high)
+			{
+				var middle = low + ((high - low) / 2);
+				if (ordered[middle].Offset <= value)
+				{
+					low = middle + 1;
+				}
+				else
+				{
+					high = middle;
+				}
+			}
+			if (low == 0)
+			{
+				return false;
+			}
+			var candidate = ordered[low - 1];
+			return value < candidate.Offset + candidate.Count;
 		}
 	}
 }

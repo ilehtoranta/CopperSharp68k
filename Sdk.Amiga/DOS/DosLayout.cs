@@ -8,11 +8,34 @@ namespace Amiga;
 /// <summary>Published byte offsets for guest-memory AmigaDOS structures.</summary>
 public static class DosLayout
 {
+	public static class AnchorPath
+	{
+		public const int Base = 0, Current = 4, BreakBits = 8,
+			FoundBreak = 12, Flags = 16, Reserved = 17, StringLength = 18,
+			Info = 20, PathBuffer = 280;
+		public const int MinimumSize = 281, Size = 282;
+	}
+
+	public static class AChain
+	{
+		public const int Child = 0, Parent = 4, Lock = 8, Info = 12,
+			Flags = 272, Pattern = 273;
+		public const int MinimumSize = 274, Size = 274;
+	}
+
 	public static class ExAllControl
 	{
 		public const int Entries = 0, LastKey = 4, MatchString = 8,
 			MatchFunction = 12;
 		public const int Size = 16;
+	}
+
+	public static class ExAllData
+	{
+		public const int Next = 0, Name = 4, Type = 8, FileSize = 12,
+			Protection = 16, Days = 20, Minutes = 24, Ticks = 28,
+			Comment = 32, OwnerUid = 36, OwnerGid = 38;
+		public const int Size = 40;
 	}
 
 	public static class DosAttrBuffer
@@ -97,6 +120,12 @@ public static class DosLayout
 		public const int Size = 44;
 	}
 
+	public static class Segment
+	{
+		public const int Next = 0, UseCount = 4, SegmentList = 8, Name = 12;
+		public const int MinimumSize = 13, Size = 16;
+	}
+
 	public static class DeviceNode
 	{
 		public const int Next = 0, Type = 4, Task = 8, Lock = 12,
@@ -131,6 +160,12 @@ public static class DosLayout
 	{
 		public const int Link = 0, Key = 4, Access = 8, Task = 12, Volume = 16;
 		public const int Size = 20;
+	}
+
+	public static class PathLock
+	{
+		public const int Next = 0, Lock = 4;
+		public const int Size = 8;
 	}
 
 	public static class CommandLineInterface
@@ -220,5 +255,26 @@ public static class DosLayout
 	{
 		public const int Next = 0, Lock = 4;
 		public const int Size = 8;
+	}
+
+	public static class NotifyRequestTarget
+	{
+		public const int Port = 0, Task = 0, SignalNumber = 4;
+		public const int Size = 8;
+	}
+
+	public static class NotifyRequest
+	{
+		public const int Name = 0, FullName = 4, UserData = 8, Flags = 12,
+			Target = 16, Reserved0 = 24, Reserved1 = 28, Reserved2 = 32,
+			Reserved3 = 36, MessageCount = 40, Handler = 44;
+		public const int Size = 48;
+	}
+
+	public static class NotifyMessage
+	{
+		public const int ExecMessage = 0, MessageClass = 20, MessageCode = 24,
+			Request = 26, Private0 = 30, Private1 = 34;
+		public const int Size = 38;
 	}
 }

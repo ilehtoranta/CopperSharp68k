@@ -323,6 +323,17 @@ internal static class M68kSpillRewriter
 						continue;
 					}
 					var temporary = CloneValue(function, definition);
+					if (instruction.Operation == M68kMachineOperation.Argument &&
+						function.Values[temporary].Width == M68kMachineValueWidth.Long)
+					{
+						// This rewritten value is consumed only by the adjacent longword
+						// SpillStore. MOVE.L supports An sources, so do not exhaust D0-D7
+						// while the prologue materializes many spilled scalar arguments.
+						function.Values[temporary] = function.Values[temporary] with
+						{
+							AllowedRegisters = M68kRegisterSet.DataOrAddress
+						};
+					}
 					keptDefinitions.Add(temporary);
 					stores.Add(CreateStore(
 						function,
@@ -632,8 +643,11 @@ internal static class M68kParallelCopyResolver
 		if (original.Select(static copy => copy.Destination).Distinct().Count() !=
 			original.Length)
 		{
+			var duplicates = original.GroupBy(static copy => copy.Destination)
+				.Where(static group => group.Count() > 1)
+				.Select(group => $"{group.Key}<-[{string.Join(",", group.Select(static copy => copy.Source))}]");
 			throw new InvalidOperationException(
-				"Parallel copy has more than one source for a destination.");
+				$"Parallel copy has more than one source for a destination: {string.Join("; ", duplicates)}.");
 		}
 
 		var remaining = original.ToList();

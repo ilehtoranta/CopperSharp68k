@@ -77,6 +77,7 @@ internal sealed class CilSignatureTypeProvider :
 {
 	private readonly Func<MetadataReader, TypeReference, string, CilType?>?
 		_referencedEnumResolver;
+	private Dictionary<string, CilType>? _definedEnumTypes;
 
 	public CilSignatureTypeProvider(
 		Func<MetadataReader, TypeReference, string, CilType?>? referencedEnumResolver = null) =>
@@ -213,22 +214,30 @@ internal sealed class CilSignatureTypeProvider :
 		string displayName,
 		out CilType enumType)
 	{
-		foreach (var definitionHandle in reader.TypeDefinitions)
+		if (_definedEnumTypes is null)
 		{
-			var definition = reader.GetTypeDefinition(definitionHandle);
-			if (QualifiedName(reader, definitionHandle, definition) == displayName &&
-				TryGetEnumUnderlyingType(reader, definition, out var underlying))
+			var definedEnumTypes = new Dictionary<string, CilType>(StringComparer.Ordinal);
+			foreach (var definitionHandle in reader.TypeDefinitions)
 			{
-				enumType = underlying with
+				var definition = reader.GetTypeDefinition(definitionHandle);
+				if (!TryGetEnumUnderlyingType(reader, definition, out var underlying))
 				{
-					DisplayName = displayName,
-					IsEnum = true
-				};
-				return true;
+					continue;
+				}
+
+				var name = QualifiedName(reader, definitionHandle, definition);
+				definedEnumTypes.TryAdd(
+					name,
+					underlying with
+					{
+						DisplayName = name,
+						IsEnum = true
+					});
 			}
+			_definedEnumTypes = definedEnumTypes;
 		}
-		enumType = null!;
-		return false;
+
+		return _definedEnumTypes.TryGetValue(displayName, out enumType!);
 	}
 
 	private static bool TryGetKnownFrameworkEnumType(

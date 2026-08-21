@@ -16,9 +16,11 @@
     <Compile Include="..\Sdk.Amiga\GuestMemory\**\*.cs" Link="GuestMemory\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\Sdk.Amiga\BOOPSI\GuestCodecs.cs" Link="BOOPSI\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\DOS\GuestCodecs.cs" Link="DOS\GuestCodecs.cs" />
+	<Compile Include="..\Sdk.Amiga\Exec\GuestCodecs.cs" Link="Exec\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\Layers\GuestCodecs.cs" Link="Layers\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\MUIMaster\GuestCodecs.cs" Link="MUIMaster\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\Utility\GuestCodecs.cs" Link="Utility\GuestCodecs.cs" />
+    <Compile Include="..\Sdk.Amiga\Utility\UtilityHookCodec.cs" Link="Utility\UtilityHookCodec.cs" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

@@ -32,6 +32,29 @@ internal sealed record M68kMachineModuleOptimizationStatistics(
 		0);
 }
 
+internal static class M68kMachineInliningPolicy
+{
+	private const int MaximumGuestMemoryWrapperCallerArguments = 8;
+
+	public static bool AllowsGuestMemoryWrapper(CilMethod caller)
+	{
+		var parameterCount = caller.Signature.ParameterTypes.IsDefault
+			? 0
+			: caller.Signature.ParameterTypes.Length;
+		return parameterCount + (caller.Signature.Header.IsInstance ? 1 : 0) <=
+			MaximumGuestMemoryWrapperCallerArguments;
+	}
+
+	public static bool IsGuestMemoryIntrinsic(string? importName) =>
+		importName is
+			"intrinsic:aptr-read-uint8" or
+			"intrinsic:aptr-read-uint16" or
+			"intrinsic:aptr-read-uint32" or
+			"intrinsic:aptr-write-uint8" or
+			"intrinsic:aptr-write-uint16" or
+			"intrinsic:aptr-write-uint32";
+}
+
 /// <summary>
 /// Closed-world coordination for raw machine functions. This stage deliberately
 /// owns call-graph facts even when a call is not transformed: later ABI lowering,
@@ -127,6 +150,7 @@ internal static class M68kMachineModuleOptimizer
 					methodsByIdentity,
 					functions,
 					componentByMethod,
+					module,
 					cpu);
 			}
 		}
@@ -213,6 +237,7 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod> methods,
 		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
 		IReadOnlyDictionary<CilMethodIdentity, int> componentByMethod,
+		CompilationModule module,
 		M68kCpuTarget cpu)
 	{
 		var count = 0;
@@ -224,26 +249,46 @@ internal static class M68kMachineModuleOptimizer
 				if (call.Operation != M68kMachineOperation.Call ||
 					call.LogicalCall is not
 					{
-						DispatchKind: M68kMachineCallDispatchKind.Direct,
-						ResolvedTargets: [var targetIdentity],
-						RequiresNullCheck: false
+						DispatchKind: M68kMachineCallDispatchKind.Direct or
+							M68kMachineCallDispatchKind.Constrained,
+						ResolvedTargets: [var targetIdentity]
 					} logicalCall ||
 					!methods.TryGetValue(targetIdentity, out var targetMethod) ||
-					!functions.TryGetValue(targetIdentity, out var target) ||
+					!functions.TryGetValue(targetIdentity, out var target))
+				{
+					continue;
+				}
+				var constrainedValueTypeCall =
+					logicalCall.DispatchKind == M68kMachineCallDispatchKind.Constrained &&
+					module.GetMethodDeclaringType(targetMethod).Kind ==
+						CilTypeKind.ValueType;
+				if (logicalCall.RequiresNullCheck && !constrainedValueTypeCall ||
 					componentByMethod[callerMethod.Identity] == componentByMethod[targetIdentity] ||
-					(targetMethod.ImplAttributes & MethodImplAttributes.NoInlining) != 0 ||
-					!TryGetScalarInlineBody(
+					(targetMethod.ImplAttributes & MethodImplAttributes.NoInlining) != 0)
+				{
+					continue;
+				}
+				var aggressive = (targetMethod.ImplAttributes &
+					MethodImplAttributes.AggressiveInlining) != 0;
+				if (!TryGetScalarInlineBody(
 						target,
 						logicalCall,
+						module,
+						aggressive,
 						out var body,
 						out var arguments,
-						out var returnValues))
+						out var returnValues,
+						out var guestMemoryIntrinsicWrapper))
+				{
+					continue;
+				}
+				if (logicalCall.DispatchKind == M68kMachineCallDispatchKind.Constrained &&
+					(!guestMemoryIntrinsicWrapper ||
+					 !M68kMachineInliningPolicy.AllowsGuestMemoryWrapper(callerMethod)))
 				{
 					continue;
 				}
 
-				var aggressive = (targetMethod.ImplAttributes &
-					MethodImplAttributes.AggressiveInlining) != 0;
 				var candidateLimit = aggressive ? 300 : 120;
 				if (body.Count > candidateLimit)
 				{
@@ -251,7 +296,9 @@ internal static class M68kMachineModuleOptimizer
 				}
 				var first = index;
 				while (first > 0 && IsCallAbiPrefix(
-					block.Instructions[first - 1], call))
+					block.Instructions[first - 1],
+					call,
+					logicalCall.ArgumentValueIds))
 				{
 					first--;
 				}
@@ -279,15 +326,17 @@ internal static class M68kMachineModuleOptimizer
 						? new M68kTargetCost()
 						: M68kTargetCostModel.Estimate(
 							[call with
-							{
-								Operation = M68kMachineOperation.Copy,
-								Uses = [],
-								Definitions = []
-							}],
+								{
+									Operation = M68kMachineOperation.Copy,
+									Uses = [],
+									Definitions = []
+								}],
 							cpu,
 							block.LoopDepth));
-				if (delta > 0 ||
-					!M68kTargetCostModel.Accept(beforeCost, afterCost, cpu))
+				var forceIntrinsicWrapper = guestMemoryIntrinsicWrapper;
+				if (!forceIntrinsicWrapper &&
+					(delta > 0 ||
+					 !M68kTargetCostModel.Accept(beforeCost, afterCost, cpu)))
 				{
 					continue;
 				}
@@ -301,8 +350,24 @@ internal static class M68kMachineModuleOptimizer
 					arguments,
 					returnValues,
 					target);
+				var removedInstructions = block.Instructions
+					.Skip(first)
+					.Take(removedCount)
+					.ToArray();
 				block.Instructions.RemoveRange(first, removedCount);
 				block.Instructions.InsertRange(first, replacements);
+				try
+				{
+					M68kMachineIrVerifier.Verify(caller);
+				}
+				catch (InvalidOperationException)
+				{
+					// Inlining is optional. Restore the exact ABI sequence if this
+					// candidate exposes an unmodelled shared staging/result value.
+					block.Instructions.RemoveRange(first, replacements.Count);
+					block.Instructions.InsertRange(first, removedInstructions);
+					continue;
+				}
 				index = first + replacements.Count - 1;
 				count++;
 			}
@@ -317,13 +382,17 @@ internal static class M68kMachineModuleOptimizer
 	private static bool TryGetScalarInlineBody(
 		M68kMachineFunction target,
 		M68kMachineLogicalCall logicalCall,
+		CompilationModule module,
+		bool allowGuestMemoryIntrinsic,
 		out IReadOnlyList<M68kMachineInstruction> body,
 		out IReadOnlyDictionary<int, int> arguments,
-		out ImmutableArray<int> returnValues)
+		out ImmutableArray<int> returnValues,
+		out bool guestMemoryIntrinsicWrapper)
 	{
 		body = [];
 		arguments = new Dictionary<int, int>();
 		returnValues = [];
+		guestMemoryIntrinsicWrapper = false;
 		if (target.Blocks.Count != 1 || target.ExceptionRegions.Count != 0 ||
 			target.HasDynamicStackAllocation || target.Blocks[0].Phis.Count != 0)
 		{
@@ -354,8 +423,25 @@ internal static class M68kMachineModuleOptimizer
 			.Where(static instruction => instruction.Operation is not
 				M68kMachineOperation.Argument and not M68kMachineOperation.Return)
 			.ToArray();
-		if (inlineBody.Any(static instruction =>
-			instruction.Operation is not (
+		var guestMemoryIntrinsicCount = inlineBody.Count(instruction =>
+			IsGuestMemoryIntrinsic(instruction, module));
+		if (inlineBody.Any(instruction =>
+			!IsPureScalarInstruction(instruction) &&
+			!(allowGuestMemoryIntrinsic &&
+			  IsGuestMemoryIntrinsic(instruction, module))) ||
+			guestMemoryIntrinsicCount > 1 ||
+			guestMemoryIntrinsicCount != 0 && inlineBody.Length > 8)
+		{
+			return false;
+		}
+		guestMemoryIntrinsicWrapper = guestMemoryIntrinsicCount == 1;
+		body = inlineBody;
+		arguments = argumentMap;
+		returnValues = returnInstruction.Uses;
+		return true;
+
+		static bool IsPureScalarInstruction(M68kMachineInstruction instruction) =>
+			instruction.Operation is (
 				M68kMachineOperation.Copy or
 				M68kMachineOperation.Constant or
 				M68kMachineOperation.Add or
@@ -368,18 +454,30 @@ internal static class M68kMachineModuleOptimizer
 				M68kMachineOperation.Not or
 				M68kMachineOperation.Shift or
 				M68kMachineOperation.Compare or
-				M68kMachineOperation.Convert) ||
-			instruction.MemoryEffect != M68kMachineMemoryEffect.None ||
-			instruction.MayThrow || instruction.IsSafepoint ||
-			instruction.RequiresLiveCallerFrame ||
-			instruction.LogicalCall is not null))
+				M68kMachineOperation.Convert) &&
+			instruction.MemoryEffect == M68kMachineMemoryEffect.None &&
+			!instruction.MayThrow && !instruction.IsSafepoint &&
+			!instruction.RequiresLiveCallerFrame &&
+			instruction.LogicalCall is null;
+
+		static bool IsGuestMemoryIntrinsic(
+			M68kMachineInstruction instruction,
+			CompilationModule module)
 		{
-			return false;
+			if (instruction.Operation != M68kMachineOperation.Call ||
+				instruction.LogicalCall is null ||
+				instruction.RequiresLiveCallerFrame ||
+				instruction.Origin is not { SourceInstruction.Operand: int token } origin ||
+				origin.SourceInstruction.OpCode != OpCodes.Call &&
+				origin.SourceInstruction.OpCode != OpCodes.Callvirt)
+			{
+				return false;
+			}
+			var reference = module.ResolveMethodToken(
+				token, origin.SourceMethod, origin.SourceInstruction.Offset);
+			return M68kMachineInliningPolicy.IsGuestMemoryIntrinsic(
+				reference.ImportName);
 		}
-		body = inlineBody;
-		arguments = argumentMap;
-		returnValues = returnInstruction.Uses;
-		return true;
 	}
 
 	private static List<M68kMachineInstruction> CloneScalarInlineBody(
@@ -396,7 +494,6 @@ internal static class M68kMachineModuleOptimizer
 		var result = new List<M68kMachineInstruction>();
 		foreach (var instruction in body)
 		{
-			var definitions = new List<int>(instruction.Definitions.Length);
 			foreach (var definition in instruction.Definitions)
 			{
 				var source = target.Values[definition];
@@ -408,16 +505,28 @@ internal static class M68kMachineModuleOptimizer
 					isRematerializable: source.IsRematerializable,
 					spillWeight: source.SpillWeight);
 				values.Add(definition, clone.Id);
-				definitions.Add(clone.Id);
 			}
+		}
+		foreach (var instruction in body)
+		{
 			var origin = (instruction.Origin ??
 				target.OriginAt(instruction.IlOffset, instruction.SourceInstruction))?
 				.AtInlineSite(callerMethod, call.Origin!.SourceInstruction);
+			var nestedLogicalCall = instruction.LogicalCall is { } nested
+				? nested with
+				{
+					ArgumentValueIds = nested.ArgumentValueIds
+						.Select(value => values[value]).ToImmutableArray(),
+					ResultValueIds = nested.ResultValueIds
+						.Select(value => values[value]).ToImmutableArray(),
+					Origin = origin!
+				}
+				: null;
 			result.Add(caller.CreateInstruction(
 				instruction.Operation,
 				call.IlOffset,
 				instruction.Uses.Select(use => values[use]),
-				definitions,
+				instruction.Definitions.Select(definition => values[definition]),
 				instruction.Clobbers,
 				instruction.MemoryEffect,
 				instruction.IsSafepoint,
@@ -434,16 +543,18 @@ internal static class M68kMachineModuleOptimizer
 				instruction.BranchCondition,
 				instruction.RequiresLiveCallerFrame,
 				instruction.ConstantValue,
-				origin));
+				origin,
+				nestedLogicalCall));
 		}
 		for (var index = 0; index < logicalCall.ResultValueIds.Length; index++)
 		{
+			var mappedReturn = values.GetValueOrDefault(
+				returnValues[index],
+				arguments.GetValueOrDefault(returnValues[index]));
 			result.Add(caller.CreateInstruction(
 				M68kMachineOperation.Copy,
 				call.IlOffset,
-				uses: [values.GetValueOrDefault(
-					returnValues[index],
-					arguments.GetValueOrDefault(returnValues[index]))],
+				uses: [mappedReturn],
 				definitions: [logicalCall.ResultValueIds[index]],
 				origin: call.Origin));
 		}
@@ -452,11 +563,15 @@ internal static class M68kMachineModuleOptimizer
 
 	private static bool IsCallAbiPrefix(
 		M68kMachineInstruction instruction,
-		M68kMachineInstruction call) =>
+		M68kMachineInstruction call,
+		ImmutableArray<int> logicalArguments) =>
 		instruction.IlOffset == call.IlOffset &&
 		(instruction.Operation == M68kMachineOperation.OutgoingArgumentPush ||
 		 instruction.Operation == M68kMachineOperation.Copy &&
-		 instruction.SourceInstruction?.Offset == call.SourceInstruction?.Offset);
+		 instruction.SourceInstruction?.Offset == call.SourceInstruction?.Offset &&
+		 instruction.Definitions.Any(call.Uses.Contains) &&
+		 instruction.Definitions.All(definition =>
+			!logicalArguments.Contains(definition)));
 
 	private static bool IsCallAbiSuffix(
 		M68kMachineInstruction instruction,

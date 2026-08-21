@@ -15,6 +15,7 @@ public unsafe struct FileInfoBlock
 	public const int DiskKeyOffset = 0;
 	public const int FileNameOffset = 8;
 	public const int CommentOffset = 144;
+	public const int OwnerOffset = 224;
 	public const int DirEntryTypeOffset = 4;
 	public const int ProtectionOffset = 116;
 	public const int SizeOffset = 124;

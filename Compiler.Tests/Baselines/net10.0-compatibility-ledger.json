@@ -1,1 +1,1351 @@
-{"SchemaVersion":1,"Compiler":{"Name":"CopperSharp.Compiler","Version":"0.1.0-preview.1"},"Target":{"Name":"CopperSharp.Targets.Amiga","Version":"0.1.0-preview.1"},"Contract":{"TargetFramework":"net10.0","ReferencePack":"Microsoft.NETCore.App.Ref","ReferencePackVersion":"10.0.9","ManifestSchemaVersion":1},"Roots":[{"Id":"portable-strings","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::IntegerFormatStringEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"CopperSharp.Compiler","IsCompatible":true,"Members":[{"Member":"[System.Runtime]System.Int32::ToString instance string(string)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowInt32::ToString","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["integer-formatting","managed-exceptions","managed-strings","numerics"]},{"Member":"[System.Runtime]System.String::get_Chars instance char(int)","Status":"intrinsic","Binding":"intrinsic:string-char","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-strings"]},{"Member":"[System.Runtime]System.String::get_Length instance int()","Status":"intrinsic","Binding":"intrinsic:string-length","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-strings"]},{"Member":"[System.Runtime]System.String::op_Equality static bool(string,string)","Status":"intrinsic","Binding":"intrinsic:string-equality","Effects":["ReadsManagedMemory"],"RequiredFeatures":["managed-strings"]},{"Member":"[System.Runtime]System.UInt32::ToString instance string(string)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowUInt32::ToString","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["integer-formatting","managed-exceptions","managed-strings","numerics"]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Runtime.ShadowIntegerFormatter::FormatDecimalInt32","IlOffset":52,"Kind":"string","AllocatedType":"string"},{"Caller":"CopperSharp.Runtime.ShadowIntegerFormatter::FormatDecimalUInt32","IlOffset":18,"Kind":"string","AllocatedType":"string"},{"Caller":"CopperSharp.Runtime.ShadowIntegerFormatter::FormatHexUInt32","IlOffset":18,"Kind":"string","AllocatedType":"string"},{"Caller":"CopperSharp.Runtime.ShadowIntegerFormatter::FormatInt32","IlOffset":40,"Kind":"string","AllocatedType":"string"},{"Caller":"CopperSharp.Runtime.ShadowIntegerFormatter::FormatUInt32","IlOffset":9,"Kind":"string","AllocatedType":"string"}],"RequiredFeatures":["integer-formatting","managed-exceptions","managed-strings","numerics"],"NonSupportedMembers":[]},{"Id":"spans-and-memory","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"CopperSharp.Compiler","IsCompatible":true,"Members":[{"Member":"[System.Runtime]System.Memory`1<int>::.ctor instance void(!0[],int,int)","Status":"intrinsic","Binding":"intrinsic:memory-from-array-range:int","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory"]},{"Member":"[System.Runtime]System.Memory`1<int>::CopyTo instance void(System.Memory`1<!0>)","Status":"intrinsic","Binding":"intrinsic:memory-copy-to:int","Effects":["MayThrow","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory","spans"]},{"Member":"[System.Runtime]System.Memory`1<int>::Slice instance System.Memory`1<!0>(int,int)","Status":"intrinsic","Binding":"intrinsic:memory-slice-range:int","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory"]},{"Member":"[System.Runtime]System.Memory`1<int>::TryCopyTo instance bool(System.Memory`1<!0>)","Status":"intrinsic","Binding":"intrinsic:memory-try-copy-to:int","Effects":["ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory","spans"]},{"Member":"[System.Runtime]System.Memory`1<int>::op_Implicit static System.Memory`1<!0>(!0[])","Status":"intrinsic","Binding":"intrinsic:memory-from-array:int","Effects":["ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory"]},{"Member":"[System.Runtime]System.Memory`1<int>::op_Implicit static System.ReadOnlyMemory`1<!0>(System.Memory`1<!0>)","Status":"intrinsic","Binding":"intrinsic:readonly-memory-from-memory:int","Effects":["ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory"]},{"Member":"[System.Runtime]System.ReadOnlyMemory`1<int>::CopyTo instance void(System.Memory`1<!0>)","Status":"intrinsic","Binding":"intrinsic:readonly-memory-copy-to:int","Effects":["MayThrow","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory","spans"]},{"Member":"[System.Runtime]System.ReadOnlyMemory`1<int>::TryCopyTo instance bool(System.Memory`1<!0>)","Status":"intrinsic","Binding":"intrinsic:readonly-memory-try-copy-to:int","Effects":["ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory","spans"]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry","IlOffset":2,"Kind":"array","AllocatedType":"int[]"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry","IlOffset":214,"Kind":"array","AllocatedType":"int[]"}],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory","spans"],"NonSupportedMembers":[]},{"Id":"collections","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"CopperSharp.Compiler","IsCompatible":true,"Members":[{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<string,string>::.ctor instance void()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::.ctor","Effects":["WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<string,string>::Add instance void(!0,!1)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::Add","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<string,string>::TryGetValue instance bool(!0,!1&)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::TryGetValue","Effects":["MayThrow","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<string,string>::get_Count instance int()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::get_Count","Effects":["ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<string,string>::get_Item instance !1(!0)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::get_Item","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Runtime]System.Object::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.String::Substring instance string(int,int)","Status":"intrinsic","Binding":"intrinsic:string-substring","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-strings"]},{"Member":"[System.Runtime]System.String::get_Length instance int()","Status":"intrinsic","Binding":"intrinsic:string-length","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-strings"]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry","IlOffset":1,"Kind":"object","AllocatedType":"System.Collections.Generic.Dictionary`2<string,string>"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry","IlOffset":99,"Kind":"string","AllocatedType":"string"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<string,string>::Grow","IlOffset":17,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowDictionaryStorage`2<!0,!1>"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<string,string>::Grow","IlOffset":108,"Kind":"array","AllocatedType":"int[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<string,string>::GrowHashes","IlOffset":2,"Kind":"array","AllocatedType":"int[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<string,string>::GrowKeys","IlOffset":2,"Kind":"array","AllocatedType":"string[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<string,string>::GrowValues","IlOffset":2,"Kind":"array","AllocatedType":"string[]"}],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc","managed-strings"],"NonSupportedMembers":[]},{"Id":"linq","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"CopperSharp.Compiler","IsCompatible":true,"Members":[{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::.ctor instance void()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::.ctor","Effects":["WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::Add instance void(!0,!1)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::Add","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Collections]System.Collections.Generic.Dictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::get_Values instance System.Collections.Generic.Dictionary`2/ValueCollection<!0,!1>()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary`2::get_Values","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["managed-arrays","managed-collections","managed-gc"]},{"Member":"[System.Linq]System.Linq.Enumerable::OrderBy<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int> static System.Linq.IOrderedEnumerable`1<!!0>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::OrderBy","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["delegates","linq","managed-arrays","managed-gc"]},{"Member":"[System.Linq]System.Linq.Enumerable::ThenBy<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int> static System.Linq.IOrderedEnumerable`1<!!0>(System.Linq.IOrderedEnumerable`1<!!0>,System.Func`2<!!0,!!1>)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::ThenBy","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["delegates","linq","managed-arrays","managed-gc"]},{"Member":"[System.Runtime]System.Collections.Generic.IEnumerable`1<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GetEnumerator instance System.Collections.Generic.IEnumerator`1<!0>()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumerable`1::GetEnumerator","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["linq","managed-arrays","managed-gc"]},{"Member":"[System.Runtime]System.Collections.Generic.IEnumerator`1<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::get_Current instance !0()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumerator`1::get_Current","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["linq","managed-arrays","managed-gc"]},{"Member":"[System.Runtime]System.Collections.IEnumerator::MoveNext instance bool()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumeratorBase::MoveNext","Effects":["MayThrow","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["linq","managed-arrays","managed-gc"]},{"Member":"[System.Runtime]System.Func`2<!0,int>::Invoke instance !1(!0)","Status":"intrinsic","Binding":"intrinsic:delegate-invoke","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["delegates"]},{"Member":"[System.Runtime]System.Func`2<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int>::.ctor instance void(object,nint)","Status":"intrinsic","Binding":"intrinsic:delegate-ctor","Effects":["MayAllocate","MayThrow","MayCollect","WritesManagedMemory"],"RequiredFeatures":["delegates","managed-gc"]},{"Member":"[System.Runtime]System.IDisposable::Dispose instance void()","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumeratorBase::Dispose","Effects":[],"RequiredFeatures":["linq","managed-gc"]},{"Member":"[System.Runtime]System.Object::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry","IlOffset":1,"Kind":"object","AllocatedType":"System.Collections.Generic.Dictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry","IlOffset":131,"Kind":"object","AllocatedType":"System.Func`2<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int>"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry","IlOffset":163,"Kind":"object","AllocatedType":"System.Func`2<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int>"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::Grow","IlOffset":17,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowDictionaryStorage`2<!0,!1>"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::Grow","IlOffset":108,"Kind":"array","AllocatedType":"int[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GrowHashes","IlOffset":2,"Kind":"array","AllocatedType":"int[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GrowKeys","IlOffset":2,"Kind":"array","AllocatedType":"uint[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GrowValues","IlOffset":2,"Kind":"array","AllocatedType":"CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor[]"},{"Caller":"CopperSharp.Runtime.ShadowDictionary`2<uint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::get_Values","IlOffset":18,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowDictionaryValueCollection`2<!0,!1>"},{"Caller":"CopperSharp.Runtime.ShadowEnumerable::DictionaryUInt32ValuesOrderBy<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int>","IlOffset":30,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowPrimaryOrderedEnumerable`1<!!0>"},{"Caller":"CopperSharp.Runtime.ShadowEnumerable::DictionaryUInt32ValuesThenBy<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int>","IlOffset":30,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowOrderedEnumerable`1<!!0>"},{"Caller":"CopperSharp.Runtime.ShadowOrderedEnumerable`1<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GetEnumerator","IlOffset":33,"Kind":"array","AllocatedType":"CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor[]"},{"Caller":"CopperSharp.Runtime.ShadowOrderedEnumerable`1<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GetEnumerator","IlOffset":40,"Kind":"array","AllocatedType":"int[]"},{"Caller":"CopperSharp.Runtime.ShadowOrderedEnumerable`1<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::GetEnumerator","IlOffset":143,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowOrderedEnumerator`1<!0>"},{"Caller":"CopperSharp.Runtime.ShadowOrderedEnumerable`1<CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor>::MaterializeKeys","IlOffset":4,"Kind":"array","AllocatedType":"int[]"}],"RequiredFeatures":["delegates","linq","managed-arrays","managed-collections","managed-gc"],"NonSupportedMembers":[]},{"Id":"delegates","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"CopperSharp.Compiler","IsCompatible":true,"Members":[{"Member":"[System.Runtime]System.Delegate::Combine static System.Delegate(System.Delegate,System.Delegate)","Status":"intrinsic","Binding":"intrinsic:delegate-combine","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["delegates","managed-gc"]},{"Member":"[System.Runtime]System.Delegate::Remove static System.Delegate(System.Delegate,System.Delegate)","Status":"intrinsic","Binding":"intrinsic:delegate-remove","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["delegates","managed-gc"]},{"Member":"[System.Runtime]System.Func`2<int,int>::.ctor instance void(object,nint)","Status":"intrinsic","Binding":"intrinsic:delegate-ctor","Effects":["MayAllocate","MayThrow","MayCollect","WritesManagedMemory"],"RequiredFeatures":["delegates","managed-gc"]},{"Member":"[System.Runtime]System.Func`2<int,int>::Invoke instance !1(!0)","Status":"intrinsic","Binding":"intrinsic:delegate-invoke","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["delegates"]},{"Member":"[System.Runtime]System.Object::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry","IlOffset":0,"Kind":"object","AllocatedType":"<compiler-generated-display-class>"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry","IlOffset":21,"Kind":"object","AllocatedType":"System.Func`2<int,int>"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry","IlOffset":34,"Kind":"object","AllocatedType":"System.Func`2<int,int>"}],"RequiredFeatures":["delegates","managed-gc"],"NonSupportedMembers":[]},{"Id":"exceptions","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"CopperSharp.Compiler","IsCompatible":true,"Members":[{"Member":"[System.Runtime]System.Exception::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry","IlOffset":2,"Kind":"object","AllocatedType":"FixtureException"}],"RequiredFeatures":[],"NonSupportedMembers":[]},{"Id":"amiga-pal-iff","ManagedAssembly":{"Name":"IFFInspect","Version":"0.1.0.0"},"EntryPoint":"IFFInspect.Program::Main","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"implemented","Owner":"Runtime.AmigaPal","IsCompatible":true,"Members":[{"Member":"[System.Runtime]System.Exception::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.Nullable<Amiga.APTR>::GetValueOrDefault instance !0()","Status":"intrinsic","Binding":"intrinsic:nullable-get-value-or-default-no-argument:Amiga.APTR","Effects":[],"RequiredFeatures":["nullable-values"]},{"Member":"[System.Runtime]System.Nullable<Amiga.BPTR>::get_HasValue instance bool()","Status":"intrinsic","Binding":"intrinsic:nullable-has-value:Amiga.BPTR","Effects":[],"RequiredFeatures":["nullable-values"]},{"Member":"[System.Runtime]System.Nullable<Amiga.BPTR>::get_Value instance !0()","Status":"intrinsic","Binding":"intrinsic:nullable-get-value:Amiga.BPTR","Effects":["MayThrow"],"RequiredFeatures":["nullable-values"]}],"ManagedAllocationSites":[{"Caller":"IFFInspect.Program::Inspect","IlOffset":30,"Kind":"object","AllocatedType":"IFFInspect.IFFInspectException"},{"Caller":"IFFInspect.Program::Inspect","IlOffset":75,"Kind":"object","AllocatedType":"IFFInspect.IFFInspectException"},{"Caller":"IFFInspect.Program::Inspect","IlOffset":107,"Kind":"object","AllocatedType":"IFFInspect.IFFInspectException"},{"Caller":"IFFInspect.Program::Main","IlOffset":121,"Kind":"object","AllocatedType":"IFFInspect.IFFInspectException"},{"Caller":"IFFInspect.Program::OpenFile","IlOffset":34,"Kind":"object","AllocatedType":"IFFInspect.IFFInspectException"}],"RequiredFeatures":["nullable-values"],"NonSupportedMembers":[],"MetricsReference":"Compiler.Tests/Baselines/net10.0-profile-baseline.json#example:IFFInspect"},{"Id":"excluded-string-overload","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatRootEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"profile-exclusion","Owner":"framework-profile","IsCompatible":false,"Members":[{"Member":"[System.Runtime]System.Object::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.String::Concat static string(object,object)","Status":"unsupported","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry IL_000A: External method reference 'Concat' must be represented by a local [M68kImport] declaration.","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.String::get_Length instance int()","Status":"intrinsic","Binding":"intrinsic:string-length","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-strings"]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry","IlOffset":0,"Kind":"object","AllocatedType":"System.Object"},{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry","IlOffset":5,"Kind":"object","AllocatedType":"System.Object"}],"RequiredFeatures":["managed-strings"],"NonSupportedMembers":[{"Member":"[System.Runtime]System.String::Concat static string(object,object)","Classification":"profile-exclusion","Owner":"framework-profile","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry IL_000A: External method reference 'Concat' must be represented by a local [M68kImport] declaration.","CallSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry","IlOffset":10,"RootPath":["CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatRootEntry","CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatMiddle","CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry"]}]}]},{"Id":"excluded-memory-materialization","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"profile-exclusion","Owner":"framework-profile","IsCompatible":false,"Members":[{"Member":"[System.Runtime]System.Memory`1<int>::ToArray instance !0[]()","Status":"unsupported","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000F: External method reference 'ToArray' must be represented by a local [M68kImport] declaration.","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.Memory`1<int>::op_Implicit static System.Memory`1<!0>(!0[])","Status":"intrinsic","Binding":"intrinsic:memory-from-array:int","Effects":["ReadsManagedMemory"],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory"]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry","IlOffset":2,"Kind":"array","AllocatedType":"int[]"}],"RequiredFeatures":["managed-arrays","managed-gc","managed-memory"],"NonSupportedMembers":[{"Member":"[System.Runtime]System.Memory`1<int>::ToArray instance !0[]()","Classification":"profile-exclusion","Owner":"framework-profile","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000F: External method reference 'ToArray' must be represented by a local [M68kImport] declaration.","CallSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry","IlOffset":15,"RootPath":["CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry"]}]}]},{"Id":"excluded-linq-provenance-merge","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMergeEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"profile-exclusion","Owner":"framework-profile","IsCompatible":false,"Members":[{"Member":"[System.Linq]System.Linq.Enumerable::Range static System.Collections.Generic.IEnumerable`1<int>(int,int)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::Range","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["linq","managed-arrays","managed-gc"]},{"Member":"[System.Linq]System.Linq.Enumerable::Repeat<int> static System.Collections.Generic.IEnumerable`1<!!0>(!!0,int)","Status":"implemented","Binding":"shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::Repeat","Effects":["MayAllocate","MayThrow","MayCollect","ReadsManagedMemory","WritesManagedMemory"],"RequiredFeatures":["linq","managed-arrays","managed-gc"]},{"Member":"[System.Linq]System.Linq.Enumerable::ToArray<int> static !!0[](System.Collections.Generic.IEnumerable`1<!!0>)","Status":"unsupported","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_001D: Framework member '[System.Linq]System.Linq.Enumerable::ToArray<System.Int32> !!0[]([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.Object::.ctor instance void()","Status":"intrinsic","Binding":"intrinsic:object-ctor","Effects":[],"RequiredFeatures":[]}],"ManagedAllocationSites":[{"Caller":"CopperSharp.Runtime.ShadowEnumerable::Range","IlOffset":40,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowRangeIterator"},{"Caller":"CopperSharp.Runtime.ShadowEnumerable::Repeat<int>","IlOffset":19,"Kind":"object","AllocatedType":"CopperSharp.Runtime.ShadowRepeatIterator`1<!!0>"}],"RequiredFeatures":["linq","managed-arrays","managed-gc"],"NonSupportedMembers":[{"Member":"[System.Linq]System.Linq.Enumerable::ToArray<int> static !!0[](System.Collections.Generic.IEnumerable`1<!!0>)","Classification":"profile-exclusion","Owner":"framework-profile","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_001D: Framework member '[System.Linq]System.Linq.Enumerable::ToArray<System.Int32> !!0[]([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.","CallSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge","IlOffset":29,"RootPath":["CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMergeEntry","CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge"]}]}]},{"Id":"missing-directory-create-pal","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"pal-gap","Owner":"Runtime.AmigaPal","IsCompatible":false,"Members":[{"Member":"[System.Runtime]System.IO.Directory::CreateDirectory static System.IO.DirectoryInfo(string)","Status":"unsupported","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0006: External method reference 'CreateDirectory' must be represented by a local [M68kImport] declaration.","Effects":[],"RequiredFeatures":[]}],"ManagedAllocationSites":[],"RequiredFeatures":[],"NonSupportedMembers":[{"Member":"[System.Runtime]System.IO.Directory::CreateDirectory static System.IO.DirectoryInfo(string)","Classification":"pal-gap","Owner":"Runtime.AmigaPal","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0006: External method reference 'CreateDirectory' must be represented by a local [M68kImport] declaration.","CallSites":[{"Caller":"CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry","IlOffset":6,"RootPath":["CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry"]}]}]},{"Id":"package-dependency-incompatible","ManagedAssembly":{"Name":"CopperSharp.Compiler.Tests.PackageDependency","Version":"0.1.0.0"},"EntryPoint":"CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer","RuntimeIdentifier":"amiga-m68k","Cpu":"m68000","RuntimeProfile":"application","OutputFormat":"hunk","FinalClassification":"dependency-incompatible","Owner":"CopperSharp.Compiler.Tests.PackageDependency","IsCompatible":false,"Members":[{"Member":"[System.Runtime]System.String::Concat static string(string,string,string,string)","Status":"unsupported","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer IL_0014: External method reference 'Concat' must be represented by a local [M68kImport] declaration.","Effects":[],"RequiredFeatures":[]},{"Member":"[System.Runtime]System.String::get_Length instance int()","Status":"intrinsic","Binding":"intrinsic:string-length","Effects":["MayThrow","ReadsManagedMemory"],"RequiredFeatures":["managed-strings"]}],"ManagedAllocationSites":[],"RequiredFeatures":["managed-strings"],"NonSupportedMembers":[{"Member":"[System.Runtime]System.String::Concat static string(string,string,string,string)","Classification":"dependency-incompatible","Owner":"CopperSharp.Compiler.Tests.PackageDependency","Reason":"The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer IL_0014: External method reference 'Concat' must be represented by a local [M68kImport] declaration.","CallSites":[{"Caller":"CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer","IlOffset":20,"RootPath":["CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer"]}]}]}],"Summary":{"Roots":12,"CompatibleRoots":7,"NonCompatibleRoots":5,"ReachableMemberOccurrences":55,"NonSupportedMemberOccurrences":5}}
+{
+  "SchemaVersion": 1,
+  "Compiler": {
+    "Name": "CopperSharp.Compiler",
+    "Version": "0.1.0-preview.1"
+  },
+  "Target": {
+    "Name": "CopperSharp.Targets.Amiga",
+    "Version": "0.1.0-preview.1"
+  },
+  "Contract": {
+    "TargetFramework": "net10.0",
+    "ReferencePack": "Microsoft.NETCore.App.Ref",
+    "ReferencePackVersion": "10.0.9",
+    "ManifestSchemaVersion": 1
+  },
+  "Roots": [
+    {
+      "Id": "portable-strings",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::IntegerFormatStringEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "CopperSharp.Compiler",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Int32::ToString instance string(string)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowInt32::ToString",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "integer-formatting",
+            "managed-exceptions",
+            "managed-strings",
+            "numerics"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.String::get_Chars instance char(int)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-char",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.String::get_Length instance int()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-length",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.String::op_Equality static bool(string,string)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-equality",
+          "Effects": [
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.UInt32::ToString instance string(string)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowUInt32::ToString",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "integer-formatting",
+            "managed-exceptions",
+            "managed-strings",
+            "numerics"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatDecimalInt32",
+          "IlOffset": 52,
+          "Kind": "string",
+          "AllocatedType": "string"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatDecimalUInt32",
+          "IlOffset": 18,
+          "Kind": "string",
+          "AllocatedType": "string"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatHexUInt32",
+          "IlOffset": 18,
+          "Kind": "string",
+          "AllocatedType": "string"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatInt32",
+          "IlOffset": 40,
+          "Kind": "string",
+          "AllocatedType": "string"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatUInt32",
+          "IlOffset": 9,
+          "Kind": "string",
+          "AllocatedType": "string"
+        }
+      ],
+      "RequiredFeatures": [
+        "integer-formatting",
+        "managed-exceptions",
+        "managed-strings",
+        "numerics"
+      ],
+      "NonSupportedMembers": []
+    },
+    {
+      "Id": "spans-and-memory",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "CopperSharp.Compiler",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::.ctor instance void(!0[],int,int)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:memory-from-array-range:int",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::CopyTo instance void(System.Memory\u00601\u003C!0\u003E)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:memory-copy-to:int",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory",
+            "spans"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::Slice instance System.Memory\u00601\u003C!0\u003E(int,int)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:memory-slice-range:int",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::TryCopyTo instance bool(System.Memory\u00601\u003C!0\u003E)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:memory-try-copy-to:int",
+          "Effects": [
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory",
+            "spans"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::op_Implicit static System.Memory\u00601\u003C!0\u003E(!0[])",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:memory-from-array:int",
+          "Effects": [
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::op_Implicit static System.ReadOnlyMemory\u00601\u003C!0\u003E(System.Memory\u00601\u003C!0\u003E)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:readonly-memory-from-memory:int",
+          "Effects": [
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.ReadOnlyMemory\u00601\u003Cint\u003E::CopyTo instance void(System.Memory\u00601\u003C!0\u003E)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:readonly-memory-copy-to:int",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory",
+            "spans"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.ReadOnlyMemory\u00601\u003Cint\u003E::TryCopyTo instance bool(System.Memory\u00601\u003C!0\u003E)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:readonly-memory-try-copy-to:int",
+          "Effects": [
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory",
+            "spans"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry",
+          "IlOffset": 214,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        }
+      ],
+      "RequiredFeatures": [
+        "managed-arrays",
+        "managed-gc",
+        "managed-memory",
+        "spans"
+      ],
+      "NonSupportedMembers": []
+    },
+    {
+      "Id": "collections",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "CopperSharp.Compiler",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E::.ctor instance void()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::.ctor",
+          "Effects": [
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E::Add instance void(!0,!1)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::Add",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E::TryGetValue instance bool(!0,!1\u0026)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::TryGetValue",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E::get_Count instance int()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::get_Count",
+          "Effects": [
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E::get_Item instance !1(!0)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::get_Item",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Object::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.String::Substring instance string(int,int)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-substring",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.String::get_Length instance int()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-length",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
+          "IlOffset": 1,
+          "Kind": "object",
+          "AllocatedType": "System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
+          "IlOffset": 99,
+          "Kind": "string",
+          "AllocatedType": "string"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::Grow",
+          "IlOffset": 17,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowDictionaryStorage\u00602\u003C!0,!1\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::Grow",
+          "IlOffset": 108,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::GrowHashes",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::GrowKeys",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "string[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::GrowValues",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "string[]"
+        }
+      ],
+      "RequiredFeatures": [
+        "managed-arrays",
+        "managed-collections",
+        "managed-gc",
+        "managed-strings"
+      ],
+      "NonSupportedMembers": []
+    },
+    {
+      "Id": "linq",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "CopperSharp.Compiler",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::.ctor instance void()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::.ctor",
+          "Effects": [
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::Add instance void(!0,!1)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::Add",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Collections]System.Collections.Generic.Dictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::get_Values instance System.Collections.Generic.Dictionary\u00602/ValueCollection\u003C!0,!1\u003E()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowDictionary\u00602::get_Values",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-collections",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Linq]System.Linq.Enumerable::OrderBy\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E static System.Linq.IOrderedEnumerable\u00601\u003C!!0\u003E(System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E,System.Func\u00602\u003C!!0,!!1\u003E)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::OrderBy",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates",
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Linq]System.Linq.Enumerable::ThenBy\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E static System.Linq.IOrderedEnumerable\u00601\u003C!!0\u003E(System.Linq.IOrderedEnumerable\u00601\u003C!!0\u003E,System.Func\u00602\u003C!!0,!!1\u003E)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::ThenBy",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates",
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator instance System.Collections.Generic.IEnumerator\u00601\u003C!0\u003E()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumerable\u00601::GetEnumerator",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Collections.Generic.IEnumerator\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::get_Current instance !0()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumerator\u00601::get_Current",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Collections.IEnumerator::MoveNext instance bool()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumeratorBase::MoveNext",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Func\u00602\u003C!0,int\u003E::Invoke instance !1(!0)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:delegate-invoke",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Func\u00602\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E::.ctor instance void(object,nint)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:delegate-ctor",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.IDisposable::Dispose instance void()",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowOrderedEnumeratorBase::Dispose",
+          "Effects": [],
+          "RequiredFeatures": [
+            "linq",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Object::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
+          "IlOffset": 1,
+          "Kind": "object",
+          "AllocatedType": "System.Collections.Generic.Dictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
+          "IlOffset": 131,
+          "Kind": "object",
+          "AllocatedType": "System.Func\u00602\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
+          "IlOffset": 163,
+          "Kind": "object",
+          "AllocatedType": "System.Func\u00602\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::Grow",
+          "IlOffset": 17,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowDictionaryStorage\u00602\u003C!0,!1\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::Grow",
+          "IlOffset": 108,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GrowHashes",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GrowKeys",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "uint[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GrowValues",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::get_Values",
+          "IlOffset": 18,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowDictionaryValueCollection\u00602\u003C!0,!1\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowEnumerable::DictionaryUInt32ValuesOrderBy\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E",
+          "IlOffset": 30,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowPrimaryOrderedEnumerable\u00601\u003C!!0\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowEnumerable::DictionaryUInt32ValuesThenBy\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E",
+          "IlOffset": 30,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003C!!0\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator",
+          "IlOffset": 33,
+          "Kind": "array",
+          "AllocatedType": "CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator",
+          "IlOffset": 40,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator",
+          "IlOffset": 143,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowOrderedEnumerator\u00601\u003C!0\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::MaterializeKeys",
+          "IlOffset": 4,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        }
+      ],
+      "RequiredFeatures": [
+        "delegates",
+        "linq",
+        "managed-arrays",
+        "managed-collections",
+        "managed-gc"
+      ],
+      "NonSupportedMembers": []
+    },
+    {
+      "Id": "delegates",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "CopperSharp.Compiler",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Delegate::Combine static System.Delegate(System.Delegate,System.Delegate)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:delegate-combine",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Delegate::Remove static System.Delegate(System.Delegate,System.Delegate)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:delegate-remove",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Func\u00602\u003Cint,int\u003E::.ctor instance void(object,nint)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:delegate-ctor",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Func\u00602\u003Cint,int\u003E::Invoke instance !1(!0)",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:delegate-invoke",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "delegates"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Object::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry",
+          "IlOffset": 0,
+          "Kind": "object",
+          "AllocatedType": "\u003Ccompiler-generated-display-class\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry",
+          "IlOffset": 21,
+          "Kind": "object",
+          "AllocatedType": "System.Func\u00602\u003Cint,int\u003E"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry",
+          "IlOffset": 34,
+          "Kind": "object",
+          "AllocatedType": "System.Func\u00602\u003Cint,int\u003E"
+        }
+      ],
+      "RequiredFeatures": [
+        "delegates",
+        "managed-gc"
+      ],
+      "NonSupportedMembers": []
+    },
+    {
+      "Id": "exceptions",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "CopperSharp.Compiler",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Exception::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry",
+          "IlOffset": 2,
+          "Kind": "object",
+          "AllocatedType": "FixtureException"
+        }
+      ],
+      "RequiredFeatures": [],
+      "NonSupportedMembers": []
+    },
+    {
+      "Id": "amiga-pal-iff",
+      "ManagedAssembly": {
+        "Name": "IFFInspect",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "IFFInspect.Program::Main",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "implemented",
+      "Owner": "Runtime.AmigaPal",
+      "IsCompatible": true,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Exception::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.Nullable\u003CAmiga.APTR\u003E::GetValueOrDefault instance !0()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:nullable-get-value-or-default-no-argument:Amiga.APTR",
+          "Effects": [],
+          "RequiredFeatures": [
+            "nullable-values"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Nullable\u003CAmiga.BPTR\u003E::get_HasValue instance bool()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:nullable-has-value:Amiga.BPTR",
+          "Effects": [],
+          "RequiredFeatures": [
+            "nullable-values"
+          ]
+        },
+        {
+          "Member": "[System.Runtime]System.Nullable\u003CAmiga.BPTR\u003E::get_Value instance !0()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:nullable-get-value:Amiga.BPTR",
+          "Effects": [
+            "MayThrow"
+          ],
+          "RequiredFeatures": [
+            "nullable-values"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "IFFInspect.Program::Inspect",
+          "IlOffset": 30,
+          "Kind": "object",
+          "AllocatedType": "IFFInspect.IFFInspectException"
+        },
+        {
+          "Caller": "IFFInspect.Program::Inspect",
+          "IlOffset": 75,
+          "Kind": "object",
+          "AllocatedType": "IFFInspect.IFFInspectException"
+        },
+        {
+          "Caller": "IFFInspect.Program::Inspect",
+          "IlOffset": 107,
+          "Kind": "object",
+          "AllocatedType": "IFFInspect.IFFInspectException"
+        },
+        {
+          "Caller": "IFFInspect.Program::Main",
+          "IlOffset": 121,
+          "Kind": "object",
+          "AllocatedType": "IFFInspect.IFFInspectException"
+        },
+        {
+          "Caller": "IFFInspect.Program::OpenFile",
+          "IlOffset": 34,
+          "Kind": "object",
+          "AllocatedType": "IFFInspect.IFFInspectException"
+        }
+      ],
+      "RequiredFeatures": [
+        "nullable-values"
+      ],
+      "NonSupportedMembers": [],
+      "MetricsReference": "Compiler.Tests/Baselines/net10.0-profile-baseline.json#example:IFFInspect"
+    },
+    {
+      "Id": "excluded-string-overload",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatRootEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "profile-exclusion",
+      "Owner": "framework-profile",
+      "IsCompatible": false,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Object::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.String::Concat static string(object,object)",
+          "Status": "unsupported",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry IL_000A: External method reference \u0027Concat\u0027 must be represented by a local [M68kImport] declaration.",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.String::get_Length instance int()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-length",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry",
+          "IlOffset": 0,
+          "Kind": "object",
+          "AllocatedType": "System.Object"
+        },
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry",
+          "IlOffset": 5,
+          "Kind": "object",
+          "AllocatedType": "System.Object"
+        }
+      ],
+      "RequiredFeatures": [
+        "managed-strings"
+      ],
+      "NonSupportedMembers": [
+        {
+          "Member": "[System.Runtime]System.String::Concat static string(object,object)",
+          "Classification": "profile-exclusion",
+          "Owner": "framework-profile",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry IL_000A: External method reference \u0027Concat\u0027 must be represented by a local [M68kImport] declaration.",
+          "CallSites": [
+            {
+              "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry",
+              "IlOffset": 10,
+              "RootPath": [
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatRootEntry",
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatMiddle",
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedStringConcatEntry"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "excluded-memory-materialization",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "profile-exclusion",
+      "Owner": "framework-profile",
+      "IsCompatible": false,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::ToArray instance !0[]()",
+          "Status": "unsupported",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000F: External method reference \u0027ToArray\u0027 must be represented by a local [M68kImport] declaration.",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::op_Implicit static System.Memory\u00601\u003C!0\u003E(!0[])",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:memory-from-array:int",
+          "Effects": [
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-arrays",
+            "managed-gc",
+            "managed-memory"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry",
+          "IlOffset": 2,
+          "Kind": "array",
+          "AllocatedType": "int[]"
+        }
+      ],
+      "RequiredFeatures": [
+        "managed-arrays",
+        "managed-gc",
+        "managed-memory"
+      ],
+      "NonSupportedMembers": [
+        {
+          "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::ToArray instance !0[]()",
+          "Classification": "profile-exclusion",
+          "Owner": "framework-profile",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000F: External method reference \u0027ToArray\u0027 must be represented by a local [M68kImport] declaration.",
+          "CallSites": [
+            {
+              "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry",
+              "IlOffset": 15,
+              "RootPath": [
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "excluded-linq-provenance-merge",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMergeEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "profile-exclusion",
+      "Owner": "framework-profile",
+      "IsCompatible": false,
+      "Members": [
+        {
+          "Member": "[System.Linq]System.Linq.Enumerable::Range static System.Collections.Generic.IEnumerable\u00601\u003Cint\u003E(int,int)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::Range",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Linq]System.Linq.Enumerable::Repeat\u003Cint\u003E static System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E(!!0,int)",
+          "Status": "implemented",
+          "Binding": "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowEnumerable::Repeat",
+          "Effects": [
+            "MayAllocate",
+            "MayThrow",
+            "MayCollect",
+            "ReadsManagedMemory",
+            "WritesManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "linq",
+            "managed-arrays",
+            "managed-gc"
+          ]
+        },
+        {
+          "Member": "[System.Linq]System.Linq.Enumerable::ToArray\u003Cint\u003E static !!0[](System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)",
+          "Status": "unsupported",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_001D: Framework member \u0027[System.Linq]System.Linq.Enumerable::ToArray\u003CSystem.Int32\u003E !!0[]([System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)\u0027 is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.Object::.ctor instance void()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:object-ctor",
+          "Effects": [],
+          "RequiredFeatures": []
+        }
+      ],
+      "ManagedAllocationSites": [
+        {
+          "Caller": "CopperSharp.Runtime.ShadowEnumerable::Range",
+          "IlOffset": 40,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowRangeIterator"
+        },
+        {
+          "Caller": "CopperSharp.Runtime.ShadowEnumerable::Repeat\u003Cint\u003E",
+          "IlOffset": 19,
+          "Kind": "object",
+          "AllocatedType": "CopperSharp.Runtime.ShadowRepeatIterator\u00601\u003C!!0\u003E"
+        }
+      ],
+      "RequiredFeatures": [
+        "linq",
+        "managed-arrays",
+        "managed-gc"
+      ],
+      "NonSupportedMembers": [
+        {
+          "Member": "[System.Linq]System.Linq.Enumerable::ToArray\u003Cint\u003E static !!0[](System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)",
+          "Classification": "profile-exclusion",
+          "Owner": "framework-profile",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_001D: Framework member \u0027[System.Linq]System.Linq.Enumerable::ToArray\u003CSystem.Int32\u003E !!0[]([System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)\u0027 is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.",
+          "CallSites": [
+            {
+              "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge",
+              "IlOffset": 29,
+              "RootPath": [
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMergeEntry",
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "missing-directory-create-pal",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "pal-gap",
+      "Owner": "Runtime.AmigaPal",
+      "IsCompatible": false,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.IO.Directory::CreateDirectory static System.IO.DirectoryInfo(string)",
+          "Status": "unsupported",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0006: External method reference \u0027CreateDirectory\u0027 must be represented by a local [M68kImport] declaration.",
+          "Effects": [],
+          "RequiredFeatures": []
+        }
+      ],
+      "ManagedAllocationSites": [],
+      "RequiredFeatures": [],
+      "NonSupportedMembers": [
+        {
+          "Member": "[System.Runtime]System.IO.Directory::CreateDirectory static System.IO.DirectoryInfo(string)",
+          "Classification": "pal-gap",
+          "Owner": "Runtime.AmigaPal",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0006: External method reference \u0027CreateDirectory\u0027 must be represented by a local [M68kImport] declaration.",
+          "CallSites": [
+            {
+              "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry",
+              "IlOffset": 6,
+              "RootPath": [
+                "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "package-dependency-incompatible",
+      "ManagedAssembly": {
+        "Name": "CopperSharp.Compiler.Tests.PackageDependency",
+        "Version": "0.1.0.0"
+      },
+      "EntryPoint": "CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer",
+      "RuntimeIdentifier": "amiga-m68k",
+      "Cpu": "m68000",
+      "RuntimeProfile": "application",
+      "OutputFormat": "hunk",
+      "FinalClassification": "dependency-incompatible",
+      "Owner": "CopperSharp.Compiler.Tests.PackageDependency",
+      "IsCompatible": false,
+      "Members": [
+        {
+          "Member": "[System.Runtime]System.String::Concat static string(string,string,string,string)",
+          "Status": "unsupported",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer IL_0014: External method reference \u0027Concat\u0027 must be represented by a local [M68kImport] declaration.",
+          "Effects": [],
+          "RequiredFeatures": []
+        },
+        {
+          "Member": "[System.Runtime]System.String::get_Length instance int()",
+          "Status": "intrinsic",
+          "Binding": "intrinsic:string-length",
+          "Effects": [
+            "MayThrow",
+            "ReadsManagedMemory"
+          ],
+          "RequiredFeatures": [
+            "managed-strings"
+          ]
+        }
+      ],
+      "ManagedAllocationSites": [],
+      "RequiredFeatures": [
+        "managed-strings"
+      ],
+      "NonSupportedMembers": [
+        {
+          "Member": "[System.Runtime]System.String::Concat static string(string,string,string,string)",
+          "Classification": "dependency-incompatible",
+          "Owner": "CopperSharp.Compiler.Tests.PackageDependency",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer IL_0014: External method reference \u0027Concat\u0027 must be represented by a local [M68kImport] declaration.",
+          "CallSites": [
+            {
+              "Caller": "CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer",
+              "IlOffset": 20,
+              "RootPath": [
+                "CopperSharp.Compiler.Tests.PackageDependency.PortableDependency::UnsupportedAnswer"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Summary": {
+    "Roots": 12,
+    "CompatibleRoots": 7,
+    "NonCompatibleRoots": 5,
+    "ReachableMemberOccurrences": 55,
+    "NonSupportedMemberOccurrences": 5
+  }
+}

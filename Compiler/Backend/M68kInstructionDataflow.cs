@@ -146,6 +146,34 @@ internal sealed class M68kInstructionDataflow
 					? annotated
 					: Classify(instruction))
 			.ToArray();
+		for (var index = 0; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if (instruction.Kind is not (
+					M68kInstructionKind.ConditionalBranch or
+					M68kInstructionKind.UnconditionalBranch or
+					M68kInstructionKind.Dbcc) ||
+				!instruction.ExternalTarget &&
+				(instruction.TargetOffset is not { } targetOffset ||
+				 indexByOffset.ContainsKey(targetOffset)))
+			{
+				continue;
+			}
+
+			// Fixed-point optimization analyzes one emitted method at a time. A
+			// tail transfer to another method therefore has no in-scope successor
+			// from which liveness can flow back. Treat that edge as an opaque ABI
+			// boundary so argument setup, restored callee-saved registers, and
+			// guest-memory publication cannot be deleted as locally dead.
+			effects[index] = effects[index] with
+			{
+				UsesData = AllRegisters,
+				UsesAddress = AllRegisters,
+				ReadsMemory = M68kMemorySet.All,
+				IsBarrier = true,
+				CanRemoveWhenOutputsDead = false
+			};
+		}
 		var successors = BuildSuccessors(instructions, indexByOffset);
 		var predecessors = BuildPredecessors(successors);
 		var liveDataBefore = new ushort[instructions.Count];

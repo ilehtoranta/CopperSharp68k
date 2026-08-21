@@ -578,24 +578,6 @@ public static class Exec
 	public static extern void StackSwap(
 		[M68kRegister(M68kRegister.A0)] APTR newStack);
 
-	[AmigaLvo(ExecLvo.ChildFree)]
-	public static extern void ChildFree(
-		[M68kRegister(M68kRegister.D0)] uint tid);
-
-	[AmigaLvo(ExecLvo.ChildOrphan)]
-	public static extern void ChildOrphan(
-		[M68kRegister(M68kRegister.D0)] uint tid);
-
-	[AmigaLvo(ExecLvo.ChildStatus)]
-	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint ChildStatus(
-		[M68kRegister(M68kRegister.D0)] uint tid);
-
-	[AmigaLvo(ExecLvo.ChildWait)]
-	[return: M68kRegister(M68kRegister.D0)]
-	public static extern uint ChildWait(
-		[M68kRegister(M68kRegister.D0)] uint tid);
-
 	[AmigaLvo(ExecLvo.CachePreDMA)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint CachePreDMA(

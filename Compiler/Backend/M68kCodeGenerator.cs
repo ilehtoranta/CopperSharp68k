@@ -33,6 +33,8 @@ internal sealed partial class M68kCodeGenerator
 	private readonly Dictionary<string, CilTypeLayout> _boxedStructLayouts = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, CilType> _delegateTypes = new(StringComparer.Ordinal);
 	private readonly Dictionary<CilTypeIdentity, CilInterfaceDefinition> _usedInterfaces = new();
+	private readonly Dictionary<CilTypeIdentity, CilInterfaceDefinition>
+		_runtimeDispatchInterfaces = new();
 	private readonly Dictionary<string, GeneratedPlatformBase> _usedPlatformBases = new(StringComparer.Ordinal);
 	private readonly M68kMemoryManagement _memoryManagement;
 	private int _uniqueLabel;
@@ -322,13 +324,10 @@ internal sealed partial class M68kCodeGenerator
 			_request.PeepholeOptimization);
 		_assembler.ApplyRequestedAlignments();
 		_assembler.MarkDataStart();
-		var deferZeroInitializedStatics = ShouldDeferZeroInitializedStatics();
-		EmitData(methods, deferZeroInitializedStatics);
+		var deferZeroInitializedStorage = ShouldDeferZeroInitializedStorage();
+		EmitData(methods);
 		EmitExceptionMetadata(methods);
-		if (deferZeroInitializedStatics)
-		{
-			EmitZeroInitializedStatics(bssCandidate: true);
-		}
+		EmitWritableData(deferZeroInitializedStorage);
 
 		return new GeneratedProgram(
 			_assembler,
@@ -474,6 +473,8 @@ internal sealed partial class M68kCodeGenerator
 					{
 						var interfaceDefinition = _module.GetInterfaceDefinition(interfaceTarget);
 						_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
+						_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
+							interfaceDefinition);
 						foreach (var implementation in _module.GetInterfaceTableImplementations(interfaceTarget))
 						{
 							queue.Enqueue(implementation);
@@ -522,14 +523,25 @@ internal sealed partial class M68kCodeGenerator
 					_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
 					if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 					{
-						queue.Enqueue(_module.ResolveConstrainedInterfaceImplementation(
-							method,
-							constrainedTypeToken,
-							instruction.Offset,
-							interfaceMethod));
+						if (_module.TryResolveConstrainedValueInterfaceImplementation(
+								method, constrainedTypeToken, instruction.Offset,
+								interfaceMethod, out var constrainedImplementation))
+						{
+							queue.Enqueue(constrainedImplementation);
+						}
+						else
+						{
+							_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
+								interfaceDefinition);
+							foreach (var implementation in
+								_module.GetInterfaceTableImplementations(interfaceMethod))
+								queue.Enqueue(implementation);
+						}
 					}
 					else
 					{
+						_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
+							interfaceDefinition);
 						foreach (var implementation in _module.GetInterfaceTableImplementations(interfaceMethod))
 						{
 							queue.Enqueue(implementation);
@@ -557,7 +569,7 @@ internal sealed partial class M68kCodeGenerator
 		var queuedClosedDispatchMethod = false;
 		foreach (var layout in reachableDispatchLayouts.Values)
 		{
-			foreach (var interfaceDefinition in _usedInterfaces.Values)
+			foreach (var interfaceDefinition in _runtimeDispatchInterfaces.Values)
 			{
 				var implementation = _module.TryGetInterfaceImplementation(
 					layout,
@@ -4729,13 +4741,19 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x2002); // MOVE.L D2,D0
 	}
 
-	private void EmitDivide(bool signed, bool remainder)
+	private void EmitDivide(
+		bool signed,
+		bool remainder,
+		bool divisorKnownNonZero = false)
 	{
-		var divisorReady = UniqueLabel("div_nonzero");
-		_assembler.EmitWord(0x4A81); // TST.L D1
-		_assembler.EmitBranch(M68kCondition.NotEqual, divisorReady);
-		EmitExceptionRaise(reason: 3, hasException: false);
-		_assembler.Mark(divisorReady);
+		if (!divisorKnownNonZero)
+		{
+			var divisorReady = UniqueLabel("div_nonzero");
+			_assembler.EmitWord(0x4A81); // TST.L D1
+			_assembler.EmitBranch(M68kCondition.NotEqual, divisorReady);
+			EmitExceptionRaise(reason: 3, hasException: false);
+			_assembler.Mark(divisorReady);
+		}
 
 		if (_request.Cpu != M68kCpuTarget.M68000)
 		{
@@ -6797,6 +6815,8 @@ internal sealed partial class M68kCodeGenerator
 	{
 		var interfaceDefinition = _module.GetInterfaceDefinition(declaration);
 		_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
+		_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
+			interfaceDefinition);
 		var slot = _module.GetInterfaceSlot(declaration);
 		if (slot > short.MaxValue / 4)
 		{
@@ -7417,7 +7437,18 @@ internal sealed partial class M68kCodeGenerator
 						binding.BaseRegister);
 					break;
 				case M68kExternalBaseSource.WritableSlot:
-					EmitLoadAddressRegisterLocal(binding.BaseRegister, platformBase.Label!);
+					if (UsesRomSourceAddress(binding))
+					{
+						EmitLoadAddressRegisterFromMemory(
+							binding.BaseRegister,
+							binding.SourceAddress);
+					}
+					else
+					{
+						EmitLoadAddressRegisterLocal(
+							binding.BaseRegister,
+							platformBase.Label!);
+					}
 					break;
 				case M68kExternalBaseSource.Immediate:
 					EmitLoadAddressRegisterImmediate(binding.BaseRegister, binding.InitialValue);
@@ -7447,7 +7478,8 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		if (binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
-			_request.OutputFormat == M68kOutputFormat.KickstartRom)
+			IsReadOnlyRomProfile &&
+			binding.SourceAddress == 0)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidOutputOptions,
@@ -7466,7 +7498,8 @@ internal sealed partial class M68kCodeGenerator
 
 		var generated = new GeneratedPlatformBase(
 			binding,
-			binding.BaseSource == M68kExternalBaseSource.WritableSlot
+			binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				!UsesRomSourceAddress(binding)
 				? binding.SlotSymbol
 				: null);
 		if (binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
@@ -7480,6 +7513,15 @@ internal sealed partial class M68kCodeGenerator
 		_usedPlatformBases.Add(binding.Identity, generated);
 		return generated;
 	}
+
+	private bool UsesRomSourceAddress(M68kExternalCallConvention binding) =>
+		IsReadOnlyRomProfile &&
+		binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+		binding.SourceAddress != 0;
+
+	private bool IsReadOnlyRomProfile =>
+		_request.OutputFormat == M68kOutputFormat.KickstartRom ||
+		_request.RuntimeProfile == M68kRuntimeProfile.Rom;
 
 	private void EnsureAmigaLibraryBaseSlot(CilMethod method, string libraryTypeName)
 	{
@@ -7913,6 +7955,17 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var releasedBytes = checked(argumentBytes - abi.StackBytes);
+		var stackArgumentsAlreadyFormSuffix = abi.Arguments
+			.Where(static location => location.IsStack)
+			.All(location =>
+				InternalStackArgumentByteOffset(target, location.Index) ==
+					releasedBytes + location.StackOffset);
+		if (stackArgumentsAlreadyFormSuffix)
+		{
+			EmitReleaseStackBytes(releasedBytes);
+			return;
+		}
+
 		EmitAllocateFrame(abi.StackBytes);
 		foreach (var location in abi.Arguments)
 		{
@@ -9183,41 +9236,10 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(unchecked((ushort)displacement));
 	}
 
-	private void EmitData(
-		IReadOnlyList<CilMethod> methods,
-		bool deferZeroInitializedStatics)
+	private void EmitData(IReadOnlyList<CilMethod> methods)
 	{
 		PrepareRuntimeTypeDescriptors(methods);
 		_assembler.AlignWord();
-		foreach (var platformBase in _usedPlatformBases.Values
-			.Where(item => item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot)
-			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
-		{
-			_assembler.Mark(platformBase.Label!);
-			_assembler.EmitLong(platformBase.Binding.InitialValue);
-		}
-		if (!deferZeroInitializedStatics)
-		{
-			EmitZeroInitializedStatics(bssCandidate: false);
-		}
-
-		foreach (var initializer in _typeInitializers.Values
-			.OrderBy(item => item.ModuleName, StringComparer.Ordinal)
-			.ThenBy(item => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.DeclaringType)))
-		{
-			_assembler.Mark(TypeInitializationStateLabel(initializer));
-			_assembler.EmitLong(0);
-			if (TypeInitializerCanFail(initializer))
-			{
-				_assembler.Mark(TypeInitializationExceptionLabel(initializer));
-				_assembler.EmitLong(0);
-				_assembler.Mark(TypeInitializationWrapperLabel(initializer));
-				_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.TypeInitializationException"));
-				_assembler.EmitLong(12);
-				_assembler.Mark(TypeInitializationWrapperInnerLabel(initializer));
-				_assembler.EmitLong(0);
-			}
-		}
 
 		var dispatchLayouts = _usedTypeLayouts.Values
 			.Concat(_constructedTypeDescriptors.Values.Select(static item => item.Layout))
@@ -9561,9 +9583,19 @@ internal sealed partial class M68kCodeGenerator
 			M68kRegister.A5,
 			M68kRegister.A6
 		});
-		for (var index = export.ParameterRegisters.Count - 1; index >= 0; index--)
+		if (export.ParameterRegisters.Count >= 3 &&
+			export.ParameterRegisters
+				.Zip(export.ParameterRegisters.Skip(1), static (left, right) => left < right)
+				.All(static ordered => ordered))
 		{
-			EmitPushRegister(export.ParameterRegisters[index]);
+			EmitPushRegisters(export.ParameterRegisters.ToArray());
+		}
+		else
+		{
+			for (var index = export.ParameterRegisters.Count - 1; index >= 0; index--)
+			{
+				EmitPushRegister(export.ParameterRegisters[index]);
+			}
 		}
 
 		var internalAbi = GetInternalCallAbi(export.Method);
@@ -9601,10 +9633,11 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
-	private static bool RequiresPlatformBaseInitialization(GeneratedPlatformBase platformBase) =>
+	private bool RequiresPlatformBaseInitialization(GeneratedPlatformBase platformBase) =>
 		platformBase.Binding.BaseSource == M68kExternalBaseSource.CachedPointer ||
 		platformBase.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
-		platformBase.Binding.SourceAddress != 0;
+		platformBase.Binding.SourceAddress != 0 &&
+		!UsesRomSourceAddress(platformBase.Binding);
 
 	private void EmitInitializePlatformBases()
 	{
@@ -9621,7 +9654,8 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var platformBase in _usedPlatformBases.Values
 			.Where(item =>
 				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
-				item.Binding.SourceAddress != 0)
+				item.Binding.SourceAddress != 0 &&
+				!UsesRomSourceAddress(item.Binding))
 			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 		{
 			EmitLoadAddressRegisterFromMemory(
@@ -9634,16 +9668,29 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
-	private bool ShouldDeferZeroInitializedStatics()
+	private bool ShouldDeferZeroInitializedStorage()
 	{
-		if (_request.OutputFormat != M68kOutputFormat.Hunk ||
-			_staticFields.Count == 0 ||
-			_assembler.HasPcRelativeRelaxationCandidate("static:"))
+		var canEmitBss = _request.OutputFormat is
+			M68kOutputFormat.Hunk or M68kOutputFormat.Assembly;
+		if (!canEmitBss)
 		{
 			return false;
 		}
 
-		var bssBytes = _staticFields.Values.Sum(field => SlotLongs(field.Type) * 4);
+		var bssBytes = _staticFields.Values.Sum(field => SlotLongs(field.Type) * 4) +
+			_usedPlatformBases.Values.Count(item =>
+				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				item.Label is not null &&
+				item.Binding.InitialValue == 0) * 4;
+		if (bssBytes == 0)
+		{
+			return false;
+		}
+		if (_request.OutputFormat == M68kOutputFormat.Assembly)
+		{
+			return true;
+		}
+
 		// Two hunks add 16 container bytes. Conservatively reserve another
 		// eight for a second relocation group because initialized-data fixups
 		// are emitted after this early layout decision. The writer compares the
@@ -9651,20 +9698,73 @@ internal sealed partial class M68kCodeGenerator
 		return bssBytes > 24;
 	}
 
-	private void EmitZeroInitializedStatics(bool bssCandidate)
+	private void EmitWritableData(bool deferZeroInitializedStorage)
 	{
-		if (_staticFields.Count == 0)
+		_assembler.AlignWord();
+		if (deferZeroInitializedStorage)
 		{
-			return;
+			while ((_assembler.Offset & 3) != 0)
+			{
+				_assembler.EmitByte(0);
+			}
+		}
+		_assembler.MarkWritableDataStart();
+		foreach (var platformBase in _usedPlatformBases.Values
+			.Where(item =>
+				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				item.Label is not null &&
+				(!deferZeroInitializedStorage || item.Binding.InitialValue != 0))
+			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
+		{
+			_assembler.Mark(platformBase.Label!);
+			_assembler.EmitLong(platformBase.Binding.InitialValue);
 		}
 
-		if (bssCandidate)
+		foreach (var initializer in _typeInitializers.Values
+			.OrderBy(item => item.ModuleName, StringComparer.Ordinal)
+			.ThenBy(item => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.DeclaringType)))
+		{
+			_assembler.Mark(TypeInitializationStateLabel(initializer));
+			_assembler.EmitLong(0);
+			if (TypeInitializerCanFail(initializer))
+			{
+				_assembler.Mark(TypeInitializationExceptionLabel(initializer));
+				_assembler.EmitLong(0);
+				_assembler.Mark(TypeInitializationWrapperLabel(initializer));
+				_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.TypeInitializationException"));
+				_assembler.EmitLong(12);
+				_assembler.Mark(TypeInitializationWrapperInnerLabel(initializer));
+				_assembler.EmitLong(0);
+			}
+		}
+
+		if (deferZeroInitializedStorage)
 		{
 			while ((_assembler.Offset & 3) != 0)
 			{
 				_assembler.EmitByte(0);
 			}
 			_assembler.MarkBssStart();
+			foreach (var platformBase in _usedPlatformBases.Values
+				.Where(item =>
+					item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+					item.Label is not null &&
+					item.Binding.InitialValue == 0)
+				.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
+			{
+				_assembler.Mark(platformBase.Label!);
+				_assembler.EmitLong(0);
+			}
+		}
+
+		EmitZeroInitializedStatics();
+	}
+
+	private void EmitZeroInitializedStatics()
+	{
+		if (_staticFields.Count == 0)
+		{
+			return;
 		}
 		foreach (var field in _staticFields.Values.OrderBy(item =>
 			System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.Handle)))
@@ -10071,7 +10171,8 @@ internal sealed partial class M68kCodeGenerator
 		op == OpCodes.Ldind_I ||
 		op == OpCodes.Ldind_I8 ||
 		op == OpCodes.Ldind_R4 ||
-		op == OpCodes.Ldind_Ref;
+		op == OpCodes.Ldind_Ref ||
+		op == OpCodes.Ldobj;
 
 	private static bool IsIndirectStore(OpCode op) =>
 		op == OpCodes.Stind_I1 ||
@@ -10779,7 +10880,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private IReadOnlyList<CilInterfaceImplementation> GetUsedInterfaceImplementations(
 		CilTypeLayout layout) =>
-		_usedInterfaces.Values
+		_runtimeDispatchInterfaces.Values
 			.Select(interfaceDefinition =>
 				_module.TryGetInterfaceImplementation(layout, interfaceDefinition))
 			.Where(static implementation => implementation is not null)
@@ -10882,6 +10983,8 @@ internal sealed partial class M68kCodeGenerator
 		{
 			var interfaceDefinition = _module.GetRuntimeInterfaceDefinition(target);
 			_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
+			_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
+				interfaceDefinition);
 			return InterfaceIdentityLabel(interfaceDefinition);
 		}
 		if (target.IsConstructedGeneric)

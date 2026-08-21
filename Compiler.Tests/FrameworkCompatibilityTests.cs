@@ -1995,7 +1995,10 @@ public sealed class FrameworkCompatibilityTests
 		Assert.Contains("FRAMEWORK FEATURES", linked.Map, StringComparison.Ordinal);
 		Assert.Contains("numerics", linked.Map, StringComparison.Ordinal);
 		Assert.Contains(
-			$"METRICS artifact-bytes={linked.Image.Length} code-bytes={linked.Code.Length} " +
+			$"METRICS artifact-bytes={linked.Image.Length} code-bytes={linked.Code.Length} ",
+			linked.Map,
+			StringComparison.Ordinal);
+		Assert.Contains(
 			$"symbols={linked.Symbols.Count} relocations={linked.Relocations.Count} " +
 			$"loops={linked.LoopFootprints.Count} framework-features=2 " +
 			$"managed-allocation-sites={linked.FrameworkAnalysis.ManagedAllocationSites.Count}",

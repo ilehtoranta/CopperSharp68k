@@ -1,0 +1,13 @@
+<Project>
+  <!--
+    Guest-memory codecs are hosted by CopperSharp.Sdk.Amiga.Support. Keep the
+    canonical ABI assembly declaration-only even when this project is evaluated
+    as part of a larger project graph. Directory.Build.targets is imported after
+    the project and the SDK's default Compile items have been established.
+  -->
+  <ItemGroup>
+    <Compile Remove="**\GuestCodecs.cs" />
+    <Compile Remove="GuestMemory\**\*.cs" />
+    <Compile Remove="Utility\UtilityHookCodec.cs" />
+  </ItemGroup>
+</Project>

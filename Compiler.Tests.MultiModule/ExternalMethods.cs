@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Amiga;
 
 namespace CopperSharp.Compiler.Tests.MultiModule;
 
@@ -40,4 +41,8 @@ public static class ExternalMethods
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int AddOne<T>(int value) where T : struct => value + 1;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint ReadGuestUInt32(APTR address, int offset) =>
+		APTR.ReadUInt32(address, offset);
 }

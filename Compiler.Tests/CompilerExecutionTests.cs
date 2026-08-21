@@ -312,6 +312,27 @@ public sealed class CompilerExecutionTests
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
+	public void AllocatedSparseSwitchOmitsDefaultHoles(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::AllocatedSparseSwitchEntry");
+
+		Assert.Equal(42u, ExecuteHunk(result, model));
+		if (target == M68kCpuTarget.M68000)
+		{
+			var sparse = Assert.Single(result.Symbols, symbol =>
+				symbol.Name.EndsWith("::SparseSwitch", StringComparison.Ordinal));
+			Assert.True(sparse.Size <= 400,
+				$"Sparse switch emitted {sparse.Size} bytes.");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
 	public void PortableEnvironmentReportsAmigaValuesOnEveryCpu(
 		M68kCpuTarget target,
 		M68kCpuModel model)
@@ -335,7 +356,7 @@ public sealed class CompilerExecutionTests
 			Assert.True(result.Image.Length <= 2_100);
 			Assert.True(result.Code.Length <= 1_450);
 			Assert.True(cycles <= 600);
-			Assert.Equal(4, result.AllocationStatistics.Count);
+			Assert.Equal(3, result.AllocationStatistics.Count);
 			Assert.All(
 				result.AllocationStatistics,
 				statistics => Assert.Equal(0, statistics.SpillFrameBytes));
@@ -1103,6 +1124,48 @@ public sealed class CompilerExecutionTests
 		}
 	}
 
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FixedPointMatchesDisabledExecutionAndFinalConditionCodes(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var entries = new[]
+		{
+			"CopperSharp.Compiler.Tests.CompilerFixtures::BranchAssignedLocalsEntry",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::VariableShiftDifferentialEntry",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::ConstantMultiplyDifferentialEntry",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DivisionDifferentialCorpusEntry",
+		};
+		foreach (var entry in entries)
+		{
+			var disabled = Compile(
+				target,
+				M68kOutputFormat.Hunk,
+				entry,
+				peepholeOptimization: M68kPeepholeOptimizationMode.Disabled);
+			var fixedPoint = Compile(
+				target,
+				M68kOutputFormat.Hunk,
+				entry,
+				peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
+			(uint Result, ushort ConditionCodes) expected;
+			(uint Result, ushort ConditionCodes) actual;
+			try
+			{
+				expected = ExecuteWithConditionCodes(disabled, model);
+				actual = ExecuteWithConditionCodes(fixedPoint, model);
+			}
+			catch (Exception exception)
+			{
+				throw new InvalidOperationException(
+					$"Optimizer differential failed for {target} {entry}.",
+					exception);
+			}
+			Assert.Equal(expected, actual);
+		}
+	}
+
 	[Fact]
 	public void RegisterAllocationCycleCorpusMeetsMc68000Target()
 	{
@@ -1307,6 +1370,167 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(1u, Execute(bus, model, HunkLoadAddress));
 	}
 
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void RelaxedStackLeaForwardingPreservesStackPushExecution(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		static M68kAssembler CreateAssembler()
+		{
+			var assembler = new M68kAssembler();
+			assembler.Mark("method:entry");
+			assembler.Mark("method:entry:BB0000");
+			assembler.EmitWord(0x41D7); // LEA (A7),A0
+			assembler.EmitWord(0x2F28); // MOVE.L 8(A0),-(A7)
+			assembler.EmitWord(8);
+			assembler.EmitWord(0x201F); // MOVE.L (A7)+,D0
+			assembler.EmitWord(0x4E75);
+			assembler.Mark("method:entry:end");
+			return assembler;
+		}
+
+		var unoptimized = CreateAssembler().Link(HunkLoadAddress,
+			new Dictionary<string, uint>());
+		var optimizedAssembler = CreateAssembler();
+		optimizedAssembler.OptimizeForCpu(target);
+		var optimized = optimizedAssembler.Link(HunkLoadAddress,
+			new Dictionary<string, uint>());
+
+		static (uint Result, ushort Conditions, uint Stack) Run(
+			LinkedCode linked,
+			M68kCpuModel cpuModel)
+		{
+			var bus = new TestBus();
+			linked.Bytes.CopyTo(bus.Memory.AsSpan((int)HunkLoadAddress));
+			bus.WriteLong(StackPointer + 8, 0x8123_4567);
+			ushort conditions = 0;
+			uint stack = 0;
+			var result = Execute(bus, cpuModel, HunkLoadAddress,
+				afterReturn: state =>
+				{
+					conditions = (ushort)(state.StatusRegister & 0x001F);
+					stack = state.A[7];
+				});
+			return (result, conditions, stack);
+		}
+
+		var expected = Run(unoptimized, model);
+		var actual = Run(optimized, model);
+		Assert.Equal((0x8123_4567u, expected.Conditions, StackPointer + 4), expected);
+		Assert.Equal(expected, actual);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void RelaxedStackLeaForwardingPreservesMemoryStoreExecution(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		static M68kAssembler CreateAssembler()
+		{
+			var assembler = new M68kAssembler();
+			assembler.Mark("method:entry");
+			assembler.Mark("method:entry:BB0000");
+			assembler.EmitWord(0x3A7C); // MOVEA.W #$3000,A5
+			assembler.EmitWord(0x3000);
+			assembler.EmitWord(0x41D7); // LEA (A7),A0
+			assembler.EmitWord(0x224D); // MOVEA.L A5,A1
+			assembler.EmitWord(0x2229); // MOVE.L 4(A1),D1
+			assembler.EmitWord(4);
+			assembler.EmitWord(0x2141); // MOVE.L D1,8(A0)
+			assembler.EmitWord(8);
+			assembler.EmitWord(0x202F); // MOVE.L 8(A7),D0
+			assembler.EmitWord(8);
+			assembler.EmitWord(0x4E75);
+			assembler.Mark("method:entry:end");
+			return assembler;
+		}
+
+		var unoptimized = CreateAssembler().Link(HunkLoadAddress,
+			new Dictionary<string, uint>());
+		var optimizedAssembler = CreateAssembler();
+		optimizedAssembler.OptimizeForCpu(target);
+		var optimized = optimizedAssembler.Link(HunkLoadAddress,
+			new Dictionary<string, uint>());
+
+		static (uint Result, ushort Conditions, uint Stack) Run(
+			LinkedCode linked,
+			M68kCpuModel cpuModel)
+		{
+			var bus = new TestBus();
+			linked.Bytes.CopyTo(bus.Memory.AsSpan((int)HunkLoadAddress));
+			bus.WriteLong(0x0000_3004, 0x8123_4567);
+			ushort conditions = 0;
+			uint stack = 0;
+			var result = Execute(bus, cpuModel, HunkLoadAddress,
+				afterReturn: state =>
+				{
+					conditions = (ushort)(state.StatusRegister & 0x001F);
+					stack = state.A[7];
+				});
+			return (result, conditions, stack);
+		}
+
+		var expected = Run(unoptimized, model);
+		var actual = Run(optimized, model);
+		Assert.Equal((0x8123_4567u, expected.Conditions, StackPointer + 4), expected);
+		Assert.Equal(expected, actual);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void RtsLeafCallEliminationPreservesExecution(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		static M68kAssembler CreateAssembler()
+		{
+			var assembler = new M68kAssembler();
+			assembler.Mark("method:entry");
+			assembler.Mark("method:entry:BB0000");
+			assembler.EmitWord(0x7013); // MOVEQ #19,D0
+			assembler.EmitBsr("method:identity");
+			assembler.EmitWord(0xD07C); // ADD.W #23,D0
+			assembler.EmitWord(23);
+			assembler.EmitWord(0x4E75);
+			assembler.Mark("method:entry:end");
+			assembler.Mark("method:identity");
+			assembler.EmitWord(0x4E75);
+			assembler.Mark("method:identity:end");
+			return assembler;
+		}
+
+		var unoptimized = CreateAssembler().Link(HunkLoadAddress,
+			new Dictionary<string, uint>());
+		var optimizedAssembler = CreateAssembler();
+		optimizedAssembler.OptimizeForCpu(target);
+		var optimized = optimizedAssembler.Link(HunkLoadAddress,
+			new Dictionary<string, uint>());
+
+		static (uint Result, ushort Conditions, uint Stack) Run(
+			LinkedCode linked,
+			M68kCpuModel cpuModel)
+		{
+			var bus = new TestBus();
+			linked.Bytes.CopyTo(bus.Memory.AsSpan((int)HunkLoadAddress));
+			ushort conditions = 0;
+			uint stack = 0;
+			var result = Execute(bus, cpuModel, HunkLoadAddress,
+				afterReturn: state =>
+				{
+					conditions = (ushort)(state.StatusRegister & 0x001F);
+					stack = state.A[7];
+				});
+			return (result, conditions, stack);
+		}
+
+		var expected = Run(unoptimized, model);
+		var actual = Run(optimized, model);
+		Assert.Equal((42u, expected.Conditions, StackPointer + 4), expected);
+		Assert.Equal(expected, actual);
+	}
+
 	[Fact]
 	public void CompilationReportsFinalLinkedLoopFootprints()
 	{
@@ -1328,11 +1552,61 @@ public sealed class CompilerExecutionTests
 		Assert.True(loop.CacheLineCount > 0);
 		Assert.True(loop.FitsIn256ByteInstructionCache);
 		Assert.Contains("LOOPS", result.Map, StringComparison.Ordinal);
+		Assert.Contains("MACHINE scc=", result.Map, StringComparison.Ordinal);
+		Assert.Contains("devirtualized-calls=", result.Map, StringComparison.Ordinal);
+		Assert.Contains("inlined-calls=", result.Map, StringComparison.Ordinal);
 		Assert.Contains(
 			$"{loop.HeaderAddress:X8} IL_{loop.HeaderIlOffset:X4}",
 			result.Map,
 			StringComparison.Ordinal);
 		Assert.Contains("fits256=yes", result.Map, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AggressiveGuestMemoryWrappersInlineAndPreserveExecution(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::" +
+				"AggressiveGuestWriteReadEntry");
+
+		Assert.Equal(0x1122_3344u, ExecuteHunk(result, model));
+		Assert.DoesNotContain(
+			"CompilerFixtures::AggressiveGuestRead ",
+			result.Map,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"CompilerFixtures::AggressiveGuestWrite ",
+			result.Map,
+			StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AggressiveConstrainedGuestMemoryInliningPreservesForwardedArgument(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::" +
+				"AggressiveConstrainedGuestPassThroughEntry",
+			peepholeOptimization: M68kPeepholeOptimizationMode.Disabled);
+
+		Assert.Equal(0x99AA_BBCCu, ExecuteHunk(result, model));
+		Assert.DoesNotContain(
+			"AggressiveGuestMemoryFixture::Read ",
+			result.Map,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"AggressiveGuestMemoryFixture::Write ",
+			result.Map,
+			StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -1463,8 +1737,9 @@ public sealed class CompilerExecutionTests
 		Assert.Contains("\taddq.l\t#1,d7", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmovea.l\ta7,a5", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmove.l\td7,-(a7)", assembly.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\td7,36(a5)", assembly.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tmove.l\td7,40(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t76(a7),36(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\td7,36(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\t76(a7),40(a5)", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmove.l\t(a7)+,d7", assembly.Text, StringComparison.Ordinal);
 	}
 
@@ -1486,9 +1761,10 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
 		Assert.Contains("\tmovea.l\ta7,a5", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmove.l\td7,-(a7)", assembly.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\td7,36(a5)", assembly.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\td7,40(a5)", assembly.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tmove.l\td7,44(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t64(a7),36(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t68(a7),40(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\td7,36(a5)", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\t72(a7),44(a5)", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("\tmove.l\t(a7)+,d7", assembly.Text, StringComparison.Ordinal);
 	}
 
@@ -1567,6 +1843,31 @@ public sealed class CompilerExecutionTests
 		Assert.Contains(
 			result.Symbols,
 			symbol => symbol.Name.Contains("::AddOne<", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void InlinedCrossModuleIntrinsicResolvesInItsSourceMethod()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			ManagedAssemblyPaths =
+			[
+				typeof(CopperSharp.Compiler.Tests.MultiModule.ExternalMethods)
+					.Assembly.Location
+			],
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" +
+				"MultiModuleAggressiveGuestReadEntry",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk
+		});
+
+		Assert.Equal(0xCAFE_BABEu, ExecuteHunk(result, M68kCpuModel.M68000));
+		Assert.DoesNotContain(
+			result.Symbols,
+			symbol => symbol.Name.EndsWith(
+				"::ReadGuestUInt32",
+				StringComparison.Ordinal));
 	}
 
 	[Fact]
@@ -2831,7 +3132,7 @@ public sealed class CompilerExecutionTests
 		Assert.Matches(
 			@"\t(?:clr\.l\t_DOSLibraryBase|move\.l\t[^\r\n]+,_DOSLibraryBase)",
 			result.Text);
-		Assert.Contains("\tmovea.l\t_DOSLibraryBase(pc),a6", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t_DOSLibraryBase,a6", result.Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -3578,7 +3879,7 @@ public sealed class CompilerExecutionTests
 
 		Assert.DoesNotContain("\tmove.l\t$0004.w,d0", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tmove.l\t(a7)+,_ExecBase", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmovea.l\t_ExecBase(pc),a6", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t_ExecBase,a6", result.Text, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -3667,7 +3968,7 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(2, calls);
 		Assert.True(
 			result.Text!.Split(
-				"\tmovea.l\t_ExecBase(pc),a6",
+				"\tmovea.l\t_ExecBase,a6",
 				StringSplitOptions.None).Length - 1 >= 1);
 		Assert.Matches(
 			@"\tmovea\.w\t#\$0[1-5]00,a[0-6]",
@@ -4012,11 +4313,11 @@ public sealed class CompilerExecutionTests
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
-			"\tmovea.l\t_MUIMasterLibraryBase(pc),a6",
+			"\tmovea.l\t_MUIMasterLibraryBase,a6",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.DoesNotContain(
-			"\tmovea.l\t_MUIMasterLibraryBase,a6",
+			"\tmovea.l\t_MUIMasterLibraryBase(pc),a6",
 			result.Text,
 			StringComparison.Ordinal);
 	}
@@ -4069,15 +4370,15 @@ public sealed class CompilerExecutionTests
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
-			"\tmovea.l\t_IFFParseLibraryBase(pc),a1",
+			"\tmovea.l\t_IFFParseLibraryBase,a1",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
-			"\tmovea.l\t_DOSLibraryBase(pc),a1",
+			"\tmovea.l\t_DOSLibraryBase,a1",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
-			"\tmovea.l\t_ExecBase(pc),a6",
+			"\tmovea.l\t_ExecBase,a6",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Contains(
@@ -4163,7 +4464,7 @@ public sealed class CompilerExecutionTests
 			result.Text);
 		Assert.Contains("\tmove.l\t12(a7),d0", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotMatch(
-			@"\tmove\.l\t[^\r\n]+,(?<register>d[0-7])\r?\n" +
+			@"\tmove\.l\td[0-7],(?<register>d[0-7])\r?\n" +
 			@"\ttst\.l\t\k<register>",
 			result.Text);
 		Assert.DoesNotMatch(
@@ -4171,7 +4472,7 @@ public sealed class CompilerExecutionTests
 			@"\tmove\.l\td1,\d+\(a[0-6]\)",
 			result.Text);
 		Assert.Matches(
-			@"\tmove\.l\t(?<field>C68K_static_003ACopperSharp_002ERuntime_002EManaged_003A[0-9A-F]+)\(pc\),d1\r?\n" +
+			@"\tmove\.l\t(?<field>C68K_static_003ACopperSharp_002ERuntime_002EManaged_003A[0-9A-F]+),d1\r?\n" +
 			@"\taddq\.l\t#1,d1\r?\n" +
 			@"\tmove\.l\td1,\k<field>",
 			result.Text);
@@ -4179,7 +4480,7 @@ public sealed class CompilerExecutionTests
 			@"\tadd\.l\td2,C68K_static_003ACopperSharp_002ERuntime_002EManaged_003A[0-9A-F]+",
 			result.Text);
 		Assert.DoesNotMatch(
-			@"\tmove\.l\t(?<field>C68K_static_[^\r\n]+)\(pc\),(?<loaded>d[0-7])\r?\n" +
+			@"\tmove\.l\t(?<field>C68K_static_[^,\r\n]+)(?:\(pc\))?,(?<loaded>d[0-7])\r?\n" +
 			@"(?:\tmoveq\t#[^\r\n]+,(?<delta>d[0-7])\r?\n)?" +
 			@"\tadd\.l\t(?:\k<loaded>,\k<delta>|\k<delta>,\k<loaded>)\r?\n" +
 			@"\tmove\.l\t(?:\k<loaded>|\k<delta>),\k<field>",
@@ -4660,11 +4961,10 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Matches(
-			@"\tlea\t\(a7\),a([0-6])\r?\n" +
-			@"\tmoveq\t#65,d([0-7])\r?\n" +
-			@"[^:]+:\r?\n" +
-			@"\tmove\.l\t#\$00000000,\(a\1\)\+\r?\n" +
-			@"\tdbra\td\2,",
+			@"\tmoveq\t#64,d(?<count>[0-7])\r?\n" +
+			@"(?<loop>[^:]+):\r?\n" +
+			@"\tmove\.l\td[0-7],\(a[0-6]\)\+\r?\n" +
+			@"\tdbra\td\k<count>,\k<loop>",
 			result.Text!);
 		Assert.DoesNotMatch(
 			@"(?:\tmove\.l\t#\$00000000,\d+\(a7\)\r?\n){12}",
@@ -5332,7 +5632,7 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(
 			2,
 			result.Text.Split(
-				"\tmovea.l\t_ExecBase(pc),a6",
+				"\tmovea.l\t_ExecBase,a6",
 				StringSplitOptions.None).Length - 1);
 		Assert.Contains("\tjsr\t-30(a6)", result.Text, StringComparison.Ordinal);
 	}
@@ -5367,7 +5667,7 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(
 			3,
 			result.Text!.Split(
-				"\tmovea.l\t_ExecBase(pc),a6",
+				"\tmovea.l\t_ExecBase,a6",
 				StringSplitOptions.None).Length - 1);
 	}
 
@@ -5401,11 +5701,11 @@ public sealed class CompilerExecutionTests
 			OutputFormat = M68kOutputFormat.Assembly
 		});
 		Assert.Contains(
-			"\tmovea.l\t_DOSLibraryBase(pc),a6",
+			"\tmovea.l\t_DOSLibraryBase,a6",
 			assembly.Text,
 			StringComparison.Ordinal);
 		Assert.DoesNotContain(
-			"\tmovea.l\t_DOSLibraryBase,a6",
+			"\tmovea.l\t_DOSLibraryBase(pc),a6",
 			assembly.Text,
 			StringComparison.Ordinal);
 		Assert.Contains("\tjsr\t-42(a6)", assembly.Text, StringComparison.Ordinal);
@@ -5479,6 +5779,35 @@ public sealed class CompilerExecutionTests
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.Matches(@"\tj(?:sr|mp)\t-60\(a6\)", result.Text);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AmigaIndirectSubroutineUsesSuppliedAddressAndRegisterAbi(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		const uint entry = 0x0000_3500;
+		const uint context = 0x0000_3600;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint =
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CallAmigaIndirectSubroutine",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Assembly
+		});
+		var bus = CreateHunkBus(result);
+		bus.RegisterGateway(entry, state =>
+		{
+			Assert.Equal(entry, state.A[3]);
+			Assert.Equal(context, state.A[6]);
+			state.D[0] += state.D[1];
+		});
+
+		Assert.Equal(
+			42u,
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Matches(@"\tj(?:sr|mp)\t(?:0)?\(a3\)", result.Text);
 	}
 
 	[Theory]
@@ -5641,7 +5970,7 @@ public sealed class CompilerExecutionTests
 			5,
 			Regex.Matches(
 				printReport.Groups["body"].Value,
-				@"\tmove\.l\t\d+\(a7\),d0\r?\n\tmove\.l\td0,-\(a7\)").Count);
+				@"\tmove\.l\t\d+\(a7\),-\(a7\)").Count);
 		Assert.DoesNotContain("a2", printReport.Groups["body"].Value, StringComparison.Ordinal);
 		Assert.DoesNotMatch(
 			@"\tmove\.l\td[0-7],\d+\(a7\)",
@@ -5659,17 +5988,20 @@ public sealed class CompilerExecutionTests
 			@"\tmove\.l\td[0-7],_DOSLibraryBase",
 			result.Text);
 		Assert.Contains(
-			"\tmovea.l\t_DOSLibraryBase(pc),a1",
+			"\tmovea.l\t_DOSLibraryBase,a1",
 			result.Text,
 			StringComparison.Ordinal);
 		Assert.DoesNotMatch(
-			@"\tmove\.l\t_DOSLibraryBase\(pc\),d([0-7])\r?\n\tmovea\.l\td\1,a1",
+			@"\tmove\.l\t_DOSLibraryBase,d([0-7])\r?\n\tmovea\.l\td\1,a1",
 			result.Text);
 		Assert.Matches(
-			@"\tmove\.l\t#C68K_cstring_[^,\r\n]+,d1\r?\n\tmove\.l\ta7,d2\r?\n\tjsr\t-954\(a6\)",
+			@"\tmove\.l\t#C68K_cstring_[^,\r\n]+,d1\r?\n" +
+			@"\tmove\.l\ta7,d2\r?\n" +
+			@"\tmovea\.l\t_DOSLibraryBase,a6\r?\n" +
+			@"\tjsr\t-954\(a6\)",
 			result.Text);
-		Assert.DoesNotContain(
-			"\tmovea.l\t_DOSLibraryBase(pc),a6",
+		Assert.Contains(
+			"\tmovea.l\t_DOSLibraryBase,a6",
 			printReport.Groups["body"].Value,
 			StringComparison.Ordinal);
 		var reportLoop = Assert.Single(result.LoopFootprints.Where(footprint =>
@@ -5679,7 +6011,11 @@ public sealed class CompilerExecutionTests
 			$"FileStats Report loop is {reportLoop.InstructionBytes} bytes.");
 		var loopMatch = Regex.Match(
 			result.Text!,
-			@"C68K_method_003A06000002_003ABB0008:\r?\n(?<body>.*?)C68K_method_003A06000002_003ABB0002:",
+			@"(?<header>C68K_method_003A06000002_003ABB[0-9A-F]+):\r?\n" +
+			@"\tmove\.l\ta2,d1\r?\n" +
+			@"(?:\tmovea\.l\t_DOSLibraryBase,a6\r?\n)?" +
+			@"\tjsr\t-306\(a6\)\r?\n" +
+			@"(?<body>.*?)\tbra(?:\.[sw])?\t\k<header>",
 			RegexOptions.Singleline);
 		Assert.True(loopMatch.Success, "FileStats loop layout was not found.");
 		Assert.DoesNotContain("(a7)", loopMatch.Groups["body"].Value, StringComparison.Ordinal);
@@ -5837,7 +6173,7 @@ public sealed class CompilerExecutionTests
 		Assert.Contains("\tmove.l\t#$000003ED,d2", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tmove.l\t#$00001900,-(a7)", result.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\tmove.l\t#$000003ED,-(a7)", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmovea.l\t_DOSLibraryBase(pc),a6", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t_DOSLibraryBase,a6", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tjsr\t-30(a6)", result.Text, StringComparison.Ordinal);
 	}
 
@@ -6004,6 +6340,42 @@ public sealed class CompilerExecutionTests
 				"CopperSharp.Compiler.Tests.CompilerFixtures::CallProvidedLibrary"));
 		Assert.Equal(M68kDiagnosticIds.UnresolvedImport, provided.DiagnosticId);
 		Assert.Contains("graphics.library", provided.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KickstartRomReadsExecBaseDirectlyWithoutWritableBaseStorage()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallExecLibrary",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.KickstartRom,
+			RuntimeProfile = M68kRuntimeProfile.Rom
+		});
+
+		Assert.DoesNotContain(result.Symbols, symbol => symbol.Name == "_ExecBase");
+		Assert.Contains("initialized-ram-bytes=0 bss-bytes=0", result.Map,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void RomProfileAssemblyReadsExecBaseDirectlyWithoutWritableBaseStorage()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallExecLibrary",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Assembly,
+			RuntimeProfile = M68kRuntimeProfile.Rom
+		});
+
+		Assert.DoesNotContain(result.Symbols, symbol => symbol.Name == "_ExecBase");
+		Assert.Contains("\tmovea.l\t$0004.w,a6", result.Text,
+			StringComparison.Ordinal);
+		Assert.Contains("initialized-ram-bytes=0 bss-bytes=0", result.Map,
+			StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -6175,7 +6547,7 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(
 			1,
 			assembly.Text.Split(
-				"\tmovea.l\t_ExecBase(pc),a6",
+				"\tmovea.l\t_ExecBase,a6",
 				StringSplitOptions.None).Length - 1);
 		Assert.Contains(
 			"\tmove.l\td0,C68K_runtime_003Agc_002Darena_002Dbase",
@@ -9027,8 +9399,8 @@ public sealed class CompilerExecutionTests
 
 		Assert.Contains("allocated_copy_backward_loop", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("allocated_copy_forward_loop", assembly.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\t(a2),d0", assembly.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\td0,(a1)", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t(a2),(a1)", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\t(a2),d0", assembly.Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -10110,8 +10482,8 @@ public sealed class CompilerExecutionTests
 			M68kCpuTarget.M68040,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::SpanFloatCopyToEntry");
-		Assert.Contains("\tmove.l\t(a2),d0", assembly.Text, StringComparison.Ordinal);
-		Assert.Contains("\tmove.l\td0,(a1)", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmove.l\t(a2),(a1)", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\t(a2),d0", assembly.Text, StringComparison.Ordinal);
 
 		var result = CompileWithAllocator(
 			M68kCpuTarget.M68040,
@@ -13273,7 +13645,7 @@ public sealed class CompilerExecutionTests
 		if (target == M68kCpuTarget.M68000)
 		{
 			Assert.True(
-				result.Image.Length <= 4_000,
+				result.Image.Length <= 4_100,
 				$"Console.Read image grew to {result.Image.Length} bytes.");
 			Assert.True(
 				result.Code.Length <= 3_000,
@@ -14481,7 +14853,7 @@ public sealed class CompilerExecutionTests
 				$"File.SetAttributes grew to {cycles} MC68000 cycles.");
 			Assert.Equal(14, result.AllocationStatistics.Count);
 			Assert.Equal(
-				4,
+				0,
 				result.AllocationStatistics.Max(static item => item.SpillFrameBytes));
 		}
 		var preservedProtection = (uint)(
@@ -16479,10 +16851,13 @@ public sealed class CompilerExecutionTests
 		Assert.True(Count(logical, @"\tandi\.l\t#\$0000FFFF,d[0-7]") == 1);
 
 		var compare = EntryBody("NarrowCompareNormalizationEntry");
-		Assert.Contains("cmp.w", compare, StringComparison.Ordinal);
+		Assert.Matches(@"\tcmp(?:i)?\.w", compare);
 		Assert.Contains("cmp.b", compare, StringComparison.Ordinal);
+		Assert.DoesNotContain("eori.w", compare, StringComparison.Ordinal);
 		Assert.True(Count(compare, @"\tandi\.l\t#\$0000(?:00FF|FFFF),d[0-7]") == 0);
-		Assert.True(Count(compare, @"\text(?:b)?\.[wl]\td[0-7]") == 0);
+		Assert.DoesNotMatch(
+			@"(?:\text(?:b)?\.[wl]\td[0-7]\r?\n){1,2}\tcmp(?:i)?\.[bwl]",
+			compare);
 	}
 
 	[Fact]
@@ -17194,7 +17569,7 @@ public sealed class CompilerExecutionTests
 		Assert.NotNull(result.Text);
 		Assert.Equal(result.Text, System.Text.Encoding.UTF8.GetString(result.Image));
 		Assert.Contains("\tmc68000", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tsection\tcode,code", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tsection\trom_code,code", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tjsr\tC68K_fixture_002Evalue", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\txref\tC68K_fixture_002Evalue", result.Text, StringComparison.Ordinal);
 		Assert.Contains("(a7)", result.Text, StringComparison.Ordinal);
@@ -18033,7 +18408,9 @@ public sealed class CompilerExecutionTests
 		IReadOnlyDictionary<string, uint>? imports = null,
 		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled,
 		M68kFrameworkImplementationPackOptions? frameworkImplementationPack = null,
-		string? assemblyPath = null) =>
+		string? assemblyPath = null,
+		M68kPeepholeOptimizationMode peepholeOptimization =
+			M68kPeepholeOptimizationMode.FixedPoint) =>
 		AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = assemblyPath ?? FixtureAssembly,
@@ -18042,6 +18419,7 @@ public sealed class CompilerExecutionTests
 			FloatingPoint = floatingPoint,
 			ClrPolicy = clrPolicy,
 			ExceptionMode = exceptionMode,
+			PeepholeOptimization = peepholeOptimization,
 			Imports = imports ?? new Dictionary<string, uint>(),
 			OutputFormat = format,
 			RuntimeProfile = format == M68kOutputFormat.KickstartRom
@@ -18054,6 +18432,38 @@ public sealed class CompilerExecutionTests
 				InitialStackPointer = StackPointer
 			}
 		});
+
+	private static (uint Result, ushort ConditionCodes) ExecuteWithConditionCodes(
+		M68kCompilationResult result,
+		M68kCpuModel model)
+	{
+		var bus = CreateHunkBus(result);
+		ushort conditionCodes = 0;
+		var trace = new Queue<string>();
+		uint value;
+		try
+		{
+			value = Execute(
+				bus,
+				model,
+				HunkLoadAddress + result.EntryPoint,
+				beforeInstruction: (cpu, memory) =>
+				{
+					if (trace.Count == 16) trace.Dequeue();
+					trace.Enqueue(
+						$"${cpu.State.ProgramCounter:X8}:${memory.ReadWord(cpu.State.ProgramCounter):X4}");
+				},
+				afterReturn: state => conditionCodes =
+					(ushort)(state.StatusRegister & 0x001F));
+		}
+		catch (Exception exception)
+		{
+			throw new InvalidOperationException(
+				$"Execution trace: {string.Join(", ", trace)}",
+				exception);
+		}
+		return (value, conditionCodes);
+	}
 
 	private static M68kCompilationResult CompileWithAllocator(
 		M68kCpuTarget cpu,

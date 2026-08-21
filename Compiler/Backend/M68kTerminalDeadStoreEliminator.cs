@@ -382,13 +382,19 @@ internal static class M68kTerminalDeadStoreEliminator
 		CompilationModule module,
 		M68kMachineInstruction instruction)
 	{
-		if (instruction.SourceInstruction is { } source &&
+		var sourceMethod = instruction.Origin?.SourceMethod ?? method;
+		var source = instruction.Origin?.SourceInstruction ??
+			instruction.SourceInstruction;
+		if (source is not null &&
 			source.OpCode is var fieldOp &&
 			(fieldOp == OpCodes.Ldsfld || fieldOp == OpCodes.Ldsflda ||
 			 fieldOp == OpCodes.Stsfld) &&
 			source.Operand is int fieldToken)
 		{
-			var field = module.ResolveFieldToken(fieldToken, method, source.Offset);
+			var field = module.ResolveFieldToken(
+				fieldToken,
+				sourceMethod,
+				source.Offset);
 			var memoryObject = StaticFieldObject(field);
 			if (fieldOp == OpCodes.Ldsflda)
 			{
@@ -410,9 +416,12 @@ internal static class M68kTerminalDeadStoreEliminator
 		}
 
 		if (instruction.Operation == M68kMachineOperation.Call &&
-			instruction.SourceInstruction is { Operand: int token } call)
+			source is { Operand: int token } call)
 		{
-			var target = module.ResolveMethodToken(token, method, call.Offset);
+			var target = module.ResolveMethodToken(
+				token,
+				sourceMethod,
+				call.Offset);
 			var name = target.ImportName;
 			if (name?.StartsWith(LibraryBaseGetPrefix, StringComparison.Ordinal) == true)
 			{

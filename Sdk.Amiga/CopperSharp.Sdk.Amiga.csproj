@@ -17,6 +17,7 @@
     <Compile Remove="Examples\**\*.cs" />
     <Compile Remove="**\GuestCodecs.cs" />
     <Compile Remove="GuestMemory\**\*.cs" />
+	<Compile Remove="Utility\UtilityHookCodec.cs" />
     <Compile Include="Examples\DOS\Program.cs" />
     <Compile Include="Examples\FileStats\Program.cs" />
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />

@@ -82,6 +82,32 @@ public static class Program
 	[M68kEntryPoint]
 	public static uint Main()
 	{
+		var muiBase = Exec.OpenLibrary(MUIMaster.Name, 0);
+		if (!muiBase.HasValue)
+		{
+			return 20;
+		}
+
+		MUIMaster.MUIMasterLibraryBase = muiBase.Value;
+		var intuitionBase = Exec.OpenLibrary(Intuition.Name, 0);
+		if (!intuitionBase.HasValue)
+		{
+			Exec.CloseLibrary(MUIMaster.MUIMasterLibraryBase);
+			MUIMaster.MUIMasterLibraryBase = APTR.Null;
+			return 20;
+		}
+
+		Intuition.IntuitionLibraryBase = intuitionBase.Value;
+		var result = Run();
+		Exec.CloseLibrary(Intuition.IntuitionLibraryBase);
+		Intuition.IntuitionLibraryBase = APTR.Null;
+		Exec.CloseLibrary(MUIMaster.MUIMasterLibraryBase);
+		MUIMaster.MUIMasterLibraryBase = APTR.Null;
+		return result;
+	}
+
+	private static uint Run()
+	{
 		WriteHook(ref _displayHook, APTR.ExportAddress("muitasklist.list.display"));
 		_entryWorkbench = AllocTaskEntry("Workbench", "Ready", "0");
 		_entryInput = AllocTaskEntry("input.device", "Waiting", "20");

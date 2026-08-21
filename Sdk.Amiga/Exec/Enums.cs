@@ -198,15 +198,6 @@ public enum TaskError : uint
 	NoMemory = 1,
 }
 
-/// <summary>Classic V39 child-task status and error values.</summary>
-public enum ChildTaskStatus : uint
-{
-	NotNew = 1,
-	NotFound = 2,
-	Exited = 3,
-	Active = 4,
-}
-
 /// <summary>MorphOS V50 task attribute selectors accepted by NewGet/SetTaskAttrsA.</summary>
 public enum TaskInfoType : uint
 {

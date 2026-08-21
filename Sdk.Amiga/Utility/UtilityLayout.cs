@@ -7,6 +7,8 @@ public static class UtilityLayout
 	{
 		public const int Size = 20;
 		public const int MinNode = 0;
+		public const int MinNodeSuccessor = 0;
+		public const int MinNodePredecessor = 4;
 		public const int Entry = 8;
 		public const int SubEntry = 12;
 		public const int Data = 16;

@@ -159,6 +159,11 @@ public sealed class FrameworkImplementationPackTests
 			reader,
 			"System.ExceptionArgument",
 			out var enumType));
+		Assert.True(provider.TryGetDefinedEnumType(
+			reader,
+			"System.ExceptionArgument",
+			out var cachedEnumType));
+		Assert.Same(enumType, cachedEnumType);
 		Assert.True(enumType.IsEnum);
 		Assert.Equal(CilTypeKind.SignedInteger, enumType.Kind);
 		Assert.Equal(4, enumType.Size);

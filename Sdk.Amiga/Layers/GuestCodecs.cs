@@ -576,6 +576,9 @@ public static class LayersResidentCodec
 	public static APTR ReadMatchTag<T>(ref T memory, APTR address)
 		where T : struct, IAmigaGuestMemory => APTR.FromPointer(
 		memory.ReadUInt32(address, ExecLayout.Resident.MatchTag));
+	public static APTR ReadEndSkip<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => APTR.FromPointer(
+		memory.ReadUInt32(address, ExecLayout.Resident.EndSkip));
 	public static byte ReadVersion<T>(ref T memory, APTR address)
 		where T : struct, IAmigaGuestMemory => memory.ReadUInt8(address,
 		ExecLayout.Resident.Version);
@@ -588,6 +591,12 @@ public static class LayersResidentCodec
 	public static APTR ReadInit<T>(ref T memory, APTR address)
 		where T : struct, IAmigaGuestMemory => APTR.FromPointer(
 		memory.ReadUInt32(address, ExecLayout.Resident.Init));
+	public static APTR ReadName<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => APTR.FromPointer(
+		memory.ReadUInt32(address, ExecLayout.Resident.Name));
+	public static APTR ReadIdString<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => APTR.FromPointer(
+		memory.ReadUInt32(address, ExecLayout.Resident.IdString));
 	public static Resident Read<T>(ref T memory, APTR address)
 		where T : struct, IAmigaGuestMemory => new()
 		{
@@ -654,17 +663,25 @@ public static class LayersResidentCodec
 public static class LayersResidentAutoInitCodec
 {
 	public const uint Size = ResidentAutoInit.Size;
+	public static uint ReadDataSize<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => memory.ReadUInt32(address,
+		ExecLayout.ResidentAutoInit.DataSize);
+	public static APTR ReadFunctionTable<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => APTR.FromPointer(memory.ReadUInt32(
+		address, ExecLayout.ResidentAutoInit.FunctionTable));
+	public static APTR ReadStructureTable<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => APTR.FromPointer(memory.ReadUInt32(
+		address, ExecLayout.ResidentAutoInit.StructureTable));
+	public static APTR ReadInitFunction<T>(ref T memory, APTR address)
+		where T : struct, IAmigaGuestMemory => APTR.FromPointer(memory.ReadUInt32(
+		address, ExecLayout.ResidentAutoInit.InitFunction));
 	public static ResidentAutoInit Read<T>(ref T memory, APTR address)
 		where T : struct, IAmigaGuestMemory => new()
 		{
-			DataSize = memory.ReadUInt32(address,
-				ExecLayout.ResidentAutoInit.DataSize),
-			FunctionTable = APTR.FromPointer(memory.ReadUInt32(address,
-				ExecLayout.ResidentAutoInit.FunctionTable)),
-			StructureTable = APTR.FromPointer(memory.ReadUInt32(address,
-				ExecLayout.ResidentAutoInit.StructureTable)),
-			InitFunction = APTR.FromPointer(memory.ReadUInt32(address,
-				ExecLayout.ResidentAutoInit.InitFunction)),
+			DataSize = ReadDataSize(ref memory, address),
+			FunctionTable = ReadFunctionTable(ref memory, address),
+			StructureTable = ReadStructureTable(ref memory, address),
+			InitFunction = ReadInitFunction(ref memory, address),
 		};
 	public static void Write<T>(ref T memory, APTR address,
 		ResidentAutoInit value) where T : struct, IAmigaGuestMemory

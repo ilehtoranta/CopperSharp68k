@@ -103,6 +103,8 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 	private static readonly string LvoAttributeName = typeof(AmigaLvoAttribute).FullName!;
 	private static readonly string ImportAttributeName = typeof(M68kImportAttribute).FullName!;
 	private static readonly string RegisterAttributeName = typeof(M68kRegisterAttribute).FullName!;
+	private static readonly string IndirectCallAttributeName =
+		typeof(AmigaIndirectCallAttribute).FullName!;
 	private readonly AmigaCompilationOptions _options;
 
 	public AmigaExternalCallResolver(AmigaCompilationOptions? options = null)
@@ -114,6 +116,29 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 		M68kExternalMethod method,
 		out M68kExternalCallConvention convention)
 	{
+		var indirectCall = Find(method.MethodAttributes, IndirectCallAttributeName);
+		if (indirectCall is not null)
+		{
+			if (!method.IsStatic)
+				throw Unsupported(method, "Amiga indirect calls must be static.");
+			if (indirectCall.FixedArguments.Count != 1 ||
+				indirectCall.FixedArguments[0] is not int registerValue ||
+				registerValue < (int)M68kRegister.A0 ||
+				registerValue > (int)M68kRegister.A6)
+			{
+				throw Invalid(method,
+					"[AmigaIndirectCall] requires one A0-A6 target register.");
+			}
+			var targetRegister = (M68kRegister)registerValue;
+			convention = new M68kExternalCallConvention(
+				$"amiga-indirect:{targetRegister}",
+				M68kExternalBaseSource.Argument,
+				targetRegister,
+				0,
+				ParameterRegisters: DecodeParameterRegisters(method),
+				ReturnRegister: DecodeReturnRegister(method));
+			return true;
+		}
 		if (Find(method.MethodAttributes, ImportAttributeName) is not null)
 		{
 			convention = null!;

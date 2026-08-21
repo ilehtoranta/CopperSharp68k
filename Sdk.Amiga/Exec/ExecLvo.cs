@@ -125,10 +125,6 @@ public static class ExecLvo
 	public const short AttemptSemaphoreShared = -720;
 	public const short ColdReboot = -726;
 	public const short StackSwap = -732;
-	public const short ChildFree = -738;
-	public const short ChildOrphan = -744;
-	public const short ChildStatus = -750;
-	public const short ChildWait = -756;
 	public const short CachePreDMA = -762;
 	public const short CachePostDMA = -768;
 	public const short AddMemHandler = -774;

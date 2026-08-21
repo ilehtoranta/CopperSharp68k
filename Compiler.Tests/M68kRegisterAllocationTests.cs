@@ -1114,6 +1114,54 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void SpilledIncomingLongPairsHaveDistinctParallelPrologueHomes()
+	{
+		var function = new M68kMachineFunction("incoming-spilled-pairs", 0);
+		var block = AddBlock(function, 0, 0);
+		var first = function.CreateValue(
+			CilStackValueKind.Int64,
+			M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.DataPairStarts,
+			isSpillTemporary: true);
+		var second = function.CreateValue(
+			CilStackValueKind.Int64,
+			M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.DataPairStarts,
+			isSpillTemporary: true);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [first.Id],
+			argumentIndex: 2));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.SpillStore,
+			0,
+			uses: [first.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			spillSlotIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [second.Id],
+			argumentIndex: 3));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.SpillStore,
+			0,
+			uses: [second.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			spillSlotIndex: 1));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			1));
+
+		var allocation = Allocate(function, out var graph);
+
+		Assert.False(allocation.Registers[first.Id].OccupiedRegisters.Overlaps(
+			allocation.Registers[second.Id].OccupiedRegisters));
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
 	public void AllocatorSpillsWhenDataRegisterPressureExceedsEight()
 	{
 		var function = new M68kMachineFunction("pressure", 0);

@@ -52,6 +52,28 @@ public sealed class M68kInstructionDataflowTests
 			instruction.Opcode is 0x207C or 0x227C);
 	}
 
+	[Fact]
+	public void FixedPointPreservesArgumentsBeforeCrossMethodTailTransfer()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x7009); // MOVEQ #9,D0
+		assembler.EmitWord(0x7205); // MOVEQ #5,D1
+		assembler.EmitJmp("method:callee", external: false);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("method:callee");
+		assembler.EmitWord(0xD081); // ADD.L D1,D0
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("method:callee:end");
+
+		assembler.OptimizeForCpu(M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
+
+		var instructions = assembler.GetInstructionStream();
+		Assert.Contains(instructions, instruction => instruction.Opcode == 0x7009);
+		Assert.Contains(instructions, instruction => instruction.Opcode == 0x7205);
+	}
+
 	[Fact(Timeout = 10_000)]
 	public void BoundedPeepholeCompletesManyIndependentSingleRewriteCandidates()
 	{
@@ -93,6 +115,58 @@ public sealed class M68kInstructionDataflowTests
 			assembler.PeepholeOptimizationStatistics.Rewrites >= candidateCount);
 		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
 			$"Fixed-point batch took {stopwatch.Elapsed.TotalSeconds:N3}s.");
+	}
+
+	[Fact(Timeout = 10_000)]
+	public void FixedPointBatchesZeroDisplacementMemoryCopies()
+	{
+		const int candidateCount = 512;
+		var assembler = new M68kAssembler();
+		for (var index = 0; index < candidateCount; index++)
+		{
+			assembler.EmitWord(0x2028); // MOVE.L 0(A0),D0
+			assembler.EmitWord(0);
+			assembler.EmitWord(0x2340); // MOVE.L D0,0(A1)
+			assembler.EmitWord(0);
+			assembler.EmitWord(0x7000); // MOVEQ #0,D0 makes the copy temporary dead.
+		}
+		assembler.EmitWord(0x4E75); // RTS
+		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+		assembler.OptimizeForCpu(
+			M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
+		stopwatch.Stop();
+
+		var instructions = assembler.GetInstructionStream();
+		Assert.Equal(candidateCount,
+			instructions.Count(static instruction => instruction.Opcode == 0x2290));
+		Assert.DoesNotContain(instructions, instruction =>
+			instruction.Opcode is 0x2028 or 0x2340);
+		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+			$"Zero-displacement memory-copy batch took " +
+			$"{stopwatch.Elapsed.TotalSeconds:N3}s.");
+	}
+
+	[Fact]
+	public void FixedPointFoldsWordCompareConstantToCmpiWithoutChangingOperation()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x203C); // MOVE.L #$0000FDE8,D0
+		assembler.EmitLong(0x0000_FDE8);
+		assembler.EmitWord(0xB640); // CMP.W D0,D3
+		assembler.EmitWord(0x5EC1); // SGT D1 consumes the compare flags.
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0 makes the constant temporary dead.
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForCpu(
+			M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
+
+		var instructions = assembler.GetInstructionStream();
+		Assert.Contains(instructions, instruction =>
+			instruction.Opcode == 0x0C43 && instruction.ExtensionWord == 0xFDE8);
+		Assert.DoesNotContain(instructions, instruction => instruction.Opcode == 0x0A43);
 	}
 
 	private static M68kAssembler ManyIndependentAddressZeroMoves(int count)
@@ -680,6 +754,44 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void RemovesAddressReloadAfterPublishingSameRegisterToFrameSlot()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F48); // MOVE.L A0,12(A7)
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x206F); // MOVEA.L 12(A7),A0
+		assembler.EmitWord(12);
+		assembler.EmitBranch(M68kCondition.NotEqual, "nonzero");
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("nonzero");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\ta0,12(a7)", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("movea.l\t12(a7),a0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsAddressReloadWhenItIsAnIndependentBranchTarget()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F48); // MOVE.L A0,12(A7)
+		assembler.EmitWord(12);
+		assembler.Mark("reload");
+		assembler.EmitWord(0x206F); // MOVEA.L 12(A7),A0
+		assembler.EmitWord(12);
+		assembler.EmitBranch(M68kCondition.NotEqual, "reload");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("movea.l\t12(a7),a0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void ForwardsLiveStackReloadFromStoredRegister()
 	{
 		var assembler = new M68kAssembler();
@@ -995,7 +1107,7 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
-	public void UsesDeadRegisterForMemoryToMemoryEvaluationStackTransfer()
+	public void UsesDirectMemoryToMemoryEvaluationStackTransfer()
 	{
 		var assembler = new M68kAssembler();
 		assembler.EmitWord(0x2F2F); // MOVE.L 44(A7),-(A7)
@@ -1008,8 +1120,9 @@ public sealed class M68kInstructionDataflowTests
 		assembler.OptimizeForM68000();
 
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
-		Assert.Contains("move.l\t44(a7),d1", assembly, StringComparison.Ordinal);
-		Assert.Contains("move.l\td1,40(a7)", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\t44(a7),40(a7)", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\t44(a7),d1", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td1,40(a7)", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\t44(a7),-(a7)", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\t(a7)+,40(a7)", assembly, StringComparison.Ordinal);
 	}
@@ -1386,6 +1499,571 @@ public sealed class M68kInstructionDataflowTests
 				.ToArray();
 
 			Assert.Equal(expected, actual);
+		}
+	}
+
+	[Fact]
+	public void GroupsContiguousLongStructCopyIntoMovem()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2290); // MOVE.L (A0),(A1)
+		for (ushort displacement = 4; displacement <= 12; displacement += 4)
+		{
+			assembler.EmitWord(0x2368); // MOVE.L d16(A0),d16(A1)
+			assembler.EmitWord(displacement);
+			assembler.EmitWord(displacement);
+		}
+		assembler.EmitWord(0x4CD2); // MOVEM.L (A2),D0-D7; generated epilogue restore
+		assembler.EmitWord(0x00FF);
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x4CD0, 0x000F, // MOVEM.L (A0),D0-D3
+			0x48D1, 0x000F, // MOVEM.L D0-D3,(A1)
+			0x4CD2, 0x00FF, // MOVEM.L (A2),D0-D7
+			0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void KeepsContiguousLongStructCopyWhenRegistersAreLiveAtReturn()
+	{
+		var assembler = ContiguousLongCopyWithReturn();
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+
+		Assert.Equal(0x2290,
+			BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes));
+	}
+
+	[Fact]
+	public void KeepsContiguousLongStructCopyWhenMoveConditionsAreLive()
+	{
+		var assembler = new M68kAssembler();
+		EmitContiguousLongCopy(assembler);
+		assembler.EmitWord(0x4CD2); // MOVEM.L (A2),D0-D7; preserve MOVE conditions
+		assembler.EmitWord(0x00FF);
+		assembler.EmitBranch(M68kCondition.Equal, "equal");
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("equal");
+		assembler.EmitWord(0x4E75);
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+
+		Assert.Equal(0x2290,
+			BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes));
+	}
+
+	[Fact]
+	public void UsesDeadAddressRegistersForContiguousLongStructCopy()
+	{
+		var assembler = new M68kAssembler();
+		EmitContiguousLongCopy(assembler);
+		assembler.EmitWord(0x4CD6); // MOVEM.L (A6),A2-A5; generated epilogue restore
+		assembler.EmitWord(0x3C00);
+		assembler.EmitWord(0x4E75);
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x4CD0, 0x3C00, // MOVEM.L (A0),A2-A5
+			0x48D1, 0x3C00, // MOVEM.L A2-A5,(A1)
+			0x4CD6, 0x3C00,
+			0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void GroupsDescendingLongStructPushIntoMovem()
+	{
+		var assembler = new M68kAssembler();
+		foreach (ushort displacement in new ushort[] { 12, 8, 4 })
+		{
+			assembler.EmitWord(0x2F28); // MOVE.L d16(A0),-(A7)
+			assembler.EmitWord(displacement);
+		}
+		assembler.EmitWord(0x2F10); // MOVE.L (A0),-(A7)
+		assembler.EmitWord(0x4CD2); // MOVEM.L (A2),D0-D3; generated restore
+		assembler.EmitWord(0x000F);
+		assembler.EmitWord(0x4E75);
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x4CD0, 0x000F, // MOVEM.L (A0),D0-D3
+			0x48E7, 0xF000, // MOVEM.L D0-D3,-(A7)
+			0x4CD2, 0x000F,
+			0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafMemoryReadWrapperCall()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x220D); // MOVE.L A5,D1; address
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitBsr("read32");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("read32");
+		assembler.Mark("method:read32");
+		assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2041); // MOVEA.L D1,A0
+		assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:read32:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220D, // MOVE.L A5,D1
+			0x2041, // MOVEA.L D1,A0
+			0xD1CC, // ADDA.L A4,A0
+			0x2010, // MOVE.L (A0),D0
+			0x4E75,
+			0x202F, 0x0004, 0x2041, 0xD1C0, 0x2010, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafMemoryReadWrapperWithLateAddressSetup()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitWord(0x220D); // MOVE.L A5,D1; address
+		assembler.EmitBsr("read32");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x588F);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("read32");
+		assembler.Mark("method:read32");
+		assembler.EmitWord(0x202F);
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2041);
+		assembler.EmitWord(0xD1C0);
+		assembler.EmitWord(0x2010);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:read32:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220D, 0x2041, 0xD1CC, 0x2010, 0x4E75,
+			0x202F, 0x0004, 0x2041, 0xD1C0, 0x2010, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafByteReadWrapperCall()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x220D); // MOVE.L A5,D1; address
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitBsr("read8");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("read8");
+		assembler.Mark("method:read8");
+		assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2041); // MOVEA.L D1,A0
+		assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x1010); // MOVE.B (A0),D0
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:read8:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220D, 0x2041, 0xD1CC, 0x7000, 0x1010, 0x4E75,
+			0x202F, 0x0004, 0x2041, 0xD1C0, 0x7000, 0x1010, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafWordReadWrapperWithLateAddressSetup()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitWord(0x220D); // MOVE.L A5,D1; address
+		assembler.EmitBsr("read16");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x588F); // ADDQ.L #4,A7
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("read16");
+		assembler.Mark("method:read16");
+		assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2041); // MOVEA.L D1,A0
+		assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x3010); // MOVE.W (A0),D0
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:read16:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220D, 0x2041, 0xD1CC, 0x7000, 0x3010, 0x4E75,
+			0x202F, 0x0004, 0x2041, 0xD1C0, 0x7000, 0x3010, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsConstantAddressAdditionIntoDisplacementRead()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x701C); // MOVEQ #28,D0
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x220D); // MOVE.L A5,D1
+		assembler.EmitWord(0x2041); // MOVEA.L D1,A0
+		assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+		assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+		assembler.EmitWord(0x7200); // Overwrite D1 after the read.
+		assembler.EmitWord(0x4E75);
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x202D, 0x001C, // MOVE.L 28(A5),D0
+			0x7200,
+			0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafMemoryWriteWrapperCall()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x220A); // MOVE.L A2,D1; address
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); value
+		assembler.EmitWord(0x2F0D); // MOVE.L A5,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitBsr("write32");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x508F); // ADDQ.L #8,A7
+		assembler.EmitWord(0x7000); // Overwrite D0.
+		assembler.EmitWord(0x7200); // Overwrite D1 and conditions.
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("write32");
+		assembler.Mark("method:write32");
+		assembler.EmitWord(0x2F02);
+		assembler.EmitWord(0x242F);
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x202F);
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2041);
+		assembler.EmitWord(0x2202);
+		assembler.EmitWord(0xD1C0);
+		assembler.EmitWord(0x2081);
+		assembler.EmitWord(0x241F);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:write32:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220A, 0x2041, 0xD1CD, 0x200C, 0x2080,
+			0x7000, 0x7200, 0x4E75,
+			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
+			0x2202, 0xD1C0, 0x2081, 0x241F, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafByteMemoryWriteWrapperCall()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x220A); // MOVE.L A2,D1; address
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); value
+		assembler.EmitWord(0x2F0D); // MOVE.L A5,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitBsr("write8");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x508F); // ADDQ.L #8,A7
+		assembler.EmitWord(0x7000); // Overwrite D0.
+		assembler.EmitWord(0x7200); // Overwrite D1 and conditions.
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("write8");
+		assembler.Mark("method:write8");
+		assembler.EmitWord(0x2F02);
+		assembler.EmitWord(0x242F);
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x202F);
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2041);
+		assembler.EmitWord(0x7200);
+		assembler.EmitWord(0x1202);
+		assembler.EmitWord(0xD1C0);
+		assembler.EmitWord(0x1081);
+		assembler.EmitWord(0x241F);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:write8:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220A, 0x2041, 0xD1CD, 0x200C, 0x1080,
+			0x7000, 0x7200, 0x4E75,
+			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
+			0x7200, 0x1202, 0xD1C0, 0x1081, 0x241F, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafWordMemoryWriteWrapperCall()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x220A); // MOVE.L A2,D1; address
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); value
+		assembler.EmitWord(0x2F0D); // MOVE.L A5,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitBsr("write16");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x508F); // ADDQ.L #8,A7
+		assembler.EmitWord(0x7000); // Overwrite D0.
+		assembler.EmitWord(0x7200); // Overwrite D1 and conditions.
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("write16");
+		assembler.Mark("method:write16");
+		assembler.EmitWord(0x2F02);
+		assembler.EmitWord(0x242F);
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x202F);
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2041);
+		assembler.EmitWord(0x7200);
+		assembler.EmitWord(0x3202);
+		assembler.EmitWord(0xD1C0);
+		assembler.EmitWord(0x3081);
+		assembler.EmitWord(0x241F);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:write16:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x220A, 0x2041, 0xD1CD, 0x200C, 0x3080,
+			0x7000, 0x7200, 0x4E75,
+			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
+			0x7200, 0x3202, 0xD1C0, 0x3081, 0x241F, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void FoldsVerifiedLeafMemoryWriteWrapperWithLateAddressSetup()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x2F0C); // MOVE.L A4,-(A7); value
+		assembler.EmitWord(0x2F0D); // MOVE.L A5,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitWord(0x220A); // MOVE.L A2,D1; address
+		assembler.EmitBsr("write32");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x508F); // ADDQ.L #8,A7
+		assembler.EmitWord(0x7000); // Overwrite D0.
+		assembler.EmitWord(0x7200); // Overwrite D1 and conditions.
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("write32");
+		assembler.Mark("method:write32");
+		assembler.EmitWord(0x2F02);
+		assembler.EmitWord(0x242F);
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x202F);
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2041);
+		assembler.EmitWord(0x2202);
+		assembler.EmitWord(0xD1C0);
+		assembler.EmitWord(0x2081);
+		assembler.EmitWord(0x241F);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:write32:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x204A, 0xD1CD, 0x200C, 0x2080,
+			0x7000, 0x7200, 0x4E75,
+			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
+			0x2202, 0xD1C0, 0x2081, 0x241F, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void LoadsA0BasedValueBeforeLateMemoryWriteAddress()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x204C); // MOVEA.L A4,A0; value address
+		assembler.EmitWord(0x2F10); // MOVE.L (A0),-(A7); value
+		assembler.EmitWord(0x2F04); // MOVE.L D4,-(A7); offset
+		assembler.Mark("generated:receiver");
+		assembler.EmitWord(0x200B); // MOVE.L A3,D0; ignored receiver
+		assembler.EmitWord(0x220D); // MOVE.L A5,D1; address
+		assembler.EmitBsr("write32");
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x508F); // ADDQ.L #8,A7
+		assembler.EmitWord(0x7000); // Overwrite D0.
+		assembler.EmitWord(0x7200); // Overwrite D1 and conditions.
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("write32");
+		assembler.Mark("method:write32");
+		assembler.EmitWord(0x2F02);
+		assembler.EmitWord(0x242F);
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x202F);
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2041);
+		assembler.EmitWord(0x2202);
+		assembler.EmitWord(0xD1C0);
+		assembler.EmitWord(0x2081);
+		assembler.EmitWord(0x241F);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:write32:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x2014, 0x204D, 0xD1C4, 0x2080,
+			0x7000, 0x7200, 0x4E75,
+			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
+			0x2202, 0xD1C0, 0x2081, 0x241F, 0x4E75,
+		}, words);
+	}
+
+	private static M68kAssembler ContiguousLongCopyWithReturn()
+	{
+		var assembler = new M68kAssembler();
+		EmitContiguousLongCopy(assembler);
+		assembler.EmitWord(0x4E75);
+		return assembler;
+	}
+
+	private static void EmitContiguousLongCopy(M68kAssembler assembler)
+	{
+		assembler.EmitWord(0x2290); // MOVE.L (A0),(A1)
+		for (ushort displacement = 4; displacement <= 12; displacement += 4)
+		{
+			assembler.EmitWord(0x2368); // MOVE.L d16(A0),d16(A1)
+			assembler.EmitWord(displacement);
+			assembler.EmitWord(displacement);
 		}
 	}
 
@@ -2208,6 +2886,213 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains("move.l\t12(a7),d0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("lea\t12(a7),a0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\t(a0),d0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void FoldsRelaxedStackLeaIntoDisplacementLoadAtBlockEntry()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x41D7); // LEA (A7),A0
+		assembler.EmitWord(0x2228); // MOVE.L 12(A0),D1
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[] { 0x222F, 0x000C, 0x4E75 }, words);
+	}
+
+	[Fact]
+	public void CombinesLeaAndLoadDisplacements()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x41EF); // LEA 20(A7),A0
+		assembler.EmitWord(20);
+		assembler.EmitWord(0x3028); // MOVE.W 12(A0),D0
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[] { 0x302F, 0x0020, 0x4E75 }, words);
+	}
+
+	[Fact]
+	public void FoldsRelaxedStackLeaIntoStackArgumentPush()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x41D7); // LEA (A7),A0
+		assembler.EmitWord(0x2F28); // MOVE.L 8(A0),-(A7)
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x201F); // MOVE.L (A7)+,D0
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[] { 0x202F, 0x0008, 0x4E75 }, words);
+	}
+
+	[Fact]
+	public void FoldsRelaxedStackLeaIntoMemoryStoreAfterIndependentLoad()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x41D7); // LEA (A7),A0
+		assembler.EmitWord(0x202D); // MOVE.L 4(A5),D0
+		assembler.EmitWord(4);
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x2140); // MOVE.L D0,4(A0)
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[] { 0x202D, 0x0004, 0x2F40, 0x0004, 0x4E75 }, words);
+	}
+
+	[Fact]
+	public void FoldsRelaxedStackLeaIntoAdjacentMemoryStore()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x41EF); // LEA 8(A7),A0
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2141); // MOVE.L D1,12(A0)
+		assembler.EmitWord(12);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[] { 0x2F41, 0x0014, 0x4E75 }, words);
+	}
+
+	[Fact]
+	public void FoldsRelaxedStackLeaAcrossTwoIndependentInstructions()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x49D7); // LEA (A7),A4
+		assembler.EmitWord(0x204B); // MOVEA.L A3,A0
+		assembler.EmitWord(0x2028); // MOVE.L 4(A0),D0
+		assembler.EmitWord(4);
+		assembler.Mark("generated:unwind-site");
+		assembler.EmitWord(0x2940); // MOVE.L D0,4(A4)
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
+			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
+				linked.Bytes.AsSpan(index * 2)))
+			.ToArray();
+
+		Assert.Equal(new ushort[]
+		{
+			0x202B, 0x0004, 0x2F40, 0x0004, 0x4E75,
+		}, words);
+	}
+
+	[Fact]
+	public void RemovesInternalCallWhoseTargetIsRts()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x7013); // MOVEQ #19,D0
+		assembler.EmitBsr("method:identity");
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("method:identity");
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:identity:end");
+
+		assembler.OptimizeForM68000();
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+
+		Assert.DoesNotContain("bsr", assembly, StringComparison.Ordinal);
+		Assert.Equal(new byte[] { 0x4E, 0x75 }, linked.Bytes);
+	}
+
+	[Fact]
+	public void KeepsInternalCallWhenTargetDoesMoreThanRts()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.Mark("method:caller:BB0000");
+		assembler.EmitWord(0x7013); // MOVEQ #19,D0
+		assembler.EmitBsr("method:callee");
+		assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+		assembler.Mark("method:callee");
+		assembler.EmitWord(0x5280); // ADDQ.L #1,D0
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("method:callee:end");
+
+		assembler.OptimizeForM68000();
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+
+		Assert.Contains("bsr", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsRelaxedStackLeaWhenMiddleInstructionChangesStack()
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark("method:caller");
+		assembler.EmitWord(0x4DD7); // LEA (A7),A6
+		assembler.EmitWord(0x2F00); // MOVE.L D0,-(A7)
+		assembler.EmitWord(0x2D41); // MOVE.L D1,4(A6)
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:caller:end");
+
+		assembler.OptimizeForM68000();
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+
+		Assert.Contains("lea\t(a7),a6", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\td1,4(a6)", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]

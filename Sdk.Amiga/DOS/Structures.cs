@@ -18,6 +18,82 @@ public struct ExAllControl
 	public APTR MatchFunction;
 }
 
+/// <summary>
+/// Published maximum ExAllData prefix.  ExAll returns only the prefix selected
+/// by <see cref="DosExAllDataLevel"/>, followed by inline strings.
+/// </summary>
+[System.Runtime.InteropServices.StructLayout(
+	System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2)]
+public struct ExAllData
+{
+	public const uint Size = 40;
+	public APTR Next;
+	public APTR Name;
+	public int Type;
+	public uint FileSize;
+	public uint Protection;
+	public uint Days;
+	public uint Minutes;
+	public uint Ticks;
+	public APTR Comment;
+	public ushort OwnerUid;
+	public ushort OwnerGid;
+}
+
+/// <summary>Published dos/dosasl.h wildcard traversal anchor.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public unsafe struct AnchorPath
+{
+	public const uint MinimumSize = 281;
+	public const uint Size = 282;
+
+	public APTR Base;
+	public APTR Current;
+	public int BreakBits;
+	public int FoundBreak;
+	public AnchorPathFlags Flags;
+	public byte Reserved;
+	public short StringLength;
+	public FileInfoBlock Info;
+	public fixed byte PathBuffer[1];
+}
+
+/// <summary>Published dos/dosasl.h component in an AnchorPath traversal.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public unsafe struct AChain
+{
+	public const uint MinimumSize = 274;
+	public const uint Size = 274;
+
+	public APTR Child;
+	public APTR Parent;
+	public BPTR Lock;
+	public FileInfoBlock Info;
+	public AChainFlags Flags;
+	public fixed byte Pattern[1];
+}
+
+/// <summary>Scalar codec view of an AnchorPath; inline buffers stay in guest memory.</summary>
+public struct DosAnchorPathControl
+{
+	public APTR Base;
+	public APTR Current;
+	public int BreakBits;
+	public int FoundBreak;
+	public AnchorPathFlags Flags;
+	public byte Reserved;
+	public short StringLength;
+}
+
+/// <summary>Scalar codec view of an AChain; inline buffers stay in guest memory.</summary>
+public struct DosAChainControl
+{
+	public APTR Child;
+	public APTR Parent;
+	public BPTR Lock;
+	public AChainFlags Flags;
+}
+
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public struct DosAttrBuffer
 {
@@ -25,6 +101,52 @@ public struct DosAttrBuffer
 
 	public APTR Pointer;
 	public uint Length;
+}
+
+/// <summary>Published union at NotifyRequest.nr_stuff.</summary>
+[StructLayout(LayoutKind.Explicit, Pack = 2, Size = 8)]
+public struct NotifyRequestTarget
+{
+	public const uint Size = 8;
+
+	[FieldOffset(0)] public APTR Port;
+	[FieldOffset(0)] public APTR Task;
+	[FieldOffset(4)] public byte SignalNumber;
+}
+
+/// <summary>Published dos/notify.h request record.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct NotifyRequest
+{
+	public const uint Size = 48;
+
+	public APTR Name;
+	public APTR FullName;
+	public uint UserData;
+	public DosNotifyFlags Flags;
+	public NotifyRequestTarget Target;
+	public uint Reserved0;
+	public uint Reserved1;
+	public uint Reserved2;
+	public uint Reserved3;
+	public uint MessageCount;
+	public APTR Handler;
+}
+
+/// <summary>Published message delivered for NRF_SEND_MESSAGE requests.</summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct NotifyMessage
+{
+	public const uint Size = 38;
+	public const uint Class = 0x4000_0000;
+	public const ushort Code = 0x1234;
+
+	public Message ExecMessage;
+	public uint MessageClass;
+	public ushort MessageCode;
+	public APTR Request;
+	public uint Private0;
+	public uint Private1;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
@@ -286,6 +408,19 @@ public struct Segment
 	public int UseCount;
 	public BPTR SegmentList;
 	public unsafe fixed byte Name[4];
+}
+
+/// <summary>
+/// One element of the BPTR-linked CLI command search path. Both fields are
+/// BCPL pointers; the path terminates when <see cref="Next"/> is zero.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2)]
+public struct PathLock
+{
+	public const uint Size = 8;
+
+	public BPTR Next;
+	public BPTR Lock;
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2)]

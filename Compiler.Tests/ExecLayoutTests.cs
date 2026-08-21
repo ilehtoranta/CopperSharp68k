@@ -285,7 +285,7 @@ public sealed class ExecLayoutTests
 			.Where(method => method.GetCustomAttributes(false)
 				.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>().Any())
 			.ToArray();
-		Assert.Equal(159, methods.Length);
+		Assert.Equal(155, methods.Length);
 
 		foreach (var method in methods)
 		{
@@ -335,6 +335,96 @@ public sealed class ExecLayoutTests
 			Assert.Equal(method.GetCustomAttribute<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>()!.Offset,
 				(short)field.GetRawConstantValue()!);
 		}
+	}
+
+	[Fact]
+	public void SetVBufUsesPublishedModesAndM68kRegisters()
+	{
+		Assert.Equal(0, (int)DosBufferMode.Line);
+		Assert.Equal(1, (int)DosBufferMode.Full);
+		Assert.Equal(2, (int)DosBufferMode.None);
+		var method = typeof(DOS).GetMethod(nameof(DOS.SetVBuf),
+			BindingFlags.Public | BindingFlags.Static);
+		Assert.NotNull(method);
+		Assert.Equal(new[] { M68kRegister.D1, M68kRegister.D2,
+			M68kRegister.D3, M68kRegister.D4 }, method!.GetParameters()
+			.Select(parameter => parameter.GetCustomAttribute<M68kRegisterAttribute>()!
+				.Register).ToArray());
+		Assert.Equal(M68kRegister.D0,
+			method.ReturnParameter.GetCustomAttribute<M68kRegisterAttribute>()?.Register);
+	}
+
+	[Fact]
+	public void InternalSegmentCallsUsePublishedMorphOsM68kRegisters()
+	{
+		AssertRegisters(typeof(DOS), nameof(DOS.InternalLoadSeg),
+			M68kRegister.D0, M68kRegister.A0, M68kRegister.A1, M68kRegister.A2);
+		AssertRegisters(typeof(DOS), nameof(DOS.InternalUnLoadSeg),
+			M68kRegister.D1, M68kRegister.A1);
+		AssertRegisters(typeof(DosInternalSegmentCallbacks),
+			nameof(DosInternalSegmentCallbacks.Read), M68kRegister.A3,
+			M68kRegister.D1, M68kRegister.A0, M68kRegister.D0, M68kRegister.A6);
+		AssertRegisters(typeof(DosInternalSegmentCallbacks),
+			nameof(DosInternalSegmentCallbacks.Allocate), M68kRegister.A3,
+			M68kRegister.D0, M68kRegister.D1, M68kRegister.A6);
+		AssertRegisters(typeof(DosInternalSegmentCallbacks),
+			nameof(DosInternalSegmentCallbacks.Free), M68kRegister.A3,
+			M68kRegister.A1, M68kRegister.D0, M68kRegister.A6);
+
+		foreach (var method in typeof(DosInternalSegmentCallbacks).GetMethods(
+			BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly))
+		{
+			Assert.Equal(M68kRegister.A3,
+				method.GetCustomAttribute<
+					CopperSharp.Sdk.Amiga.AmigaIndirectCallAttribute>()?.TargetRegister);
+		}
+	}
+
+	[Fact]
+	public void RunCommandCallbackUsesPublishedM68kRegisters()
+	{
+		AssertRegisters(typeof(DosRunCommandCallbacks),
+			nameof(DosRunCommandCallbacks.Execute), M68kRegister.A3,
+			M68kRegister.D0, M68kRegister.A0);
+		var method = typeof(DosRunCommandCallbacks).GetMethod(
+			nameof(DosRunCommandCallbacks.Execute),
+			BindingFlags.Public | BindingFlags.Static);
+		Assert.NotNull(method);
+		Assert.Equal(M68kRegister.A3,
+			method!.GetCustomAttribute<
+				CopperSharp.Sdk.Amiga.AmigaIndirectCallAttribute>()?.TargetRegister);
+	}
+
+	[Fact]
+	public void DosProcessExitCallbackUsesPublishedM68kRegisters()
+	{
+		AssertRegisters(typeof(DosProcessExitCallbacks),
+			nameof(DosProcessExitCallbacks.Execute), M68kRegister.A3,
+			M68kRegister.D0, M68kRegister.D1);
+		var method = typeof(DosProcessExitCallbacks).GetMethod(
+			nameof(DosProcessExitCallbacks.Execute),
+			BindingFlags.Public | BindingFlags.Static);
+		Assert.NotNull(method);
+		Assert.Equal(M68kRegister.A3,
+			method!.GetCustomAttribute<
+				CopperSharp.Sdk.Amiga.AmigaIndirectCallAttribute>()?.TargetRegister);
+	}
+
+	[Fact]
+	public void ExAllHookCallbackUsesPublishedM68kRegisters()
+	{
+		AssertRegisters(typeof(DosExAllCallbacks),
+			nameof(DosExAllCallbacks.Match), M68kRegister.A3,
+			M68kRegister.A0, M68kRegister.A1, M68kRegister.A2);
+		var method = typeof(DosExAllCallbacks).GetMethod(
+			nameof(DosExAllCallbacks.Match),
+			BindingFlags.Public | BindingFlags.Static);
+		Assert.NotNull(method);
+		Assert.Equal(M68kRegister.A3,
+			method!.GetCustomAttribute<
+				CopperSharp.Sdk.Amiga.AmigaIndirectCallAttribute>()?.TargetRegister);
+		Assert.Equal(M68kRegister.D0, method.ReturnParameter
+			.GetCustomAttribute<M68kRegisterAttribute>()?.Register);
 	}
 
 	[Fact]
@@ -421,7 +511,7 @@ public sealed class ExecLayoutTests
 	}
 
 	[Fact]
-	public void ExecLvoCollisionsAreLimitedToDocumentedAbiProfiles()
+	public void ExecLvoCollisionsAreLimitedToIntentionalOverloads()
 	{
 		var duplicates = typeof(Exec).GetMethods(
 			System.Reflection.BindingFlags.Public |
@@ -435,10 +525,8 @@ public sealed class ExecLayoutTests
 			.ToDictionary(group => group.Key,
 				group => group.Select(item => item.Method.Name).Order().ToArray());
 
-		Assert.Equal(3, duplicates.Count);
+		Assert.Single(duplicates);
 		Assert.Equal(new[] { nameof(Exec.OpenLibrary), nameof(Exec.OpenLibraryRaw) }, duplicates[-552]);
-		Assert.Equal(new[] { nameof(Exec.ChildFree), nameof(Exec.NewGetTaskAttrsA) }, duplicates[-738]);
-		Assert.Equal(new[] { nameof(Exec.ChildOrphan), nameof(Exec.NewSetTaskAttrsA) }, duplicates[-744]);
 	}
 
 	[Fact]
@@ -453,10 +541,6 @@ public sealed class ExecLayoutTests
 		Assert.Equal(0x8100_010Cu, ExecConstants.LibraryTagPublic);
 		Assert.Equal(0u, (uint)ExecNodeListType.Device);
 		Assert.Equal(8u, (uint)ExecNodeListType.Task);
-		Assert.Equal(1u, (uint)ChildTaskStatus.NotNew);
-		Assert.Equal(2u, (uint)ChildTaskStatus.NotFound);
-		Assert.Equal(3u, (uint)ChildTaskStatus.Exited);
-		Assert.Equal(4u, (uint)ChildTaskStatus.Active);
 		Assert.Equal(8u, TimeVal.Size);
 		Assert.Equal(8u, EClockVal.Size);
 		Assert.Equal(40u, TimerRequest.Size);
@@ -515,5 +599,14 @@ public sealed class ExecLayoutTests
 			.OfType<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>()
 			.Single();
 		Assert.Equal(expected, attribute.Offset);
+	}
+
+	private static void AssertRegisters(Type declaringType, string methodName,
+		params M68kRegister[] expected)
+	{
+		var method = declaringType.GetMethod(methodName,
+			BindingFlags.Public | BindingFlags.Static)!;
+		Assert.Equal(expected, method.GetParameters().Select(parameter =>
+			parameter.GetCustomAttribute<M68kRegisterAttribute>()!.Register));
 	}
 }

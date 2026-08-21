@@ -206,7 +206,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern Error IoErr();
 
-	[AmigaLvo(-138)]
+	[AmigaLvo(DosLvo.CreateProc)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern APTR CreateProc(
 		[M68kRegister(M68kRegister.D1)] CString name,
@@ -214,7 +214,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D3)] BPTR segList,
 		[M68kRegister(M68kRegister.D4)] int stackSize);
 
-	[AmigaLvo(-144)]
+	[AmigaLvo(DosLvo.Exit)]
 	public static extern void Exit(
 		[M68kRegister(M68kRegister.D1)] int returnCode);
 
@@ -269,7 +269,7 @@ public static class DOS
 	public static extern int IsInteractive(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-222)]
+	[AmigaLvo(DosLvo.Execute)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Execute(
 		[M68kRegister(M68kRegister.D1)] CString command,
@@ -402,13 +402,13 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString text);
 
-	[AmigaLvo(-348)]
+	[AmigaLvo(DosLvo.VFWritef)]
 	public static extern void VFWritef(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] CString format,
 		[M68kRegister(M68kRegister.D3)] APTR argArray);
 
-	[AmigaLvo(-354)]
+	[AmigaLvo(DosLvo.VFPrintf)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int VFPrintf(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
@@ -420,12 +420,12 @@ public static class DOS
 	public static extern int Flush(
 		[M68kRegister(M68kRegister.D1)] BPTR file);
 
-	[AmigaLvo(-366)]
+	[AmigaLvo(DosLvo.SetVBuf)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetVBuf(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] APTR buffer,
-		[M68kRegister(M68kRegister.D3)] int type,
+		[M68kRegister(M68kRegister.D3)] DosBufferMode type,
 		[M68kRegister(M68kRegister.D4)] int size);
 
 	[AmigaLvo(DosLvo.DupLockFromFH)]
@@ -484,13 +484,13 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] BPTR lock1,
 		[M68kRegister(M68kRegister.D2)] BPTR lock2);
 
-	[AmigaLvo(-426)]
+	[AmigaLvo(DosLvo.SetMode)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SetMode(
 		[M68kRegister(M68kRegister.D1)] BPTR file,
 		[M68kRegister(M68kRegister.D2)] int mode);
 
-	[AmigaLvo(-432)]
+	[AmigaLvo(DosLvo.ExAll)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ExAll(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
@@ -560,12 +560,12 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern APTR Cli();
 
-	[AmigaLvo(-498)]
+	[AmigaLvo(DosLvo.CreateNewProc)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern APTR CreateNewProc(
 		[M68kRegister(M68kRegister.D1)] APTR tags);
 
-	[AmigaLvo(-504)]
+	[AmigaLvo(DosLvo.RunCommand)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RunCommand(
 		[M68kRegister(M68kRegister.D1)] BPTR segment,
@@ -600,12 +600,12 @@ public static class DOS
 	public static extern uint SetArgStr(
 		[M68kRegister(M68kRegister.D1)] CString text);
 
-	[AmigaLvo(-546)]
+	[AmigaLvo(DosLvo.FindCliProc)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern APTR FindCliProc(
 		[M68kRegister(M68kRegister.D1)] uint number);
 
-	[AmigaLvo(-552)]
+	[AmigaLvo(DosLvo.MaxCli)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern uint MaxCli();
 
@@ -651,7 +651,7 @@ public static class DOS
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? GetProgramDir();
 
-	[AmigaLvo(-606)]
+	[AmigaLvo(DosLvo.SystemTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int SystemTagList(
 		[M68kRegister(M68kRegister.D1)] CString command,
@@ -790,44 +790,44 @@ public static class DOS
 	public static extern int StrToDate(
 		[M68kRegister(M68kRegister.D1)] uint dateTime);
 
-	[AmigaLvo(-756)]
+	[AmigaLvo(DosLvo.InternalLoadSeg)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? InternalLoadSeg(
-		[M68kRegister(M68kRegister.D1)] BPTR file,
-		[M68kRegister(M68kRegister.D2)] APTR table,
-		[M68kRegister(M68kRegister.A0)] APTR functionArray,
-		[M68kRegister(M68kRegister.A1)] APTR stack);
+		[M68kRegister(M68kRegister.D0)] BPTR file,
+		[M68kRegister(M68kRegister.A0)] APTR table,
+		[M68kRegister(M68kRegister.A1)] APTR functionArray,
+		[M68kRegister(M68kRegister.A2)] APTR stack);
 
-	[AmigaLvo(-762)]
+	[AmigaLvo(DosLvo.InternalUnLoadSeg)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int InternalUnLoadSeg(
 		[M68kRegister(M68kRegister.D1)] BPTR segList,
-		[M68kRegister(M68kRegister.A0)] APTR freeFunction);
+		[M68kRegister(M68kRegister.A1)] APTR freeFunction);
 
-	[AmigaLvo(-768)]
+	[AmigaLvo(DosLvo.NewLoadSeg)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? NewLoadSeg(
 		[M68kRegister(M68kRegister.D1)] CString file,
 		[M68kRegister(M68kRegister.D2)] APTR tags);
 
-	[AmigaLvo(-774)]
+	[AmigaLvo(DosLvo.AddSegment)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AddSegment(
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] BPTR segment,
 		[M68kRegister(M68kRegister.D3)] int system);
 
-	[AmigaLvo(-780)]
+	[AmigaLvo(DosLvo.FindSegment)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern BPTR? FindSegment(
+	public static extern APTR FindSegment(
 		[M68kRegister(M68kRegister.D1)] CString name,
-		[M68kRegister(M68kRegister.D2)] BPTR segment,
+		[M68kRegister(M68kRegister.D2)] APTR segment,
 		[M68kRegister(M68kRegister.D3)] int system);
 
-	[AmigaLvo(-786)]
+	[AmigaLvo(DosLvo.RemSegment)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int RemSegment(
-		[M68kRegister(M68kRegister.D1)] BPTR segment);
+		[M68kRegister(M68kRegister.D1)] APTR segment);
 
 	[AmigaLvo(-792)]
 	[return: M68kRegister(M68kRegister.D0)]
@@ -860,29 +860,29 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString text,
 		[M68kRegister(M68kRegister.D2)] APTR value);
 
-	[AmigaLvo(-822)]
+	[AmigaLvo(DosLvo.MatchFirst)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MatchFirst(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
 		[M68kRegister(M68kRegister.D2)] APTR anchor);
 
-	[AmigaLvo(-828)]
+	[AmigaLvo(DosLvo.MatchNext)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MatchNext(
 		[M68kRegister(M68kRegister.D1)] APTR anchor);
 
-	[AmigaLvo(-834)]
+	[AmigaLvo(DosLvo.MatchEnd)]
 	public static extern void MatchEnd(
 		[M68kRegister(M68kRegister.D1)] APTR anchor);
 
-	[AmigaLvo(-840)]
+	[AmigaLvo(DosLvo.ParsePattern)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ParsePattern(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
 		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int bufferLength);
 
-	[AmigaLvo(-846)]
+	[AmigaLvo(DosLvo.MatchPattern)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MatchPattern(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
@@ -909,12 +909,12 @@ public static class DOS
 		[M68kRegister(M68kRegister.D2)] CString fileName,
 		[M68kRegister(M68kRegister.D3)] uint size);
 
-	[AmigaLvo(-888)]
+	[AmigaLvo(DosLvo.StartNotify)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int StartNotify(
 		[M68kRegister(M68kRegister.D1)] APTR notify);
 
-	[AmigaLvo(-894)]
+	[AmigaLvo(DosLvo.EndNotify)]
 	public static extern void EndNotify(
 		[M68kRegister(M68kRegister.D1)] APTR notify);
 
@@ -946,12 +946,12 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] uint type);
 
-	[AmigaLvo(-930)]
+	[AmigaLvo(DosLvo.CliInitNewcli)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int CliInitNewcli(
 		[M68kRegister(M68kRegister.A0)] APTR dosPacket);
 
-	[AmigaLvo(-936)]
+	[AmigaLvo(DosLvo.CliInitRun)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int CliInitRun(
 		[M68kRegister(M68kRegister.A0)] APTR dosPacket);
@@ -967,13 +967,13 @@ public static class DOS
 	public static extern int PutStr(
 		[M68kRegister(M68kRegister.D1)] CString text);
 
-	[AmigaLvo(-954)]
+	[AmigaLvo(DosLvo.VPrintf)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int VPrintf(
 		[M68kRegister(M68kRegister.D1)] CString format,
 		[M68kRegister(M68kRegister.D2)] APTR argArray);
 
-	[AmigaLvo(-954)]
+	[AmigaLvo(DosLvo.VPrintf)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static int Printf(
 		[M68kRegister(M68kRegister.D1)] CString format,
@@ -983,14 +983,14 @@ public static class DOS
 		throw new System.NotSupportedException(
 			"DOS.Printf stack varargs are lowered by CopperSharp.");
 
-	[AmigaLvo(-966)]
+	[AmigaLvo(DosLvo.ParsePatternNoCase)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int ParsePatternNoCase(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
 		[M68kRegister(M68kRegister.D2)] APTR buffer,
 		[M68kRegister(M68kRegister.D3)] int bufferLength);
 
-	[AmigaLvo(-972)]
+	[AmigaLvo(DosLvo.MatchPatternNoCase)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int MatchPatternNoCase(
 		[M68kRegister(M68kRegister.D1)] CString pattern,
@@ -1002,7 +1002,7 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] BPTR lock1,
 		[M68kRegister(M68kRegister.D2)] BPTR lock2);
 
-	[AmigaLvo(-990)]
+	[AmigaLvo(DosLvo.ExAllEnd)]
 	public static extern void ExAllEnd(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2)] APTR buffer,
@@ -1069,13 +1069,13 @@ public static class DOS
 		[M68kRegister(M68kRegister.D6)] int arg4);
 
 	// MorphOS m68k ABI call alias.
-	[AmigaLvo(-498)]
+	[AmigaLvo(DosLvo.CreateNewProcTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern APTR CreateNewProcTagList(
 		[M68kRegister(M68kRegister.D1)] APTR tags);
 
 	// MorphOS m68k ABI call alias.
-	[AmigaLvo(-606)]
+	[AmigaLvo(DosLvo.System)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int System(
 		[M68kRegister(M68kRegister.D1)] CString command,
@@ -1089,15 +1089,15 @@ public static class DOS
 		[M68kRegister(M68kRegister.D2)] APTR tags);
 
 	// MorphOS m68k ABI call.
-	[AmigaLvo(-1002)]
+	[AmigaLvo(DosLvo.AddSegmentTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int AddSegmentTagList(
 		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	// MorphOS m68k ABI call.
-	[AmigaLvo(-1008)]
+	[AmigaLvo(DosLvo.FindSegmentTagList)]
 	[return: M68kRegister(M68kRegister.D0)]
-	public static extern BPTR? FindSegmentTagList(
+	public static extern APTR FindSegmentTagList(
 		[M68kRegister(M68kRegister.A0)] APTR tags);
 
 	// MorphOS m68k ABI call.

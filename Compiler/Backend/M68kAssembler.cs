@@ -448,6 +448,8 @@ internal sealed class M68kAssembler
 
 	internal void MarkDataStart() => _buffer.MarkDataStart();
 
+	internal void MarkWritableDataStart() => _buffer.MarkWritableDataStart();
+
 	internal void MarkBssStart() => _buffer.MarkBssStart();
 
 	internal void MarkAnalysisAnchor(string name)
@@ -549,7 +551,7 @@ internal sealed class M68kAssembler
 	{
 		// Each shortening shifts every later label and fixup, so keep iterating
 		// until no branch or local jump can enable another relaxation.
-		while (TryRelaxShortBranch() || TryRelaxLocalAbsoluteControlTransfer())
+		while (TryRelaxShortBranches() || TryRelaxLocalAbsoluteControlTransfer())
 		{
 		}
 	}
@@ -563,7 +565,7 @@ internal sealed class M68kAssembler
 		ApplyRequestedAlignments();
 		while (true)
 		{
-			if (TryRelaxShortBranch() ||
+			if (TryRelaxShortBranches() ||
 				TryRelaxLocalAbsoluteControlTransfer() ||
 				TryRemoveBranchToNextInstruction() ||
 				TryRelaxLocalAbsoluteLoad())
@@ -614,6 +616,8 @@ internal sealed class M68kAssembler
 				opcodeOffset < 0 ||
 				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
 				!_labels.TryGetValue(address.Target, out var targetOffset) ||
+				_buffer.WritableDataStartOffset is { } writableDataStartOffset &&
+					targetOffset >= writableDataStartOffset ||
 				!TryGetPcRelativeAddressingOpcode(
 					_buffer.ReadWord(opcodeOffset),
 					out var pcRelativeOpcode))
@@ -672,8 +676,9 @@ internal sealed class M68kAssembler
 		return pcRelativeOpcode != 0;
 	}
 
-	private bool TryRelaxShortBranch()
+	private bool TryRelaxShortBranches()
 	{
+		var candidates = new List<(BranchFixup Branch, ushort Opcode)>();
 		for (var index = 0; index < _branches.Count; index++)
 		{
 			var branch = _branches[index];
@@ -694,14 +699,80 @@ internal sealed class M68kAssembler
 			{
 				continue;
 			}
-			_buffer.WriteWord(
-				branch.OpcodeOffset,
-				(opcode & 0xFF00) | unchecked((byte)displacement));
-			_buffer.RemoveBytes(branch.OpcodeOffset + 2, 2);
+			candidates.Add((branch, opcode));
+		}
+
+		while (candidates.Count != 0)
+		{
+			var removalOffsets = candidates
+				.Select(static candidate => candidate.Branch.OpcodeOffset + 2)
+				.Order()
+				.ToArray();
+			var rejected = new HashSet<int>();
+			for (var index = 0; index < candidates.Count; index++)
+			{
+				var candidate = candidates[index];
+				var opcodeOffset = MapAfterRemovals(
+					candidate.Branch.OpcodeOffset,
+					removalOffsets);
+				var targetOffset = MapAfterRemovals(
+					_labels[candidate.Branch.Target],
+					removalOffsets);
+				var displacement = targetOffset - (opcodeOffset + 2);
+				if (displacement is < sbyte.MinValue or > sbyte.MaxValue ||
+					displacement == 0)
+				{
+					rejected.Add(index);
+				}
+			}
+			if (rejected.Count != 0)
+			{
+				candidates = candidates
+					.Where((_, index) => !rejected.Contains(index))
+					.ToList();
+				continue;
+			}
+
+			for (var index = 0; index < candidates.Count; index++)
+			{
+				var candidate = candidates[index];
+				var opcodeOffset = MapAfterRemovals(
+					candidate.Branch.OpcodeOffset,
+					removalOffsets);
+				var targetOffset = MapAfterRemovals(
+					_labels[candidate.Branch.Target],
+					removalOffsets);
+				var displacement = targetOffset - (opcodeOffset + 2);
+				_buffer.WriteWord(
+					candidate.Branch.OpcodeOffset,
+					(candidate.Opcode & 0xFF00) | unchecked((byte)displacement));
+			}
+			_buffer.RemoveByteRanges(removalOffsets
+				.Select(static offset => (offset, 2))
+				.ToArray());
 			return true;
 		}
 
 		return false;
+
+		static int MapAfterRemovals(int offset, IReadOnlyList<int> removalOffsets)
+		{
+			var low = 0;
+			var high = removalOffsets.Count;
+			while (low < high)
+			{
+				var middle = low + ((high - low) / 2);
+				if (removalOffsets[middle] + 2 <= offset)
+				{
+					low = middle + 1;
+				}
+				else
+				{
+					high = middle;
+				}
+			}
+			return offset - (low * 2);
+		}
 	}
 
 	private int GetAlignmentRegion(int offset) =>
@@ -981,6 +1052,8 @@ internal sealed class M68kAssembler
 				_buffer.AnalysisAnchors,
 				StringComparer.Ordinal),
 			relocations,
+			_buffer.DataStartOffset,
+			_buffer.WritableDataStartOffset,
 			_buffer.BssStartOffset,
 			_pcRelative
 				.Select(static fixup => fixup.Target)
@@ -1024,7 +1097,7 @@ internal sealed class M68kAssembler
 			M68kCpuTarget.M68060 => "\tmc68060",
 			_ => throw new ArgumentOutOfRangeException(nameof(cpu))
 		});
-		output.AppendLine("\tsection\tcode,code");
+		output.AppendLine("\tsection\trom_code,code");
 
 		foreach (var target in _addresses
 			.Where(static fixup => fixup.External)
@@ -1051,28 +1124,39 @@ internal sealed class M68kAssembler
 		var addressesByOffset = _addresses.ToDictionary(static fixup => fixup.Offset);
 		var branchesByOffset = _branches.ToDictionary(static fixup => fixup.OpcodeOffset);
 		var pcRelativeByOffset = _pcRelative.ToDictionary(static fixup => fixup.DisplacementOffset);
-		var code = true;
+		var currentSection = "rom_code";
 		for (var offset = 0; offset < _bytes.Count;)
 		{
+			var requiredSection = GetAssemblySection(offset);
+			if (!string.Equals(currentSection, requiredSection.Name, StringComparison.Ordinal))
+			{
+				output.AppendLine();
+				output.AppendLine($"\tsection\t{requiredSection.Name},{requiredSection.Attribute}");
+				currentSection = requiredSection.Name;
+			}
+
 			if (labelsByOffset.TryGetValue(offset, out var labels))
 			{
 				foreach (var label in labels)
 				{
 					output.AppendLine($"{AssemblySymbol(label)}:");
-					if (label.StartsWith("runtime:", StringComparison.Ordinal) ||
-						label.StartsWith("platform-base:", StringComparison.Ordinal) ||
-						label.StartsWith("static:", StringComparison.Ordinal) ||
-						label.StartsWith("type:", StringComparison.Ordinal) ||
-						label.StartsWith("array:", StringComparison.Ordinal) ||
-						label.StartsWith("string:", StringComparison.Ordinal) ||
-						label.StartsWith("cstring:", StringComparison.Ordinal))
-					{
-						code = false;
-					}
 				}
 			}
 
-			if (code && TryRenderInstruction(
+			if (requiredSection.Name == "ram_bss")
+			{
+				var nextLabelOffset = labelsByOffset.Keys
+					.Where(labelOffset => labelOffset > offset)
+					.DefaultIfEmpty(_bytes.Count)
+					.Min();
+				if (_bytes.Skip(offset).Take(nextLabelOffset - offset).Any(static value => value != 0))
+				{
+					throw new InvalidOperationException("BSS section contains initialized bytes.");
+				}
+				output.AppendLine($"\tds.b\t{nextLabelOffset - offset}");
+				offset = nextLabelOffset;
+			}
+			else if (requiredSection.Name == "rom_code" && TryRenderInstruction(
 				offset,
 				displayLabels,
 				addressesByOffset,
@@ -1113,6 +1197,24 @@ internal sealed class M68kAssembler
 		// Assembly is a reproducible text artifact. Keep its line endings stable
 		// across build hosts rather than inheriting the host operating system.
 		return output.ToString().ReplaceLineEndings("\r\n");
+	}
+
+	private (string Name, string Attribute) GetAssemblySection(int offset)
+	{
+		if (_buffer.BssStartOffset is { } bssStart && offset >= bssStart)
+		{
+			return ("ram_bss", "bss");
+		}
+		if (_buffer.WritableDataStartOffset is { } writableDataStart &&
+			offset >= writableDataStart)
+		{
+			return ("ram_data", "data");
+		}
+		if (_buffer.DataStartOffset is { } dataStart && offset >= dataStart)
+		{
+			return ("rom_rodata", "data");
+		}
+		return ("rom_code", "code");
 	}
 
 	private bool TryRenderInstruction(
@@ -2395,5 +2497,7 @@ internal sealed record LinkedCode(
 	IReadOnlyDictionary<string, int> Labels,
 	IReadOnlyDictionary<string, int> AnalysisAnchors,
 	IReadOnlyList<M68kRelocation> Relocations,
+	int? DataStartOffset,
+	int? WritableDataStartOffset,
 	int? BssStartOffset,
 	IReadOnlySet<string> PcRelativeTargets);

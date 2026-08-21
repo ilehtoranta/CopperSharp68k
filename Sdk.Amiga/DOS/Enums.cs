@@ -11,6 +11,14 @@ public enum DosBoolean : int
 	True = -1,
 }
 
+/// <summary>Buffering modes from dos/stdio.h used by SetVBuf.</summary>
+public enum DosBufferMode : int
+{
+	Line = 0,
+	Full = 1,
+	None = 2,
+}
+
 /// <summary>Progressive ExAllData prefixes from dos/exall.h.</summary>
 public enum DosExAllDataLevel : int
 {
@@ -21,6 +29,48 @@ public enum DosExAllDataLevel : int
 	Date = 5,
 	Comment = 6,
 	Owner = 7,
+}
+
+/// <summary>Token bytes emitted by ParsePattern from dos/dosasl.h.</summary>
+public enum DosPatternToken : byte
+{
+	Any = 0x80,
+	Single = 0x81,
+	OrStart = 0x82,
+	OrNext = 0x83,
+	OrEnd = 0x84,
+	Not = 0x85,
+	NotEnd = 0x86,
+	NotClass = 0x87,
+	Class = 0x88,
+	RepeatBegin = 0x89,
+	RepeatEnd = 0x8A,
+	Stop = 0x8B,
+}
+
+[System.Flags]
+public enum AnchorPathFlags : byte
+{
+	None = 0,
+	DoWild = 1 << 0,
+	IsWild = 1 << 1,
+	DoDirectory = 1 << 2,
+	DidDirectory = 1 << 3,
+	NoMemoryError = 1 << 4,
+	DoDot = 1 << 5,
+	DirectoryChanged = 1 << 6,
+	FollowHardLinks = 1 << 7,
+}
+
+[System.Flags]
+public enum AChainFlags : byte
+{
+	None = 0,
+	Pattern = 1 << 0,
+	Examined = 1 << 1,
+	Completed = 1 << 2,
+	All = 1 << 3,
+	Single = 1 << 4,
 }
 
 public enum DosObjectType : uint
@@ -127,6 +177,81 @@ public enum DosObjectTag : uint
 	AssignNodeType = 0x8000_0000u + 2123u,
 	AssignNodeAssignName = 0x8000_0000u + 2124u,
 	AssignNodeAssignList = 0x8000_0000u + 2125u,
+}
+
+/// <summary>SystemTagList selectors from dos/dostags.h.</summary>
+public enum DosSystemTag : uint
+{
+	Input = 0x8000_0000u + 33u,
+	Output = 0x8000_0000u + 34u,
+	Asynchronous = 0x8000_0000u + 35u,
+	UserShell = 0x8000_0000u + 36u,
+	CustomShell = 0x8000_0000u + 37u,
+	FilterTags = 0x8000_0000u + 38u,
+}
+
+/// <summary>CreateNewProc selectors from dos/dostags.h.</summary>
+public enum DosNewProcessTag : uint
+{
+	SegmentList = 0x8000_0000u + 1001u,
+	FreeSegmentList = 0x8000_0000u + 1002u,
+	Entry = 0x8000_0000u + 1003u,
+	Input = 0x8000_0000u + 1004u,
+	Output = 0x8000_0000u + 1005u,
+	CloseInput = 0x8000_0000u + 1006u,
+	CloseOutput = 0x8000_0000u + 1007u,
+	Error = 0x8000_0000u + 1008u,
+	CloseError = 0x8000_0000u + 1009u,
+	CurrentDirectory = 0x8000_0000u + 1010u,
+	StackSize = 0x8000_0000u + 1011u,
+	Name = 0x8000_0000u + 1012u,
+	Priority = 0x8000_0000u + 1013u,
+	ConsoleTask = 0x8000_0000u + 1014u,
+	WindowPointer = 0x8000_0000u + 1015u,
+	HomeDirectory = 0x8000_0000u + 1016u,
+	CopyVariables = 0x8000_0000u + 1017u,
+	Cli = 0x8000_0000u + 1018u,
+	Path = 0x8000_0000u + 1019u,
+	CommandName = 0x8000_0000u + 1020u,
+	Arguments = 0x8000_0000u + 1021u,
+	NotifyOnDeath = 0x8000_0000u + 1022u,
+	Synchronous = 0x8000_0000u + 1023u,
+	ExitCode = 0x8000_0000u + 1024u,
+	ExitData = 0x8000_0000u + 1025u,
+	SegmentListArray = 0x8000_0000u + 1026u,
+	UserData = 0x8000_0000u + 1027u,
+	StartupMessage = 0x8000_0000u + 1028u,
+	TaskMessagePort = 0x8000_0000u + 1029u,
+	TaskFlags = 0x8000_0000u + 1030u,
+	CodeType = 0x8000_0000u + 1100u,
+	PpcArgument1 = 0x8000_0000u + 1101u,
+	PpcArgument2 = 0x8000_0000u + 1102u,
+	PpcArgument3 = 0x8000_0000u + 1103u,
+	PpcArgument4 = 0x8000_0000u + 1104u,
+	PpcArgument5 = 0x8000_0000u + 1105u,
+	PpcArgument6 = 0x8000_0000u + 1106u,
+	PpcArgument7 = 0x8000_0000u + 1107u,
+	PpcArgument8 = 0x8000_0000u + 1108u,
+	PpcStackSize = 0x8000_0000u + 1109u,
+}
+
+/// <summary>MorphOS V50 AddSegmentTagList selectors from dos/dostags.h.</summary>
+public enum DosAddSegmentTag : uint
+{
+	Name = 0x8000_0000u + 3001u,
+	SegmentList = 0x8000_0000u + 3002u,
+	FileName = 0x8000_0000u + 3003u,
+	Type = 0x8000_0000u + 3004u,
+}
+
+/// <summary>MorphOS V50 FindSegmentTagList selectors from dos/dostags.h.</summary>
+public enum DosFindSegmentTag : uint
+{
+	Name = 0x8000_0000u + 3101u,
+	From = 0x8000_0000u + 3102u,
+	System = 0x8000_0000u + 3103u,
+	Load = 0x8000_0000u + 3104u,
+	MatchPattern = 0x8000_0000u + 3105u,
 }
 
 [System.Flags]
@@ -299,6 +424,19 @@ public enum DosRecordMode : uint
 	ExclusiveImmediate = 1,
 	Shared = 2,
 	SharedImmediate = 3,
+}
+
+/// <summary>Classic dos/notify.h request flags.</summary>
+[System.Flags]
+public enum DosNotifyFlags : uint
+{
+	None = 0,
+	SendMessage = 1u << 0,
+	SendSignal = 1u << 1,
+	WaitReply = 1u << 3,
+	NotifyInitial = 1u << 4,
+	HandlerMagic = 1u << 31,
+	HandlerMask = 0xFFFF_0000u,
 }
 
 /// <summary>MorphOS V51 Examine64 tag identifiers from dos/dostags.h.</summary>

@@ -567,6 +567,9 @@ internal sealed class M68kMachineFunction
 
 	public Dictionary<int, M68kFrameHome> ArgumentHomes { get; } = new();
 
+	public Dictionary<(int Size, string GcOffsets), int>
+		ReusableAggregateReturnHomes { get; } = new();
+
 	public M68kMachineValue CreateValue(
 		CilStackValueKind kind,
 		M68kMachineValueWidth width,

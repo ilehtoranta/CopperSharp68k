@@ -1,22 +1,20 @@
 [
   {
     "Name": "fixture:ArithmeticEntry",
-    "ImageBytes": 1720,
-    "CodeBytes": 1234,
+    "ImageBytes": 484,
+    "CodeBytes": 222,
     "CompiledMethods": 3,
     "SpilledValues": 1,
     "MaximumSpillFrameBytes": 4,
-    "StackMemoryInstructions": 9,
+    "StackMemoryInstructions": 7,
     "ManagedAllocationSites": 0,
-    "Mc68000Cycles": 4974,
-    "RuntimeFeatures": [
-      "exceptions"
-    ]
+    "Mc68000Cycles": 4946,
+    "RuntimeFeatures": []
   },
   {
     "Name": "fixture:QuickArithmeticEntry",
-    "ImageBytes": 472,
-    "CodeBytes": 70,
+    "ImageBytes": 460,
+    "CodeBytes": 58,
     "CompiledMethods": 5,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -27,8 +25,8 @@
   },
   {
     "Name": "fixture:BranchAssignedLocalsEntry",
-    "ImageBytes": 256,
-    "CodeBytes": 46,
+    "ImageBytes": 244,
+    "CodeBytes": 34,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -39,8 +37,8 @@
   },
   {
     "Name": "fixture:NarrowByteArithmeticEntry",
-    "ImageBytes": 268,
-    "CodeBytes": 58,
+    "ImageBytes": 256,
+    "CodeBytes": 46,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -51,8 +49,8 @@
   },
   {
     "Name": "fixture:NarrowShortArithmeticEntry",
-    "ImageBytes": 272,
-    "CodeBytes": 62,
+    "ImageBytes": 260,
+    "CodeBytes": 50,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -63,8 +61,8 @@
   },
   {
     "Name": "fixture:StringLiteralEntry",
-    "ImageBytes": 356,
-    "CodeBytes": 126,
+    "ImageBytes": 344,
+    "CodeBytes": 114,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -77,8 +75,8 @@
   },
   {
     "Name": "fixture:NullableUIntDefaultEntry",
-    "ImageBytes": 344,
-    "CodeBytes": 136,
+    "ImageBytes": 336,
+    "CodeBytes": 126,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -89,8 +87,8 @@
   },
   {
     "Name": "example:IFFInspect",
-    "ImageBytes": 8016,
-    "CodeBytes": 5622,
+    "ImageBytes": 8272,
+    "CodeBytes": 5756,
     "CompiledMethods": 24,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -106,18 +104,17 @@
   },
   {
     "Name": "example:MUITaskList",
-    "ImageBytes": 5376,
-    "CodeBytes": 3942,
-    "CompiledMethods": 14,
+    "ImageBytes": 5608,
+    "CodeBytes": 4060,
+    "CompiledMethods": 15,
     "SpilledValues": 14,
     "MaximumSpillFrameBytes": 0,
-    "StackMemoryInstructions": 168,
+    "StackMemoryInstructions": 171,
     "ManagedAllocationSites": 7,
     "Mc68000Cycles": null,
     "RuntimeFeatures": [
       "native-cstrings",
-      "exceptions",
-      "runtime-type-metadata"
+      "exceptions"
     ]
   }
 ]

@@ -221,11 +221,14 @@ internal static class M68kStaticAnalyzer
 		{
 			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 			{
-				pending.Enqueue(module.ResolveConstrainedInterfaceImplementation(
-					method,
-					constrainedTypeToken,
-					instruction.Offset,
-					interfaceMethod));
+				if (module.TryResolveConstrainedValueInterfaceImplementation(
+						method, constrainedTypeToken, instruction.Offset,
+						interfaceMethod, out var constrainedImplementation))
+					pending.Enqueue(constrainedImplementation);
+				else
+					foreach (var implementation in
+						module.GetInterfaceImplementations(interfaceMethod))
+						pending.Enqueue(implementation);
 			}
 			else if (!interfaceMethod.Signature.Header.IsInstance && !interfaceMethod.IsAbstract)
 			{

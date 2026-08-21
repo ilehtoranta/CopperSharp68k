@@ -29,6 +29,8 @@ internal sealed class CompilationModule : IDisposable
 	private readonly PEReader _peReader;
 	private readonly CilSignatureTypeProvider _signatureProvider;
 	private readonly Dictionary<(MethodDefinitionHandle Handle, string Construction), CilMethod> _methodCache = new();
+	private readonly Dictionary<(int Token, CilMethodIdentity Caller, int IlOffset),
+		MethodReference> _methodReferenceCache = new();
 	private readonly Dictionary<(TypeDefinitionHandle Handle, string Construction), CilMethod?> _typeInitializerCache = new();
 	private readonly Dictionary<FieldDefinitionHandle, CilField> _fieldCache = new();
 	private readonly Dictionary<TypeReferenceHandle, CilType> _referencedTypeCache = new();
@@ -41,6 +43,12 @@ internal sealed class CompilationModule : IDisposable
 		_interfaceCache = new();
 	private readonly Dictionary<CilInterfaceImplementationIdentity, CilInterfaceImplementation?> _interfaceImplementationCache = new();
 	private readonly Dictionary<string, bool> _transparentScalarTypeCache = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, bool> _uninitializedStorageTypeCache = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, bool> _longAlignedStackTypeCache = new(StringComparer.Ordinal);
+	private readonly Dictionary<(string DisplayName, string AttributeName), bool>
+		_reflectionAttributeCache = new();
+	private Dictionary<string, (TypeDefinitionHandle Handle, bool IsInterface)>?
+		_runtimeTypeDefinitionIndex;
 	private readonly IReadOnlyList<IM68kExternalCallResolver> _externalCallResolvers;
 	private readonly string _assemblyPath;
 	private readonly string _assemblyDirectory;
@@ -1240,6 +1248,30 @@ internal sealed class CompilationModule : IDisposable
 				implementationMethod.Handle,
 				implementationMethod.ConstructedDeclaringType,
 				declaration.MethodTypeArguments);
+	}
+
+	public bool TryResolveConstrainedValueInterfaceImplementation(
+		CilMethod caller,
+		int constrainedTypeToken,
+		int ilOffset,
+		CilMethod declaration,
+		out CilMethod implementation)
+	{
+		var constrainedType = ResolveTypeToken(
+			constrainedTypeToken,
+			caller,
+			ilOffset);
+		if (constrainedType.IsReference)
+		{
+			implementation = null!;
+			return false;
+		}
+		implementation = ResolveConstrainedInterfaceImplementation(
+			caller,
+			constrainedTypeToken,
+			ilOffset,
+			declaration);
+		return true;
 	}
 
 	private bool TryGetPrimitiveFrameworkLayout(
@@ -3676,21 +3708,30 @@ internal sealed class CompilationModule : IDisposable
 			return true;
 		}
 
-		foreach (var handle in Reader.TypeDefinitions)
+		if (_runtimeTypeDefinitionIndex is null)
 		{
-			var definition = Reader.GetTypeDefinition(handle);
-			var signatureName = _signatureProvider
-				.GetTypeFromDefinition(Reader, handle, 0x12)
-				.DisplayName;
-			if (!StringComparer.Ordinal.Equals(signatureName, type.DisplayName))
+			var index = new Dictionary<string, (TypeDefinitionHandle, bool)>(
+				StringComparer.Ordinal);
+			foreach (var handle in Reader.TypeDefinitions)
 			{
-				continue;
+				var definition = Reader.GetTypeDefinition(handle);
+				var signatureName = _signatureProvider
+					.GetTypeFromDefinition(Reader, handle, 0x12)
+					.DisplayName;
+				index.TryAdd(
+					signatureName,
+					(handle, (definition.Attributes & TypeAttributes.Interface) != 0));
 			}
+			_runtimeTypeDefinitionIndex = index;
+		}
+
+		if (_runtimeTypeDefinitionIndex.TryGetValue(type.DisplayName, out var definitionTarget))
+		{
 			target = new CilRuntimeTypeTarget(
 				type,
 				_assemblyName,
-				handle,
-				(definition.Attributes & TypeAttributes.Interface) != 0,
+				definitionTarget.Handle,
+				definitionTarget.IsInterface,
 				IsArray: false);
 			return true;
 		}
@@ -3700,6 +3741,11 @@ internal sealed class CompilationModule : IDisposable
 
 	public bool IsUninitializedStorageType(CilType type)
 	{
+		if (_uninitializedStorageTypeCache.TryGetValue(type.DisplayName, out var cached))
+		{
+			return cached;
+		}
+
 		foreach (var handle in Reader.TypeDefinitions)
 		{
 			var definition = Reader.GetTypeDefinition(handle);
@@ -3708,16 +3754,28 @@ internal sealed class CompilationModule : IDisposable
 				continue;
 			}
 
-			return HasAttribute(definition.GetCustomAttributes(), UninitializedStorageAttributeName);
+			var localResult = HasAttribute(
+				definition.GetCustomAttributes(),
+				UninitializedStorageAttributeName);
+			_uninitializedStorageTypeCache.Add(type.DisplayName, localResult);
+			return localResult;
 		}
 
-		return HasReflectionAttribute(type.DisplayName, UninitializedStorageAttributeName);
+		var result = HasReflectionAttribute(type.DisplayName, UninitializedStorageAttributeName);
+		_uninitializedStorageTypeCache.Add(type.DisplayName, result);
+		return result;
 	}
 
 	public bool RequiresLongAlignedStackAddress(CilType type)
 	{
+		if (_longAlignedStackTypeCache.TryGetValue(type.DisplayName, out var cached))
+		{
+			return cached;
+		}
+
 		if (!IsUninitializedStorageType(type))
 		{
+			_longAlignedStackTypeCache.Add(type.DisplayName, false);
 			return false;
 		}
 
@@ -3738,17 +3796,27 @@ internal sealed class CompilationModule : IDisposable
 
 				var value = Reader.GetCustomAttribute(attributeHandle)
 					.DecodeValue(new AttributeTypeProvider(Reader));
-				return value.FixedArguments.Length == 1 &&
+				var localResult = value.FixedArguments.Length == 1 &&
 					value.FixedArguments[0].Value is int alignment &&
 					alignment >= 4;
+				_longAlignedStackTypeCache.Add(type.DisplayName, localResult);
+				return localResult;
 			}
 		}
 
-		return HasReflectionAttribute(type.DisplayName, StackAlignmentAttributeName);
+		var result = HasReflectionAttribute(type.DisplayName, StackAlignmentAttributeName);
+		_longAlignedStackTypeCache.Add(type.DisplayName, result);
+		return result;
 	}
 
 	private bool HasReflectionAttribute(string displayName, string attributeName)
 	{
+		var cacheKey = (displayName, attributeName);
+		if (_reflectionAttributeCache.TryGetValue(cacheKey, out var cached))
+		{
+			return cached;
+		}
+
 		foreach (var path in Directory.EnumerateFiles(_assemblyDirectory, "*.dll"))
 		{
 			try
@@ -3759,14 +3827,17 @@ internal sealed class CompilationModule : IDisposable
 					continue;
 				}
 
-				return type.CustomAttributes.Any(attribute =>
+				var result = type.CustomAttributes.Any(attribute =>
 					string.Equals(attribute.AttributeType.FullName, attributeName, StringComparison.Ordinal));
+				_reflectionAttributeCache.Add(cacheKey, result);
+				return result;
 			}
 			catch (BadImageFormatException)
 			{
 			}
 		}
 
+		_reflectionAttributeCache.Add(cacheKey, false);
 		return false;
 	}
 
@@ -3776,6 +3847,12 @@ internal sealed class CompilationModule : IDisposable
 			!string.Equals(caller.ModuleName, _assemblyName, StringComparison.Ordinal))
 		{
 			return GetCallerModule(caller, ilOffset).ResolveMethodToken(token, caller, ilOffset);
+		}
+
+		var cacheKey = (token, caller.Identity, ilOffset);
+		if (_methodReferenceCache.TryGetValue(cacheKey, out var cached))
+		{
+			return cached;
 		}
 
 		EntityHandle handle;
@@ -3793,7 +3870,7 @@ internal sealed class CompilationModule : IDisposable
 				exception);
 		}
 
-		return handle.Kind switch
+		var result = handle.Kind switch
 		{
 			HandleKind.MethodDefinition => ResolveMethodDefinition(
 				(MethodDefinitionHandle)handle),
@@ -3811,6 +3888,8 @@ internal sealed class CompilationModule : IDisposable
 				caller.DisplayName,
 				ilOffset)
 		};
+		_methodReferenceCache.Add(cacheKey, result);
+		return result;
 	}
 
 	public CilMethodReferenceIdentity? DescribeMethodToken(
@@ -4247,9 +4326,17 @@ internal sealed class CompilationModule : IDisposable
 
 		if (specification.Method.Kind != HandleKind.MethodDefinition)
 		{
+			var unresolved = specification.Method.Kind == HandleKind.MemberReference
+				? DescribeMemberReference(
+					(MemberReferenceHandle)specification.Method,
+					arguments.Select(static argument => argument.DisplayName)
+						.ToImmutableArray())
+				: null;
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedSignature,
-				"Generic methods declared outside the input assembly are not supported.",
+				unresolved is null
+					? "Generic methods declared outside the input assembly are not supported."
+					: $"Managed generic method '{unresolved.AssemblyName}:{unresolved.TypeName}::{unresolved.Name}<{string.Join(",", arguments.Select(static argument => argument.DisplayName))}>' could not be resolved from ManagedAssemblyPaths.",
 				caller.DisplayName,
 				ilOffset);
 		}

@@ -727,11 +727,18 @@ internal static class M68kMachineOptimizer
 			: 0;
 		var value = function.Values[instruction.Definitions[0]];
 		var is64 = value.Width == M68kMachineValueWidth.LongPair;
+		// Widening and narrowing conversions have different source and destination
+		// widths. Evaluate the conversion in the source domain so conv.u8 zero-
+		// extends an Int32 constant instead of first sign-extending it to Int64.
+		var evaluationIs64 = instruction.Operation == M68kMachineOperation.Convert
+			? function.Values[instruction.Uses[0]].Width ==
+				M68kMachineValueWidth.LongPair
+			: is64;
 		var op = instruction.SourceInstruction?.OpCode;
 		try
 		{
 			long folded;
-			if (is64)
+			if (evaluationIs64)
 			{
 				folded = EvaluateInt64(instruction.Operation, op, left, right);
 			}

@@ -345,11 +345,10 @@ internal static class FrameworkReachabilityAnalyzer
 		{
 			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 			{
-				enqueue(module.ResolveConstrainedInterfaceImplementation(
-					caller,
-					constrainedTypeToken,
-					instruction.Offset,
-					interfaceMethod));
+				if (module.TryResolveConstrainedValueInterfaceImplementation(
+						caller, constrainedTypeToken, instruction.Offset,
+						interfaceMethod, out var constrainedImplementation))
+					enqueue(constrainedImplementation);
 			}
 			else if (!interfaceMethod.Signature.Header.IsInstance && !interfaceMethod.IsAbstract)
 			{

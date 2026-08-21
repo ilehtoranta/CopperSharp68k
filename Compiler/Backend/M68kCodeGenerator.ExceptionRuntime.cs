@@ -1734,7 +1734,10 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		var pending = new Queue<CilTypeLayout>(_usedTypeLayouts.Values);
+		var pending = new Queue<CilTypeLayout>(
+			_usedTypeLayouts.Values
+				.Concat(_constructedTypeDescriptors.Values.Select(static item => item.Layout))
+				.DistinctBy(static layout => layout.Identity));
 		while (pending.TryDequeue(out var layout))
 		{
 			var baseType = _module.GetBaseType(layout);

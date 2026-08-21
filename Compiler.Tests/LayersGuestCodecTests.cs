@@ -505,12 +505,18 @@ public sealed class LayersGuestCodecTests
 			LayersResidentCodec.ReadMatchWord(ref memory, residentAddress));
 		Assert.Equal(resident.MatchTag.Raw,
 			LayersResidentCodec.ReadMatchTag(ref memory, residentAddress).Raw);
+		Assert.Equal(resident.EndSkip.Raw,
+			LayersResidentCodec.ReadEndSkip(ref memory, residentAddress).Raw);
 		Assert.Equal(resident.Flags,
 			LayersResidentCodec.ReadFlags(ref memory, residentAddress));
 		Assert.Equal(resident.Version,
 			LayersResidentCodec.ReadVersion(ref memory, residentAddress));
 		Assert.Equal((NodeType)resident.Type,
 			LayersResidentCodec.ReadType(ref memory, residentAddress));
+		Assert.Equal(resident.Name.Raw,
+			LayersResidentCodec.ReadName(ref memory, residentAddress).Raw);
+		Assert.Equal(resident.IdString.Raw,
+			LayersResidentCodec.ReadIdString(ref memory, residentAddress).Raw);
 		Assert.Equal(resident.Init.Raw,
 			LayersResidentCodec.ReadInit(ref memory, residentAddress).Raw);
 
@@ -561,6 +567,17 @@ public sealed class LayersGuestCodecTests
 		Assert.Equal(autoInit.FunctionTable.Raw, autoInitResult.FunctionTable.Raw);
 		Assert.Equal(autoInit.StructureTable.Raw, autoInitResult.StructureTable.Raw);
 		Assert.Equal(autoInit.InitFunction.Raw, autoInitResult.InitFunction.Raw);
+		Assert.Equal(autoInit.DataSize,
+			LayersResidentAutoInitCodec.ReadDataSize(ref memory, autoInitAddress));
+		Assert.Equal(autoInit.FunctionTable.Raw,
+			LayersResidentAutoInitCodec.ReadFunctionTable(ref memory,
+				autoInitAddress).Raw);
+		Assert.Equal(autoInit.StructureTable.Raw,
+			LayersResidentAutoInitCodec.ReadStructureTable(ref memory,
+				autoInitAddress).Raw);
+		Assert.Equal(autoInit.InitFunction.Raw,
+			LayersResidentAutoInitCodec.ReadInitFunction(ref memory,
+				autoInitAddress).Raw);
 		var autoInitFields = APTR.FromPointer(720);
 		LayersResidentAutoInitCodec.WriteDataSize(
 			ref memory, autoInitFields, 4321);

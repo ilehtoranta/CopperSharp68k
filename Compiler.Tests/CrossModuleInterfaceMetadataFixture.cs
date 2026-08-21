@@ -14,6 +14,7 @@ public interface IInheritedExternalValueSource : IExternalValueSource;
 public struct CrossModuleConstrainedValueSource : IInheritedExternalValueSource
 {
 	public int Value;
+	public CrossModuleConstrainedValueSource(int value) => Value = value;
 
 	public readonly int GetValue() => Value;
 }
@@ -22,7 +23,10 @@ public static class CrossModuleConstrainedInterfaceFixture
 {
 	public static int Entry()
 	{
-		var source = new CrossModuleConstrainedValueSource { Value = 42 };
+		// The explicit value-type constructor makes this layout reachable by the
+		// dispatch-table scan. Constrained calls still require no runtime interface
+		// map, including when the interface is declared in another assembly.
+		var source = new CrossModuleConstrainedValueSource(42);
 		return Read(ref source);
 	}
 

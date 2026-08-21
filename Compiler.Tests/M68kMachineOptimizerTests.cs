@@ -15,6 +15,44 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kMachineOptimizerTests
 {
 	[Fact]
+	public void DirectMultiwordBranchReturnsReuseOneHiddenBuffer()
+	{
+		using var module = new CompilationModule(
+			typeof(CompilerFixtures).Assembly.Location);
+		var method = module.ResolveEntryPoint(
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DirectMultiwordBranchReturn");
+		var function = CilMachineIrBuilder.Build(method, module);
+
+		var home = Assert.Single(function.ReusableAggregateReturnHomes);
+		Assert.Equal(8, home.Key.Size);
+		Assert.Equal(8, function.LocalHomes[home.Value].Size);
+	}
+
+	[Fact]
+	public void AggressiveGuestReadMachineBodyUsesGuestMemoryIntrinsic()
+	{
+		using var module = new CompilationModule(
+			typeof(CompilerFixtures).Assembly.Location);
+		var method = module.ResolveEntryPoint(
+			"CopperSharp.Compiler.Tests.CompilerFixtures::AggressiveGuestRead");
+		var function = CilMachineIrBuilder.Build(method, module);
+		var call = Assert.Single(function.Blocks.SelectMany(static block => block.Instructions)
+			.Where(static instruction => instruction.Operation == M68kMachineOperation.Call));
+		var source = call.Origin!.SourceInstruction!;
+		var callee = module.ResolveMethodToken((int)source.Operand!,
+			call.Origin.SourceMethod, source.Offset);
+		var cached = module.ResolveMethodToken((int)source.Operand!,
+			call.Origin.SourceMethod, source.Offset);
+
+		Assert.Same(callee, cached);
+		Assert.Equal("intrinsic:aptr-read-uint32", callee.ImportName);
+		Assert.Null(callee.Definition);
+		Assert.NotNull(call.LogicalCall);
+		Assert.True(call.MayThrow);
+		Assert.True(call.IsSafepoint);
+	}
+
+	[Fact]
 	public void OriginRetainsSourceMethodAcrossInlineSiteChain()
 	{
 		var sourceInstruction = new CilInstruction(0, OpCodes.Ldc_I4_1, null, 1);
@@ -199,6 +237,135 @@ public sealed class M68kMachineOptimizerTests
 		Assert.Equal(M68kMachineConstant.Int32(7), folded.ConstantValue);
 		Assert.Equal(targetMethod.DisplayName, folded.Origin!.SourceMethod.DisplayName);
 		Assert.Single(folded.Origin.InlineSites);
+	}
+
+	[Fact]
+	public void ScalarInliningPreservesAbiPrefixCopyUsedAfterCall()
+	{
+		var callSource = new CilInstruction(0, OpCodes.Call, 0x06000002, 1);
+		var callerMethod = CreateMethod("Inline.Prefix", "Inline::Caller",
+			[callSource], methodRow: 1);
+		var targetMethod = CreateMethod("Inline.Prefix", "Inline::Target",
+			[new CilInstruction(0, OpCodes.Ret, null, 1)], methodRow: 2);
+		var caller = new M68kMachineFunction(callerMethod.DisplayName, 0,
+			callerMethod);
+		var callerBlock = AddBlock(caller, 0, 0);
+		var logicalArgument = CreateLong(caller);
+		var abiArgument = CreateLong(caller);
+		var returned = CreateLong(caller);
+		var origin = caller.OriginAt(0, callSource)!;
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Argument, 0,
+			definitions: [logicalArgument.Id], argumentIndex: 0));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Copy, 0,
+			uses: [logicalArgument.Id], definitions: [abiArgument.Id],
+			sourceInstruction: callSource));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Call, 0,
+			uses: [abiArgument.Id],
+			clobbers: M68kRegisterSet.Data,
+			memoryEffect: M68kMachineMemoryEffect.Read |
+				M68kMachineMemoryEffect.Write,
+			isSafepoint: true, mayThrow: true, sourceInstruction: callSource,
+			logicalCall: new M68kMachineLogicalCall(
+				M68kMachineCallDispatchKind.Direct,
+				[targetMethod.Identity], [logicalArgument.Id], [], false, origin)));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Copy, 1,
+			uses: [abiArgument.Id], definitions: [returned.Id]));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Return, 2, uses: [returned.Id]));
+
+		var target = new M68kMachineFunction(targetMethod.DisplayName, 0,
+			targetMethod);
+		var targetBlock = AddBlock(target, 0, 0);
+		var targetArgument = CreateLong(target);
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Argument, 0,
+			definitions: [targetArgument.Id], argumentIndex: 0));
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Return, 0,
+			sourceInstruction: targetMethod.Instructions[0]));
+
+		using var module = new CompilationModule(
+			typeof(M68kMachineOptimizerTests).Assembly.Location);
+		var statistics = M68kMachineModuleOptimizer.Run(
+			[callerMethod, targetMethod],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction>
+			{
+				[callerMethod.Identity] = caller,
+				[targetMethod.Identity] = target
+			},
+			module,
+			M68kCpuTarget.M68000);
+
+		Assert.Equal(0, statistics.InlinedCalls);
+		Assert.Contains(callerBlock.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.Call);
+		M68kMachineIrVerifier.Verify(caller);
+	}
+
+	[Fact]
+	public void ScalarInliningDefinesFixedResultReusedAfterSuffixCopy()
+	{
+		var callSource = new CilInstruction(0, OpCodes.Call, 0x06000002, 1);
+		var callerMethod = CreateMethod("Inline.Result", "Inline::Caller",
+			[callSource], methodRow: 1);
+		var targetMethod = CreateMethod("Inline.Result", "Inline::Target",
+			[new CilInstruction(0, OpCodes.Ldc_I4_7, null, 1),
+			 new CilInstruction(1, OpCodes.Ret, null, 2)], methodRow: 2);
+		var caller = new M68kMachineFunction(callerMethod.DisplayName, 0,
+			callerMethod);
+		var callerBlock = AddBlock(caller, 0, 0);
+		var fixedResult = CreateLong(caller);
+		var logicalResult = CreateLong(caller);
+		var reusedResult = CreateLong(caller);
+		var origin = caller.OriginAt(0, callSource)!;
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Call, 0,
+			definitions: [fixedResult.Id], clobbers: M68kRegisterSet.Data,
+			memoryEffect: M68kMachineMemoryEffect.Read |
+				M68kMachineMemoryEffect.Write,
+			isSafepoint: true, mayThrow: true, sourceInstruction: callSource,
+			logicalCall: new M68kMachineLogicalCall(
+				M68kMachineCallDispatchKind.Direct, [targetMethod.Identity], [],
+				[logicalResult.Id], false, origin)));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Copy, 0,
+			uses: [fixedResult.Id], definitions: [logicalResult.Id]));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Copy, 1,
+			uses: [fixedResult.Id], definitions: [reusedResult.Id]));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Return, 2, uses: [reusedResult.Id]));
+
+		var target = new M68kMachineFunction(targetMethod.DisplayName, 0,
+			targetMethod);
+		var targetBlock = AddBlock(target, 0, 0);
+		var constant = CreateLong(target);
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Constant, 0, definitions: [constant.Id],
+			sourceInstruction: targetMethod.Instructions[0],
+			constantValue: M68kMachineConstant.Int32(7)));
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Return, 1, uses: [constant.Id],
+			sourceInstruction: targetMethod.Instructions[1]));
+
+		using var module = new CompilationModule(
+			typeof(M68kMachineOptimizerTests).Assembly.Location);
+		var statistics = M68kMachineModuleOptimizer.Run(
+			[callerMethod, targetMethod],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction>
+			{
+				[callerMethod.Identity] = caller,
+				[targetMethod.Identity] = target
+			}, module, M68kCpuTarget.M68000);
+
+		Assert.Equal(0, statistics.InlinedCalls);
+		Assert.Contains(callerBlock.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.Call);
+		M68kMachineIrVerifier.Verify(caller);
 	}
 
 	[Fact]

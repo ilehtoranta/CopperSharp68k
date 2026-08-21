@@ -34,7 +34,23 @@ internal sealed partial class M68kCodeGenerator
 	private readonly HashSet<int> _allocatedExceptionFrameStores = new();
 	private readonly HashSet<int> _allocatedKnownNonNullValues = new();
 	private readonly HashSet<M68kRegister> _allocatedKnownNonNullRegisters = new();
+	private readonly HashSet<M68kRegister> _allocatedFrameAddressesEmitted = new();
 	private int _allocatedOutgoingStackBytes;
+
+	private MethodReference ResolveAllocatedMachineMethod(
+		CilMethod caller,
+		M68kMachineInstruction instruction)
+	{
+		var sourceMethod = instruction.Origin?.SourceMethod ?? caller;
+		var source = instruction.Origin?.SourceInstruction ??
+			instruction.SourceInstruction ??
+			throw new InvalidOperationException(
+				"Machine method reference has no source instruction.");
+		return _module.ResolveMethodToken(
+			(int)source.Operand!,
+			sourceMethod,
+			source.Offset);
+	}
 
 	private void EmitAllocatedMethod(
 		CilMethod method,
@@ -86,6 +102,7 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedExceptionFrameStores.Clear();
 		_allocatedKnownNonNullValues.Clear();
 		_allocatedKnownNonNullRegisters.Clear();
+		_allocatedFrameAddressesEmitted.Clear();
 		PrepareAllocatedConstantCopies(method, allocated);
 		PrepareAllocatedLiteralAddressCopies(method, allocated);
 		PrepareAllocatedQuickArithmetic(allocated);
@@ -197,9 +214,27 @@ internal sealed partial class M68kCodeGenerator
 				}
 				if (_allocatedSuppressedInstructions.Contains(instruction.Id))
 				{
+					// Suppressed entry arguments and their canonical copies were
+					// already materialized by EmitAllocatedIncomingArguments.  They
+					// still participate in SSA dataflow: skipping their transfer
+					// facts loses properties such as the inherent non-nullness of a
+					// managed by-reference argument and emits a redundant fatal check
+					// at its first use.
+					_allocatedKnownNonNullValues.UnionWith(
+						GetAllocatedNonNullTransferValues(
+							method,
+							allocated,
+							instruction));
+					PropagateAllocatedNonNullCopy(
+						instruction,
+						_allocatedKnownNonNullValues);
+					UpdateAllocatedNonNullRegistersAfterInstruction(
+						allocated,
+						instruction);
 					continue;
 				}
 				_emittingMachineInstruction = instruction;
+				_allocatedFrameAddressesEmitted.Clear();
 				EmitAllocatedInstruction(
 					method,
 					abi,
@@ -367,6 +402,39 @@ internal sealed partial class M68kCodeGenerator
 					"Allocated incoming argument has no ABI index.");
 			}
 			var source = abi.Arguments[argumentIndex];
+			var argumentPosition = entry.Instructions.IndexOf(argument);
+			var directSpill = argumentPosition >= 0 &&
+				argumentPosition + 1 < entry.Instructions.Count
+				? entry.Instructions[argumentPosition + 1]
+				: null;
+			if (allocated.Function.Values[incoming].IsSpillTemporary &&
+				allocated.Function.Values[incoming].Width == M68kMachineValueWidth.Long &&
+				directSpill is
+				{
+					Operation: M68kMachineOperation.SpillStore,
+					Uses: [var stored]
+				} &&
+				stored == incoming)
+			{
+				var destinationFrame = AllocatedFrameOffset(
+					allocated,
+					allocated.Frame.SpillOffsets[
+						directSpill.SpillSlotIndex!.Value]);
+				if (source.Register is { } sourceRegister)
+				{
+					EmitAllocatedFrameStore(sourceRegister,
+						M68kMachineValueWidth.Long, destinationFrame);
+				}
+				else
+				{
+					EmitAllocatedIncomingStackToFrame(
+						checked(savedBytes + 4 + source.StackOffset),
+						destinationFrame);
+				}
+				_allocatedSuppressedInstructions.Add(argument.Id);
+				_allocatedSuppressedInstructions.Add(directSpill.Id);
+				continue;
+			}
 			M68kMachineInstruction? copy = null;
 			var destinationValue = incoming;
 			if (source.Register is not null)
@@ -515,10 +583,7 @@ internal sealed partial class M68kCodeGenerator
 				call.Operation == M68kMachineOperation.Call &&
 				call.SourceInstruction is { Operand: int token } callSource)
 			{
-				var target = _module.ResolveMethodToken(
-					token,
-					method,
-					callSource.Offset);
+				var target = ResolveAllocatedMachineMethod(method, call);
 				if (target.Definition is { } definition &&
 					GetInternalRegisterAbi(definition) is { } inlineAbi &&
 					TryGetInlineCandidate(definition, inlineAbi, out var candidate) &&
@@ -553,10 +618,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return false;
 		}
-		var target = _module.ResolveMethodToken(
-			token,
-			caller,
-			source.Offset);
+		var target = ResolveAllocatedMachineMethod(caller, instruction);
 		return target.ImportName is
 			"intrinsic:runtime-bitcast-32" or
 			"intrinsic:cstring-from-pointer" or
@@ -635,10 +697,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return false;
 		}
-		var name = _module.ResolveMethodToken(
-			token,
-			caller,
-			source.Offset).ImportName;
+		var name = ResolveAllocatedMachineMethod(caller, instruction).ImportName;
 		return name is
 			"intrinsic:cstring-from-literal" or
 			"intrinsic:amiga-vararg-from-literal";
@@ -1327,10 +1386,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return false;
 		}
-		var target = _module.ResolveMethodToken(
-			(int)source.Operand!,
-			caller,
-			source.Offset);
+		var target = ResolveAllocatedMachineMethod(caller, instruction);
 		if (target.Definition is null)
 		{
 			return IsAllocatedIntrinsic(target.ImportName);
@@ -1504,7 +1560,11 @@ internal sealed partial class M68kCodeGenerator
 							EmitAllocatedBaseLoad(
 								address,
 								destination.Register,
-								AllocatedIndirectWidth(instruction.SourceInstruction.OpCode),
+								instruction.SourceInstruction.OpCode == OpCodes.Ldobj
+									? allocated.Function.Values[
+										instruction.Definitions[0]].Width
+									: AllocatedIndirectWidth(
+										instruction.SourceInstruction.OpCode),
 								0);
 							EmitAllocatedDefinitionNormalization(
 								allocated,
@@ -2026,7 +2086,12 @@ internal sealed partial class M68kCodeGenerator
 				EmitDivide(
 					instruction.SourceInstruction!.OpCode != OpCodes.Div_Un &&
 						instruction.SourceInstruction.OpCode != OpCodes.Rem_Un,
-					instruction.Operation == M68kMachineOperation.Remainder);
+					instruction.Operation == M68kMachineOperation.Remainder,
+					_allocatedKnownNonNullValues.Contains(instruction.Uses[1]) ||
+					TryGetAllocatedConstant(
+						allocated.Function,
+						instruction.Uses[1],
+						out var divisor) && divisor != 0);
 				return;
 
 			case M68kMachineOperation.Shift:
@@ -3813,6 +3878,17 @@ internal sealed partial class M68kCodeGenerator
 		var edgeFacts = function.Blocks
 			.SelectMany(block => block.Successors.Select(successor => (block.Id, successor)))
 			.ToDictionary(static edge => edge, _ => new HashSet<int>(universe));
+		var copySources = function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.Where(static instruction => instruction is
+				{
+					Operation: M68kMachineOperation.Copy,
+					Uses.Length: 1,
+					Definitions.Length: 1
+				})
+			.ToDictionary(
+				static instruction => instruction.Definitions[0],
+				static instruction => instruction.Uses[0]);
 
 		var changed = true;
 		while (changed)
@@ -3868,7 +3944,8 @@ internal sealed partial class M68kCodeGenerator
 						function,
 						block,
 						successor,
-						edge);
+						edge,
+						copySources);
 					if (!edge.SetEquals(edgeFacts[(block.Id, successor)]))
 					{
 						edgeFacts[(block.Id, successor)] = edge;
@@ -3901,6 +3978,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kAllocatedFunction allocated,
 		M68kMachineInstruction instruction)
 	{
+		var emittedFrameAddresses = _allocatedFrameAddressesEmitted.ToArray();
 		var propagatedDefinitions = new HashSet<int>(
 			instruction.Definitions.Where(
 				_allocatedKnownNonNullValues.Contains));
@@ -3937,6 +4015,11 @@ internal sealed partial class M68kCodeGenerator
 		{
 			AddAllocatedNonNullValueRegister(allocated, definition);
 		}
+		foreach (var register in emittedFrameAddresses)
+		{
+			_allocatedKnownNonNullRegisters.Add(register);
+		}
+		_allocatedFrameAddressesEmitted.Clear();
 	}
 
 	private void AddAllocatedNonNullValueRegister(
@@ -3956,6 +4039,19 @@ internal sealed partial class M68kCodeGenerator
 		M68kAllocatedFunction allocated,
 		M68kMachineInstruction instruction)
 	{
+		// This set began as address non-nullness, but an SSA value proven to be
+		// non-zero is the same fact.  Retaining non-zero scalar constants and
+		// branch facts here also lets integer division consume an explicit source
+		// guard instead of emitting a second fatal check.
+		if (instruction.Operation == M68kMachineOperation.Constant &&
+			instruction.Definitions is [var constantDefinition] &&
+			instruction.ConstantValue is { } constant &&
+			constant.TryGetIntegral(out var integral) &&
+			integral != 0)
+		{
+			yield return constantDefinition;
+		}
+
 		if (instruction.Operation is
 			M68kMachineOperation.LocalAddress or
 			M68kMachineOperation.ArgumentAddress or
@@ -3966,6 +4062,32 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.DelegateCreate)
 		{
 			foreach (var definition in instruction.Definitions)
+			{
+					yield return definition;
+				}
+			}
+		else if (instruction.Operation == M68kMachineOperation.Argument)
+		{
+			var isValueTypeThis = instruction.ArgumentIndex == 0 &&
+				method.Signature.Header.IsInstance &&
+				_module.GetMethodDeclaringType(method).Kind == CilTypeKind.ValueType;
+			foreach (var definition in instruction.Definitions.Where(definition =>
+				isValueTypeThis || allocated.Function.Values[definition].Kind is
+					CilStackValueKind.ManagedPointer or
+					CilStackValueKind.AggregateAddress))
+			{
+				yield return definition;
+			}
+		}
+		else if (instruction.Operation == M68kMachineOperation.SpillLoad)
+		{
+			// Spill rewriting clones the exact SSA value kind.  Reloading a managed
+			// by-reference or aggregate address restores that address; it cannot turn
+			// a compiler-created frame/byref value into a nullable guest pointer.
+			foreach (var definition in instruction.Definitions.Where(definition =>
+				allocated.Function.Values[definition].Kind is
+					CilStackValueKind.ManagedPointer or
+					CilStackValueKind.AggregateAddress))
 			{
 				yield return definition;
 			}
@@ -4058,7 +4180,8 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineFunction function,
 		M68kMachineBlock block,
 		int successor,
-		HashSet<int> facts)
+		HashSet<int> facts,
+		IReadOnlyDictionary<int, int> copySources)
 	{
 		if (block.Instructions.LastOrDefault() is not
 			{
@@ -4071,18 +4194,39 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var branchTarget = block.Successors[0];
+		if (branch.BranchCondition is
+			{
+				SourceKind: M68kMachineConditionSourceKind.Test,
+				Condition: M68kCondition.Equal or M68kCondition.NotEqual
+			} testCondition &&
+			branch.Uses.Length == 1)
+		{
+			var nonZeroEdge = testCondition.Condition == M68kCondition.NotEqual
+				? branchTarget
+				: block.Successors[1];
+			if (successor == nonZeroEdge)
+			{
+				AddAllocatedNonZeroFactWithCopySources(
+					branch.Uses[0],
+					facts,
+					copySources);
+			}
+			return;
+		}
 		if (branch.SourceInstruction?.OpCode is var op &&
 			(op == OpCodes.Brtrue || op == OpCodes.Brtrue_S ||
 			 op == OpCodes.Brfalse || op == OpCodes.Brfalse_S) &&
-			branch.Uses.Length == 1 &&
-			IsAddressLike(function.Values[branch.Uses[0]].Kind))
+			branch.Uses.Length == 1)
 		{
 			var nonZeroEdge = op == OpCodes.Brtrue || op == OpCodes.Brtrue_S
 				? branchTarget
 				: block.Successors[1];
 			if (successor == nonZeroEdge)
 			{
-				facts.Add(branch.Uses[0]);
+				AddAllocatedNonZeroFactWithCopySources(
+					branch.Uses[0],
+					facts,
+					copySources);
 			}
 			return;
 		}
@@ -4096,14 +4240,24 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return;
 		}
-		var referenceIndex = IsAddressLike(function.Values[branch.Uses[0]].Kind) ? 0 :
-			IsAddressLike(function.Values[branch.Uses[1]].Kind) ? 1 : -1;
-		if (referenceIndex < 0 ||
-			!TryGetAllocatedConstant(
+		var zeroIndex = TryGetAllocatedConstant(
+			function,
+			branch.Uses[1],
+			out var rightConstant) && rightConstant == 0 ? 1 :
+			TryGetAllocatedConstant(
 				function,
-				branch.Uses[1 - referenceIndex],
-				out var constant) ||
-			constant != 0)
+				branch.Uses[0],
+				out var leftConstant) && leftConstant == 0 ? 0 : -1;
+		if (zeroIndex < 0)
+		{
+			return;
+		}
+		var valueIndex = 1 - zeroIndex;
+		if (TryGetAllocatedConstant(
+				function,
+				branch.Uses[valueIndex],
+				out var constant) &&
+			constant == 0)
 		{
 			return;
 		}
@@ -4112,8 +4266,23 @@ internal sealed partial class M68kCodeGenerator
 			: block.Successors[1];
 		if (successor == nonZeroTarget)
 		{
-			facts.Add(branch.Uses[referenceIndex]);
+			AddAllocatedNonZeroFactWithCopySources(
+				branch.Uses[valueIndex],
+				facts,
+				copySources);
 		}
+	}
+
+	private static void AddAllocatedNonZeroFactWithCopySources(
+		int value,
+		HashSet<int> facts,
+		IReadOnlyDictionary<int, int> copySources)
+	{
+		do
+		{
+			facts.Add(value);
+		}
+		while (copySources.TryGetValue(value, out value));
 	}
 
 	private static bool IsAddressLike(CilStackValueKind kind) =>
@@ -4440,67 +4609,65 @@ internal sealed partial class M68kCodeGenerator
 					allocated,
 					address: true,
 					excluded: null,
-					out var addressRegister))
-			{
-				EmitAllocatedFrameAddress(addressRegister, clearDisplacements[0]);
-				var zeroRegister = default(M68kRegister);
-				var hasZeroRegister = clearDisplacements.Length > 64 &&
-					TrySelectAllocatedFrameScratchRegister(
+					out var addressRegister) &&
+				TrySelectAllocatedFrameScratchRegister(
 					abi,
 					allocated,
 					address: false,
 					excluded: counterRegister,
-					out zeroRegister);
-				if (hasZeroRegister)
-				{
-					_assembler.EmitWord((ushort)(0x7000 | ((int)zeroRegister << 9)));
-					var remainder = clearDisplacements.Length % 4;
-					for (var index = 0; index < remainder; index++)
-					{
-						_assembler.EmitWord((ushort)(
-							0x20C0 |
-							(((int)addressRegister - (int)M68kRegister.A0) << 9) |
-							(int)zeroRegister));
-					}
-					EmitAllocatedImmediate(
-						(clearDisplacements.Length / 4) - 1,
-						counterRegister);
-				}
-				else
-				{
-					EmitAllocatedImmediate(clearDisplacements.Length - 1, counterRegister);
-				}
-				var loop = UniqueLabel("allocated-frame-zero-loop");
-				_assembler.Mark(loop);
-				if (hasZeroRegister)
-				{
-					for (var index = 0; index < 4; index++)
-					{
-						_assembler.EmitWord((ushort)(
-							0x20C0 |
-							(((int)addressRegister - (int)M68kRegister.A0) << 9) |
-							(int)zeroRegister));
-					}
-				}
-				else
+					out var zeroRegister))
+			{
+				EmitAllocatedFrameAddress(
+					addressRegister,
+					clearDisplacements[0],
+					trackNonNull: false);
+				_assembler.EmitWord((ushort)(0x7000 | ((int)zeroRegister << 9)));
+				var remainder = clearDisplacements.Length % 4;
+				for (var index = 0; index < remainder; index++)
 				{
 					_assembler.EmitWord((ushort)(
-						0x20FC |
-						(((int)addressRegister - (int)M68kRegister.A0) << 9)));
-					_assembler.EmitLong(0);
+						0x20C0 |
+						(((int)addressRegister - (int)M68kRegister.A0) << 9) |
+						(int)zeroRegister));
+				}
+				EmitAllocatedImmediate(
+					(clearDisplacements.Length / 4) - 1,
+					counterRegister);
+				var loop = UniqueLabel("allocated-frame-zero-loop");
+				_assembler.Mark(loop);
+				for (var index = 0; index < 4; index++)
+				{
+					_assembler.EmitWord((ushort)(
+						0x20C0 |
+						(((int)addressRegister - (int)M68kRegister.A0) << 9) |
+						(int)zeroRegister));
 				}
 				_assembler.EmitDbra((int)counterRegister, loop);
 			}
 			else if (_request.Cpu == M68kCpuTarget.M68000 &&
 				_request.ClrPolicy != M68kClrPolicy.Always &&
-				clearDisplacements.Length >= 2 &&
-				TrySelectAllocatedFrameZeroRegister(abi, allocated, out var zeroRegister))
+				isContiguousLargeClear &&
+				clearDisplacements.Length >= 13 &&
+				TryEmitAllocatedPreservedScratchFrameClear(
+					abi,
+					allocated,
+					clearDisplacements))
 			{
-				_assembler.EmitWord((ushort)(0x7000 | ((int)zeroRegister << 9)));
+				// Emitted by the helper.
+			}
+			else if (_request.Cpu == M68kCpuTarget.M68000 &&
+				_request.ClrPolicy != M68kClrPolicy.Always &&
+				clearDisplacements.Length >= 2 &&
+				TrySelectAllocatedFrameZeroRegister(
+					abi,
+					allocated,
+					out var unrolledZeroRegister))
+			{
+				_assembler.EmitWord((ushort)(0x7000 | ((int)unrolledZeroRegister << 9)));
 				foreach (var displacement in clearDisplacements)
 				{
 					EmitAllocatedFrameStore(
-						zeroRegister,
+						unrolledZeroRegister,
 						M68kMachineValueWidth.Long,
 						displacement);
 				}
@@ -4574,6 +4741,66 @@ internal sealed partial class M68kCodeGenerator
 					allocated,
 					allocated.Frame.ArgumentHomeOffsets[home.Index]));
 		}
+	}
+
+	private bool TryEmitAllocatedPreservedScratchFrameClear(
+		InternalCallAbi abi,
+		M68kAllocatedFunction allocated,
+		IReadOnlyList<int> clearDisplacements)
+	{
+		var preserveAddress = !TrySelectAllocatedFrameScratchRegister(
+			abi,
+			allocated,
+			address: true,
+			excluded: null,
+			out var addressRegister);
+		if (preserveAddress)
+		{
+			// Saving a third register first wins both bytes and deterministic
+			// MC68000 cycles at 17 longwords.  With an already available address
+			// scratch, preserving only D6/D7 breaks even at 13.
+			if (clearDisplacements.Count < 17)
+			{
+				return false;
+			}
+			addressRegister = M68kRegister.A6;
+		}
+
+		M68kRegister[] preservedRegisters = preserveAddress
+			? [M68kRegister.D6, M68kRegister.D7, M68kRegister.A6]
+			: [M68kRegister.D6, M68kRegister.D7];
+		EmitPushRegisters(preservedRegisters);
+		var temporaryStackBytes = UsesAllocatedFrameAnchor
+			? 0
+			: preservedRegisters.Length * 4;
+		EmitAllocatedFrameAddress(
+			addressRegister,
+			checked(clearDisplacements[0] + temporaryStackBytes),
+			trackNonNull: false);
+		_assembler.EmitWord(0x7C00); // MOVEQ #0,D6
+		var remainder = clearDisplacements.Count % 4;
+		for (var index = 0; index < remainder; index++)
+		{
+			_assembler.EmitWord((ushort)(
+				0x20C0 |
+				(((int)addressRegister - (int)M68kRegister.A0) << 9) |
+				(int)M68kRegister.D6));
+		}
+		EmitAllocatedImmediate(
+			(clearDisplacements.Count / 4) - 1,
+			M68kRegister.D7);
+		var loop = UniqueLabel("allocated-preserved-frame-zero-loop");
+		_assembler.Mark(loop);
+		for (var index = 0; index < 4; index++)
+		{
+			_assembler.EmitWord((ushort)(
+				0x20C0 |
+				(((int)addressRegister - (int)M68kRegister.A0) << 9) |
+				(int)M68kRegister.D6));
+		}
+		_assembler.EmitDbra((int)M68kRegister.D7, loop);
+		EmitPopRegisters(preservedRegisters);
+		return true;
 	}
 
 	private static bool TrySelectAllocatedFrameZeroRegister(
@@ -4752,10 +4979,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return false;
 		}
-		var target = _module.ResolveMethodToken(
-			(int)source.Operand!,
-			caller,
-			source.Offset);
+		var target = ResolveAllocatedMachineMethod(caller, call);
 		if (target.Definition is not { IsImport: false, ExternalCall: null } callee ||
 			IsNativeShadowMathLeaf(callee) ||
 			IsAlwaysInlinedMethod(callee) ||
@@ -5199,10 +5423,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineInstruction instruction)
 	{
 		var source = instruction.SourceInstruction!;
-		var target = _module.ResolveMethodToken(
-			(int)source.Operand!,
-			caller,
-			source.Offset);
+		var target = ResolveAllocatedMachineMethod(caller, instruction);
 		if (instruction.StackVarargsRegister is { } varargsRegister)
 		{
 			EmitAllocatedStackPointerToAddressRegister(varargsRegister);
@@ -5219,11 +5440,10 @@ internal sealed partial class M68kCodeGenerator
 		var definition = target.Definition;
 		if (source.ConstrainedTypeToken is { } constrainedTypeToken)
 		{
-			definition = _module.ResolveConstrainedInterfaceImplementation(
-				caller,
-				constrainedTypeToken,
-				source.Offset,
-				definition);
+			if (_module.TryResolveConstrainedValueInterfaceImplementation(
+					caller, constrainedTypeToken, source.Offset, definition,
+					out var constrainedImplementation))
+				definition = constrainedImplementation;
 		}
 		else if (source.OpCode == OpCodes.Callvirt)
 		{
@@ -9234,12 +9454,17 @@ internal sealed partial class M68kCodeGenerator
 					: consumer.Operation == M68kMachineOperation.Call
 						? consumer.SourceInstruction
 						: null;
-				if (sourceInstruction is not { Operand: int token } ||
-					!IsFrameAddressIntrinsic(
-						_module.ResolveMethodToken(
-							token,
-							method,
-							sourceInstruction.Offset).ImportName) ||
+				if (sourceInstruction is not { Operand: int token })
+				{
+					continue;
+				}
+				var sourceReference = consumer.Operation == M68kMachineOperation.Call
+					? ResolveAllocatedMachineMethod(method, consumer)
+					: _module.ResolveMethodToken(
+						token,
+						method,
+						sourceInstruction.Offset);
+				if (!IsFrameAddressIntrinsic(sourceReference.ImportName) ||
 					!TryGetAllocatedFrameBackedAddressHome(
 						method,
 						allocated,
@@ -9367,10 +9592,8 @@ internal sealed partial class M68kCodeGenerator
 					SourceInstruction: { Operand: int token } call
 				})
 			{
-				return _module.ResolveMethodToken(
-					token,
-					caller,
-					call.Offset).ImportName == "intrinsic:aptr-null";
+				return ResolveAllocatedMachineMethod(caller, definition).ImportName ==
+					"intrinsic:aptr-null";
 			}
 			return false;
 		}
@@ -10431,15 +10654,19 @@ internal sealed partial class M68kCodeGenerator
 					break;
 
 				case M68kMachineConditionSourceKind.Predicate:
+					var producer = branchCondition.ProducerInstruction!;
 					EmitAllocatedCall(
 						method,
 						allocated,
 						instruction with
 						{
 							Operation = M68kMachineOperation.Call,
-							IlOffset = branchCondition.ProducerInstruction!.Offset,
-							SourceInstruction =
-								branchCondition.ProducerInstruction
+							IlOffset = producer.Offset,
+							SourceInstruction = producer,
+							Origin = instruction.Origin is { } origin
+								? M68kMachineInstructionOrigin.Create(
+									origin.SourceMethod, producer)
+								: null,
 						});
 					break;
 
@@ -10583,6 +10810,13 @@ internal sealed partial class M68kCodeGenerator
 		var selector = allocated.Allocation.Registers[instruction.Uses[0]].Register;
 		for (var index = 0; index < originalTargets.Length; index++)
 		{
+			// A CIL switch encodes sparse holes as explicit entries targeting the
+			// fallthrough block. Comparing those indices is redundant: matching
+			// and not matching both select the same eventual default edge.
+			if (originalTargets[index] == fallthrough)
+			{
+				continue;
+			}
 			EmitCompareImmediateWithRegister(selector, index);
 			_assembler.EmitBranch(
 				M68kCondition.Equal,
@@ -10613,10 +10847,7 @@ internal sealed partial class M68kCodeGenerator
 		if (producer.Operation == M68kMachineOperation.Call &&
 			producer.SourceInstruction is { Operand: int token } source)
 		{
-			var target = _module.ResolveMethodToken(
-				token,
-				method,
-				source.Offset);
+			var target = ResolveAllocatedMachineMethod(method, producer);
 			if (target.ImportName == "intrinsic:aptr-is-null")
 			{
 				return M68kCondition.Equal;
@@ -10758,7 +10989,8 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitAllocatedFrameAddress(
 		M68kRegister destination,
-		int displacement)
+		int displacement,
+		bool trackNonNull = true)
 	{
 		ValidateAllocatedFrameDisplacement(displacement);
 		if (destination < M68kRegister.A0)
@@ -10783,12 +11015,22 @@ internal sealed partial class M68kCodeGenerator
 			{
 				EmitAllocatedAddImmediate(destination, displacement);
 			}
+			if (trackNonNull)
+			{
+				_allocatedKnownNonNullRegisters.Add(destination);
+				_allocatedFrameAddressesEmitted.Add(destination);
+			}
 			return;
 		}
 		_assembler.EmitWord((ushort)(
 			(UsesAllocatedFrameAnchor ? 0x41ED : 0x41EF) |
 			(((int)destination - (int)M68kRegister.A0) << 9)));
 		_assembler.EmitWord(unchecked((ushort)(short)displacement));
+		if (trackNonNull)
+		{
+			_allocatedKnownNonNullRegisters.Add(destination);
+			_allocatedFrameAddressesEmitted.Add(destination);
+		}
 	}
 
 	private void EmitAllocatedFrameStore(
@@ -10840,6 +11082,23 @@ internal sealed partial class M68kCodeGenerator
 		ValidateAllocatedFrameDisplacement(destinationDisplacement);
 		_assembler.EmitWord((ushort)(UsesAllocatedFrameAnchor
 			? 0x2B6D // MOVE.L d16(A5),d16(A5)
+			: 0x2F6F)); // MOVE.L d16(A7),d16(A7)
+		_assembler.EmitWord(unchecked((ushort)(short)sourceDisplacement));
+		_assembler.EmitWord(unchecked((ushort)(short)destinationDisplacement));
+	}
+
+	private void EmitAllocatedIncomingStackToFrame(
+		int sourceDisplacement,
+		int destinationDisplacement)
+	{
+		if (sourceDisplacement is < 0 or > short.MaxValue)
+		{
+			throw new InvalidOperationException(
+				"Allocated stack argument exceeds d16(A7) range.");
+		}
+		ValidateAllocatedFrameDisplacement(destinationDisplacement);
+		_assembler.EmitWord((ushort)(UsesAllocatedFrameAnchor
+			? 0x2B6F // MOVE.L d16(A7),d16(A5)
 			: 0x2F6F)); // MOVE.L d16(A7),d16(A7)
 		_assembler.EmitWord(unchecked((ushort)(short)sourceDisplacement));
 		_assembler.EmitWord(unchecked((ushort)(short)destinationDisplacement));

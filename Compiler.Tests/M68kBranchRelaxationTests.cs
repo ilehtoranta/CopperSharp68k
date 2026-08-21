@@ -11,6 +11,36 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kBranchRelaxationTests
 {
 	[Fact]
+	public void RendersExplicitRomRamAndBssSections()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.MarkDataStart();
+		assembler.Mark("readonly");
+		assembler.EmitLong(0x1234_5678);
+		assembler.MarkWritableDataStart();
+		assembler.Mark("initialized");
+		assembler.EmitLong(1);
+		assembler.MarkBssStart();
+		assembler.Mark("zero-a");
+		assembler.EmitLong(0);
+		assembler.Mark("zero-b");
+		assembler.EmitLong(0);
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+
+		Assert.Contains("section\trom_code,code", assembly, StringComparison.Ordinal);
+		Assert.Contains("section\trom_rodata,data", assembly, StringComparison.Ordinal);
+		Assert.Contains("section\tram_data,data", assembly, StringComparison.Ordinal);
+		Assert.Contains("section\tram_bss,bss", assembly, StringComparison.Ordinal);
+		Assert.Equal(2, assembly.Split("\tds.b\t4", StringSplitOptions.None).Length - 1);
+		Assert.Equal(2, linked.DataStartOffset);
+		Assert.Equal(6, linked.WritableDataStartOffset);
+		Assert.Equal(12, linked.BssStartOffset);
+	}
+
+	[Fact]
 	public void RelaxesNearbyWordBranchesToShortForm()
 	{
 		var assembler = new M68kAssembler();
@@ -97,6 +127,41 @@ public sealed class M68kBranchRelaxationTests
 
 		Assert.Equal(2, assembly.Split("beq.s", StringSplitOptions.None).Length - 1);
 		Assert.DoesNotContain("beq.w", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact(Timeout = 10_000)]
+	public void RelaxesLargeBranchBatchAndPreservesLaterSectionsAndFixups()
+	{
+		const int branchCount = 4_096;
+		var assembler = new M68kAssembler();
+		for (var index = 0; index < branchCount; index++)
+		{
+			assembler.EmitBranch(M68kCondition.Equal, $"done:{index}");
+			assembler.EmitWord(0x4E71); // NOP
+			assembler.Mark($"done:{index}");
+		}
+		assembler.EmitJsr("external.call", external: true);
+		assembler.MarkDataStart();
+		assembler.EmitLong(0x1234_5678);
+		assembler.MarkWritableDataStart();
+		assembler.EmitLong(0xA5A5_A5A5);
+		assembler.MarkBssStart();
+		assembler.EmitLong(0);
+
+		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+		var linked = assembler.Link(
+			0,
+			new Dictionary<string, uint> { ["external.call"] = 0x00F0_0000 });
+		stopwatch.Stop();
+
+		Assert.Equal((branchCount * 4) + 6, linked.DataStartOffset);
+		Assert.Equal(linked.DataStartOffset + 4, linked.WritableDataStartOffset);
+		Assert.Equal(linked.WritableDataStartOffset + 6, linked.BssStartOffset);
+		Assert.Equal(0x00F0_0000u,
+			BinaryPrimitives.ReadUInt32BigEndian(
+				linked.Bytes.AsSpan((branchCount * 4) + 2)));
+		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+			$"Branch batch took {stopwatch.Elapsed.TotalSeconds:N3}s.");
 	}
 
 	[Fact]

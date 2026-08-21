@@ -17,12 +17,15 @@ public sealed class DosLayoutTests
 	[InlineData(typeof(RecordLock), typeof(DosLayout.RecordLock), 16)]
 	[InlineData(typeof(RecordLock64), typeof(DosLayout.RecordLock64), 24)]
 	[InlineData(typeof(FileHandle), typeof(DosLayout.FileHandle), 44)]
+	[InlineData(typeof(Segment), typeof(DosLayout.Segment), 16)]
 	[InlineData(typeof(DeviceNode), typeof(DosLayout.DeviceNode), 44)]
 	[InlineData(typeof(DeviceList), typeof(DosLayout.DeviceList), 44)]
 	[InlineData(typeof(DosPacket), typeof(DosLayout.DosPacket), 48)]
 	[InlineData(typeof(StandardPacket), typeof(DosLayout.StandardPacket), 68)]
 	[InlineData(typeof(FileLock), typeof(DosLayout.FileLock), 20)]
+	[InlineData(typeof(PathLock), typeof(DosLayout.PathLock), 8)]
 	[InlineData(typeof(ExAllControl), typeof(DosLayout.ExAllControl), 16)]
+	[InlineData(typeof(ExAllData), typeof(DosLayout.ExAllData), 40)]
 	[InlineData(typeof(DosAttrBuffer), typeof(DosLayout.DosAttrBuffer), 8)]
 	[InlineData(typeof(CommandLineInterface), typeof(DosLayout.CommandLineInterface), 64)]
 	[InlineData(typeof(Process), typeof(DosLayout.Process), 228)]
@@ -33,6 +36,11 @@ public sealed class DosLayoutTests
 	[InlineData(typeof(DosListAssignData), typeof(DosLayout.DosListAssignData), 24)]
 	[InlineData(typeof(DevProc), typeof(DosLayout.DevProc), 16)]
 	[InlineData(typeof(AssignList), typeof(DosLayout.AssignList), 8)]
+	[InlineData(typeof(AnchorPath), typeof(DosLayout.AnchorPath), 282)]
+	[InlineData(typeof(AChain), typeof(DosLayout.AChain), 274)]
+	[InlineData(typeof(NotifyRequestTarget), typeof(DosLayout.NotifyRequestTarget), 8)]
+	[InlineData(typeof(NotifyRequest), typeof(DosLayout.NotifyRequest), 48)]
+	[InlineData(typeof(NotifyMessage), typeof(DosLayout.NotifyMessage), 38)]
 	public void LayoutConstantsCoverEveryPublishedField(Type structure, Type layout,
 		int expectedSize)
 	{
@@ -69,6 +77,33 @@ public sealed class DosLayoutTests
 	}
 
 	[Fact]
+	public void NotificationConstantsMatchDosNotifyHeader()
+	{
+		Assert.Equal(1u, (uint)DosNotifyFlags.SendMessage);
+		Assert.Equal(2u, (uint)DosNotifyFlags.SendSignal);
+		Assert.Equal(8u, (uint)DosNotifyFlags.WaitReply);
+		Assert.Equal(16u, (uint)DosNotifyFlags.NotifyInitial);
+		Assert.Equal(0x8000_0000u, (uint)DosNotifyFlags.HandlerMagic);
+		Assert.Equal(0x4000_0000u, NotifyMessage.Class);
+		Assert.Equal(0x1234, NotifyMessage.Code);
+	}
+
+	[Fact]
+	public void ProcessAndSystemTagsMatchPublishedDosHeaders()
+	{
+		Assert.Equal(0x8000_0021u, (uint)DosSystemTag.Input);
+		Assert.Equal(0x8000_0026u, (uint)DosSystemTag.FilterTags);
+		Assert.Equal(0x8000_03E9u, (uint)DosNewProcessTag.SegmentList);
+		Assert.Equal(0x8000_03EBu, (uint)DosNewProcessTag.Entry);
+		Assert.Equal(0x8000_03FAu, (uint)DosNewProcessTag.Cli);
+		Assert.Equal(0x8000_0400u, (uint)DosNewProcessTag.ExitCode);
+		Assert.Equal(0x8000_0404u, (uint)DosNewProcessTag.StartupMessage);
+		Assert.Equal(0x8000_0406u, (uint)DosNewProcessTag.TaskFlags);
+		Assert.Equal(0x8000_044Cu, (uint)DosNewProcessTag.CodeType);
+		Assert.Equal(0x8000_0455u, (uint)DosNewProcessTag.PpcStackSize);
+	}
+
+	[Fact]
 	public void ChangeModeTargetsMatchDosDosHeader()
 	{
 		Assert.Equal(0, (int)DosChangeModeTarget.Lock);
@@ -80,6 +115,49 @@ public sealed class DosLayoutTests
 	{
 		Assert.Equal(1u, (uint)DevProcFlags.Unlock);
 		Assert.Equal(2u, (uint)DevProcFlags.Assign);
+	}
+
+	[Fact]
+	public void ExAllLevelsMatchDosExAllHeader()
+	{
+		Assert.Equal(1, (int)DosExAllDataLevel.Name);
+		Assert.Equal(2, (int)DosExAllDataLevel.Type);
+		Assert.Equal(3, (int)DosExAllDataLevel.Size);
+		Assert.Equal(4, (int)DosExAllDataLevel.Protection);
+		Assert.Equal(5, (int)DosExAllDataLevel.Date);
+		Assert.Equal(6, (int)DosExAllDataLevel.Comment);
+		Assert.Equal(7, (int)DosExAllDataLevel.Owner);
+	}
+
+	[Fact]
+	public void PatternTokensMatchDosAslHeader()
+	{
+		Assert.Equal(0x80, (byte)DosPatternToken.Any);
+		Assert.Equal(0x81, (byte)DosPatternToken.Single);
+		Assert.Equal(0x82, (byte)DosPatternToken.OrStart);
+		Assert.Equal(0x83, (byte)DosPatternToken.OrNext);
+		Assert.Equal(0x84, (byte)DosPatternToken.OrEnd);
+		Assert.Equal(0x85, (byte)DosPatternToken.Not);
+		Assert.Equal(0x86, (byte)DosPatternToken.NotEnd);
+		Assert.Equal(0x87, (byte)DosPatternToken.NotClass);
+		Assert.Equal(0x88, (byte)DosPatternToken.Class);
+		Assert.Equal(0x89, (byte)DosPatternToken.RepeatBegin);
+		Assert.Equal(0x8A, (byte)DosPatternToken.RepeatEnd);
+		Assert.Equal(0x8B, (byte)DosPatternToken.Stop);
+	}
+
+	[Fact]
+	public void AnchorAndChainFlagsMatchDosAslHeader()
+	{
+		Assert.Equal(2, (byte)AnchorPathFlags.IsWild);
+		Assert.Equal(4, (byte)AnchorPathFlags.DoDirectory);
+		Assert.Equal(8, (byte)AnchorPathFlags.DidDirectory);
+		Assert.Equal(16, (byte)AnchorPathFlags.NoMemoryError);
+		Assert.Equal(64, (byte)AnchorPathFlags.DirectoryChanged);
+		Assert.Equal(128, (byte)AnchorPathFlags.FollowHardLinks);
+		Assert.Equal(1, (byte)AChainFlags.Pattern);
+		Assert.Equal(2, (byte)AChainFlags.Examined);
+		Assert.Equal(8, (byte)AChainFlags.All);
 	}
 
 	[Fact]
@@ -102,6 +180,15 @@ public sealed class DosLayoutTests
 		Assert.Equal(9u, (uint)DosObjectType.AssignNode);
 		Assert.Equal(0x8000_07D1u, (uint)DosObjectTag.FileHandleMode);
 		Assert.Equal(0x8000_07D5u, (uint)DosObjectTag.PromptLength);
+	}
+
+	[Fact]
+	public void MorphOsSegmentTagsMatchOfficialDosTagsHeader()
+	{
+		Assert.Equal(0x8000_0BB9u, (uint)DosAddSegmentTag.Name);
+		Assert.Equal(0x8000_0BBCu, (uint)DosAddSegmentTag.Type);
+		Assert.Equal(0x8000_0C1Du, (uint)DosFindSegmentTag.Name);
+		Assert.Equal(0x8000_0C21u, (uint)DosFindSegmentTag.MatchPattern);
 	}
 
 	[Fact]
