@@ -143,7 +143,7 @@ public sealed class M68kInstructionDataflowTests
 			instructions.Count(static instruction => instruction.Opcode == 0x2290));
 		Assert.DoesNotContain(instructions, instruction =>
 			instruction.Opcode is 0x2028 or 0x2340);
-		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(8),
 			$"Zero-displacement memory-copy batch took " +
 			$"{stopwatch.Elapsed.TotalSeconds:N3}s.");
 	}

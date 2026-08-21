@@ -27,7 +27,7 @@ jobs:
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.301
 
       - name: Restore dependencies
         run: dotnet restore CopperSharp68k.slnx
@@ -71,7 +71,7 @@ jobs:
       - name: Install .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.301
 
       - name: Restore dependencies
         run: dotnet restore CopperSharp68k.slnx
