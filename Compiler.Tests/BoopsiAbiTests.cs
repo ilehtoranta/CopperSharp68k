@@ -101,6 +101,48 @@ public sealed class BoopsiAbiTests
 			BOOPSILayout.Class.InstanceOffset + 1));
 	}
 
+	[Fact]
+	public void PublicMessageCodecsRoundTripPackedBigEndianValues()
+	{
+		var memory = new TestMemory(0x1000, 128);
+		var address = APTR.FromPointer(0x1020);
+		var set = new opSet
+		{
+			MethodID = BOOPSI.OM_SET,
+			ops_AttrList = APTR.FromPointer(0x1122_3344),
+			ops_GInfo = APTR.FromPointer(0x5566_7788),
+		};
+		BOOPSIGuestCodec.WriteOpSet(ref memory, address, set);
+		Assert.Equal(set.MethodID,
+			BOOPSIGuestCodec.ReadMethodId(ref memory, address));
+		Assert.Equal(set.ops_AttrList,
+			BOOPSIGuestCodec.ReadOpSet(ref memory, address).ops_AttrList);
+		Assert.Equal(0x11, memory.ReadUInt8(address, 4));
+
+		var get = new opGet
+		{
+			MethodID = BOOPSI.OM_GET,
+			opg_AttrID = 0x89AB_CDEF,
+			opg_Storage = APTR.FromPointer(0x1020_3040),
+		};
+		BOOPSIGuestCodec.WriteOpGet(ref memory, address, get);
+		var actual = BOOPSIGuestCodec.ReadOpGet(ref memory, address);
+		Assert.Equal(get.MethodID, actual.MethodID);
+		Assert.Equal(get.opg_AttrID, actual.opg_AttrID);
+		Assert.Equal(get.opg_Storage, actual.opg_Storage);
+		Assert.Equal(BOOPSI.OM_DISPOSE,
+			WriteAndReadMethodId(ref memory, address, BOOPSI.OM_DISPOSE));
+		Assert.Equal(4u, BOOPSIGuestCodec.MethodMessageSize);
+		Assert.Equal(4u, BOOPSIGuestCodec.OpGetStorageSize);
+	}
+
+	private static uint WriteAndReadMethodId(ref TestMemory memory, APTR address,
+		uint methodId)
+	{
+		BOOPSIGuestCodec.WriteMethodId(ref memory, address, methodId);
+		return BOOPSIGuestCodec.ReadMethodId(ref memory, address);
+	}
+
 	private struct TestMemory : IAmigaGuestMemory
 	{
 		private readonly uint _baseAddress;
