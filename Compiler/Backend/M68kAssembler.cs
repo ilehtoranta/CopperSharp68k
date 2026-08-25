@@ -81,18 +81,20 @@ internal sealed class M68kAssembler
 		new(0xFFFF, 0x508F, static _ => "addq.l\t#8,a7"),
 		new(0xFFFF, 0x588F, static _ => "addq.l\t#4,a7"),
 		new(0xFFFF, 0x5381, static _ => "subq.l\t#1,d1"),
-		new(0xFFFF, 0x4680, static _ => "not.l\td0"),
+		new(0xFFF8, 0x4680, static opcode => "not.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4A00, static opcode => "tst.b\td" + (opcode & 7)),
 		new(0xFFF8, 0x4A40, static opcode => "tst.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x4A80, static opcode => "tst.l\td" + (opcode & 7)),
 		new(0xFFFF, 0x42A7, static _ => "clr.l\t-(a7)"),
-		new(0xFFFF, 0x4297, static _ => "clr.l\t(a7)"),
+		new(0xFFF8, 0x4290, static opcode => "clr.l\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4880, static opcode => "ext.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x48C0, static opcode => "ext.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x49C0, static opcode => "extb.l\td" + (opcode & 7)),
 		new(0xFFF8, 0x4840, static opcode => "swap\td" + (opcode & 7)),
 		new(0xFFF8, 0x4240, static opcode => "clr.w\td" + (opcode & 7)),
 		new(0xFFF8, 0x4280, static opcode => "clr.l\td" + (opcode & 7)),
+		new(0xFFF8, 0x40C0, static opcode => "move.w\tsr,d" + (opcode & 7)),
+		new(0xFFF8, 0x46C0, static opcode => "move.w\td" + (opcode & 7) + ",sr"),
 		new(0xFFF8, 0x4850, static opcode => "pea\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4E90, static opcode => "jsr\t(a" + (opcode & 7) + ")"),
 		new(0xFFF8, 0x4ED0, static opcode => "jmp\t(a" + (opcode & 7) + ")"),
@@ -104,6 +106,8 @@ internal sealed class M68kAssembler
 			"adda.l\td" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0x91C8, static opcode =>
 			"suba.l\ta" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
+		new(0xF1F8, 0x91C0, static opcode =>
+			"suba.l\td" + (opcode & 7) + ",a" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0xD080, static opcode =>
 			"add.l\td" + (opcode & 7) + ",d" + ((opcode >> 9) & 7)),
 		new(0xF1F8, 0xD040, static opcode =>
@@ -139,6 +143,10 @@ internal sealed class M68kAssembler
 
 	private static readonly ImmediateRenderRule[] ImmediateInstructionRules =
 	[
+		new(0xFFFF, 0x007C, 2, static (_, value) =>
+			"ori.w\t#$" + value.ToString("X4") + ",sr"),
+		new(0xFFFF, 0x46FC, 2, static (_, value) =>
+			"move.w\t#$" + value.ToString("X4") + ",sr"),
 		new(0xFFF8, 0x0280, 4, static (opcode, value) =>
 			"andi.l\t#$" + value.ToString("X8") + ",d" + (opcode & 7)),
 		new(0xFFF8, 0x0240, 2, static (opcode, value) =>
@@ -432,11 +440,11 @@ internal sealed class M68kAssembler
 		EmitAddress(target, external);
 	}
 
-	public void EmitAddress(string target, bool external = false)
+	public void EmitAddress(string target, bool external = false, int addend = 0)
 	{
 		var addressOffset = Offset;
 		EmitLong(0);
-		_addresses.Add(new AddressFixup(addressOffset, target, external));
+		_addresses.Add(new AddressFixup(addressOffset, target, external, addend));
 	}
 
 	public void EmitPcRelativeWord(string target)
@@ -848,15 +856,28 @@ internal sealed class M68kAssembler
 		(opcode & 0xF000) == 0x6000 && (opcode & 0x00FF) != 0;
 
 	internal IReadOnlyList<M68kEmittedInstruction> GetInstructionStream(
-		int startOffset = 0)
+		int startOffset = 0) =>
+		GetInstructionStreamCore(startOffset, executableOnly: false);
+
+	internal IReadOnlyList<M68kEmittedInstruction> GetExecutableInstructionStream() =>
+		GetInstructionStreamCore(startOffset: 0, executableOnly: true);
+
+	private IReadOnlyList<M68kEmittedInstruction> GetInstructionStreamCore(
+		int startOffset,
+		bool executableOnly)
 	{
-		var cacheRequested = _cacheInstructionStream && startOffset == 0;
+		var cacheRequested = !executableOnly &&
+			_cacheInstructionStream && startOffset == 0;
 		if (cacheRequested &&
 			_cachedInstructionStream is { } cachedInstructionStream)
 		{
 			return cachedInstructionStream;
 		}
 		var (analysisStartOffset, endOffset) = GetAnalysisRange();
+		if (executableOnly && _buffer.DataStartOffset is { } dataStartOffset)
+		{
+			endOffset = Math.Min(endOffset, dataStartOffset);
+		}
 		if (analysisStartOffset > startOffset)
 		{
 			startOffset = analysisStartOffset;
@@ -1042,6 +1063,7 @@ internal sealed class M68kAssembler
 				relocations.Add(new M68kRelocation(address.Offset, address.Target));
 			}
 
+			value = checked((uint)((long)value + address.Addend));
 			BinaryPrimitives.WriteUInt32BigEndian(code.AsSpan(address.Offset, 4), value);
 		}
 
@@ -1170,7 +1192,14 @@ internal sealed class M68kAssembler
 			}
 			else if (addressesByOffset.TryGetValue(offset, out var address))
 			{
-				output.AppendLine($"\tdc.l\t{AssemblySymbol(DisplayLabel(address.Target, displayLabels))}");
+				var symbol = AssemblySymbol(DisplayLabel(address.Target, displayLabels));
+				var expression = address.Addend switch
+				{
+					> 0 => $"{symbol}+{address.Addend}",
+					< 0 => $"{symbol}{address.Addend}",
+					_ => symbol
+				};
+				output.AppendLine($"\tdc.l\t{expression}");
 				offset += 4;
 			}
 			else if (offset + 1 < _bytes.Count)

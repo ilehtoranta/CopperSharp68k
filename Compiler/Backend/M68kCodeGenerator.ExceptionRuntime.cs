@@ -15,7 +15,6 @@ internal sealed partial class M68kCodeGenerator
 {
 	private const short RuntimeFrameActiveExceptionOffset = 0;
 	private const short RuntimeFramePendingActionOffset = 4;
-	private const short RuntimeFrameLeaveContinuationOffset = 8;
 	private const int RuntimeFrameHeaderLongs = 0;
 	private const short RuntimeFramePreviousOffset = 0;
 	private const short RuntimeFrameDescriptorOffset = 0;
@@ -87,6 +86,30 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod Method,
 		string? StateLabel,
 		string Label);
+
+	private static readonly (int Reason, string TypeName)[] ExceptionReasonMappings =
+	[
+		(0, "System.NullReferenceException"),
+		(1, "System.NullReferenceException"),
+		(2, "System.IndexOutOfRangeException"),
+		(3, "System.DivideByZeroException"),
+		(4, "System.OverflowException"),
+		(5, "System.Exception"),
+		(6, "System.OutOfMemoryException"),
+		(7, "System.InvalidCastException"),
+		(8, "System.ArrayTypeMismatchException"),
+		(9, "System.ArgumentException"),
+		(10, "System.ArgumentOutOfRangeException"),
+		(11, "System.ArgumentNullException"),
+		(12, "System.FormatException"),
+		(13, "System.InvalidOperationException"),
+		(14, "System.Collections.Generic.KeyNotFoundException"),
+		(15, "System.IO.IOException"),
+		(16, "System.IO.DirectoryNotFoundException"),
+		(17, "System.UnauthorizedAccessException"),
+		(18, "System.IO.FileNotFoundException"),
+		(19, "System.ArithmeticException")
+	];
 
 	private readonly Dictionary<
 		(CilMethodIdentity Method, string? StateLabel),
@@ -232,6 +255,8 @@ internal sealed partial class M68kCodeGenerator
 		int additionalStackBytes = 0,
 		string? exceptionCleanupLabel = null)
 	{
+		exception &= _usesExceptionRuntime;
+		gc &= M68kCompiler.IsManagedRuntime(_request);
 		if (_emittingUnwindMethod is not { } method ||
 			_emittingAllocatedFunction is not { } allocated ||
 			_emittingMachineInstruction is not { } instruction ||
@@ -311,7 +336,6 @@ internal sealed partial class M68kCodeGenerator
 		EmitImmediateToFrame(0, RuntimeFrameStateOffset);
 		EmitImmediateToFrame(0, RuntimeFrameActiveExceptionOffset);
 		EmitImmediateToFrame(0, RuntimeFramePendingActionOffset);
-		EmitImmediateToFrame(0, RuntimeFrameLeaveContinuationOffset);
 		_assembler.EmitWord(0x2A4F); // MOVEA.L A7,A5
 	}
 
@@ -602,10 +626,16 @@ internal sealed partial class M68kCodeGenerator
 			_normalLeaveChains.Add(key, chain);
 		}
 
-		EmitEhFrameImmediate(0, RuntimeFrameActiveExceptionOffset);
-		EmitEhFrameAddress(
-			ControlFlowTargetLabel(method, targetOffset),
-			RuntimeFrameLeaveContinuationOffset);
+		// A leave originating in a try body cannot carry an active exception:
+		// the runtime frame was initialized with zero and an exception enters a
+		// handler instead of reaching this normal control-flow edge. Preserve
+		// the clear for leaves emitted from a handler, which may be nested in a
+		// catch/finally that is still carrying its active exception.
+		if (method.ExceptionRegions.Any(region =>
+			region.HandlerOffset <= leaveOffset && leaveOffset < region.HandlerEnd))
+		{
+			EmitEhFrameImmediate(0, RuntimeFrameActiveExceptionOffset);
+		}
 		EmitEhFrameAddress(
 			NormalLeaveNextActionLabel(chain, 1),
 			RuntimeFramePendingActionOffset);
@@ -618,7 +648,7 @@ internal sealed partial class M68kCodeGenerator
 	private string NormalLeaveNextActionLabel(NormalLeaveChain chain, int index) =>
 		index < chain.FinallyRegions.Length
 			? $"generated:eh-leave:{chain.Key}:{index}"
-			: RuntimeExceptionLeaveContinueLabel;
+			: ControlFlowTargetLabel(chain.Method, chain.TargetOffset);
 
 	private void EmitExceptionRuntime()
 	{
@@ -628,59 +658,36 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitExceptionRaiseRuntime();
-		EmitExceptionTypeMatchRuntime();
-		EmitExceptionEndFinallyRuntime();
+		if (RequiresExceptionEndFinallyRuntime())
+		{
+			EmitExceptionEndFinallyRuntime();
+		}
 		EmitExceptionStateActions();
+		if (_assembler.ReferencesTarget(RuntimeExceptionTypeMatchLabel))
+		{
+			EmitExceptionTypeMatchRuntime();
+		}
 		EmitNormalLeaveActions();
 		EmitAmigaUnhandledExceptionRequester();
 	}
 
+	private bool RequiresExceptionEndFinallyRuntime() =>
+		_assembler.ReferencesTarget(RuntimeExceptionEndFinallyLabel);
+
 	private void EmitExceptionRaiseRuntime()
 	{
-		var usesInvalidCast = _runtimeTypeDescriptors.Contains("System.InvalidCastException");
-		var usesArrayTypeMismatch = _runtimeTypeDescriptors.Contains("System.ArrayTypeMismatchException");
-		var usesArgument = _runtimeTypeDescriptors.Contains("System.ArgumentException");
-		var usesArgumentOutOfRange = _runtimeTypeDescriptors.Contains(
-			"System.ArgumentOutOfRangeException");
-		var usesArgumentNull = _runtimeTypeDescriptors.Contains(
-			"System.ArgumentNullException");
-		var usesFormat = _runtimeTypeDescriptors.Contains("System.FormatException");
-		var usesArithmetic = _usesArithmeticExceptionFault;
-		var usesInvalidOperation = _runtimeTypeDescriptors.Contains(
-			"System.InvalidOperationException");
-		var usesIo = _runtimeTypeDescriptors.Contains("System.IO.IOException");
-		var usesDirectoryNotFound = _runtimeTypeDescriptors.Contains(
-			"System.IO.DirectoryNotFoundException");
-		var usesFileNotFound = _runtimeTypeDescriptors.Contains(
-			"System.IO.FileNotFoundException");
-		var usesUnauthorizedAccess = _runtimeTypeDescriptors.Contains(
-			"System.UnauthorizedAccessException");
-		var usesKeyNotFound = _runtimeTypeDescriptors.Contains(
-			"System.Collections.Generic.KeyNotFoundException");
-		var usesExtendedFaults = usesInvalidCast || usesArrayTypeMismatch ||
-			usesArgument || usesArgumentOutOfRange || usesArgumentNull ||
-			usesFormat || usesArithmetic || usesInvalidOperation || usesIo || usesDirectoryNotFound ||
-			usesFileNotFound ||
-			usesUnauthorizedAccess || usesKeyNotFound;
+		var reasonMappings = ExceptionReasonMappings
+			.Where(mapping =>
+				mapping.Reason != 5 && _exceptionRaiseReasons.Contains(mapping.Reason))
+			.ToArray();
+		var faultLabels = reasonMappings
+			.Select(static mapping => mapping.TypeName)
+			.Distinct(StringComparer.Ordinal)
+			.ToDictionary(
+				static typeName => typeName,
+				_ => UniqueLabel("eh_fault"),
+				StringComparer.Ordinal);
 		var haveException = UniqueLabel("eh_have_exception");
-		var nullFault = UniqueLabel("eh_null_fault");
-		var boundsFault = UniqueLabel("eh_bounds_fault");
-		var divideFault = UniqueLabel("eh_divide_fault");
-		var overflowFault = UniqueLabel("eh_overflow_fault");
-		var outOfMemoryFault = UniqueLabel("eh_oom_fault");
-		var invalidCastFault = UniqueLabel("eh_invalid_cast_fault");
-		var arrayTypeMismatchFault = UniqueLabel("eh_array_type_mismatch_fault");
-		var argumentFault = UniqueLabel("eh_argument_fault");
-		var argumentOutOfRangeFault = UniqueLabel("eh_argument_out_of_range_fault");
-		var argumentNullFault = UniqueLabel("eh_argument_null_fault");
-		var formatFault = UniqueLabel("eh_format_fault");
-		var arithmeticFault = UniqueLabel("eh_arithmetic_fault");
-		var invalidOperationFault = UniqueLabel("eh_invalid_operation_fault");
-		var ioFault = UniqueLabel("eh_io_fault");
-		var directoryNotFoundFault = UniqueLabel("eh_directory_not_found_fault");
-		var fileNotFoundFault = UniqueLabel("eh_file_not_found_fault");
-		var unauthorizedAccessFault = UniqueLabel("eh_unauthorized_access_fault");
-		var keyNotFoundFault = UniqueLabel("eh_key_not_found_fault");
 		var systemFault = UniqueLabel("eh_system_fault");
 
 		_assembler.AlignWord();
@@ -688,200 +695,21 @@ internal sealed partial class M68kCodeGenerator
 		EmitMoveRegister(M68kRegister.A0, M68kRegister.D1);
 		_assembler.EmitWord(0x4A81); // TST.L D1
 		_assembler.EmitBranch(M68kCondition.NotEqual, haveException);
-		EmitCompareImmediateLong(M68kRegister.D0, 0);
-		_assembler.EmitBranch(M68kCondition.Equal, nullFault);
-		EmitCompareImmediateLong(M68kRegister.D0, 1);
-		_assembler.EmitBranch(M68kCondition.Equal, nullFault);
-		EmitCompareImmediateLong(M68kRegister.D0, 2);
-		_assembler.EmitBranch(M68kCondition.Equal, boundsFault);
-		EmitCompareImmediateLong(M68kRegister.D0, 3);
-		_assembler.EmitBranch(M68kCondition.Equal, divideFault);
-		EmitCompareImmediateLong(M68kRegister.D0, 4);
-		_assembler.EmitBranch(M68kCondition.Equal, overflowFault);
-		EmitCompareImmediateLong(M68kRegister.D0, 6);
-		if (!usesExtendedFaults)
+		foreach (var mapping in reasonMappings)
 		{
-			_assembler.EmitBranch(M68kCondition.NotEqual, systemFault);
+			EmitCompareImmediateLong(M68kRegister.D0, mapping.Reason);
+			_assembler.EmitBranch(M68kCondition.Equal, faultLabels[mapping.TypeName]);
 		}
-		else
+		if (reasonMappings.Length != 0)
 		{
-			_assembler.EmitBranch(M68kCondition.Equal, outOfMemoryFault);
-			if (usesInvalidCast)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 7);
-				_assembler.EmitBranch(M68kCondition.Equal, invalidCastFault);
-			}
-			if (usesArrayTypeMismatch)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 8);
-				_assembler.EmitBranch(M68kCondition.Equal, arrayTypeMismatchFault);
-			}
-			if (usesArgument)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 9);
-				_assembler.EmitBranch(M68kCondition.Equal, argumentFault);
-			}
-			if (usesArgumentOutOfRange)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 10);
-				_assembler.EmitBranch(M68kCondition.Equal, argumentOutOfRangeFault);
-			}
-			if (usesArgumentNull)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 11);
-				_assembler.EmitBranch(M68kCondition.Equal, argumentNullFault);
-			}
-			if (usesFormat)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 12);
-				_assembler.EmitBranch(M68kCondition.Equal, formatFault);
-			}
-			if (usesArithmetic)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 19);
-				_assembler.EmitBranch(M68kCondition.Equal, arithmeticFault);
-			}
-			if (usesInvalidOperation)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 13);
-				_assembler.EmitBranch(M68kCondition.Equal, invalidOperationFault);
-			}
-			if (usesIo)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 15);
-				_assembler.EmitBranch(M68kCondition.Equal, ioFault);
-			}
-			if (usesDirectoryNotFound)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 16);
-				_assembler.EmitBranch(M68kCondition.Equal, directoryNotFoundFault);
-			}
-			if (usesFileNotFound)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 18);
-				_assembler.EmitBranch(M68kCondition.Equal, fileNotFoundFault);
-			}
-			if (usesUnauthorizedAccess)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 17);
-				_assembler.EmitBranch(M68kCondition.Equal, unauthorizedAccessFault);
-			}
-			if (usesKeyNotFound)
-			{
-				EmitCompareImmediateLong(M68kRegister.D0, 14);
-				_assembler.EmitBranch(M68kCondition.Equal, keyNotFoundFault);
-			}
 			_assembler.EmitBranch(M68kCondition.True, systemFault);
 		}
-		if (usesArrayTypeMismatch)
+		foreach (var (typeName, label) in faultLabels)
 		{
-			_assembler.Mark(arrayTypeMismatchFault);
-			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArrayTypeMismatchException");
+			_assembler.Mark(label);
+			EmitRuntimeObjectAddress(M68kRegister.A0, typeName);
 			_assembler.EmitBranch(M68kCondition.True, haveException);
 		}
-		if (usesInvalidCast)
-		{
-			_assembler.Mark(invalidCastFault);
-			EmitRuntimeObjectAddress(M68kRegister.A0, "System.InvalidCastException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesArgument)
-		{
-			_assembler.Mark(argumentFault);
-			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArgumentException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesArgumentOutOfRange)
-		{
-			_assembler.Mark(argumentOutOfRangeFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.ArgumentOutOfRangeException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesArgumentNull)
-		{
-			_assembler.Mark(argumentNullFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.ArgumentNullException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesFormat)
-		{
-			_assembler.Mark(formatFault);
-			EmitRuntimeObjectAddress(M68kRegister.A0, "System.FormatException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesArithmetic)
-		{
-			_assembler.Mark(arithmeticFault);
-			EmitRuntimeObjectAddress(M68kRegister.A0, "System.ArithmeticException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesInvalidOperation)
-		{
-			_assembler.Mark(invalidOperationFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.InvalidOperationException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesIo)
-		{
-			_assembler.Mark(ioFault);
-			EmitRuntimeObjectAddress(M68kRegister.A0, "System.IO.IOException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesDirectoryNotFound)
-		{
-			_assembler.Mark(directoryNotFoundFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.IO.DirectoryNotFoundException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesFileNotFound)
-		{
-			_assembler.Mark(fileNotFoundFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.IO.FileNotFoundException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesUnauthorizedAccess)
-		{
-			_assembler.Mark(unauthorizedAccessFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.UnauthorizedAccessException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-		if (usesKeyNotFound)
-		{
-			_assembler.Mark(keyNotFoundFault);
-			EmitRuntimeObjectAddress(
-				M68kRegister.A0,
-				"System.Collections.Generic.KeyNotFoundException");
-			_assembler.EmitBranch(M68kCondition.True, haveException);
-		}
-
-		_assembler.Mark(outOfMemoryFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.OutOfMemoryException");
-		_assembler.EmitBranch(M68kCondition.True, haveException);
-
-		_assembler.Mark(nullFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.NullReferenceException");
-		_assembler.EmitBranch(M68kCondition.True, haveException);
-		_assembler.Mark(boundsFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.IndexOutOfRangeException");
-		_assembler.EmitBranch(M68kCondition.True, haveException);
-		_assembler.Mark(divideFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.DivideByZeroException");
-		_assembler.EmitBranch(M68kCondition.True, haveException);
-		_assembler.Mark(overflowFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.OverflowException");
-		_assembler.EmitBranch(M68kCondition.True, haveException);
 		_assembler.Mark(systemFault);
 		EmitRuntimeObjectAddress(M68kRegister.A0, "System.Exception");
 
@@ -979,7 +807,12 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(RuntimeExceptionUnhandledLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
 		EmitRestoreExceptionCursorRegisters();
-		EmitManagedLifecycleShutdown();
+		if (_managedLifecycles.Count > 0)
+		{
+			_assembler.EmitWord(0x2F08); // MOVE.L A0,-(A7), preserve exception across lifecycle calls
+			EmitManagedLifecycleShutdown();
+			_assembler.EmitWord(0x205F); // MOVEA.L (A7)+,A0
+		}
 		EmitDetermineExceptionReason();
 		if (_request.Imports.ContainsKey(M68kRuntimeImports.UnhandledException))
 		{
@@ -1322,11 +1155,6 @@ internal sealed partial class M68kCodeGenerator
 			RuntimeFrameActiveExceptionOffset);
 		_assembler.EmitWord(0x4ED1); // JMP (A1)
 
-		_assembler.Mark(RuntimeExceptionLeaveContinueLabel);
-		EmitLoadEhFrameRegister(
-			M68kRegister.A1,
-			RuntimeFrameLeaveContinuationOffset);
-		_assembler.EmitWord(0x4ED1); // JMP (A1)
 	}
 
 	private void EmitExceptionStateActions()
@@ -1369,23 +1197,15 @@ internal sealed partial class M68kCodeGenerator
 					EmitClearExceptionFrameContextSlot(
 						RuntimeFramePendingActionOffset,
 						frameBaseAlreadyLoaded: true);
-					EmitClearExceptionFrameContextSlot(
-						RuntimeFrameLeaveContinuationOffset,
-						frameBaseAlreadyLoaded: true);
 				}
 				else
 				{
 					// D0 is scratch here and is reloaded by
-					// EmitEnterExceptionHandler. Reusing one zero for both
-					// stores saves four MC68000 cycles and both read accesses.
+					// EmitEnterExceptionHandler before the catch body starts.
 					_assembler.EmitWord(0x7000); // MOVEQ #0,D0
 					EmitStoreExceptionFrameContextRegister(
 						M68kRegister.D0,
 						RuntimeFramePendingActionOffset,
-						frameBaseAlreadyLoaded: true);
-					EmitStoreExceptionFrameContextRegister(
-						M68kRegister.D0,
-						RuntimeFrameLeaveContinuationOffset,
 						frameBaseAlreadyLoaded: true);
 				}
 				EmitEnterExceptionHandler(
@@ -1632,39 +1452,17 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitDetermineExceptionReason()
 	{
 		var done = UniqueLabel("eh_reason_done");
-		var mappings = new[]
+		foreach (var mapping in ExceptionReasonMappings
+			.Where(mapping => _exceptionRaiseReasons.Contains(mapping.Reason))
+			.DistinctBy(static mapping => mapping.TypeName))
 		{
-			("System.NullReferenceException", 1),
-			("System.IndexOutOfRangeException", 2),
-			("System.DivideByZeroException", 3),
-			("System.OverflowException", 4),
-			("System.Exception", 5),
-			("System.OutOfMemoryException", 6),
-			("System.InvalidCastException", 7),
-			("System.ArrayTypeMismatchException", 8),
-			("System.ArgumentException", 9),
-			("System.ArgumentOutOfRangeException", 10),
-			("System.ArgumentNullException", 11),
-			("System.FormatException", 12),
-			("System.InvalidOperationException", 13),
-			("System.Collections.Generic.KeyNotFoundException", 14),
-			("System.IO.IOException", 15),
-			("System.IO.DirectoryNotFoundException", 16),
-			("System.UnauthorizedAccessException", 17),
-			("System.IO.FileNotFoundException", 18),
-			("System.ArithmeticException", 19)
-		};
-
-		foreach (var (typeName, reason) in mappings.Where(mapping =>
-			mapping.Item2 <= 6 ||
-				(mapping.Item2 == 19
-					? _usesArithmeticExceptionFault
-					: _runtimeTypeDescriptors.Contains(mapping.Item1))))
-		{
+			var reason = mapping.TypeName == "System.NullReferenceException"
+				? 1
+				: mapping.Reason;
 			var next = UniqueLabel("eh_reason_next");
 			EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
 			_assembler.EmitWord(0xB0BC); // CMP.L #object,D0
-			_assembler.EmitAddress(RuntimeExceptionObjectLabel(typeName));
+			_assembler.EmitAddress(RuntimeExceptionObjectLabel(mapping.TypeName));
 			_assembler.EmitBranch(M68kCondition.NotEqual, next);
 			EmitImmediateToRegister(M68kRegister.D0, reason);
 			_assembler.EmitBranch(M68kCondition.True, done);
@@ -1710,17 +1508,11 @@ internal sealed partial class M68kCodeGenerator
 
 		if (_usesExceptionRuntime)
 		{
-			foreach (var typeName in new[]
-			{
-				"System.Exception",
-				"System.SystemException",
-				"System.ArithmeticException",
-				"System.DivideByZeroException",
-				"System.NullReferenceException",
-				"System.IndexOutOfRangeException",
-				"System.OverflowException",
-				"System.OutOfMemoryException"
-			})
+			RegisterRuntimeTypeDescriptor("System.Exception");
+			foreach (var typeName in ExceptionReasonMappings
+				.Where(mapping => _exceptionRaiseReasons.Contains(mapping.Reason))
+				.Select(static mapping => mapping.TypeName)
+				.Distinct(StringComparer.Ordinal))
 			{
 				RegisterRuntimeTypeDescriptor(typeName);
 			}
@@ -1810,34 +1602,11 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		var exceptionTypes = new List<string>
-		{
-			"System.Exception",
-			"System.DivideByZeroException",
-			"System.NullReferenceException",
-			"System.IndexOutOfRangeException",
-			"System.OverflowException",
-			"System.OutOfMemoryException"
-		};
-		exceptionTypes.AddRange(new[]
-		{
-			"System.InvalidCastException",
-			"System.ArrayTypeMismatchException",
-			"System.ArgumentException",
-			"System.ArgumentOutOfRangeException",
-			"System.ArgumentNullException",
-			"System.FormatException",
-			"System.InvalidOperationException",
-			"System.IO.IOException",
-			"System.IO.DirectoryNotFoundException",
-			"System.IO.FileNotFoundException",
-			"System.UnauthorizedAccessException",
-			"System.Collections.Generic.KeyNotFoundException",
-			"System.ArithmeticException"
-		}.Where(typeName =>
-			typeName == "System.ArithmeticException"
-				? _usesArithmeticExceptionFault
-				: _runtimeTypeDescriptors.Contains(typeName)));
+		var exceptionTypes = ExceptionReasonMappings
+			.Where(mapping => _exceptionRaiseReasons.Contains(mapping.Reason))
+			.Select(static mapping => mapping.TypeName)
+			.Append("System.Exception")
+			.Distinct(StringComparer.Ordinal);
 		foreach (var typeName in exceptionTypes)
 		{
 			_assembler.AlignWord();
@@ -1908,7 +1677,6 @@ internal sealed partial class M68kCodeGenerator
 	private const string RuntimeExceptionUnhandledLabel = "__c68k_exception_unhandled";
 	private const string RuntimeExceptionTypeMatchLabel = "__c68k_exception_type_match";
 	private const string RuntimeExceptionEndFinallyLabel = "__c68k_exception_endfinally";
-	private const string RuntimeExceptionLeaveContinueLabel = "__c68k_exception_leave_continue";
 	private const string RuntimeFindUnwindSiteLabel = "__c68k_find_unwind_site";
 	private const string RuntimeAmigaRequesterLabel = "__c68k_amiga_unhandled_requester";
 

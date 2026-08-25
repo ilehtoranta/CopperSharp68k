@@ -172,7 +172,7 @@ public sealed class RemainingLibraryLayoutTests
 			(nameof(FileHandle.Position), 16), (nameof(FileHandle.End), 20),
 			(nameof(FileHandle.Functions), 24), (nameof(FileHandle.Function2), 28),
 			(nameof(FileHandle.Function3), 32), (nameof(FileHandle.Arguments), 36),
-			(nameof(FileHandle.Argument2), 40));
+			(nameof(FileHandle.Argument1), 40));
 		AssertOffsets<CopList>(
 			(nameof(CopList.Next), 0), (nameof(CopList.SystemCopy), 4),
 			(nameof(CopList.ViewPort), 8), (nameof(CopList.Instructions), 12),

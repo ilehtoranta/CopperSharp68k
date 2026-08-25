@@ -4060,8 +4060,19 @@ internal static class FrameworkBindingRegistry
 			}
 
 			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
-				(name == "get_Address" || name == "ToAddress") &&
-				signature.ParameterTypes.Length <= 1)
+				name == "get_Address" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				// An instance value-type receiver is a managed address. Load the
+				// transparent scalar stored there before projecting it as APTR;
+				// treating this as the static identity conversion leaks the address
+				// of an embedded STRPTR field instead of its pointer payload.
+				return NativeMemoryIntrinsic(member, "intrinsic:aptr-raw");
+			}
+
+			if ((typeName is "Amiga.STRPTR" or "Amiga.CONST_STRPTR") &&
+				name == "ToAddress" &&
+				signature.ParameterTypes.Length == 1)
 			{
 				return NativeMemoryIntrinsic(member, "intrinsic:aptr-to-uint32");
 			}

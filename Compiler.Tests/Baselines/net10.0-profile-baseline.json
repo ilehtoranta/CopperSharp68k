@@ -1,8 +1,8 @@
 [
   {
     "Name": "fixture:ArithmeticEntry",
-    "ImageBytes": 484,
-    "CodeBytes": 222,
+    "ImageBytes": 488,
+    "CodeBytes": 226,
     "CompiledMethods": 3,
     "SpilledValues": 1,
     "MaximumSpillFrameBytes": 4,
@@ -13,8 +13,8 @@
   },
   {
     "Name": "fixture:QuickArithmeticEntry",
-    "ImageBytes": 460,
-    "CodeBytes": 58,
+    "ImageBytes": 464,
+    "CodeBytes": 62,
     "CompiledMethods": 5,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -25,8 +25,8 @@
   },
   {
     "Name": "fixture:BranchAssignedLocalsEntry",
-    "ImageBytes": 244,
-    "CodeBytes": 34,
+    "ImageBytes": 248,
+    "CodeBytes": 38,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -37,8 +37,8 @@
   },
   {
     "Name": "fixture:NarrowByteArithmeticEntry",
-    "ImageBytes": 256,
-    "CodeBytes": 46,
+    "ImageBytes": 260,
+    "CodeBytes": 50,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -49,8 +49,8 @@
   },
   {
     "Name": "fixture:NarrowShortArithmeticEntry",
-    "ImageBytes": 260,
-    "CodeBytes": 50,
+    "ImageBytes": 264,
+    "CodeBytes": 54,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -61,8 +61,8 @@
   },
   {
     "Name": "fixture:StringLiteralEntry",
-    "ImageBytes": 344,
-    "CodeBytes": 114,
+    "ImageBytes": 348,
+    "CodeBytes": 118,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -75,8 +75,8 @@
   },
   {
     "Name": "fixture:NullableUIntDefaultEntry",
-    "ImageBytes": 336,
-    "CodeBytes": 126,
+    "ImageBytes": 340,
+    "CodeBytes": 130,
     "CompiledMethods": 2,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -86,35 +86,478 @@
     "RuntimeFeatures": []
   },
   {
+    "Name": "example:ConsoleIO",
+    "ImageBytes": 7596,
+    "CodeBytes": 6420,
+    "AssemblyTextBytes": 110373,
+    "CompiledMethods": 20,
+    "SpilledValues": 1,
+    "MaximumSpillFrameBytes": 4,
+    "StackMemoryInstructions": 269,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": null,
+    "SymbolCount": 24,
+    "RelocationCount": 281,
+    "InstructionCount": 1322,
+    "CallInstructionCount": 79,
+    "BranchInstructionCount": 204,
+    "ExplicitStackOperationCount": 42,
+    "ExceptionRegionCount": 5,
+    "FatalMachineFaultSiteCount": 2,
+    "ExceptionMode": "Full",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [
+      "amiga-console",
+      "amiga-console-input",
+      "amiga-interop",
+      "integer-formatting",
+      "managed-exceptions",
+      "managed-strings",
+      "native-memory",
+      "numerics"
+    ],
+    "RuntimeHelpers": [
+      "__c68k_amiga_unhandled_requester",
+      "__c68k_exception_dispatch",
+      "__c68k_exception_endfinally",
+      "__c68k_exception_jump_state",
+      "__c68k_exception_raise",
+      "__c68k_exception_resume",
+      "__c68k_exception_unhandled",
+      "__c68k_exception_unwind_frame",
+      "__c68k_find_unwind_site"
+    ],
+    "ExternalNativeTargets": [],
+    "ReachableAssemblies": [
+      {
+        "Name": "ConsoleIO",
+        "Version": "0.1.0.0",
+        "Sha256": "30c1d2e214d7c68df757d8ff5124fe25eb3f0d661c2e39f2ed4f75f5880bc58c"
+      },
+      {
+        "Name": "CopperSharp.Runtime.AmigaPal",
+        "Version": "0.1.0.0",
+        "Sha256": "93b719203cc5a744e13d91d0f3db047fb2013726554836b35fc80eff56bf83ec"
+      },
+      {
+        "Name": "CopperSharp.Runtime.Managed",
+        "Version": "0.1.0.0",
+        "Sha256": "070a9ebd09844650d341bd51d165587528348fd72837eb89665e2bbc43c59c10"
+      },
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      }
+    ]
+  },
+  {
+    "Name": "example:CopperBars",
+    "ImageBytes": 1460,
+    "CodeBytes": 1308,
+    "AssemblyTextBytes": 13696,
+    "CompiledMethods": 17,
+    "SpilledValues": 1,
+    "MaximumSpillFrameBytes": 4,
+    "StackMemoryInstructions": 89,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": null,
+    "SymbolCount": 19,
+    "RelocationCount": 25,
+    "InstructionCount": 423,
+    "CallInstructionCount": 43,
+    "BranchInstructionCount": 38,
+    "ExplicitStackOperationCount": 24,
+    "ExceptionRegionCount": 0,
+    "FatalMachineFaultSiteCount": 0,
+    "ExceptionMode": "Yolo",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [
+      "nullable-values"
+    ],
+    "RuntimeHelpers": [],
+    "ExternalNativeTargets": [],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperBars",
+        "Version": "0.1.0.0",
+        "Sha256": "b4afc9a458d670c0ee0d16e302ed0a9e529a9b58778b444f47fcbaee347803a1"
+      },
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      }
+    ]
+  },
+  {
+    "Name": "example:DOS",
+    "ImageBytes": 720,
+    "CodeBytes": 580,
+    "AssemblyTextBytes": 5834,
+    "CompiledMethods": 3,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 37,
+    "ManagedAllocationSites": 4,
+    "Mc68000Cycles": null,
+    "SymbolCount": 5,
+    "RelocationCount": 22,
+    "InstructionCount": 147,
+    "CallInstructionCount": 16,
+    "BranchInstructionCount": 15,
+    "ExplicitStackOperationCount": 14,
+    "ExceptionRegionCount": 0,
+    "FatalMachineFaultSiteCount": 0,
+    "ExceptionMode": "Yolo",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [
+      "nullable-values"
+    ],
+    "RuntimeHelpers": [],
+    "ExternalNativeTargets": [],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "DOS",
+        "Version": "0.1.0.0",
+        "Sha256": "eedb1f1bcb32bb7d3317b9efef56b5609456d3e8bb9dff9944948d728e0a2948"
+      }
+    ]
+  },
+  {
+    "Name": "example:FileStats",
+    "ImageBytes": 724,
+    "CodeBytes": 612,
+    "AssemblyTextBytes": 5844,
+    "CompiledMethods": 3,
+    "SpilledValues": 3,
+    "MaximumSpillFrameBytes": 8,
+    "StackMemoryInstructions": 38,
+    "ManagedAllocationSites": 1,
+    "Mc68000Cycles": null,
+    "SymbolCount": 5,
+    "RelocationCount": 15,
+    "InstructionCount": 168,
+    "CallInstructionCount": 10,
+    "BranchInstructionCount": 15,
+    "ExplicitStackOperationCount": 14,
+    "ExceptionRegionCount": 0,
+    "FatalMachineFaultSiteCount": 0,
+    "ExceptionMode": "Yolo",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [
+      "nullable-values"
+    ],
+    "RuntimeHelpers": [],
+    "ExternalNativeTargets": [],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "FileStats",
+        "Version": "0.1.0.0",
+        "Sha256": "324c62936cef4936e60ad69e5c6d5ff2cbf89d20b3d7db4854a512ce00a32063"
+      }
+    ]
+  },
+  {
     "Name": "example:IFFInspect",
-    "ImageBytes": 8272,
-    "CodeBytes": 5756,
+    "ImageBytes": 6532,
+    "CodeBytes": 5464,
+    "AssemblyTextBytes": 80551,
     "CompiledMethods": 24,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
-    "StackMemoryInstructions": 221,
+    "StackMemoryInstructions": 200,
     "ManagedAllocationSites": 5,
     "Mc68000Cycles": null,
+    "SymbolCount": 29,
+    "RelocationCount": 254,
+    "InstructionCount": 1067,
+    "CallInstructionCount": 83,
+    "BranchInstructionCount": 150,
+    "ExplicitStackOperationCount": 47,
+    "ExceptionRegionCount": 6,
+    "FatalMachineFaultSiteCount": 2,
+    "ExceptionMode": "Full",
+    "MemoryManagement": "ManagedPoolMarkSweepGc",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
     "RuntimeFeatures": [
-      "native-cstrings",
-      "exceptions",
-      "managed-gc",
-      "runtime-type-metadata"
+      "nullable-values"
+    ],
+    "RuntimeHelpers": [
+      "__c68k_alloc",
+      "__c68k_amiga_unhandled_requester",
+      "__c68k_dispose",
+      "__c68k_exception_dispatch",
+      "__c68k_exception_endfinally",
+      "__c68k_exception_jump_state",
+      "__c68k_exception_raise",
+      "__c68k_exception_resume",
+      "__c68k_exception_type_match",
+      "__c68k_exception_unhandled",
+      "__c68k_exception_unwind_frame",
+      "__c68k_find_unwind_site",
+      "__c68k_gc_coalesce",
+      "__c68k_gc_collect",
+      "__c68k_gc_collect_with_roots",
+      "__c68k_gc_get_stale_blocks",
+      "__c68k_gc_get_stale_bytes",
+      "__c68k_gc_init",
+      "__c68k_gc_mark",
+      "__c68k_gc_mark_roots",
+      "__c68k_gc_shutdown"
+    ],
+    "ExternalNativeTargets": [],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Runtime.Managed",
+        "Version": "0.1.0.0",
+        "Sha256": "070a9ebd09844650d341bd51d165587528348fd72837eb89665e2bbc43c59c10"
+      },
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "IFFInspect",
+        "Version": "0.1.0.0",
+        "Sha256": "27d5410c289f4ca2c5e4e0bbc096478194a88f02ff4611f9e122e843afaa3abd"
+      }
+    ]
+  },
+  {
+    "Name": "example:MUISunflower",
+    "ImageBytes": 1016,
+    "CodeBytes": 876,
+    "AssemblyTextBytes": 8511,
+    "CompiledMethods": 10,
+    "SpilledValues": 1,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 92,
+    "ManagedAllocationSites": 5,
+    "Mc68000Cycles": null,
+    "SymbolCount": 12,
+    "RelocationCount": 23,
+    "InstructionCount": 202,
+    "CallInstructionCount": 23,
+    "BranchInstructionCount": 4,
+    "ExplicitStackOperationCount": 47,
+    "ExceptionRegionCount": 0,
+    "FatalMachineFaultSiteCount": 0,
+    "ExceptionMode": "Yolo",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [
+      "nullable-values"
+    ],
+    "RuntimeHelpers": [],
+    "ExternalNativeTargets": [
+      "amiga.boopsi.DoMethodA"
+    ],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "MUISunflower",
+        "Version": "0.1.0.0",
+        "Sha256": "0af3f1886a02582cd2cd587cdc65d9ee567ba76ead93eed392c1070e88fd1e67"
+      }
     ]
   },
   {
     "Name": "example:MUITaskList",
-    "ImageBytes": 5608,
-    "CodeBytes": 4060,
-    "CompiledMethods": 15,
+    "ImageBytes": 2480,
+    "CodeBytes": 2116,
+    "AssemblyTextBytes": 17919,
+    "CompiledMethods": 14,
     "SpilledValues": 14,
     "MaximumSpillFrameBytes": 0,
-    "StackMemoryInstructions": 171,
+    "StackMemoryInstructions": 163,
     "ManagedAllocationSites": 7,
     "Mc68000Cycles": null,
+    "SymbolCount": 19,
+    "RelocationCount": 78,
+    "InstructionCount": 537,
+    "CallInstructionCount": 49,
+    "BranchInstructionCount": 27,
+    "ExplicitStackOperationCount": 92,
+    "ExceptionRegionCount": 0,
+    "FatalMachineFaultSiteCount": 6,
+    "ExceptionMode": "Yolo",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
     "RuntimeFeatures": [
-      "native-cstrings",
-      "exceptions"
+      "nullable-values"
+    ],
+    "RuntimeHelpers": [],
+    "ExternalNativeTargets": [
+      "amiga.boopsi.DoMethodA",
+      "amiga.boopsi.DoSuperMethodA"
+    ],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "MUITaskList",
+        "Version": "0.1.0.0",
+        "Sha256": "0d42fb25dcff9a1e36352f0c21e0a09ffd19b28b4d7ce38500642ae959c0376b"
+      }
+    ]
+  },
+  {
+    "Name": "example:Polymorphism",
+    "ImageBytes": 796,
+    "CodeBytes": 650,
+    "AssemblyTextBytes": 7163,
+    "CompiledMethods": 8,
+    "SpilledValues": 0,
+    "MaximumSpillFrameBytes": 0,
+    "StackMemoryInstructions": 82,
+    "ManagedAllocationSites": 5,
+    "Mc68000Cycles": null,
+    "SymbolCount": 9,
+    "RelocationCount": 23,
+    "InstructionCount": 188,
+    "CallInstructionCount": 16,
+    "BranchInstructionCount": 16,
+    "ExplicitStackOperationCount": 11,
+    "ExceptionRegionCount": 0,
+    "FatalMachineFaultSiteCount": 9,
+    "ExceptionMode": "Yolo",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [],
+    "RuntimeHelpers": [
+      "__c68k_alloc"
+    ],
+    "ExternalNativeTargets": [
+      "__c68k_alloc"
+    ],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "Polymorphism",
+        "Version": "0.1.0.0",
+        "Sha256": "0e5cf3d30b91030a36949ce5206b685e3781343ff6b1461b55fdca9743a0cda6"
+      }
+    ]
+  },
+  {
+    "Name": "example:StopwatchBenchmark",
+    "ImageBytes": 13484,
+    "CodeBytes": 11840,
+    "AssemblyTextBytes": 181666,
+    "CompiledMethods": 39,
+    "SpilledValues": 6,
+    "MaximumSpillFrameBytes": 8,
+    "StackMemoryInstructions": 466,
+    "ManagedAllocationSites": 0,
+    "Mc68000Cycles": null,
+    "SymbolCount": 43,
+    "RelocationCount": 398,
+    "InstructionCount": 2352,
+    "CallInstructionCount": 126,
+    "BranchInstructionCount": 337,
+    "ExplicitStackOperationCount": 102,
+    "ExceptionRegionCount": 5,
+    "FatalMachineFaultSiteCount": 2,
+    "ExceptionMode": "Full",
+    "MemoryManagement": "ExternalAllocator",
+    "CpuTarget": "M68000",
+    "RuntimeProfile": "Application",
+    "PeepholeOptimization": "FixedPoint",
+    "HunkSymbolsIncluded": false,
+    "RuntimeFeatures": [
+      "amiga-clock",
+      "amiga-console",
+      "amiga-interop",
+      "integer-formatting",
+      "managed-exceptions",
+      "managed-strings",
+      "native-memory",
+      "numerics"
+    ],
+    "RuntimeHelpers": [
+      "__c68k_amiga_unhandled_requester",
+      "__c68k_exception_dispatch",
+      "__c68k_exception_endfinally",
+      "__c68k_exception_jump_state",
+      "__c68k_exception_raise",
+      "__c68k_exception_resume",
+      "__c68k_exception_unhandled",
+      "__c68k_exception_unwind_frame",
+      "__c68k_find_unwind_site"
+    ],
+    "ExternalNativeTargets": [],
+    "ReachableAssemblies": [
+      {
+        "Name": "CopperSharp.Runtime.AmigaPal",
+        "Version": "0.1.0.0",
+        "Sha256": "93b719203cc5a744e13d91d0f3db047fb2013726554836b35fc80eff56bf83ec"
+      },
+      {
+        "Name": "CopperSharp.Runtime.Managed",
+        "Version": "0.1.0.0",
+        "Sha256": "070a9ebd09844650d341bd51d165587528348fd72837eb89665e2bbc43c59c10"
+      },
+      {
+        "Name": "CopperSharp.Sdk.Amiga",
+        "Version": "0.1.0.0",
+        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+      },
+      {
+        "Name": "StopwatchBenchmark",
+        "Version": "0.1.0.0",
+        "Sha256": "864888d79b46af73bd3904a22f55c73b9a711c0c1788a2b70d7e5b331a76243a"
+      }
     ]
   }
 ]

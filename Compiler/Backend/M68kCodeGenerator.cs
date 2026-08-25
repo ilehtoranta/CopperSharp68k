@@ -40,7 +40,7 @@ internal sealed partial class M68kCodeGenerator
 	private int _uniqueLabel;
 	private int _currentStackDepth = 0;
 	private bool _usesExceptionRuntime;
-	private bool _usesArithmeticExceptionFault;
+	private readonly HashSet<int> _exceptionRaiseReasons = new();
 	private bool _hasExceptionFrames;
 	private ImmutableArray<CilStackValueKind> _currentStackTypes = ImmutableArray<CilStackValueKind>.Empty;
 	private ImmutableArray<CilStackValueKind> _nextStackTypes = ImmutableArray<CilStackValueKind>.Empty;
@@ -63,6 +63,12 @@ internal sealed partial class M68kCodeGenerator
 	private readonly HashSet<CilFieldIdentity> _escapedStaticFields = new();
 	private readonly Dictionary<CilMethodIdentity, CilMethod> _typeInitializers = new();
 	private readonly Dictionary<CilMethodIdentity, CilMethod> _foldedMethodAliases = new();
+	private readonly List<SwitchAddressTable> _switchAddressTables = new();
+
+	private readonly record struct SwitchAddressTable(
+		string Label,
+		IReadOnlyList<string> Targets,
+		IReadOnlyList<int>? Addends = null);
 
 	private enum InlineCandidateKind
 	{
@@ -317,13 +323,14 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.Labels,
 				_assembler.AnalysisAnchors)
 			: Array.Empty<M68kLoopLayout>();
+		_assembler.MarkDataStart();
+		EmitSwitchAddressTables();
 		_assembler.OptimizeForCpu(
 			_request.Cpu,
 			_request.ClrPolicy,
 			sizeFirstLoops,
 			_request.PeepholeOptimization);
 		_assembler.ApplyRequestedAlignments();
-		_assembler.MarkDataStart();
 		var deferZeroInitializedStorage = ShouldDeferZeroInitializedStorage();
 		EmitData(methods);
 		EmitExceptionMetadata(methods);
@@ -1976,6 +1983,8 @@ internal sealed partial class M68kCodeGenerator
 			definition.ImportName is not
 				("intrinsic:copperstart-probe-cpu" or
 				 "intrinsic:copperstart-disable-rom-overlay" or
+				 "intrinsic:copperstart-disable-interrupts" or
+				 "intrinsic:copperstart-restore-interrupts" or
 				 "intrinsic:copperstart-stop" or
 				 "intrinsic:copperstart-bootstrap-stack"))
 		{
@@ -2860,6 +2869,8 @@ internal sealed partial class M68kCodeGenerator
 			definition.ImportName is not
 				("intrinsic:copperstart-probe-cpu" or
 				 "intrinsic:copperstart-disable-rom-overlay" or
+				 "intrinsic:copperstart-disable-interrupts" or
+				 "intrinsic:copperstart-restore-interrupts" or
 				 "intrinsic:copperstart-stop" or
 				 "intrinsic:copperstart-bootstrap-stack"))
 		{
@@ -5794,6 +5805,27 @@ internal sealed partial class M68kCodeGenerator
 	{
 		EmitPopD0();
 		var targets = (int[])instruction.Operand!;
+		if (targets.Length is >= 8 and <= 8192)
+		{
+			var table = UniqueLabel("switch-address-table");
+			var fallthrough = UniqueLabel("switch-fallthrough");
+			_assembler.EmitWord(0x4A80); // TST.L D0
+			_assembler.EmitBranch(M68kCondition.Minus, fallthrough);
+			_assembler.EmitWord(0x0C80); // CMPI.L #count,D0
+			_assembler.EmitLong((uint)targets.Length);
+			_assembler.EmitBranch(M68kCondition.CarryClear, fallthrough);
+			_assembler.EmitWord(0xD080); // ADD.L D0,D0
+			_assembler.EmitWord(0xD080); // ADD.L D0,D0
+			_assembler.EmitWord(0x41F9); // LEA table,A0
+			_assembler.EmitAddress(table);
+			_assembler.EmitWord(0x2070); // MOVEA.L (A0,D0.W),A0
+			_assembler.EmitWord(0);
+			_assembler.EmitWord(0x4ED0); // JMP (A0)
+			_assembler.Mark(fallthrough);
+			_switchAddressTables.Add(new SwitchAddressTable(table,
+				targets.Select(target => IlLabel(method, target)).ToArray()));
+			return;
+		}
 		for (var index = 0; index < targets.Length; index++)
 		{
 			_assembler.EmitWord(0x0C80); // CMPI.L #index,D0
@@ -5916,6 +5948,17 @@ internal sealed partial class M68kCodeGenerator
 			EmitCopperStartDisableRomOverlay();
 			return;
 		}
+		if (target.ImportName == "intrinsic:copperstart-disable-interrupts")
+		{
+			EmitCopperStartDisableInterrupts(pushResult);
+			return;
+		}
+		if (target.ImportName == "intrinsic:copperstart-restore-interrupts")
+		{
+			EmitPopD0();
+			EmitCopperStartRestoreInterrupts(M68kRegister.D0);
+			return;
+		}
 		if (target.ImportName == "intrinsic:copperstart-stop")
 		{
 			EmitCopperStartStop();
@@ -5936,7 +5979,6 @@ internal sealed partial class M68kCodeGenerator
 			}
 			if (target.ImportName == "intrinsic:runtime-throw-arithmetic")
 			{
-				_usesArithmeticExceptionFault = true;
 				RegisterRuntimeTypeDescriptor("System.ArithmeticException");
 				EmitExceptionRaise(reason: 19, hasException: false);
 				return;
@@ -6440,6 +6482,20 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
+	private void EmitSwitchAddressTables()
+	{
+		foreach (var table in _switchAddressTables)
+		{
+			_assembler.Mark(table.Label);
+			for (var index = 0; index < table.Targets.Count; index++)
+			{
+				_assembler.EmitAddress(
+					table.Targets[index],
+					addend: table.Addends?[index] ?? 0);
+			}
+		}
+	}
+
 	private void EmitCopperStartDisableRomOverlay()
 	{
 		// CIA-A port A bits 0 and 1 are the reset-time ROM-overlay and output
@@ -6452,6 +6508,43 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x13FC); // MOVE.B #$00,$00BFE001.L
 		_assembler.EmitWord(0x0000);
 		_assembler.EmitLong(0x00BF_E001);
+	}
+
+	private void EmitCopperStartDisableInterrupts(bool pushResult)
+	{
+		_assembler.EmitWord(0x40C0); // MOVE.W SR,D0
+		_assembler.EmitWord(0x0280); // ANDI.L #$0000FFFF,D0
+		_assembler.EmitLong(0x0000_FFFF);
+		_assembler.EmitWord(0x007C); // ORI.W #$0700,SR
+		_assembler.EmitWord(0x0700);
+		if (pushResult)
+		{
+			EmitPushD0();
+		}
+	}
+
+	private void EmitCopperStartDisableInterruptsAllocated(M68kRegister destination)
+	{
+		if (destination > M68kRegister.D7)
+		{
+			throw new InvalidOperationException(
+				"Status register capture requires a data register.");
+		}
+		_assembler.EmitWord((ushort)(0x40C0 | (int)destination)); // MOVE.W SR,Dn
+		_assembler.EmitWord((ushort)(0x0280 | (int)destination)); // ANDI.L #$0000FFFF,Dn
+		_assembler.EmitLong(0x0000_FFFF);
+		_assembler.EmitWord(0x007C); // ORI.W #$0700,SR
+		_assembler.EmitWord(0x0700);
+	}
+
+	private void EmitCopperStartRestoreInterrupts(M68kRegister source)
+	{
+		if (source > M68kRegister.D7)
+		{
+			throw new InvalidOperationException(
+				"Status register restore requires a data register.");
+		}
+		_assembler.EmitWord((ushort)(0x46C0 | (int)source)); // MOVE.W Dn,SR
 	}
 
 	private void EmitCopperStartStop()
@@ -8255,6 +8348,16 @@ internal sealed partial class M68kCodeGenerator
 			{
 				register = (M68kRegister)((int)M68kRegister.D0 + nextData++);
 			}
+			else if (parameter.Kind != CilTypeKind.GenericParameter &&
+				!Is64BitScalar(parameter) &&
+				nextAddress < 2)
+			{
+				// A 32-bit scalar is bit-preserving in an address register. Use a
+				// remaining volatile A slot before spilling; the callee constrains the
+				// same argument to that register and materializes a data copy only if
+				// its operations require one.
+				register = (M68kRegister)((int)M68kRegister.A0 + nextAddress++);
+			}
 
 			var argumentStackOffset = register is null ? stackOffset : -1;
 			if (register is null)
@@ -8292,10 +8395,19 @@ internal sealed partial class M68kCodeGenerator
 			CilTypeKind.ManagedReference or
 			CilTypeKind.ManagedPointer or
 			CilTypeKind.UnmanagedPointer or
-			CilTypeKind.FunctionPointer;
+			CilTypeKind.FunctionPointer ||
+		IsPointerLikeTransparentWrapper(type);
 
 	private static bool IsInternalAddressReturn(CilType type) =>
 		IsInternalAddressArgument(type);
+
+	private static bool IsPointerLikeTransparentWrapper(CilType type) =>
+		type.Kind == CilTypeKind.ValueType &&
+		type.DisplayName is
+			"Amiga.APTR" or "Amiga.BPTR" or
+			"Amiga.STRPTR" or "Amiga.CONST_STRPTR" or
+			"Amiga.WSTRPTR" or "Amiga.CONST_WSTRPTR" or
+			"Amiga.CString";
 
 	private void EmitMoveRegisterToD0(M68kRegister register)
 	{
@@ -9100,6 +9212,7 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
+		_exceptionRaiseReasons.Add(reason);
 		if (!hasException)
 		{
 			EmitImmediateToRegister(M68kRegister.A0, 0);

@@ -35,7 +35,20 @@ internal sealed partial class M68kCodeGenerator
 	private readonly HashSet<int> _allocatedKnownNonNullValues = new();
 	private readonly HashSet<M68kRegister> _allocatedKnownNonNullRegisters = new();
 	private readonly HashSet<M68kRegister> _allocatedFrameAddressesEmitted = new();
+	private readonly Dictionary<int, AllocatedFunctionAddressSwitchPlan>
+		_allocatedFunctionAddressSwitches = new();
 	private int _allocatedOutgoingStackBytes;
+
+	private readonly record struct AllocatedFunctionAddressTarget(
+		string Label,
+		int Addend = 0);
+
+	private sealed record AllocatedFunctionAddressSwitchPlan(
+		string TableLabel,
+		IReadOnlyList<AllocatedFunctionAddressTarget> Targets,
+		string FallthroughTarget,
+		M68kRegister Selector,
+		M68kRegister ValueRegister);
 
 	private MethodReference ResolveAllocatedMachineMethod(
 		CilMethod caller,
@@ -47,6 +60,21 @@ internal sealed partial class M68kCodeGenerator
 			throw new InvalidOperationException(
 				"Machine method reference has no source instruction.");
 		return _module.ResolveMethodToken(
+			(int)source.Operand!,
+			sourceMethod,
+			 source.Offset);
+	}
+
+	private CilField ResolveAllocatedField(
+		CilMethod caller,
+		M68kMachineInstruction instruction)
+	{
+		var sourceMethod = instruction.Origin?.SourceMethod ?? caller;
+		var source = instruction.Origin?.SourceInstruction ??
+			instruction.SourceInstruction ??
+			throw new InvalidOperationException(
+				"Machine field reference has no source instruction.");
+		return _module.ResolveFieldToken(
 			(int)source.Operand!,
 			sourceMethod,
 			source.Offset);
@@ -103,6 +131,7 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedKnownNonNullValues.Clear();
 		_allocatedKnownNonNullRegisters.Clear();
 		_allocatedFrameAddressesEmitted.Clear();
+		_allocatedFunctionAddressSwitches.Clear();
 		PrepareAllocatedConstantCopies(method, allocated);
 		PrepareAllocatedLiteralAddressCopies(method, allocated);
 		PrepareAllocatedQuickArithmetic(allocated);
@@ -110,6 +139,7 @@ internal sealed partial class M68kCodeGenerator
 		PrepareAllocatedDeferredNormalizations(allocated);
 		PrepareAllocatedFrameAddressFolds(method, allocated);
 		PrepareAllocatedExceptionFrameStores(allocated);
+		PrepareAllocatedFunctionAddressSwitches(method, allocated);
 		_allocatedOutgoingStackBytes = 0;
 		var savedBytes = checked(
 			(allocated.Frame.CalleeSavedRegisters.Count * 4) +
@@ -1961,15 +1991,57 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Copy:
-				var copiedKind = allocated.Function.Values[instruction.Uses[0]].Kind;
+				var copiedValue = allocated.Function.Values[instruction.Uses[0]];
+				var copiedKind = copiedValue.Kind;
+				var copyDestinationValue =
+					allocated.Function.Values[instruction.Definitions[0]];
+				var copySource = Location(instruction.Uses[0]).Register;
+				var copyDestination =
+					Location(instruction.Definitions[0]).Register;
+				if (copyDestination >= M68kRegister.A0 &&
+					copyDestinationValue.Width == M68kMachineValueWidth.Long &&
+					copyDestinationValue.Kind == CilStackValueKind.Int32 &&
+					copiedValue.Width is
+						M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word)
+				{
+					// Narrow internal-call values use an A register only as a canonical
+					// 32-bit transport slot. Normalize while the value is still in its
+					// legal data register, then transfer the complete longword.
+					EmitAllocatedNormalize(copySource, copiedKind);
+					EmitAllocatedMove(
+						copySource,
+						copyDestination,
+						M68kMachineValueWidth.Long);
+					return;
+				}
+				if (copySource >= M68kRegister.A0 &&
+					copiedValue.Width == M68kMachineValueWidth.Long &&
+					copyDestination <= M68kRegister.D7 &&
+					copyDestinationValue.Width is
+						M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word)
+				{
+					// The reverse internal-call adapter receives a canonical narrow
+					// scalar through an address register.  Transfer its complete
+					// longword into the legal data bank before applying the target's
+					// signed/unsigned normalization; MOVE.B cannot address An.
+					EmitAllocatedMove(
+						copySource,
+						copyDestination,
+						M68kMachineValueWidth.Long);
+					EmitAllocatedDefinitionNormalization(
+						allocated,
+						instruction,
+						copyDestination);
+					return;
+				}
 				EmitAllocatedMove(
-					Location(instruction.Uses[0]).Register,
-					Location(instruction.Definitions[0]).Register,
-					allocated.Function.Values[instruction.Definitions[0]].Width);
+					copySource,
+					copyDestination,
+					copyDestinationValue.Width);
 				EmitAllocatedDefinitionNormalization(
 					allocated,
 					instruction,
-					Location(instruction.Definitions[0]).Register,
+					copyDestination,
 					IsNarrowIntegerKind(copiedKind) ? copiedKind : null);
 				return;
 
@@ -2330,10 +2402,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineInstruction instruction)
 	{
 		var source = instruction.SourceInstruction!;
-		var field = _module.ResolveFieldToken(
-			(int)source.Operand!,
-			method,
-			source.Offset);
+		var field = ResolveAllocatedField(method, instruction);
 		if (field.IsStatic)
 		{
 			throw new InvalidOperationException(
@@ -2380,10 +2449,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineInstruction instruction)
 	{
 		var source = instruction.SourceInstruction!;
-		var field = _module.ResolveFieldToken(
-			(int)source.Operand!,
-			method,
-			source.Offset);
+		var field = ResolveAllocatedField(method, instruction);
 		if (!_module.TryGetReferenceFreeStructLayout(
 				field.Type,
 				field.ModuleName,
@@ -3777,10 +3843,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineInstruction instruction)
 	{
 		var source = instruction.SourceInstruction!;
-		var field = _module.ResolveFieldToken(
-			(int)source.Operand!,
-			method,
-			source.Offset);
+		var field = ResolveAllocatedField(method, instruction);
 		if (field.IsStatic)
 		{
 			throw new InvalidOperationException(
@@ -3797,10 +3860,11 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitAllocatedRequireNonNull(instruction.Uses[0], objectRegister);
 		}
-		if (_module.TryGetReferenceFreeStructLayout(
+		var hasAggregateLayout = _module.TryGetReferenceFreeStructLayout(
 				field.Type,
 				field.ModuleName,
-				out var aggregateLayout) &&
+				out var aggregateLayout);
+		if (hasAggregateLayout &&
 			aggregateLayout.Size > 4)
 		{
 			var aggregateSource = allocated.Allocation.Registers[
@@ -3827,6 +3891,32 @@ internal sealed partial class M68kCodeGenerator
 		}
 		var valueLocation =
 			allocated.Allocation.Registers[instruction.Uses[1]];
+		if (hasAggregateLayout &&
+			aggregateLayout.Size == 4 &&
+			allocated.Function.Values[instruction.Uses[1]].Kind ==
+				CilStackValueKind.AggregateAddress)
+		{
+			var aggregateSource = valueLocation.Register;
+			if (aggregateSource < M68kRegister.A0)
+			{
+				throw new InvalidOperationException(
+					"Single-word aggregate instance-field source is not an address register.");
+			}
+			// Value-type constructors produce the address of their temporary.  A
+			// single-word struct field stores the temporary's payload, not that
+			// compiler-owned address.
+			EmitAllocatedBaseLoad(
+				aggregateSource,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				objectRegister,
+				M68kMachineValueWidth.Long,
+				displacement);
+			return;
+		}
 		if (valueLocation.IsPair)
 		{
 			EmitAllocatedBaseStore(
@@ -4102,8 +4192,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 			else if (load.OpCode == OpCodes.Ldfld || load.OpCode == OpCodes.Ldflda)
 			{
-				var field = _module.ResolveFieldToken(
-					(int)load.Operand!, method, load.Offset);
+				var field = ResolveAllocatedField(method, instruction);
 				if (!field.IsStatic && !_module.IsTransparentScalarField(field))
 				{
 					yield return instruction.Uses[0];
@@ -4123,8 +4212,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 			else if (store.OpCode == OpCodes.Stfld)
 			{
-				var field = _module.ResolveFieldToken(
-					(int)store.Operand!, method, store.Offset);
+				var field = ResolveAllocatedField(method, instruction);
 				if (!field.IsStatic &&
 					!_module.IsTransparentScalarField(field) &&
 					!IsConstructorReceiver(method, allocated.Function, instruction.Uses[0]))
@@ -4135,9 +4223,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		else if (instruction.Operation == M68kMachineOperation.AggregateFieldLoad)
 		{
-			var source = instruction.SourceInstruction!;
-			var field = _module.ResolveFieldToken(
-				(int)source.Operand!, method, source.Offset);
+			var field = ResolveAllocatedField(method, instruction);
 			if (!field.IsStatic)
 			{
 				yield return instruction.Uses[0];
@@ -4970,6 +5056,13 @@ internal sealed partial class M68kCodeGenerator
 		{
 			return false;
 		}
+		if (!AllocatedTailReturnUsesCallResult(
+			call,
+			trailing,
+			caller.Signature.ReturnType.IsVoid))
+		{
+			return false;
+		}
 		if (call.RequiresLiveCallerFrame)
 		{
 			return false;
@@ -5014,6 +5107,40 @@ internal sealed partial class M68kCodeGenerator
 		return true;
 	}
 
+	private static bool AllocatedTailReturnUsesCallResult(
+		M68kMachineInstruction call,
+		IReadOnlyList<M68kMachineInstruction> trailing,
+		bool returnsVoid)
+	{
+		var returned = trailing[^1];
+		if (returnsVoid)
+		{
+			return returned.Uses.Length == 0;
+		}
+		if (returned.Uses.Length != 1 || call.Definitions.Length == 0)
+		{
+			return false;
+		}
+
+		// A syntactically final call is not necessarily the value-producing tail
+		// expression. Release CIL commonly discards a status-returning call and
+		// then returns a previously computed local. Follow the return SSA value
+		// backwards through the only operations admitted above; only a value rooted
+		// in this call may replace Call/Copy*/Return with a JMP.
+		var value = returned.Uses[0];
+		for (var index = trailing.Count - 2; index >= 0; index--)
+		{
+			var copy = trailing[index];
+			if (!copy.Definitions.Contains(value)) continue;
+			if (copy.Definitions.Length != 1 || copy.Uses.Length != 1)
+			{
+				return false;
+			}
+			value = copy.Uses[0];
+		}
+		return call.Definitions.Contains(value);
+	}
+
 	private void EmitAllocatedStringAddress(
 		CilMethod method,
 		M68kMachineInstruction instruction,
@@ -5043,10 +5170,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kRegister destination)
 	{
 		var source = instruction.SourceInstruction!;
-		var field = _module.ResolveFieldToken(
-			(int)source.Operand!,
-			method,
-			source.Offset);
+		var field = ResolveAllocatedField(method, instruction);
 		if (!field.IsStatic)
 		{
 			throw new InvalidOperationException(
@@ -5314,6 +5438,15 @@ internal sealed partial class M68kCodeGenerator
 							M68kRegister.A0,
 							M68kRegister.D0,
 							M68kMachineValueWidth.Long);
+						if (dataArgumentCount == 2)
+						{
+							// The interface caller duplicates its second data argument
+							// at 4(SP), because D1 must be reused for the first argument
+							// after D0 becomes the transparent payload receiver. The
+							// value-type body receives that overflow scalar through A0.
+							_assembler.EmitWord(0x206F); // MOVEA.L 4(A7),A0
+							_assembler.EmitWord(4);
+						}
 						if (addressArgumentCount != 0)
 						{
 							// Interface ABI reserves A0 for the box, so its first
@@ -5361,10 +5494,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kRegister sourceRegister)
 	{
 		var source = instruction.SourceInstruction!;
-		var field = _module.ResolveFieldToken(
-			(int)source.Operand!,
-			method,
-			source.Offset);
+		var field = ResolveAllocatedField(method, instruction);
 		if (!field.IsStatic)
 		{
 			throw new InvalidOperationException(
@@ -5372,10 +5502,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 		ValidateType(field.Type, method, "field");
 		_staticFields.TryAdd(field.Identity, field);
-		if (_module.TryGetReferenceFreeStructLayout(
+		var hasAggregateLayout = _module.TryGetReferenceFreeStructLayout(
 				field.Type,
 				field.ModuleName,
-				out var aggregateLayout) &&
+				out var aggregateLayout);
+		if (hasAggregateLayout &&
 			aggregateLayout.Size > 4)
 		{
 			if (sourceRegister != M68kRegister.A0)
@@ -5399,6 +5530,31 @@ internal sealed partial class M68kCodeGenerator
 					M68kMachineValueWidth.Long,
 					checked((short)offset));
 			}
+			return;
+		}
+		if (hasAggregateLayout &&
+			aggregateLayout.Size == 4 &&
+			allocated.Function.Values[instruction.Uses[0]].Kind ==
+				CilStackValueKind.AggregateAddress)
+		{
+			if (sourceRegister < M68kRegister.A0)
+			{
+				throw new InvalidOperationException(
+					"Single-word aggregate static-field source is not an address register.");
+			}
+			EmitAllocatedBaseLoad(
+				sourceRegister,
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long,
+				0);
+			EmitAllocatedAbsoluteAddress(
+				M68kRegister.A1,
+				StaticFieldLabel(field));
+			EmitAllocatedBaseStore(
+				M68kRegister.D0,
+				M68kRegister.A1,
+				M68kMachineValueWidth.Long,
+				0);
 			return;
 		}
 		if (TryGetAllocatedConstant(
@@ -5563,6 +5719,8 @@ internal sealed partial class M68kCodeGenerator
 		if (definition.ImportName is
 			"intrinsic:copperstart-probe-cpu" or
 			"intrinsic:copperstart-disable-rom-overlay" or
+			"intrinsic:copperstart-disable-interrupts" or
+			"intrinsic:copperstart-restore-interrupts" or
 			"intrinsic:copperstart-stop" or
 			"intrinsic:copperstart-bootstrap-stack")
 		{
@@ -5778,6 +5936,16 @@ internal sealed partial class M68kCodeGenerator
 		if (name == "intrinsic:copperstart-disable-rom-overlay")
 		{
 			EmitCopperStartDisableRomOverlay();
+			return;
+		}
+		if (name == "intrinsic:copperstart-disable-interrupts")
+		{
+			EmitCopperStartDisableInterruptsAllocated(Definition());
+			return;
+		}
+		if (name == "intrinsic:copperstart-restore-interrupts")
+		{
+			EmitCopperStartRestoreInterrupts(Use(0));
 			return;
 		}
 		if (name == "intrinsic:copperstart-stop")
@@ -7833,7 +8001,6 @@ internal sealed partial class M68kCodeGenerator
 			}
 			if (name == "intrinsic:runtime-throw-arithmetic")
 			{
-				_usesArithmeticExceptionFault = true;
 				RegisterRuntimeTypeDescriptor("System.ArithmeticException");
 				EmitExceptionRaise(reason: 19, hasException: false);
 				return;
@@ -8086,10 +8253,11 @@ internal sealed partial class M68kCodeGenerator
 		{
 			var baseRegister = Use(0);
 			var destination = Definition();
-			if (TryFoldAllocatedIntrinsicResultCopy(
+			var foldedResultCopy = TryFoldAllocatedIntrinsicResultCopy(
 					allocated,
 					instruction,
-					out var foldedDestination))
+					out var foldedDestination);
+			if (foldedResultCopy)
 			{
 				destination = foldedDestination;
 			}
@@ -8122,6 +8290,17 @@ internal sealed partial class M68kCodeGenerator
 				destination,
 				width,
 				displacement);
+			if (width != M68kMachineValueWidth.Long)
+			{
+				// APTR reads publish canonical CLR byte/ushort values. A byte/word
+				// memory move leaves the destination's upper bits unchanged, including
+				// when result-copy folding places the load directly in its final register.
+				// Emit the canonicalization at the producer; the raw optimizer can still
+				// turn it into MOVEQ+partial MOVE or remove it after a proved low-only use.
+				EmitAllocatedNormalize(
+					destination,
+					allocated.Function.Values[instruction.Definitions[0]].Kind);
+			}
 			return;
 		}
 
@@ -9273,20 +9452,43 @@ internal sealed partial class M68kCodeGenerator
 		if (name == "intrinsic:bptr-address")
 		{
 			var destination = Definition();
-			if (Use(0) >= M68kRegister.A0)
+			if (!target.Signature.Header.IsInstance)
+			{
+				// Static ToAddress receives an already materialized BPTR value.
+				// Its allocated register bank does not describe indirection.
+				EmitAllocatedMove(
+					Use(0),
+					destination,
+					M68kMachineValueWidth.Long);
+			}
+			else if (TryGetAllocatedFrameBackedAddressDisplacement(
+				caller,
+				allocated,
+				instruction,
+				out var frameDisplacement))
+			{
+				EmitAllocatedFrameLoad(
+					destination,
+					M68kMachineValueWidth.Long,
+					frameDisplacement);
+			}
+			else if (IsAllocatedPromotedLocalAddress(
+				caller,
+				allocated,
+				instruction))
+			{
+				EmitAllocatedMove(
+					Use(0),
+					destination,
+					M68kMachineValueWidth.Long);
+			}
+			else
 			{
 				EmitAllocatedBaseLoad(
 					Use(0),
 					destination,
 					M68kMachineValueWidth.Long,
 					0);
-			}
-			else
-			{
-				EmitAllocatedMove(
-					Use(0),
-					destination,
-					M68kMachineValueWidth.Long);
 			}
 			EmitAllocatedShiftImmediate(destination, left: true);
 			EmitAllocatedShiftImmediate(destination, left: true);
@@ -9379,6 +9581,15 @@ internal sealed partial class M68kCodeGenerator
 			}
 
 			destination = allocated.Allocation.Registers[copyDefinition].Register;
+			var producerValue = allocated.Function.Values[definition];
+			if (producerValue.Width is
+					M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word &&
+				destination >= M68kRegister.A0)
+			{
+				// MOVEA.W sign-extends and MOVEA.B is illegal. Let the ordinary Copy
+				// path normalize in a data register before a canonical long transfer.
+				return false;
+			}
 			_allocatedSuppressedInstructions.Add(copy.Id);
 			return true;
 		}
@@ -10402,6 +10613,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (kind is CilStackValueKind.Int32 or
 			CilStackValueKind.Int64 or
+			CilStackValueKind.Float32 or
 			CilStackValueKind.Reference or
 			CilStackValueKind.ManagedPointer or
 			CilStackValueKind.AggregateAddress)
@@ -10770,6 +10982,18 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineBlock block,
 		M68kMachineInstruction instruction)
 	{
+		if (_allocatedFunctionAddressSwitches.TryGetValue(
+			instruction.Id,
+			out var functionAddressPlan))
+		{
+			EmitAllocatedFunctionAddressSwitch(
+				method,
+				allocated,
+				instruction,
+				functionAddressPlan);
+			return;
+		}
+
 		if (instruction.SourceInstruction is not
 			{
 				OpCode: var op,
@@ -10808,21 +11032,25 @@ internal sealed partial class M68kCodeGenerator
 			static target => target,
 			_ => UniqueLabel("allocated-switch-edge"));
 		var selector = allocated.Allocation.Registers[instruction.Uses[0]].Register;
-		for (var index = 0; index < originalTargets.Length; index++)
+		if (!TryEmitAllocatedSwitchAddressTable(allocated, instruction, selector,
+			originalTargets, fallthrough, edgeLabels))
 		{
-			// A CIL switch encodes sparse holes as explicit entries targeting the
-			// fallthrough block. Comparing those indices is redundant: matching
-			// and not matching both select the same eventual default edge.
-			if (originalTargets[index] == fallthrough)
+			for (var index = 0; index < originalTargets.Length; index++)
 			{
-				continue;
+				// A CIL switch encodes sparse holes as explicit entries targeting the
+				// fallthrough block. Comparing those indices is redundant: matching
+				// and not matching both select the same eventual default edge.
+				if (originalTargets[index] == fallthrough)
+				{
+					continue;
+				}
+				EmitCompareImmediateWithRegister(selector, index);
+				_assembler.EmitBranch(
+					M68kCondition.Equal,
+					edgeLabels[originalTargets[index]]);
 			}
-			EmitCompareImmediateWithRegister(selector, index);
-			_assembler.EmitBranch(
-				M68kCondition.Equal,
-				edgeLabels[originalTargets[index]]);
+			_assembler.EmitBranch(M68kCondition.True, edgeLabels[fallthrough]);
 		}
-		_assembler.EmitBranch(M68kCondition.True, edgeLabels[fallthrough]);
 
 		foreach (var originalTarget in distinctTargets)
 		{
@@ -10834,6 +11062,445 @@ internal sealed partial class M68kCodeGenerator
 					method,
 					allocated.FinalDestinations.Resolve(originalTarget)));
 		}
+	}
+
+	private void PrepareAllocatedFunctionAddressSwitches(
+		CilMethod method,
+		M68kAllocatedFunction allocated)
+	{
+		if (!IsInternalAddressReturn(method.Signature.ReturnType))
+			return;
+
+		var blocksById = allocated.Function.Blocks.ToDictionary(
+			static block => block.Id);
+		foreach (var sourceBlock in allocated.Function.Blocks)
+		{
+			foreach (var instruction in sourceBlock.Instructions)
+			{
+				if (instruction.Operation != M68kMachineOperation.Switch ||
+					instruction.SourceInstruction is not
+					{
+						OpCode: var op,
+						Operand: int[] cilTargets
+					} source ||
+					op != OpCodes.Switch ||
+					cilTargets.Length is < 8 or > 8192 ||
+					instruction.Uses.Length != 1 ||
+					allocated.Allocation.Registers[instruction.Uses[0]].Register is
+						> M68kRegister.D7 ||
+					!allocated.InstructionLiveness.LiveAfter.TryGetValue(
+						instruction.Id,
+						out var liveValues) ||
+					liveValues.Contains(instruction.Uses[0]))
+				{
+					continue;
+				}
+
+				if (!TryCreateAllocatedFunctionAddressSwitchPlan(
+						method,
+						allocated,
+						blocksById,
+						sourceBlock,
+						instruction,
+						source,
+						cilTargets,
+						out var plan,
+						out var suppressedInstructions))
+				{
+					continue;
+				}
+
+				_allocatedFunctionAddressSwitches.Add(instruction.Id, plan);
+				foreach (var suppressed in suppressedInstructions)
+					_allocatedSuppressedInstructions.Add(suppressed);
+			}
+		}
+	}
+
+	private bool TryCreateAllocatedFunctionAddressSwitchPlan(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		IReadOnlyDictionary<int, M68kMachineBlock> blocksById,
+		M68kMachineBlock sourceBlock,
+		M68kMachineInstruction switchInstruction,
+		CilInstruction source,
+		IReadOnlyList<int> cilTargets,
+		out AllocatedFunctionAddressSwitchPlan plan,
+		out IReadOnlyList<int> suppressedInstructions)
+	{
+		plan = null!;
+		suppressedInstructions = Array.Empty<int>();
+
+		bool TrySuccessorAtOffset(int offset, out int successor)
+		{
+			var matches = sourceBlock.Successors
+				.Where(candidate => blocksById[candidate].StartIlOffset == offset)
+				.ToArray();
+			if (matches.Length == 1)
+			{
+				successor = matches[0];
+				return true;
+			}
+			successor = default;
+			return false;
+		}
+
+		var originalTargets = new int[cilTargets.Count];
+		for (var index = 0; index < cilTargets.Count; index++)
+		{
+			if (!TrySuccessorAtOffset(cilTargets[index], out originalTargets[index]))
+				return false;
+		}
+		if (!TrySuccessorAtOffset(source.NextOffset, out var originalFallthrough))
+			return false;
+
+		var originalDestinations = originalTargets
+			.Append(originalFallthrough)
+			.Distinct()
+			.ToArray();
+		if (originalDestinations.Any(target =>
+			allocated.ParallelCopies.EdgeCopies.ContainsKey((sourceBlock.Id, target))))
+		{
+			return false;
+		}
+
+		var resolvedDestinations = originalDestinations
+			.Select(allocated.FinalDestinations.Resolve)
+			.Distinct()
+			.ToArray();
+		var permittedPredecessors = new HashSet<int>(originalDestinations)
+		{
+			sourceBlock.Id
+		};
+		foreach (var destination in resolvedDestinations)
+		{
+			if (allocated.FinalDestinations.AliasesByDestination.TryGetValue(
+				destination,
+				out var aliases))
+			{
+				permittedPredecessors.UnionWith(aliases);
+			}
+		}
+
+		var targetsByDestination =
+			new Dictionary<int, AllocatedFunctionAddressTarget>();
+		var instructionsToSuppress = new HashSet<int>();
+		M68kRegister? valueRegister = null;
+		foreach (var destination in resolvedDestinations)
+		{
+			var targetBlock = blocksById[destination];
+			if (targetBlock.ControlFlowPredecessors.Any(
+					predecessor => !permittedPredecessors.Contains(predecessor)) ||
+				!TryResolvePureFunctionAddressReturn(
+					method,
+					allocated,
+					targetBlock,
+					out var target,
+					out var targetValueRegister,
+					out var targetInstructions) ||
+				(valueRegister is { } expected && expected != targetValueRegister))
+			{
+				return false;
+			}
+
+			valueRegister ??= targetValueRegister;
+			targetsByDestination.Add(destination, target);
+			instructionsToSuppress.UnionWith(targetInstructions);
+		}
+		var fallthroughTarget = targetsByDestination[
+			allocated.FinalDestinations.Resolve(originalFallthrough)];
+		// The fast default path materializes its address directly rather than
+		// loading the table. Keep that path unchanged unless it has no tag.
+		if (fallthroughTarget.Addend != 0)
+			return false;
+
+		var selector = allocated.Allocation.Registers[
+			switchInstruction.Uses[0]].Register;
+		plan = new AllocatedFunctionAddressSwitchPlan(
+			UniqueLabel("allocated-switch-function-address-table"),
+			originalTargets.Select(target =>
+				targetsByDestination[allocated.FinalDestinations.Resolve(target)])
+				.ToArray(),
+			fallthroughTarget.Label,
+			selector,
+			valueRegister!.Value);
+		suppressedInstructions = instructionsToSuppress.ToArray();
+		return true;
+	}
+
+	private bool TryResolvePureFunctionAddressReturn(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineBlock block,
+		out AllocatedFunctionAddressTarget target,
+		out M68kRegister valueRegister,
+		out IReadOnlyList<int> instructionIds)
+	{
+		target = default;
+		valueRegister = default;
+		instructionIds = Array.Empty<int>();
+		if (block.IsExceptionEntry || block.Phis.Count != 0 ||
+			block.Successors.Count != 0 || block.SuccessorEdges.Count != 0 ||
+			block.Instructions.Count < 2 ||
+			block.Instructions[^1] is not
+			{
+				Operation: M68kMachineOperation.Return,
+				Uses: [var returnValue]
+			})
+		{
+			return false;
+		}
+
+		var producers = new Dictionary<int, M68kMachineInstruction>();
+		foreach (var instruction in block.Instructions)
+		{
+			foreach (var definition in instruction.Definitions)
+			{
+				if (!producers.TryAdd(definition, instruction))
+					return false;
+			}
+		}
+		var chain = new HashSet<int> { block.Instructions[^1].Id };
+
+		bool TryResolveValue(
+			int value,
+			out AllocatedFunctionAddressTarget resolved)
+		{
+			resolved = default;
+			if (!producers.TryGetValue(value, out var producer) ||
+				producer.Definitions is not [_])
+			{
+				return false;
+			}
+			chain.Add(producer.Id);
+			if (producer.Operation == M68kMachineOperation.FunctionAddress)
+			{
+				var sourceMethod = producer.Origin?.SourceMethod ?? method;
+				var functionSource = producer.Origin?.SourceInstruction ??
+					producer.SourceInstruction;
+				if (functionSource is not { OpCode: var op, Operand: int token } ||
+					op != OpCodes.Ldftn || producer.Uses.Length != 0)
+				{
+					return false;
+				}
+				var methodTarget = _module.ResolveMethodToken(
+					token,
+					sourceMethod,
+					functionSource.Offset).Definition;
+				if (methodTarget is null || methodTarget.IsImport)
+					return false;
+
+				resolved = new AllocatedFunctionAddressTarget(
+					MethodLabel(methodTarget));
+				return true;
+			}
+
+			if (producer.Uses is [var sourceValue] &&
+				allocated.Function.Values[sourceValue].Width ==
+					M68kMachineValueWidth.Long &&
+				allocated.Function.Values[value].Width ==
+					M68kMachineValueWidth.Long &&
+				IsTransparentFunctionAddressTransport(method, producer))
+			{
+				return TryResolveValue(sourceValue, out resolved);
+			}
+
+			if (producer.Operation is not
+				(M68kMachineOperation.Add or M68kMachineOperation.Or) ||
+				producer.Uses is not [var left, var right] ||
+				(producer.Operation == M68kMachineOperation.Add &&
+				 producer.SourceInstruction?.OpCode != OpCodes.Add))
+			{
+				return false;
+			}
+
+			bool IsOne(int candidate)
+			{
+				if (!producers.TryGetValue(candidate, out var constant) ||
+					constant.Operation != M68kMachineOperation.Constant ||
+					constant.ConstantValue is not { } valueConstant ||
+					!valueConstant.TryGetIntegral(out var integral) ||
+					integral != 1)
+				{
+					return false;
+				}
+				chain.Add(constant.Id);
+				return true;
+			}
+
+			var addressValue = IsOne(right)
+				? left
+				: IsOne(left)
+					? right
+					: -1;
+			if (addressValue < 0 ||
+				!TryResolveValue(addressValue, out var address) ||
+				address.Addend != 0)
+			{
+				return false;
+			}
+			resolved = address with { Addend = 1 };
+			return true;
+		}
+
+		if (!TryResolveValue(returnValue, out target) ||
+			chain.Count != block.Instructions.Count)
+		{
+			return false;
+		}
+		valueRegister = allocated.Allocation.Registers[returnValue].Register;
+		if (valueRegister > M68kRegister.D7)
+			return false;
+		instructionIds = chain.ToArray();
+		return true;
+	}
+
+	private bool IsTransparentFunctionAddressTransport(
+		CilMethod method,
+		M68kMachineInstruction instruction)
+	{
+		if (instruction.Operation is
+			M68kMachineOperation.Copy or M68kMachineOperation.Convert)
+		{
+			return true;
+		}
+		if (instruction.Operation != M68kMachineOperation.Call)
+			return false;
+
+		var target = ResolveAllocatedMachineMethod(method, instruction);
+		return target.ImportName is
+			"intrinsic:aptr-from-pointer" or
+			"intrinsic:aptr-to-uint32";
+	}
+
+	private void EmitAllocatedFunctionAddressSwitch(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction,
+		AllocatedFunctionAddressSwitchPlan plan)
+	{
+		if (!allocated.InstructionLiveness.LiveAfter.TryGetValue(
+			instruction.Id,
+			out var liveValues))
+		{
+			throw new InvalidOperationException(
+				"Function-address switch has no liveness information.");
+		}
+
+		var occupied = 1u << (int)M68kRegister.A0;
+		foreach (var value in liveValues)
+		{
+			if (!allocated.Allocation.Registers.TryGetValue(value, out var location))
+				continue;
+			occupied |= 1u << (int)location.Register;
+			if (location.IsPair)
+				occupied |= 1u << ((int)location.Register + 1);
+		}
+		var scratch = new[]
+			{
+				M68kRegister.A1, M68kRegister.A2, M68kRegister.A3,
+				M68kRegister.A4, M68kRegister.A5, M68kRegister.A6,
+			}
+			.FirstOrDefault(candidate =>
+				(candidate == M68kRegister.A1 ||
+				 allocated.Frame.CalleeSavedRegisters.Contains(candidate)) &&
+				(occupied & (1u << (int)candidate)) == 0,
+				(M68kRegister)(-1));
+		if ((int)scratch < 0)
+		{
+			throw new InvalidOperationException(
+				"Prepared function-address switch has no address scratch register.");
+		}
+
+		var fallback = UniqueLabel("allocated-switch-function-address-default");
+		var complete = UniqueLabel("allocated-switch-function-address-complete");
+		var selector = (int)plan.Selector;
+		var destination = (int)plan.ValueRegister;
+		var address = (int)scratch - (int)M68kRegister.A0;
+		_assembler.EmitWord((ushort)(0x4A80 | selector)); // TST.L Dselector
+		_assembler.EmitBranch(M68kCondition.Minus, fallback);
+		_assembler.EmitWord((ushort)(0x0C80 | selector)); // CMPI.L #count,Dselector
+		_assembler.EmitLong((uint)plan.Targets.Count);
+		_assembler.EmitBranch(M68kCondition.CarryClear, fallback);
+		_assembler.EmitWord((ushort)(0xD080 | (selector << 9) | selector));
+		_assembler.EmitWord((ushort)(0xD080 | (selector << 9) | selector));
+		_assembler.EmitWord((ushort)(0x41F9 | (address << 9))); // LEA table,Ascratch
+		_assembler.EmitAddress(plan.TableLabel);
+		_assembler.EmitWord((ushort)(0x2030 | (destination << 9) | address));
+		_assembler.EmitWord((ushort)(selector << 12)); // MOVE.L (Ascratch,Dselector.W),Dvalue
+		_assembler.EmitBranch(M68kCondition.True, complete);
+		_assembler.Mark(fallback);
+		EmitAllocatedAddress(plan.FallthroughTarget, plan.ValueRegister);
+		_assembler.Mark(complete);
+		EmitAllocatedMove(
+			plan.ValueRegister,
+			M68kRegister.A0,
+			M68kMachineValueWidth.Long);
+		EmitAllocatedFrameTeardown(method, allocated);
+		_assembler.EmitWord(0x4E75); // RTS
+		_switchAddressTables.Add(new SwitchAddressTable(
+			plan.TableLabel,
+			plan.Targets.Select(static target => target.Label).ToArray(),
+			plan.Targets.Select(static target => target.Addend).ToArray()));
+	}
+
+	private bool TryEmitAllocatedSwitchAddressTable(
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction,
+		M68kRegister selector,
+		IReadOnlyList<int> targets,
+		int fallthrough,
+		IReadOnlyDictionary<int, string> edgeLabels)
+	{
+		if (targets.Count is < 8 or > 8192 || selector > M68kRegister.D7 ||
+			!allocated.InstructionLiveness.LiveAfter.TryGetValue(instruction.Id,
+				out var liveValues) || liveValues.Contains(instruction.Uses[0]))
+		{
+			return false;
+		}
+
+		var occupied = 0u;
+		foreach (var value in liveValues)
+		{
+			if (!allocated.Allocation.Registers.TryGetValue(value, out var location))
+				continue;
+			occupied |= 1u << (int)location.Register;
+			if (location.IsPair)
+				occupied |= 1u << ((int)location.Register + 1);
+		}
+		var scratch = new[]
+			{
+				M68kRegister.A0, M68kRegister.A1, M68kRegister.A2,
+				M68kRegister.A3, M68kRegister.A4, M68kRegister.A5,
+				M68kRegister.A6,
+			}
+			.FirstOrDefault(candidate =>
+				(candidate <= M68kRegister.A1 ||
+				 allocated.Frame.CalleeSavedRegisters.Contains(candidate)) &&
+				(occupied & (1u << (int)candidate)) == 0,
+				(M68kRegister)(-1));
+		if ((int)scratch < 0)
+			return false;
+
+		var table = UniqueLabel("allocated-switch-address-table");
+		var data = (int)selector;
+		var address = (int)scratch - (int)M68kRegister.A0;
+		_assembler.EmitWord((ushort)(0x4A80 | data)); // TST.L Dselector
+		_assembler.EmitBranch(M68kCondition.Minus, edgeLabels[fallthrough]);
+		_assembler.EmitWord((ushort)(0x0C80 | data)); // CMPI.L #count,Dselector
+		_assembler.EmitLong((uint)targets.Count);
+		_assembler.EmitBranch(M68kCondition.CarryClear,
+			edgeLabels[fallthrough]);
+		_assembler.EmitWord((ushort)(0xD080 | (data << 9) | data));
+		_assembler.EmitWord((ushort)(0xD080 | (data << 9) | data));
+		_assembler.EmitWord((ushort)(0x41F9 | (address << 9))); // LEA table,Ascratch
+		_assembler.EmitAddress(table);
+		_assembler.EmitWord((ushort)(0x2070 | (address << 9) | address));
+		_assembler.EmitWord((ushort)(data << 12)); // (Ascratch,Dselector.W)
+		_assembler.EmitWord((ushort)(0x4ED0 | address)); // JMP (Ascratch)
+		_switchAddressTables.Add(new SwitchAddressTable(table,
+			targets.Select(target => edgeLabels[target]).ToArray()));
+		return true;
 	}
 
 	private M68kCondition AllocatedConditionProducerCondition(

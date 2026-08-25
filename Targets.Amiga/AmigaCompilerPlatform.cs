@@ -33,6 +33,7 @@ public static class AmigaLibraryBaseSymbols
 			["asl"] = "ASL",
 			["bsdsocket"] = "BsdSocket",
 			["camd"] = "CAMD",
+			["cgxvideo"] = "CgxVideo",
 			["bullet"] = "Bullet",
 			["commodities"] = "Commodities",
 			["cybergraphics"] = "CyberGraphics",
@@ -62,6 +63,7 @@ public static class AmigaLibraryBaseSymbols
 			["rexxsupport"] = "RexxSupport",
 			["rexxsyslib"] = "RexxSysLib",
 			["timerdevice"] = "TimerDevice",
+			["ttengine"] = "TTEngine",
 			["utility"] = "Utility",
 			["version"] = "Version",
 			["workbench"] = "Workbench",
@@ -472,6 +474,13 @@ public static class AmigaM68kCompiler
 			typeof(AmigaM68kCompiler).Assembly.Location);
 		if (targetDirectory is not null)
 		{
+			// Portable applications such as ConsoleIO do not reference the SDK
+			// directly. The runtime bodies still expose SDK value types (APTR,
+			// BPTR, and friends), so make the target's SDK available when the
+			// input directory does not carry a copy.
+			AddManagedAssembly(
+				paths,
+				Path.Combine(targetDirectory, "CopperSharp.Sdk.Amiga.dll"));
 			AddManagedAssembly(
 				paths,
 				Path.Combine(targetDirectory, "CopperSharp.Runtime.AmigaPal.dll"));
@@ -509,7 +518,11 @@ public static class AmigaM68kCompiler
 
 	private static void AddManagedAssembly(ICollection<string> paths, string path)
 	{
-		if (!File.Exists(path) || paths.Contains(path, StringComparer.OrdinalIgnoreCase))
+		if (!File.Exists(path) || paths.Any(existing =>
+				string.Equals(
+					Path.GetFileName(existing),
+					Path.GetFileName(path),
+					StringComparison.OrdinalIgnoreCase)))
 		{
 			return;
 		}

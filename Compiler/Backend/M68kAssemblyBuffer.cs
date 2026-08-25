@@ -389,6 +389,10 @@ internal readonly record struct BranchFixup(
 	string Target,
 	bool CanRelaxToShort = true);
 
-internal readonly record struct AddressFixup(int Offset, string Target, bool External);
+internal readonly record struct AddressFixup(
+	int Offset,
+	string Target,
+	bool External,
+	int Addend = 0);
 
 internal readonly record struct PcRelativeFixup(int DisplacementOffset, string Target);

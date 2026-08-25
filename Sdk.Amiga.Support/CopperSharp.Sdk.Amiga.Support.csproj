@@ -17,6 +17,9 @@
     <Compile Include="..\Sdk.Amiga\BOOPSI\GuestCodecs.cs" Link="BOOPSI\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\DOS\GuestCodecs.cs" Link="DOS\GuestCodecs.cs" />
 	<Compile Include="..\Sdk.Amiga\Exec\GuestCodecs.cs" Link="Exec\GuestCodecs.cs" />
+	<Compile Include="..\Sdk.Amiga\TimerDevice\GuestCodecs.cs" Link="TimerDevice\GuestCodecs.cs" />
+	<Compile Include="..\Sdk.Amiga\AHI\GuestCodecs.cs" Link="AHI\GuestCodecs.cs" />
+	<Compile Include="..\Sdk.Amiga\AsyncIO\GuestCodecs.cs" Link="AsyncIO\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\Layers\GuestCodecs.cs" Link="Layers\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\MUIMaster\GuestCodecs.cs" Link="MUIMaster\GuestCodecs.cs" />
     <Compile Include="..\Sdk.Amiga\Utility\GuestCodecs.cs" Link="Utility\GuestCodecs.cs" />

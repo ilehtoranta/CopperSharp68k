@@ -3124,12 +3124,20 @@ internal static class CilMachineIrBuilder
 			argumentIndex < argumentRegisters.Count &&
 			argumentRegisters[argumentIndex] is { } register)
 		{
+			var usesNarrowAddressTransport =
+				register >= M68kRegister.A0 &&
+				value.Width is
+					M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word;
 			var incoming = function.CreateValue(
-				value.Kind,
-				value.Width,
+				usesNarrowAddressTransport
+					? CilStackValueKind.Int32
+					: value.Kind,
+				usesNarrowAddressTransport
+					? M68kMachineValueWidth.Long
+					: value.Width,
 				M68kRegisterSet.From(register),
 				precoloredRegister: register,
-				isGcReference: value.IsGcReference,
+				isGcReference: !usesNarrowAddressTransport && value.IsGcReference,
 				spillWeight: value.SpillWeight);
 			entryBlock.Instructions.InsertRange(
 				0,
@@ -3143,7 +3151,8 @@ internal static class CilMachineIrBuilder
 						M68kMachineOperation.Copy,
 						entryBlock.StartIlOffset,
 						uses: [incoming.Id],
-						definitions: [value.Id])
+						definitions: [value.Id],
+						allowCopyCoalescing: !usesNarrowAddressTransport)
 				]);
 		}
 		else
@@ -4755,12 +4764,21 @@ internal static class CilMachineIrBuilder
 				continue;
 			}
 			var source = function.Values[constrainedUses[index]];
+			var usesNarrowAddressTransport =
+				constraint.FixedRegister is { } fixedRegister &&
+				fixedRegister >= M68kRegister.A0 &&
+				source.Width is
+					M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word;
 			var constrainedValue = function.CreateValue(
-				source.Kind,
-				source.Width,
+				usesNarrowAddressTransport
+					? CilStackValueKind.Int32
+					: source.Kind,
+				usesNarrowAddressTransport
+					? M68kMachineValueWidth.Long
+					: source.Width,
 				constraint.Registers,
 				precoloredRegister: constraint.FixedRegister,
-				isGcReference: source.IsGcReference,
+				isGcReference: !usesNarrowAddressTransport && source.IsGcReference,
 				spillWeight: source.SpillWeight);
 			block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.Copy,
@@ -4768,7 +4786,8 @@ internal static class CilMachineIrBuilder
 				uses: [source.Id],
 				definitions: [constrainedValue.Id],
 				sourceInstruction: instruction,
-				allowCopyCoalescing: constraint.AllowCopyCoalescing));
+				allowCopyCoalescing:
+					constraint.AllowCopyCoalescing && !usesNarrowAddressTransport));
 			constrainedUses[index] = constrainedValue.Id;
 		}
 
@@ -4803,6 +4822,8 @@ internal static class CilMachineIrBuilder
 				target.ImportName is
 				"intrinsic:copperstart-probe-cpu" or
 				"intrinsic:copperstart-disable-rom-overlay" or
+				"intrinsic:copperstart-disable-interrupts" or
+				"intrinsic:copperstart-restore-interrupts" or
 				"intrinsic:copperstart-stop" or
 				"intrinsic:copperstart-bootstrap-stack" or
 				"intrinsic:string-equality" or
@@ -5273,6 +5294,10 @@ internal static class CilMachineIrBuilder
 		bool hasInstanceArgument,
 		IReadOnlySet<int> forcedStackUses)
 	{
+		if (target.ImportName == "intrinsic:copperstart-restore-interrupts")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.D0)];
+		}
 		if (target.ImportName?.StartsWith(
 				"intrinsic:amiga-library-base-set:",
 				StringComparison.Ordinal) == true)
@@ -5689,6 +5714,13 @@ internal static class CilMachineIrBuilder
 					transparentResult.Add(CallArgumentConstraint.Fixed(
 						(M68kRegister)((int)M68kRegister.D0 + nextTransparentData++)));
 				}
+				else if (parameter.Kind != CilTypeKind.GenericParameter &&
+					parameter.Size != 8 &&
+					nextTransparentAddress < 2)
+				{
+					transparentResult.Add(CallArgumentConstraint.Fixed(
+						(M68kRegister)((int)M68kRegister.A0 + nextTransparentAddress++)));
+				}
 				else
 				{
 					transparentResult.Add(CallArgumentConstraint.Stack);
@@ -5754,6 +5786,13 @@ internal static class CilMachineIrBuilder
 				result.Add(CallArgumentConstraint.Fixed(
 					(M68kRegister)((int)M68kRegister.D0 + nextData++)));
 			}
+			else if (parameter.Kind != CilTypeKind.GenericParameter &&
+				parameter.Size != 8 &&
+				nextAddress < 2)
+			{
+				result.Add(CallArgumentConstraint.Fixed(
+					(M68kRegister)((int)M68kRegister.A0 + nextAddress++)));
+			}
 			else
 			{
 				result.Add(CallArgumentConstraint.Stack);
@@ -5766,6 +5805,16 @@ internal static class CilMachineIrBuilder
 		MethodReference target,
 		M68kMachineValue result)
 	{
+		if (target.ImportName is
+			"intrinsic:bptr-address" or
+			"intrinsic:bptr-from-address")
+		{
+			// BPTR conversion is implemented by two long shifts.  The converted
+			// bits may subsequently be copied to either register bank, but the
+			// intrinsic itself must execute in a data register: 68000 shift
+			// instructions cannot target an address register.
+			return M68kRegister.D0;
+		}
 		if (target.Definition?.ExternalCall is { } externalCall)
 		{
 			return externalCall.Abi.ReturnRegister;
@@ -5779,7 +5828,8 @@ internal static class CilMachineIrBuilder
 		{
 			return M68kRegister.D0;
 		}
-		return result.Kind is
+		return IsAddressType(target.Definition?.Signature.ReturnType ??
+			target.Signature.ReturnType) || result.Kind is
 			CilStackValueKind.Reference or
 			CilStackValueKind.ManagedPointer
 				? M68kRegister.A0
@@ -5791,7 +5841,13 @@ internal static class CilMachineIrBuilder
 			CilTypeKind.ManagedReference or
 			CilTypeKind.ManagedPointer or
 			CilTypeKind.UnmanagedPointer or
-			CilTypeKind.FunctionPointer;
+			CilTypeKind.FunctionPointer ||
+		type.Kind == CilTypeKind.ValueType &&
+		type.DisplayName is
+			"Amiga.APTR" or "Amiga.BPTR" or
+			"Amiga.STRPTR" or "Amiga.CONST_STRPTR" or
+			"Amiga.WSTRPTR" or "Amiga.CONST_WSTRPTR" or
+			"Amiga.CString";
 
 	private static bool IsAddressBaseIntrinsic(string? name) =>
 		name == "intrinsic:runtime-nullable-integral-hash:32" ||

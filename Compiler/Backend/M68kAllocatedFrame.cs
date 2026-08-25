@@ -13,7 +13,6 @@ internal sealed record M68kAllocatedFramePlan(
 	IReadOnlySet<int> GcHomeOffsets,
 	int? ActiveExceptionOffset,
 	int? PendingActionOffset,
-	int? LeaveContinuationOffset,
 	int? ParallelCopyTemporaryOffset,
 	IReadOnlyList<M68kRegister> CalleeSavedRegisters,
 	int FrameBytes);
@@ -30,14 +29,11 @@ internal static class M68kAllocatedFramePlanner
 		var nextOffset = 0;
 		int? activeExceptionOffset = null;
 		int? pendingActionOffset = null;
-		int? leaveContinuationOffset = null;
 		if (function.HasExceptionHandlers)
 		{
 			activeExceptionOffset = nextOffset;
 			nextOffset += 4;
 			pendingActionOffset = nextOffset;
-			nextOffset += 4;
-			leaveContinuationOffset = nextOffset;
 			nextOffset += 4;
 		}
 		var localOffsets = new Dictionary<int, int>();
@@ -140,7 +136,6 @@ internal static class M68kAllocatedFramePlanner
 			gcHomeOffsets,
 			activeExceptionOffset,
 			pendingActionOffset,
-			leaveContinuationOffset,
 			parallelCopyTemporaryOffset,
 			calleeSaved,
 			Align(nextOffset, 4));

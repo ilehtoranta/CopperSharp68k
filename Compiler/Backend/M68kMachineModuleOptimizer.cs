@@ -268,13 +268,33 @@ internal static class M68kMachineModuleOptimizer
 				{
 					continue;
 				}
+				if (TryRewriteExactGuestMemoryWrapperCall(
+						callerMethod,
+						caller,
+						block,
+						index,
+						targetMethod,
+						target,
+						call,
+						logicalCall,
+						module))
+				{
+					count++;
+					continue;
+				}
 				var aggressive = (targetMethod.ImplAttributes &
 					MethodImplAttributes.AggressiveInlining) != 0;
+				var trivialValueTypeConstructor =
+					IsTrivialValueTypeConstructor(
+						targetMethod,
+						logicalCall,
+						module);
 				if (!TryGetScalarInlineBody(
 						target,
 						logicalCall,
 						module,
 						aggressive,
+						trivialValueTypeConstructor,
 						out var body,
 						out var arguments,
 						out var returnValues,
@@ -283,6 +303,7 @@ internal static class M68kMachineModuleOptimizer
 					continue;
 				}
 				if (logicalCall.DispatchKind == M68kMachineCallDispatchKind.Constrained &&
+					!trivialValueTypeConstructor &&
 					(!guestMemoryIntrinsicWrapper ||
 					 !M68kMachineInliningPolicy.AllowsGuestMemoryWrapper(callerMethod)))
 				{
@@ -333,8 +354,13 @@ internal static class M68kMachineModuleOptimizer
 								}],
 							cpu,
 							block.LoopDepth));
-				var forceIntrinsicWrapper = guestMemoryIntrinsicWrapper;
-				if (!forceIntrinsicWrapper &&
+				// The raw constructor body still carries incoming-ABI copies. Once
+				// cloned, the local optimizer coalesces those copies around the one
+				// field store. Counting them as lasting growth would retain a BSR/RTS
+				// pair for a strictly smaller, faster local store.
+				var forceInline = guestMemoryIntrinsicWrapper ||
+					trivialValueTypeConstructor;
+				if (!forceInline &&
 					(delta > 0 ||
 					 !M68kTargetCostModel.Accept(beforeCost, afterCost, cpu)))
 				{
@@ -379,11 +405,510 @@ internal static class M68kMachineModuleOptimizer
 		return count;
 	}
 
+	private static bool TryRewriteExactGuestMemoryWrapperCall(
+		CilMethod callerMethod,
+		M68kMachineFunction caller,
+		M68kMachineBlock block,
+		int callIndex,
+		CilMethod targetMethod,
+		M68kMachineFunction target,
+		M68kMachineInstruction call,
+		M68kMachineLogicalCall wrapperCall,
+		CompilationModule module)
+	{
+		if (target.ExceptionRegions.Count != 0 || target.HasDynamicStackAllocation ||
+			!TryGetStraightLineInstructions(target, out var instructions))
+		{
+			return false;
+		}
+
+		if (instructions.LastOrDefault() is not
+			{
+				Operation: M68kMachineOperation.Return
+			} returnInstruction ||
+			instructions.Count(static instruction =>
+				instruction.Operation == M68kMachineOperation.Return) != 1)
+		{
+			return false;
+		}
+
+		var intrinsicCandidates = instructions.Where(instruction =>
+			IsGuestMemoryIntrinsic(instruction, module)).ToArray();
+		if (intrinsicCandidates is not [var intrinsic] ||
+			intrinsic.LogicalCall is not
+			{
+				DispatchKind: M68kMachineCallDispatchKind.Import,
+				ResolvedTargets.Length: 0,
+				RequiresNullCheck: false
+			} intrinsicCall ||
+			intrinsic.Immediate is not null ||
+			intrinsic.Uses.Length != intrinsicCall.ArgumentValueIds.Length ||
+			intrinsic.Definitions.Length != intrinsicCall.ResultValueIds.Length ||
+			!intrinsic.Definitions.SequenceEqual(intrinsicCall.ResultValueIds) ||
+			!returnInstruction.Uses.SequenceEqual(intrinsicCall.ResultValueIds))
+		{
+			return false;
+		}
+		var instanceArgumentCount = targetMethod.Signature.Header.IsInstance ? 1 : 0;
+		var parameterCount = targetMethod.Signature.ParameterTypes.IsDefault
+			? 0
+			: targetMethod.Signature.ParameterTypes.Length;
+		if (intrinsicCall.ArgumentValueIds.Length != parameterCount ||
+			wrapperCall.ArgumentValueIds.Length != parameterCount + instanceArgumentCount ||
+			call.Uses.Length != wrapperCall.ArgumentValueIds.Length ||
+			wrapperCall.ResultValueIds.Length != intrinsicCall.ResultValueIds.Length ||
+			call.Definitions.Length != intrinsic.Definitions.Length)
+		{
+			return false;
+		}
+
+		var argumentValues = new Dictionary<int, int>();
+		foreach (var argument in instructions.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.Argument))
+		{
+			if (argument.ArgumentIndex is not { } argumentIndex ||
+				argument.Uses.Length != 0 ||
+				argument.Definitions is not [var definition] ||
+				!argumentValues.TryAdd(argumentIndex, definition))
+			{
+				return false;
+			}
+		}
+
+		var admittedInstructions = new HashSet<int> { intrinsic.Id };
+		var operandPlans = new List<(
+			int WrapperArgumentIndex,
+			IReadOnlyList<M68kMachineInstruction> ArgumentCopies,
+			int PhysicalUse,
+			M68kMachineInstruction? StagingCopy)>();
+		for (var parameterIndex = 0; parameterIndex < parameterCount; parameterIndex++)
+		{
+			var wrapperArgumentIndex = instanceArgumentCount + parameterIndex;
+			var argumentValue = intrinsicCall.ArgumentValueIds[parameterIndex];
+			if (!TryTraceExactArgument(
+					argumentValue,
+					wrapperArgumentIndex,
+					argumentValues,
+					instructions,
+					admittedInstructions,
+					out var argumentDefinition,
+					out var argumentCopies))
+			{
+				return false;
+			}
+
+			var physicalUse = intrinsic.Uses[parameterIndex];
+			M68kMachineInstruction? stagingCopy = null;
+			if (physicalUse != argumentValue)
+			{
+				var stagingCopies = instructions.Where(instruction =>
+					instruction.Definitions.Contains(physicalUse)).ToArray();
+				if (stagingCopies is not [var candidateStagingCopy] ||
+					!IsExactCopy(candidateStagingCopy) ||
+					candidateStagingCopy.Uses is not [var source] ||
+					source != argumentValue ||
+					candidateStagingCopy.Definitions is not [var definition] ||
+					definition != physicalUse)
+				{
+					return false;
+				}
+				stagingCopy = candidateStagingCopy;
+				if (!admittedInstructions.Add(stagingCopy.Id))
+				{
+					return false;
+				}
+			}
+
+			if (!HaveCompatibleRepresentation(
+					caller.Values[wrapperCall.ArgumentValueIds[wrapperArgumentIndex]],
+					target.Values[argumentDefinition]))
+			{
+				return false;
+			}
+			operandPlans.Add((
+				wrapperArgumentIndex,
+				argumentCopies,
+				physicalUse,
+				stagingCopy));
+		}
+		for (var resultIndex = 0; resultIndex < intrinsic.Definitions.Length;
+			resultIndex++)
+		{
+			if (!CanSubstituteMachineValue(
+					caller.Values[call.Definitions[resultIndex]],
+					target.Values[intrinsic.Definitions[resultIndex]]))
+			{
+				return false;
+			}
+		}
+
+		if (instructions.Any(instruction =>
+			instruction.Operation is not M68kMachineOperation.Argument and not
+				M68kMachineOperation.Return &&
+			!admittedInstructions.Contains(instruction.Id)))
+		{
+			return false;
+		}
+		var intrinsicOrigin = (intrinsic.Origin ??
+			target.OriginAt(intrinsic.IlOffset, intrinsic.SourceInstruction))?
+			.AtInlineSite(callerMethod, call.Origin!.SourceInstruction);
+		if (intrinsicOrigin is null)
+		{
+			return false;
+		}
+		if (operandPlans.Any(operand =>
+			operand.StagingCopy is null && operand.ArgumentCopies.Count == 0 &&
+			!CanSubstituteMachineValue(
+				caller.Values[wrapperCall.ArgumentValueIds[
+					operand.WrapperArgumentIndex]],
+				target.Values[operand.PhysicalUse]) &&
+			!CanSubstituteMachineValue(
+				caller.Values[call.Uses[operand.WrapperArgumentIndex]],
+				target.Values[operand.PhysicalUse])))
+		{
+			return false;
+		}
+		var mappedPhysicalUses = ImmutableArray.CreateBuilder<int>(parameterCount);
+		var mappedArguments = ImmutableArray.CreateBuilder<int>(parameterCount);
+		var insertedCopies = new List<M68kMachineInstruction>();
+		var insertedValues = new List<int>();
+		var copyOrigins = new Dictionary<int, M68kMachineInstructionOrigin>();
+		foreach (var sourceCopy in operandPlans
+			.SelectMany(static operand => operand.ArgumentCopies.Concat(
+				operand.StagingCopy is null ? [] : [operand.StagingCopy]))
+			.DistinctBy(static sourceCopy => sourceCopy.Id))
+		{
+			var copyOrigin = (sourceCopy.Origin ?? target.OriginAt(
+				sourceCopy.IlOffset,
+					sourceCopy.SourceInstruction))?.AtInlineSite(
+					callerMethod,
+					call.Origin!.SourceInstruction);
+			if (copyOrigin is null)
+			{
+				return false;
+			}
+			copyOrigins.Add(sourceCopy.Id, copyOrigin);
+		}
+		foreach (var operand in operandPlans)
+		{
+			var mappedArgument = wrapperCall.ArgumentValueIds[
+				operand.WrapperArgumentIndex];
+			foreach (var argumentCopy in operand.ArgumentCopies)
+			{
+				mappedArgument = CloneCopy(argumentCopy, mappedArgument);
+			}
+			mappedArguments.Add(mappedArgument);
+
+			var existingPhysicalUse = call.Uses[operand.WrapperArgumentIndex];
+			var targetPhysicalValue = target.Values[operand.PhysicalUse];
+			if (operand.StagingCopy is not { } sourceStaging)
+			{
+				if (CanSubstituteMachineValue(
+					caller.Values[mappedArgument],
+					targetPhysicalValue))
+				{
+					mappedPhysicalUses.Add(mappedArgument);
+					continue;
+				}
+				if (operand.ArgumentCopies.Count == 0 &&
+					CanSubstituteMachineValue(
+						caller.Values[existingPhysicalUse],
+						targetPhysicalValue))
+				{
+					mappedPhysicalUses.Add(existingPhysicalUse);
+					continue;
+				}
+				// A non-empty exact copy chain ends in ArgumentValue, which is
+				// also PhysicalUse when the intrinsic has no separate staging
+				// copy. The cloned value therefore has the target constraint.
+				mappedPhysicalUses.Add(mappedArgument);
+				continue;
+			}
+			mappedPhysicalUses.Add(CloneCopy(sourceStaging, mappedArgument));
+		}
+		var mappedCall = intrinsicCall with
+		{
+			ArgumentValueIds = mappedArguments.MoveToImmutable(),
+			ResultValueIds = wrapperCall.ResultValueIds,
+			Origin = intrinsicOrigin
+		};
+		var replacement = call with
+		{
+			Operation = intrinsic.Operation,
+			Uses = mappedPhysicalUses.MoveToImmutable(),
+			Clobbers = intrinsic.Clobbers,
+			MemoryEffect = intrinsic.MemoryEffect,
+			IsSafepoint = intrinsic.IsSafepoint,
+			MayThrow = intrinsic.MayThrow,
+			ProducesConditionCodes = intrinsic.ProducesConditionCodes,
+			ConsumesConditionCodes = intrinsic.ConsumesConditionCodes,
+			SourceInstruction = intrinsic.SourceInstruction,
+			SpillSlotIndex = intrinsic.SpillSlotIndex,
+			ArgumentIndex = intrinsic.ArgumentIndex,
+			StackVarargsRegister = intrinsic.StackVarargsRegister,
+			Immediate = intrinsic.Immediate,
+			AllowCopyCoalescing = intrinsic.AllowCopyCoalescing,
+			TransportsManagedByrefOwner = intrinsic.TransportsManagedByrefOwner,
+			BranchCondition = intrinsic.BranchCondition,
+			RequiresLiveCallerFrame = intrinsic.RequiresLiveCallerFrame,
+			ConstantValue = intrinsic.ConstantValue,
+			Origin = intrinsicOrigin,
+			LogicalCall = mappedCall
+		};
+		block.Instructions.InsertRange(callIndex, insertedCopies);
+		block.Instructions[callIndex + insertedCopies.Count] = replacement;
+		try
+		{
+			M68kMachineIrVerifier.Verify(caller);
+		}
+		catch (InvalidOperationException)
+		{
+			block.Instructions.RemoveRange(callIndex, insertedCopies.Count);
+			block.Instructions[callIndex] = call;
+			foreach (var value in insertedValues)
+			{
+				caller.ManagedByrefTypes.Remove(value);
+				caller.Values.Remove(value);
+			}
+			return false;
+		}
+		return true;
+
+		int CloneCopy(M68kMachineInstruction sourceCopy, int sourceValue)
+		{
+			var targetValue = target.Values[sourceCopy.Definitions[0]];
+			var clonedValue = caller.CreateValue(
+				targetValue.Kind,
+				targetValue.Width,
+				targetValue.AllowedRegisters,
+				targetValue.PrecoloredRegister,
+				targetValue.IsGcReference,
+				targetValue.IsRematerializable,
+				targetValue.SpillWeight,
+				targetValue.IsSpillTemporary);
+			insertedValues.Add(clonedValue.Id);
+			if (target.ManagedByrefTypes.TryGetValue(
+				targetValue.Id,
+				out var managedByrefType))
+			{
+				caller.ManagedByrefTypes.Add(clonedValue.Id, managedByrefType);
+			}
+			insertedCopies.Add(caller.CreateInstruction(
+				sourceCopy.Operation,
+				call.IlOffset,
+				uses: [sourceValue],
+				definitions: [clonedValue.Id],
+				clobbers: sourceCopy.Clobbers,
+				memoryEffect: sourceCopy.MemoryEffect,
+				isSafepoint: sourceCopy.IsSafepoint,
+				mayThrow: sourceCopy.MayThrow,
+				producesConditionCodes: sourceCopy.ProducesConditionCodes,
+				consumesConditionCodes: sourceCopy.ConsumesConditionCodes,
+				sourceInstruction: sourceCopy.SourceInstruction,
+				spillSlotIndex: sourceCopy.SpillSlotIndex,
+				argumentIndex: sourceCopy.ArgumentIndex,
+				stackVarargsRegister: sourceCopy.StackVarargsRegister,
+				immediate: sourceCopy.Immediate,
+				allowCopyCoalescing: sourceCopy.AllowCopyCoalescing,
+				transportsManagedByrefOwner:
+					sourceCopy.TransportsManagedByrefOwner,
+				branchCondition: sourceCopy.BranchCondition,
+				requiresLiveCallerFrame: sourceCopy.RequiresLiveCallerFrame,
+				constantValue: sourceCopy.ConstantValue,
+				origin: copyOrigins[sourceCopy.Id]));
+			return clonedValue.Id;
+		}
+
+		static bool CanSubstituteMachineValue(
+			M68kMachineValue replacement,
+			M68kMachineValue original) =>
+			HaveCompatibleRepresentation(replacement, original) &&
+			replacement.AllowedRegisters.Except(original.AllowedRegisters).IsEmpty;
+
+		static bool HaveCompatibleRepresentation(
+			M68kMachineValue replacement,
+			M68kMachineValue original) =>
+			replacement.Kind == original.Kind &&
+			replacement.Width == original.Width &&
+			replacement.IsGcReference == original.IsGcReference;
+
+		static bool TryTraceExactArgument(
+			int value,
+			int expectedArgumentIndex,
+			IReadOnlyDictionary<int, int> argumentValues,
+			IReadOnlyList<M68kMachineInstruction> instructions,
+			ISet<int> admittedInstructions,
+			out int argumentDefinition,
+			out IReadOnlyList<M68kMachineInstruction> argumentCopies)
+		{
+			argumentDefinition = -1;
+			argumentCopies = [];
+			var copies = new List<M68kMachineInstruction>();
+			var visited = new HashSet<int>();
+			while (visited.Add(value))
+			{
+				if (argumentValues.TryGetValue(expectedArgumentIndex, out var argument) &&
+					argument == value)
+				{
+					argumentDefinition = argument;
+					copies.Reverse();
+					argumentCopies = copies;
+					return true;
+				}
+				var definitions = instructions.Where(instruction =>
+					instruction.Definitions.Contains(value)).ToArray();
+				if (definitions is not [var copy] ||
+					!IsExactCopy(copy) ||
+					copy.Uses is not [var source])
+				{
+					return false;
+				}
+				admittedInstructions.Add(copy.Id);
+				copies.Add(copy);
+				value = source;
+			}
+			return false;
+		}
+
+		static bool IsExactCopy(M68kMachineInstruction instruction) =>
+			instruction.Operation == M68kMachineOperation.Copy &&
+			instruction.Uses.Length == 1 &&
+			instruction.Definitions.Length == 1 &&
+			instruction.MemoryEffect == M68kMachineMemoryEffect.None &&
+			!instruction.IsSafepoint && !instruction.MayThrow &&
+			!instruction.ProducesConditionCodes &&
+			!instruction.ConsumesConditionCodes &&
+			!instruction.RequiresLiveCallerFrame &&
+			instruction.LogicalCall is null;
+
+		static bool TryGetStraightLineInstructions(
+			M68kMachineFunction function,
+			out IReadOnlyList<M68kMachineInstruction> instructions)
+		{
+			instructions = [];
+			if (function.Blocks.Count == 0 ||
+				function.Blocks.Any(static candidate =>
+					candidate.Phis.Count != 0 || candidate.IsExceptionEntry ||
+					candidate.PredecessorEdges.Any(static edge =>
+						edge.Kind != M68kMachineEdgeKind.Normal) ||
+					candidate.SuccessorEdges.Any(static edge =>
+						edge.Kind != M68kMachineEdgeKind.Normal) ||
+					candidate.Successors.Count > 1))
+			{
+				return false;
+			}
+
+			var blocks = function.Blocks.ToDictionary(static candidate => candidate.Id);
+			if (!blocks.TryGetValue(function.EntryBlockId, out var current))
+			{
+				return false;
+			}
+			var visited = new HashSet<int>();
+			var ordered = new List<M68kMachineInstruction>();
+			int? predecessor = null;
+			while (visited.Add(current.Id))
+			{
+				if (predecessor is null
+					? current.Predecessors.Count != 0
+					: current.Predecessors is not [var source] ||
+					  source != predecessor.Value)
+				{
+					return false;
+				}
+				ordered.AddRange(current.Instructions);
+				if (current.Successors.Count == 0)
+				{
+					instructions = ordered;
+					return visited.Count == function.Blocks.Count;
+				}
+				predecessor = current.Id;
+				if (!blocks.TryGetValue(current.Successors[0], out current))
+				{
+					return false;
+				}
+			}
+			return false;
+		}
+	}
+
+	private static bool IsTrivialValueTypeConstructor(
+		CilMethod constructor,
+		M68kMachineLogicalCall logicalCall,
+		CompilationModule module)
+	{
+		if (constructor.Name != ".ctor" ||
+			!constructor.Signature.Header.IsInstance ||
+			!constructor.Signature.ReturnType.IsVoid ||
+			constructor.Signature.ParameterTypes is not [var parameter] ||
+			parameter.Kind != CilTypeKind.UnsignedInteger ||
+			parameter.Size != 4 ||
+			constructor.Locals.Length != 0 ||
+			constructor.ExceptionRegions.Count != 0 ||
+			module.GetMethodDeclaringType(constructor).Kind != CilTypeKind.ValueType ||
+			logicalCall.ArgumentValueIds.Length != 2 ||
+			logicalCall.ResultValueIds.Length != 0)
+		{
+			return false;
+		}
+
+		var body = constructor.Instructions
+			.Where(static instruction => instruction.OpCode != OpCodes.Nop)
+			.ToArray();
+		if (body is not [var loadThis, var loadValue, var store, var returnInstruction] ||
+			!TryGetArgumentIndex(loadThis, out var thisIndex) ||
+			thisIndex != 0 ||
+			!TryGetArgumentIndex(loadValue, out var valueIndex) ||
+			valueIndex != 1 ||
+			store.OpCode != OpCodes.Stfld ||
+			returnInstruction.OpCode != OpCodes.Ret)
+		{
+			return false;
+		}
+
+		var field = module.ResolveFieldToken(
+			(int)store.Operand!,
+			constructor,
+			store.Offset);
+		return !field.IsStatic &&
+			field.DeclaringType == constructor.DeclaringType &&
+			string.Equals(
+				field.ModuleName,
+				constructor.ModuleName,
+				StringComparison.Ordinal) &&
+			field.Type.Kind == CilTypeKind.UnsignedInteger &&
+			field.Type.Size == 4;
+
+		static bool TryGetArgumentIndex(
+			CilInstruction instruction,
+			out int index)
+		{
+			var op = instruction.OpCode;
+			if (op == OpCodes.Ldarg_0)
+			{
+				index = 0;
+				return true;
+			}
+			if (op == OpCodes.Ldarg_1)
+			{
+				index = 1;
+				return true;
+			}
+			if (op == OpCodes.Ldarg || op == OpCodes.Ldarg_S)
+			{
+				index = Convert.ToInt32(instruction.Operand);
+				return true;
+			}
+			index = default;
+			return false;
+		}
+	}
+
 	private static bool TryGetScalarInlineBody(
 		M68kMachineFunction target,
 		M68kMachineLogicalCall logicalCall,
 		CompilationModule module,
 		bool allowGuestMemoryIntrinsic,
+		bool allowTrivialValueTypeConstructor,
 		out IReadOnlyList<M68kMachineInstruction> body,
 		out IReadOnlyDictionary<int, int> arguments,
 		out ImmutableArray<int> returnValues,
@@ -425,8 +950,18 @@ internal static class M68kMachineModuleOptimizer
 			.ToArray();
 		var guestMemoryIntrinsicCount = inlineBody.Count(instruction =>
 			IsGuestMemoryIntrinsic(instruction, module));
+		var trivialConstructorStoreCount = inlineBody.Count(
+			IsTrivialValueTypeConstructorStore);
+		var isTrivialValueTypeConstructorBody =
+			allowTrivialValueTypeConstructor &&
+			trivialConstructorStoreCount == 1 &&
+			inlineBody.All(instruction =>
+				IsPureScalarInstruction(instruction) ||
+				IsTrivialValueTypeConstructorStore(instruction));
 		if (inlineBody.Any(instruction =>
 			!IsPureScalarInstruction(instruction) &&
+			!(isTrivialValueTypeConstructorBody &&
+			  IsTrivialValueTypeConstructorStore(instruction)) &&
 			!(allowGuestMemoryIntrinsic &&
 			  IsGuestMemoryIntrinsic(instruction, module))) ||
 			guestMemoryIntrinsicCount > 1 ||
@@ -460,24 +995,37 @@ internal static class M68kMachineModuleOptimizer
 			!instruction.RequiresLiveCallerFrame &&
 			instruction.LogicalCall is null;
 
-		static bool IsGuestMemoryIntrinsic(
-			M68kMachineInstruction instruction,
-			CompilationModule module)
+		static bool IsTrivialValueTypeConstructorStore(
+			M68kMachineInstruction instruction) =>
+			instruction.Operation == M68kMachineOperation.Store &&
+			instruction.SourceInstruction?.OpCode == OpCodes.Stfld &&
+			instruction.Uses.Length == 2 &&
+			instruction.Definitions.Length == 0 &&
+			instruction.MemoryEffect == M68kMachineMemoryEffect.Write &&
+			!instruction.IsSafepoint &&
+			instruction.MayThrow &&
+			!instruction.RequiresLiveCallerFrame &&
+			instruction.LogicalCall is null;
+
+	}
+
+	private static bool IsGuestMemoryIntrinsic(
+		M68kMachineInstruction instruction,
+		CompilationModule module)
+	{
+		if (instruction.Operation != M68kMachineOperation.Call ||
+			instruction.LogicalCall is null ||
+			instruction.RequiresLiveCallerFrame ||
+			instruction.Origin is not { SourceInstruction.Operand: int token } origin ||
+			origin.SourceInstruction.OpCode != OpCodes.Call &&
+			origin.SourceInstruction.OpCode != OpCodes.Callvirt)
 		{
-			if (instruction.Operation != M68kMachineOperation.Call ||
-				instruction.LogicalCall is null ||
-				instruction.RequiresLiveCallerFrame ||
-				instruction.Origin is not { SourceInstruction.Operand: int token } origin ||
-				origin.SourceInstruction.OpCode != OpCodes.Call &&
-				origin.SourceInstruction.OpCode != OpCodes.Callvirt)
-			{
-				return false;
-			}
-			var reference = module.ResolveMethodToken(
-				token, origin.SourceMethod, origin.SourceInstruction.Offset);
-			return M68kMachineInliningPolicy.IsGuestMemoryIntrinsic(
-				reference.ImportName);
+			return false;
 		}
+		var reference = module.ResolveMethodToken(
+			token, origin.SourceMethod, origin.SourceInstruction.Offset);
+		return M68kMachineInliningPolicy.IsGuestMemoryIntrinsic(
+			reference.ImportName);
 	}
 
 	private static List<M68kMachineInstruction> CloneScalarInlineBody(

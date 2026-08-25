@@ -54,6 +54,7 @@ internal sealed class CompilationModule : IDisposable
 	private readonly string _assemblyDirectory;
 	private readonly CompilationModule _root;
 	private readonly Dictionary<string, CompilationModule> _modules;
+	private readonly HashSet<string> _reachableAssemblyNames;
 	private readonly Dictionary<CilMethodIdentity, FrameworkVirtualFallback>
 		_frameworkVirtualFallbacks;
 	private readonly IReadOnlyDictionary<string, string> _managedAssemblyPaths;
@@ -75,7 +76,9 @@ internal sealed class CompilationModule : IDisposable
 			// Layout can be needed before the first pinned method body is bound.
 			// Load the verified CoreLib now so identity resolution never records a
 			// synthetic nil-handle layout for an implementation-owned type.
-			_ = GetOrLoadImplementationModule("System.Private.CoreLib");
+			_ = GetOrLoadImplementationModule(
+				"System.Private.CoreLib",
+				markReachable: false);
 		}
 	}
 
@@ -134,6 +137,8 @@ internal sealed class CompilationModule : IDisposable
 		_assemblyDirectory = Path.GetDirectoryName(_assemblyPath)!;
 		_root = root ?? this;
 		_modules = root?._modules ?? new Dictionary<string, CompilationModule>(StringComparer.Ordinal);
+		_reachableAssemblyNames = root?._reachableAssemblyNames ??
+			new HashSet<string>(StringComparer.Ordinal);
 		_frameworkVirtualFallbacks = root?._frameworkVirtualFallbacks ??
 			new Dictionary<CilMethodIdentity, FrameworkVirtualFallback>();
 		_managedAssemblyPaths = root?._managedAssemblyPaths ??
@@ -154,6 +159,10 @@ internal sealed class CompilationModule : IDisposable
 			Reader = _peReader.GetMetadataReader();
 			_assemblyName = Reader.GetString(Reader.GetAssemblyDefinition().Name);
 			_modules.TryAdd(_assemblyName, this);
+			if (root is null)
+			{
+				_reachableAssemblyNames.Add(_assemblyName);
+			}
 		}
 		catch (M68kCompilationException)
 		{
@@ -172,6 +181,42 @@ internal sealed class CompilationModule : IDisposable
 	}
 
 	public MetadataReader Reader { get; }
+
+	internal IReadOnlyList<M68kReachableAssemblyIdentity>
+		GetReachableAssemblyIdentities() =>
+		_root._reachableAssemblyNames
+			.Select(name => _root._modules[name].GetAssemblyIdentity())
+			.OrderBy(static identity => identity.Name, StringComparer.Ordinal)
+			.ThenBy(static identity => identity.Version, StringComparer.Ordinal)
+			.ThenBy(static identity => identity.Mvid)
+			.ToArray();
+
+	private M68kReachableAssemblyIdentity GetAssemblyIdentity()
+	{
+		var definition = Reader.GetAssemblyDefinition();
+		var module = Reader.GetModuleDefinition();
+		var publicKey = Reader.GetBlobBytes(definition.PublicKey);
+		var publicKeyToken = string.Empty;
+		if (publicKey.Length != 0)
+		{
+			var hash = SHA1.HashData(publicKey);
+			Span<byte> token = stackalloc byte[8];
+			for (var index = 0; index < token.Length; index++)
+			{
+				token[index] = hash[hash.Length - 1 - index];
+			}
+			publicKeyToken = Convert.ToHexString(token).ToLowerInvariant();
+		}
+
+		using var stream = File.OpenRead(_assemblyPath);
+		var sha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+		return new M68kReachableAssemblyIdentity(
+			_assemblyName,
+			definition.Version.ToString(),
+			publicKeyToken,
+			Reader.GetGuid(module.Mvid),
+			sha256);
+	}
 
 	public CilMethod ResolveEntryPoint(string? selector)
 	{
@@ -1362,10 +1407,15 @@ internal sealed class CompilationModule : IDisposable
 	public string GetTypeDisplayName(EntityHandle handle, CilTypeLayout owner) =>
 		GetModule(owner.ModuleName).GetTypeDisplayName(handle);
 
-	private CompilationModule GetModule(string moduleName) =>
-		string.IsNullOrEmpty(moduleName) || string.Equals(moduleName, _assemblyName, StringComparison.Ordinal)
+	private CompilationModule GetModule(string moduleName)
+	{
+		var module = string.IsNullOrEmpty(moduleName) ||
+			string.Equals(moduleName, _assemblyName, StringComparison.Ordinal)
 			? this
 			: _root._modules[moduleName];
+		_root._reachableAssemblyNames.Add(module._assemblyName);
+		return module;
+	}
 
 	private CilVirtualTable GetVirtualTable(
 		TypeDefinitionHandle handle,
@@ -6530,6 +6580,7 @@ internal sealed class CompilationModule : IDisposable
 	{
 		if (_root._modules.TryGetValue(caller.ModuleName, out var module))
 		{
+			_root._reachableAssemblyNames.Add(module._assemblyName);
 			return module;
 		}
 
@@ -6549,6 +6600,7 @@ internal sealed class CompilationModule : IDisposable
 
 		if (_root._modules.TryGetValue(assemblyName, out var module))
 		{
+			_root._reachableAssemblyNames.Add(module._assemblyName);
 			return module;
 		}
 
@@ -6557,12 +6609,19 @@ internal sealed class CompilationModule : IDisposable
 			return null;
 		}
 
-		return File.Exists(path)
-			? new CompilationModule(path, _externalCallResolvers, _root)
-			: null;
+		if (!File.Exists(path))
+		{
+			return null;
+		}
+
+		module = new CompilationModule(path, _externalCallResolvers, _root);
+		_root._reachableAssemblyNames.Add(module._assemblyName);
+		return module;
 	}
 
-	private CompilationModule? GetOrLoadImplementationModule(string assemblyName)
+	private CompilationModule? GetOrLoadImplementationModule(
+		string assemblyName,
+		bool markReachable = true)
 	{
 		if (FrameworkImplementationPack is null ||
 			!FrameworkImplementationPack.TryGetAssemblyPath(assemblyName, out var path))
@@ -6577,9 +6636,18 @@ internal sealed class CompilationModule : IDisposable
 					M68kDiagnosticIds.InvalidInput,
 					$"Framework implementation assembly identity '{assemblyName}' collides with separately loaded managed assembly '{loaded._assemblyPath}'.");
 			}
+			if (markReachable)
+			{
+				_root._reachableAssemblyNames.Add(loaded._assemblyName);
+			}
 			return loaded;
 		}
-		return new CompilationModule(path, _externalCallResolvers, _root);
+		var module = new CompilationModule(path, _externalCallResolvers, _root);
+		if (markReachable)
+		{
+			_root._reachableAssemblyNames.Add(module._assemblyName);
+		}
+		return module;
 	}
 
 	private CilType? ResolveReferencedEnumType(

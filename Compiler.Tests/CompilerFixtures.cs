@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Amiga;
 using CopperSharp.Sdk.Amiga;
 using CopperSharp.Compiler.Tests.MultiModule;
@@ -187,6 +188,20 @@ public static class CompilerFixtures
 		}
 		return result + value;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AllocatedLargeDenseSwitchEntry() =>
+		LargeDenseSwitch(-1) + LargeDenseSwitch(0) + LargeDenseSwitch(5) +
+		LargeDenseSwitch(11) + LargeDenseSwitch(12);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int LargeDenseSwitch(int value) => value switch
+	{
+		0 => 1, 1 => 2, 2 => 3, 3 => 4,
+		4 => 5, 5 => 6, 6 => 7, 7 => 8,
+		8 => 9, 9 => 10, 10 => 11, 11 => 12,
+		_ => 20,
+	};
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int AllocatedSparseSwitchEntry()
@@ -470,34 +485,84 @@ public static class CompilerFixtures
 		(marker.Length * 10_000) + (first * 1_000) + (second * 100) + (third * 10) + fourth;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PointerWrapperInternalAbiEntry() =>
+		PointerWrapperInternalAbiTarget(
+			APTR.FromPointer(10),
+			APTR.FromPointer(20),
+			5,
+			7);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint PointerWrapperInternalAbiTarget(
+		APTR first,
+		APTR second,
+		uint third,
+		uint fourth) =>
+		first.Raw + second.Raw + third + fourth;
+
+	private readonly struct MixedBankInstanceAbiFixture(uint seed)
+	{
+		private readonly uint _seed = seed;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public uint Combine(APTR address, int offset, byte value) =>
+			_seed + address.Raw + (uint)offset + value;
+
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public uint CombineNarrowTransport(int first, int second, byte value) =>
+			_seed + (uint)first + (uint)second + value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint MixedBankInstanceAbiEntry()
+	{
+		var receiver = new MixedBankInstanceAbiFixture(1);
+		return receiver.Combine(APTR.FromPointer(10), 20, 11);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint MixedBankNarrowTransportAbiEntry()
+	{
+		var receiver = new MixedBankInstanceAbiFixture(1);
+		return receiver.CombineNarrowTransport(10, 20, 11);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint StackArgumentHomePreservesCallerD7Entry()
 	{
 		var first = 1u;
 		var second = 2u;
 		var third = 3u;
 		var fourth = 4u;
+		var fifth = 5u;
 		var index = 0u;
 		var sum = 0u;
+		var guard = 0u;
 		while (index < 36)
 		{
 			sum += StackArgumentHomePreservesCallerD7Target(
 				first,
 				second,
 				third,
-				fourth);
+				fourth,
+				fifth);
 			first++;
 			second += 2;
 			third += 3;
 			fourth += 4;
+			fifth += 5;
+			guard += index;
 			index++;
 		}
 
 		return index == 36 &&
-			sum == 6_660 &&
+			sum == 9_990 &&
 			first == 37 &&
 			second == 74 &&
 			third == 111 &&
-			fourth == 148
+			fourth == 148 &&
+			fifth == 185 &&
+			guard == 630
 				? 42u
 				: 0u;
 	}
@@ -507,10 +572,11 @@ public static class CompilerFixtures
 		uint first,
 		uint second,
 		uint third,
-		uint fourth)
+		uint fourth,
+		uint fifth)
 	{
-		var copiedThird = ReadStackArgumentHome(ref third);
-		return first + second + copiedThird + fourth;
+		var copiedFifth = ReadStackArgumentHome(ref fifth);
+		return first + second + third + fourth + copiedFifth;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -523,28 +589,35 @@ public static class CompilerFixtures
 		var second = 2u;
 		var third = 3u;
 		var fourth = 4u;
+		var fifth = 5u;
 		var index = 0u;
 		var sum = 0u;
+		var guard = 0u;
 		while (index < 36)
 		{
 			sum += AnchoredStackArgumentHomePreservesCallerD7Target(
 				first,
 				second,
 				third,
-				fourth);
+				fourth,
+				fifth);
 			first++;
 			second += 2;
 			third += 3;
 			fourth += 4;
+			fifth += 5;
+			guard += index;
 			index++;
 		}
 
 		return index == 36 &&
-			sum == 6_660 &&
+			sum == 9_990 &&
 			first == 37 &&
 			second == 74 &&
 			third == 111 &&
-			fourth == 148
+			fourth == 148 &&
+			fifth == 185 &&
+			guard == 630
 				? 42u
 				: 0u;
 	}
@@ -554,12 +627,13 @@ public static class CompilerFixtures
 		uint first,
 		uint second,
 		uint third,
-		uint fourth)
+		uint fourth,
+		uint fifth)
 	{
 		var scratchLength = (int)(first & 1u) + 1;
 		Span<uint> scratch = stackalloc uint[scratchLength];
-		scratch[0] = ReadStackArgumentHome(ref third);
-		return first + second + scratch[0] + fourth;
+		scratch[0] = ReadStackArgumentHome(ref fifth);
+		return first + second + third + fourth + scratch[0];
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -1286,15 +1360,64 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int TailCallEntry() => TailForwarder(39);
 
+	[StructLayout(LayoutKind.Sequential, Pack = 1, Size = 16)]
+	private struct TailFrameAliasContext
+	{
+		public uint Platform;
+		public uint Owner;
+		public uint Library;
+		public uint State;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TailFrameAliasEntry()
+	{
+		TailFrameAliasContext context = default;
+		context.Platform = 0x1122_3344;
+		context.Owner = 0x5566_7788;
+		context.Library = 0x99AA_BBCC;
+		context.State = 0xDDEE_F00D;
+		return TailFrameAliasTarget(
+			ref context.Platform,
+			context.Owner,
+			context.Library,
+			context.State);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint TailFrameAliasTarget(
+		ref uint platform,
+		uint owner,
+		uint library,
+		uint state)
+	{
+		TailFrameAliasContext scratch = default;
+		scratch.Platform = owner;
+		scratch.Owner = library;
+		scratch.Library = state;
+		scratch.State = owner ^ library ^ state;
+		return platform == 0x1122_3344 &&
+			scratch.Platform == 0x5566_7788 &&
+			scratch.Owner == 0x99AA_BBCC &&
+			scratch.Library == 0xDDEE_F00D
+				? 42u
+				: 0u;
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int RecursiveCalleeSaveEntry() => RecursiveCount(6) + 36;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	public static int OverflowTailCallEntry() => OverflowTailTarget(10, 20, 12);
+	public static int OverflowTailCallEntry() => OverflowTailTarget(8, 9, 10, 7, 8);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static int OverflowTailTarget(int first, int second, int third) =>
-		first + second + third;
+	private static int OverflowTailTarget(
+		int first,
+		int second,
+		int third,
+		int fourth,
+		int fifth) =>
+		first + second + third + fourth + fifth;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static int RecursiveCount(int value) =>
@@ -1483,6 +1606,14 @@ public static class CompilerFixtures
 		global::Amiga.STRPTR mutable = global::Amiga.STRPTR.FromPointer(0x0000_4700);
 		global::Amiga.CONST_STRPTR constant = mutable;
 		return constant.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint BptrAddressRoundTripEntry()
+	{
+		var address = APTR.FromPointer(0x0000_4800);
+		var bptr = BPTR.FromAddress(address);
+		return bptr.Address.Raw == address.Raw ? 42u : 0u;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -2430,6 +2561,9 @@ public static class CompilerFixtures
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int StringLiteralEntry() => "Copper68k".Length;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IllegalOpcodeDataEntry() => "\u4AFC".Length;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int StringCharIndexerEntry()
@@ -6014,6 +6148,17 @@ public static class CompilerFixtures
 		APTR.WriteUInt8(address, 3, 0xA5);
 		APTR.WriteUInt16(address, 6, 0x5AA5);
 		return (uint)(APTR.ReadUInt8(address, 3) << 16) | APTR.ReadUInt16(address, 6);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint AptrUnsignedWordPromotionEntry()
+	{
+		var address = APTR.FromPointer(0x0000_4000);
+		APTR.WriteUInt16(address, 16, 0x04B8);
+		APTR.WriteUInt16(address, 18, 0x0128);
+		var negativeSize = APTR.ReadUInt16(address, 16);
+		var positiveSize = APTR.ReadUInt16(address, 18);
+		return (uint)negativeSize + positiveSize;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

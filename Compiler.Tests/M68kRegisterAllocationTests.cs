@@ -299,6 +299,39 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void ExceptionFrameReservesOnlyActiveExceptionAndPendingActionSlots()
+	{
+		var function = new M68kMachineFunction("exception-frame", 0)
+		{
+			HasExceptionHandlers = true
+		};
+
+		var frame = M68kAllocatedFramePlanner.Create(
+			function,
+			new M68kAllocationResult(
+				new Dictionary<int, M68kAllocatedLocation>(),
+				new HashSet<int>()),
+			new M68kSpillLayout(
+				new Dictionary<int, M68kSpillSlot>(),
+				new HashSet<int>(),
+				FrameBytes: 0),
+			new M68kSafepointPlan(
+				[],
+				new Dictionary<int, int>(),
+				FirstRootSlot: 0,
+				RootSlotCount: 0),
+			new M68kParallelCopyPlan(
+				new Dictionary<
+					(int From, int To),
+					IReadOnlyList<M68kParallelCopy>>(),
+				NeedsTemporarySlot: false));
+
+		Assert.Equal(0, frame.ActiveExceptionOffset);
+		Assert.Equal(4, frame.PendingActionOffset);
+		Assert.Equal(8, frame.FrameBytes);
+	}
+
+	[Fact]
 	public void FinalDestinationsRetainSemanticForwarders()
 	{
 		var function = new M68kMachineFunction("final-destinations-effects", 0);

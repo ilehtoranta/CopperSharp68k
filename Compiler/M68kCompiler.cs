@@ -96,12 +96,16 @@ public static class M68kCompiler
 			exports,
 			managedPoolRuntime,
 			managedLifecycles).Generate(entry);
+		var reachableAssemblies = module.GetReachableAssemblyIdentities();
 
 		return request.OutputFormat switch
 		{
-			M68kOutputFormat.Hunk => LinkHunk(generated, request, frameworkFeatures, frameworkAnalysis),
-			M68kOutputFormat.KickstartRom => LinkRom(generated, request, frameworkFeatures, frameworkAnalysis),
-			M68kOutputFormat.Assembly => WriteAssembly(generated, request, frameworkFeatures, frameworkAnalysis),
+			M68kOutputFormat.Hunk => LinkHunk(
+				generated, request, frameworkFeatures, reachableAssemblies, frameworkAnalysis),
+			M68kOutputFormat.KickstartRom => LinkRom(
+				generated, request, frameworkFeatures, reachableAssemblies, frameworkAnalysis),
+			M68kOutputFormat.Assembly => WriteAssembly(
+				generated, request, frameworkFeatures, reachableAssemblies, frameworkAnalysis),
 			_ => throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidOutputOptions,
 				$"Unknown output format {request.OutputFormat}.")
@@ -437,6 +441,7 @@ public static class M68kCompiler
 		GeneratedProgram program,
 		M68kCompilationRequest request,
 		IReadOnlyList<string> frameworkFeatures,
+		IReadOnlyList<M68kReachableAssemblyIdentity> reachableAssemblies,
 		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var imports = new Dictionary<string, uint>(request.Imports, StringComparer.Ordinal);
@@ -455,6 +460,8 @@ public static class M68kCompiler
 		var entryOffset = checked((uint)linked.Labels[program.EntryLabel]);
 		var text = program.Assembler.RenderAssembly(request.Cpu);
 		var image = Encoding.UTF8.GetBytes(text);
+		var nativeCompatibility = CreateNativeCompatibility(
+			program, request, frameworkFeatures, reachableAssemblies);
 		return new M68kCompilationResult(
 			image,
 			linked.Bytes,
@@ -475,12 +482,14 @@ public static class M68kCompiler
 				loopFootprints,
 				program.Assembler.PeepholeOptimizationStatistics,
 				program.MachineOptimizationStatistics,
-				frameworkFeatures),
+				frameworkFeatures,
+				nativeCompatibility),
 			text,
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
 			loopFootprints,
 			frameworkFeatures,
+			nativeCompatibility,
 			frameworkAnalysis);
 	}
 
@@ -488,6 +497,7 @@ public static class M68kCompiler
 		GeneratedProgram program,
 		M68kCompilationRequest request,
 		IReadOnlyList<string> frameworkFeatures,
+		IReadOnlyList<M68kReachableAssemblyIdentity> reachableAssemblies,
 		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var linked = program.Assembler.Link(0, request.Imports);
@@ -506,6 +516,8 @@ public static class M68kCompiler
 			linked.BssStartOffset,
 			linked.PcRelativeTargets,
 			request.Hunk);
+		var nativeCompatibility = CreateNativeCompatibility(
+			program, request, frameworkFeatures, reachableAssemblies);
 		return new M68kCompilationResult(
 			image,
 			linked.Bytes,
@@ -526,12 +538,14 @@ public static class M68kCompiler
 				loopFootprints,
 				program.Assembler.PeepholeOptimizationStatistics,
 				program.MachineOptimizationStatistics,
-				frameworkFeatures),
+				frameworkFeatures,
+				nativeCompatibility),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
 			loopFootprints,
 			frameworkFeatures,
+			nativeCompatibility,
 			frameworkAnalysis);
 	}
 
@@ -539,6 +553,7 @@ public static class M68kCompiler
 		GeneratedProgram program,
 		M68kCompilationRequest request,
 		IReadOnlyList<string> frameworkFeatures,
+		IReadOnlyList<M68kReachableAssemblyIdentity> reachableAssemblies,
 		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var romBase = KickstartRomWriter.GetBaseAddress(request.Rom);
@@ -552,6 +567,8 @@ public static class M68kCompiler
 			codeOrigin);
 		var entryPoint = checked(codeOrigin + (uint)linked.Labels[program.EntryLabel]);
 		var image = KickstartRomWriter.Write(linked.Bytes, entryPoint, request.Rom);
+		var nativeCompatibility = CreateNativeCompatibility(
+			program, request, frameworkFeatures, reachableAssemblies);
 		return new M68kCompilationResult(
 			image,
 			linked.Bytes,
@@ -572,13 +589,46 @@ public static class M68kCompiler
 				loopFootprints,
 				program.Assembler.PeepholeOptimizationStatistics,
 				program.MachineOptimizationStatistics,
-				frameworkFeatures),
+				frameworkFeatures,
+				nativeCompatibility),
 			null,
 			program.AllocationStatistics.Values.ToArray(),
 			program.TerminalDeadStoreStatistics.Values.ToArray(),
 			loopFootprints,
 			frameworkFeatures,
+			nativeCompatibility,
 			frameworkAnalysis);
+	}
+
+	private static M68kNativeCompatibility CreateNativeCompatibility(
+		GeneratedProgram program,
+		M68kCompilationRequest request,
+		IReadOnlyList<string> runtimeFeatures,
+		IReadOnlyList<M68kReachableAssemblyIdentity> reachableAssemblies)
+	{
+		var externalNativeTargets = program.Assembler.ExternalTargets
+			.Order(StringComparer.Ordinal)
+			.ToArray();
+		var runtimeHelpers = program.Assembler.Labels.Keys
+			.Concat(externalNativeTargets)
+			.Where(static name => name.StartsWith("__c68k_", StringComparison.Ordinal))
+			.Distinct(StringComparer.Ordinal)
+			.Order(StringComparer.Ordinal)
+			.ToArray();
+		var exceptionRegionCount = program.Methods.Sum(
+			static method => method.ExceptionRegions.Count);
+		var fatalMachineFaultSiteCount = program.Assembler
+			.GetExecutableInstructionStream()
+			.Count(static instruction => instruction.Opcode == 0x4AFC);
+		return new M68kNativeCompatibility(
+			request.ExceptionMode,
+			GetEffectiveMemoryManagement(request),
+			exceptionRegionCount,
+			fatalMachineFaultSiteCount,
+			runtimeFeatures.ToArray(),
+			runtimeHelpers,
+			externalNativeTargets,
+			reachableAssemblies.ToArray());
 	}
 
 	private static IReadOnlyList<M68kSymbol> CreateSymbols(
@@ -586,25 +636,29 @@ public static class M68kCompiler
 		LinkedCode linked,
 		uint origin)
 	{
-		var methodOffsets = new List<(string Name, int Offset)>();
+		var methodOffsets = new List<(string Name, int Offset, int EndOffset)>();
 		foreach (var method in program.Methods)
 		{
 			var label = program.MethodLabels[method.Identity];
-			methodOffsets.Add((method.DisplayName, linked.Labels[label]));
+			var offset = linked.Labels[label];
+			var endLabel = $"{label}:end";
+			if (!linked.Labels.TryGetValue(endLabel, out var endOffset) ||
+				endOffset < offset)
+			{
+				throw new InvalidOperationException(
+					$"Managed method '{method.DisplayName}' has no valid emitted range.");
+			}
+			methodOffsets.Add((method.DisplayName, offset, endOffset));
 		}
 
 		methodOffsets.Sort(static (left, right) => left.Offset.CompareTo(right.Offset));
 		var result = new List<M68kSymbol>(methodOffsets.Count);
-		for (var index = 0; index < methodOffsets.Count; index++)
+		foreach (var method in methodOffsets)
 		{
-			var current = methodOffsets[index];
-			var end = index + 1 < methodOffsets.Count
-				? methodOffsets[index + 1].Offset
-				: linked.Bytes.Length;
 			result.Add(new M68kSymbol(
-				current.Name,
-				checked(origin + (uint)current.Offset),
-				end - current.Offset));
+				method.Name,
+				checked(origin + (uint)method.Offset),
+				method.EndOffset - method.Offset));
 		}
 
 		foreach (var export in program.Exports)
@@ -661,7 +715,8 @@ public static class M68kCompiler
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
 		M68kPeepholeOptimizationStatistics peepholeStatistics,
 		M68kMachineModuleOptimizationStatistics machineStatistics,
-		IReadOnlyList<string> frameworkFeatures)
+		IReadOnlyList<string> frameworkFeatures,
+		M68kNativeCompatibility nativeCompatibility)
 	{
 		var target = request.TargetContract ?? new M68kTargetContract(
 			"m68k",
@@ -704,6 +759,15 @@ public static class M68kCompiler
 		map.AppendLine($"PROFILE {request.RuntimeProfile}");
 		map.AppendLine($"CPU {request.Cpu}");
 		map.AppendLine($"FORMAT {request.OutputFormat}");
+		map.AppendLine(
+			$"NATIVE exceptions={nativeCompatibility.ExceptionMode} " +
+			$"memory={nativeCompatibility.MemoryManagement} " +
+			$"exception-regions={nativeCompatibility.ExceptionRegionCount} " +
+			$"fatal-machine-fault-sites={nativeCompatibility.FatalMachineFaultSiteCount} " +
+			$"runtime-features={nativeCompatibility.RuntimeFeatureCount} " +
+			$"runtime-helpers={nativeCompatibility.RuntimeHelperCount} " +
+			$"external-native-targets={nativeCompatibility.ExternalNativeTargetCount} " +
+			$"reachable-assemblies={nativeCompatibility.ReachableAssemblyCount}");
 		map.AppendLine($"ENTRY {entryPoint:X8}");
 		map.AppendLine(
 			$"METRICS artifact-bytes={artifactBytes} code-bytes={codeBytes} " +
@@ -755,6 +819,29 @@ public static class M68kCompiler
 		foreach (var feature in frameworkFeatures)
 		{
 			map.AppendLine(feature);
+		}
+
+		map.AppendLine("RUNTIME HELPERS");
+		foreach (var helper in nativeCompatibility.RuntimeHelpers)
+		{
+			map.AppendLine(helper);
+		}
+
+		map.AppendLine("EXTERNAL NATIVE TARGETS");
+		foreach (var targetName in nativeCompatibility.ExternalNativeTargets)
+		{
+			map.AppendLine(targetName);
+		}
+
+		map.AppendLine("REACHABLE ASSEMBLIES");
+		foreach (var assembly in nativeCompatibility.ReachableAssemblies)
+		{
+			var publicKeyToken = assembly.PublicKeyToken.Length == 0
+				? "-"
+				: assembly.PublicKeyToken;
+			map.AppendLine(
+				$"{assembly.Name} {assembly.Version} pkt={publicKeyToken} " +
+				$"mvid={assembly.Mvid:D} sha256={assembly.Sha256}");
 		}
 
 		return map.ToString();

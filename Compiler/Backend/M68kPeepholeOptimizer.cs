@@ -132,7 +132,12 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceZeroAddressMove() ||
 				TryOptimizeSmallAddressImmediate(dataflow) ||
 				TryNarrowAddressArithmeticImmediate() ||
+				TryRemoveDeadLongImmediateBeforeOverwrite(dataflow) ||
+				TryForwardLongImmediateIntoStackPush(dataflow) ||
 				TryReplaceStackImmediateWithPea(dataflow) ||
+				TryForwardByteCopyIntoEor(dataflow) ||
+				TryUseByteDestinationImmediateMoveQuick(dataflow) ||
+				TryUseByteImmediateMoveQuick(dataflow) ||
 				TryOptimizeDataRegisterImmediate(dataflow) ||
 				TrySynthesizeSizeFirstDataRegisterConstant(dataflow) ||
 				TryUseDestructiveQuickImmediate(dataflow) ||
@@ -143,6 +148,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveRedundantTest() ||
 				TryRemoveRedundantAndTest() ||
 				TryRemoveRedundantKnownMoveQuick(dataflow) ||
+				TryRemoveRedundantZeroBeforeByteDefinition(dataflow) ||
 				TryRemoveDeadMoveQuick(dataflow) ||
 				TryRemoveDeadTest(dataflow) ||
 				TryRemoveDiscardedStackPush(dataflow) ||
@@ -161,9 +167,11 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveRepeatedLea() ||
 				TryFoldZeroDisplacementLeaToDataMove(dataflow) ||
 				TryRemoveRedundantAddressRegisterReload(dataflow) ||
+				TryFoldBaseIndexMemoryAccess(dataflow) ||
 				TryForwardAddressRegisterBase(dataflow) ||
 				TryForwardAddressToDataCopyChain(dataflow) ||
 				TryForwardDataRegisterCopyChain(dataflow) ||
+				TryRemoveCrossBankRoundTrip(dataflow) ||
 				TryRemoveDataRegisterRoundTrip(dataflow) ||
 				TryFoldDataRegisterCopyUpdate(dataflow) ||
 				TryFoldDataRegisterExchange(dataflow) ||
@@ -175,6 +183,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldMoveQuickIntoQuickArithmetic(dataflow) ||
 				TryFuseOwnedMemoryReadModifyWrite(dataflow) ||
 				TryForwardLongImmediateThroughRegisterMove(dataflow) ||
+				TryForwardDataRegisterCopyToMemory(dataflow) ||
 				(_rewriteBudget != int.MaxValue &&
 					TryFoldMemoryCopyThroughDeadDataRegister(dataflow)) ||
 				TryRemoveCallToRtsLeaf() ||
@@ -184,6 +193,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldLeafMemoryWriteCallWithLateAddress(dataflow) ||
 				TryFoldConstantDirectAddressRead(dataflow) ||
 				TryFoldConstantAddressRead(dataflow) ||
+				TryForwardMemoryLoadToFinalDataRegister(dataflow) ||
 				TryForwardMemoryLoadIntoArithmetic(dataflow) ||
 				TryForwardMemoryLoadThroughStackToAddressRegister() ||
 				TryUseSwapClearForLongShiftBySixteen(dataflow) ||
@@ -199,6 +209,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryUseMoveQuickAndMask(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryFoldStackAllocationIntoRegisterPush() ||
+				TryFoldStackAllocationIntoClearPush() ||
 				TryGroupOrderedDataRegisterPushes(dataflow) ||
 				TryCanonicalizeAddressAdjustments() ||
 				TryRewriteStackPreservation(dataflow) ||
@@ -947,15 +958,204 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				HasAddressFixup(instruction) ||
 				IsReferencedLabelAt(instruction.Offset) ||
 				!IsSignedWord(instruction.ExtensionLong) ||
-				!IsSizeFirstOffset(instruction.Offset) ||
+				(_cpu != M68kCpuTarget.M68000 &&
+				 !IsSizeFirstOffset(instruction.Offset)) ||
 				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
-				!facts.ConditionsAreDeadAfter)
+				(facts.Effects.WritesConditions & facts.LiveConditionsAfter) !=
+					M68kConditionCodeSet.None)
 			{
 				continue;
 			}
 
 			_buffer.WriteWord(instruction.Offset, 0x4878); // PEA (xxx).W
 			_buffer.RemoveBytes(instruction.Offset + 2, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardLongImmediateIntoStackPush(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		// Process later arguments first so compacting one argument cannot hide a
+		// later independent materialization behind the rewritten stack push.
+		for (var pushIndex = instructions.Count - 1; pushIndex >= 1; pushIndex--)
+		{
+			var push = instructions[pushIndex];
+			if ((push.Opcode & 0xFFF8) != 0x2F00 ||
+				push.Length != 2 ||
+				!dataflow.TryGetFacts(push.Offset, out var pushFacts))
+			{
+				continue;
+			}
+
+			var register = push.Opcode & 7;
+			var registerMask = (ushort)(1 << register);
+			if ((pushFacts.LiveDataAfter & registerMask) != 0 &&
+				!IsDeadStackTransportAfterPush(
+					instructions,
+					pushIndex + 1,
+					register,
+					dataflow))
+			{
+				continue;
+			}
+
+			// Keep the search bounded. Generated argument setup normally leaves no
+			// more than a few independent register moves between materialization and
+			// the stack use.
+			var firstCandidate = Math.Max(0, pushIndex - 9);
+			for (var candidateIndex = pushIndex - 1;
+				candidateIndex >= firstCandidate;
+				candidateIndex--)
+			{
+				var candidate = instructions[candidateIndex];
+				if (!candidate.IsDecoded ||
+					candidate.Kind != M68kInstructionKind.Normal ||
+					!dataflow.TryGetFacts(candidate.Offset, out var candidateFacts) ||
+					candidateFacts.Effects.IsBarrier)
+				{
+					break;
+				}
+
+				var definesRegister =
+					(candidateFacts.Effects.DefinesData & registerMask) != 0;
+				var usesRegister =
+					(candidateFacts.Effects.UsesData & registerMask) != 0;
+				if ((candidate.Opcode & 0xF1FF) == 0x203C &&
+					candidate.Length == 6 &&
+					(candidate.Opcode >> 9 & 7) == register)
+				{
+					if (HasAddressFixup(candidate) ||
+						(candidateFacts.Effects.WritesConditions &
+						 candidateFacts.LiveConditionsAfter) !=
+							M68kConditionCodeSet.None)
+					{
+						break;
+					}
+
+					var value = candidate.ExtensionLong;
+					if (!dataflow.GetDataValueBefore(push.Offset, register)
+						.IsExact(out var valueAtPush) ||
+						valueAtPush != value)
+					{
+						break;
+					}
+					var pushOffset = push.Offset - candidate.Length;
+					MoveLabelsToOffset(
+						candidate.Offset,
+						candidate.Offset + candidate.Length,
+						candidate.Offset + candidate.Length);
+					_buffer.RemoveBytes(candidate.Offset, candidate.Length);
+
+					// Grow at the opcode rather than at the old instruction end so
+					// labels and analysis anchors after the push remain after it.
+					_buffer.InsertBytes(pushOffset, 4);
+					_buffer.InstructionEffectOverrides.Remove(pushOffset + 4);
+					_buffer.WriteWord(pushOffset, 0x2F3C); // MOVE.L #value,-(A7)
+					_buffer.WriteWord(pushOffset + 2, (ushort)(value >> 16));
+					_buffer.WriteWord(pushOffset + 4, (ushort)value);
+					return true;
+				}
+
+				if (definesRegister || usesRegister)
+				{
+					break;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsDeadStackTransportAfterPush(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var registerMask = (ushort)(1 << register);
+		for (var index = startIndex; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if (instruction.Kind == M68kInstructionKind.Return)
+			{
+				return false;
+			}
+
+			if (instruction.Kind == M68kInstructionKind.Call)
+			{
+				// D2-D7 are callee-saved in the internal ABI. Cross a call only
+				// when its direct internal target is known; D0/D1 may be arguments
+				// and must be killed before every call.
+				if (register >= 2 &&
+					!instruction.ExternalTarget &&
+					instruction.TargetOffset.HasValue)
+				{
+					continue;
+				}
+				return false;
+			}
+
+			if (!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				facts.Effects.IsBarrier ||
+				instruction.Kind != M68kInstructionKind.Normal)
+			{
+				return false;
+			}
+			if ((facts.Effects.UsesData & registerMask) != 0)
+			{
+				return false;
+			}
+			if ((facts.Effects.DefinesData & registerMask) != 0)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryRemoveDeadLongImmediateBeforeOverwrite(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var candidate = instructions[index];
+			var overwrite = instructions[index + 1];
+			if ((candidate.Opcode & 0xF1FF) != 0x203C ||
+				candidate.Length != 6 ||
+				HasAddressFixup(candidate) ||
+				HasInternalLabel(candidate) ||
+				!dataflow.TryGetFacts(candidate.Offset, out var candidateFacts) ||
+				!dataflow.TryGetFacts(overwrite.Offset, out var overwriteFacts))
+			{
+				continue;
+			}
+
+			var register = (candidate.Opcode >> 9) & 7;
+			var registerMask = (ushort)(1 << register);
+			var overwriteIsPartialMove =
+				(overwrite.Opcode & 0xF000) is 0x1000 or 0x3000 &&
+				((overwrite.Opcode >> 6) & 7) == 0 &&
+				((overwrite.Opcode >> 9) & 7) == register;
+			if (overwriteIsPartialMove ||
+				(overwriteFacts.Effects.UsesData & registerMask) != 0 ||
+				(overwriteFacts.Effects.DefinesData & registerMask) == 0 ||
+				(candidateFacts.LiveDataAfter & registerMask) != 0 ||
+				(candidateFacts.Effects.WritesConditions &
+				 candidateFacts.LiveConditionsAfter) != M68kConditionCodeSet.None)
+			{
+				continue;
+			}
+
+			// The next instruction supplies every bit of the register before any use.
+			// Removing the dead materialization does not move that potentially faulting
+			// instruction or alter its published condition codes.
+			_buffer.RemoveBytes(candidate.Offset, candidate.Length);
 			return true;
 		}
 
@@ -1063,6 +1263,216 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 
 		return false;
+	}
+
+	private bool TryUseByteImmediateMoveQuick(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var immediate = instructions[index];
+			var operation = instructions[index + 1];
+			if ((immediate.Opcode & 0xF1FF) != 0x303C || // MOVE.W #imm,Dn
+				immediate.Length != 4 ||
+				(operation.Opcode & 0xF1F8) != 0xB100 || // EOR.B Dn,Dm
+				operation.Length != 2 ||
+				IsReferencedLabelAt(operation.Offset) ||
+				!dataflow.TryGetFacts(operation.Offset, out var operationFacts))
+			{
+				continue;
+			}
+
+			var register = immediate.Opcode >> 9 & 7;
+			if ((operation.Opcode >> 9 & 7) != register ||
+				(operationFacts.LiveDataAfter & (1 << register)) != 0)
+			{
+				continue;
+			}
+
+			// EOR.B observes only the immediate's low byte and replaces MOVE's
+			// condition codes. With Dn dead afterwards, MOVEQ may choose any upper
+			// bits and saves one extension word on every supported CPU.
+			_buffer.WriteWord(
+				immediate.Offset,
+				(ushort)(0x7000 |
+					(register << 9) |
+					(byte)immediate.ExtensionWord));
+			_buffer.RemoveBytes(immediate.Offset + 2, 2);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardByteCopyIntoEor(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var copyIndex = 0; copyIndex + 1 < instructions.Count; copyIndex++)
+		{
+			var copy = instructions[copyIndex];
+			if ((copy.Opcode & 0xF1F8) != 0x1000 || // MOVE.B Ds,Dtemporary
+				copy.Length != 2 ||
+				!dataflow.TryGetFacts(copy.Offset, out var copyFacts) ||
+				(copyFacts.Effects.WritesConditions & copyFacts.LiveConditionsAfter) !=
+					M68kConditionCodeSet.None)
+			{
+				continue;
+			}
+
+			var source = copy.Opcode & 7;
+			var temporary = copy.Opcode >> 9 & 7;
+			if (source == temporary)
+			{
+				continue;
+			}
+
+			var sourceMask = (ushort)(1 << source);
+			var temporaryMask = (ushort)(1 << temporary);
+			var lastCandidate = Math.Min(instructions.Count - 1, copyIndex + 4);
+			for (var operationIndex = copyIndex + 1;
+				operationIndex <= lastCandidate;
+				operationIndex++)
+			{
+				var operation = instructions[operationIndex];
+				if (IsReferencedLabelAt(operation.Offset) ||
+					!dataflow.TryGetFacts(operation.Offset, out var operationFacts) ||
+					operationFacts.Effects.IsBarrier)
+				{
+					break;
+				}
+
+				var isEor = (operation.Opcode & 0xF1F8) == 0xB100 &&
+					operation.Length == 2 &&
+					(operation.Opcode >> 9 & 7) == temporary &&
+					(operation.Opcode & 7) != temporary;
+				if (isEor)
+				{
+					if ((operationFacts.LiveDataAfter & temporaryMask) != 0)
+					{
+						break;
+					}
+
+					// The copied low byte is unchanged by the independent instructions.
+					// EOR.B publishes the same result and final N/Z/V/C state when it
+					// reads the original register directly, and the temporary dies here.
+					_buffer.WriteWord(
+						operation.Offset,
+						(ushort)((operation.Opcode & 0xF1FF) | (source << 9)));
+					MoveLabelsToOffset(
+						copy.Offset,
+						copy.Offset + copy.Length,
+						copy.Offset + copy.Length);
+					_buffer.RemoveBytes(copy.Offset, copy.Length);
+					return true;
+				}
+
+				if (((operationFacts.Effects.DefinesData |
+					  operationFacts.Effects.UsesData) & temporaryMask) != 0 ||
+					(operationFacts.Effects.DefinesData & sourceMask) != 0)
+				{
+					break;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private bool TryUseByteDestinationImmediateMoveQuick(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var immediate = instructions[index];
+			var operation = instructions[index + 1];
+			if ((immediate.Opcode & 0xF1FF) != 0x203C || // MOVE.L #imm,Dn
+				immediate.Length != 6 ||
+				HasAddressFixup(immediate) ||
+				(operation.Opcode & 0xF1F8) != 0xB100 || // EOR.B Ds,Dn
+				operation.Length != 2 ||
+				IsReferencedLabelAt(operation.Offset))
+			{
+				continue;
+			}
+
+			var destination = immediate.Opcode >> 9 & 7;
+			if ((operation.Opcode & 7) != destination ||
+				DataRegisterUpperBytesAreObservedBeforeOverwrite(
+					instructions,
+					index + 2,
+					destination,
+					dataflow))
+			{
+				continue;
+			}
+
+			// EOR.B consumes only the immediate's low byte and overwrites MOVE's
+			// conditions. When all later observations are byte-sized until a full
+			// register overwrite, MOVEQ may choose the compact sign-extended upper
+			// bits without changing any observable result or condition code.
+			_buffer.WriteWord(
+				immediate.Offset,
+				(ushort)(0x7000 |
+					(destination << 9) |
+					(byte)immediate.ExtensionLong));
+			_buffer.RemoveBytes(immediate.Offset + 2, 4);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool DataRegisterUpperBytesAreObservedBeforeOverwrite(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var mask = (ushort)(1 << register);
+		for (var index = startIndex; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if (IsReferencedLabelAt(instruction.Offset) ||
+				instruction.Kind == M68kInstructionKind.Return ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				facts.Effects.IsBarrier)
+			{
+				return true;
+			}
+
+			var usesRegister = (facts.Effects.UsesData & mask) != 0;
+			var definesRegister = (facts.Effects.DefinesData & mask) != 0;
+			if (usesRegister && !ObservesOnlyLowByte(instruction, register))
+			{
+				return true;
+			}
+
+			if (!definesRegister)
+			{
+				continue;
+			}
+
+			if (usesRegister)
+			{
+				// A byte-sized read/modify/write retains the unobserved upper bytes.
+				continue;
+			}
+
+			var isLongMoveToRegister =
+				(instruction.Opcode & 0xF000) == 0x2000 &&
+				((instruction.Opcode >> 6) & 7) == 0 &&
+				((instruction.Opcode >> 9) & 7) == register;
+			var isMoveQuick =
+				(instruction.Opcode & 0xF100) == 0x7000 &&
+				((instruction.Opcode >> 9) & 7) == register;
+			var isClearLong =
+				(instruction.Opcode & 0xFFF8) == 0x4280 &&
+				(instruction.Opcode & 7) == register;
+			return !(isLongMoveToRegister || isMoveQuick || isClearLong);
+		}
+
+		return true;
 	}
 
 	private bool TryUseDestructiveQuickImmediate(
@@ -1189,12 +1599,31 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	{
 		foreach (var instruction in _assembler.GetInstructionStream())
 		{
+			// A compiler-owned stack slot is ordinary RAM, so reading it and writing
+			// the identical value back has no observable memory effect. Keep indirect
+			// and absolute forms because those may address MMIO. MOVE does not alter X;
+			// only the condition codes it actually writes need to be dead.
+			var opcode = instruction.Opcode;
+			var sizeFamily = opcode & 0xF000;
+			if (instruction.Length == 6 &&
+				sizeFamily is 0x1000 or 0x2000 or 0x3000 &&
+				(opcode & 0x01FF) == 0x016F &&
+				((opcode >> 9) & 7) == 7 &&
+				_buffer.ReadWord(instruction.Offset + 2) ==
+					_buffer.ReadWord(instruction.Offset + 4) &&
+				dataflow.TryGetFacts(instruction.Offset, out var stackFacts) &&
+				(stackFacts.Effects.WritesConditions &
+					stackFacts.LiveConditionsAfter) == M68kConditionCodeSet.None &&
+				!IsReferencedLabelAt(instruction.Offset))
+			{
+				_buffer.RemoveBytes(instruction.Offset, instruction.Length);
+				return true;
+			}
+
 			if (instruction.Length != 2)
 			{
 				continue;
 			}
-			var opcode = instruction.Opcode;
-			var sizeFamily = opcode & 0xF000;
 			if (sizeFamily is 0x1000 or 0x2000 or 0x3000 &&
 				((opcode >> 3) & 7) == 0 &&
 				((opcode >> 6) & 7) == 0 &&
@@ -2063,6 +2492,106 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryRemoveCrossBankRoundTrip(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var first = instructions[index];
+			var second = instructions[index + 1];
+			if (first.Length != 2 ||
+				second.Length != 2 ||
+				IsReferencedLabelAt(second.Offset) ||
+				!dataflow.TryGetFacts(first.Offset, out var firstFacts) ||
+				!dataflow.TryGetFacts(second.Offset, out var secondFacts))
+			{
+				continue;
+			}
+
+			// MOVEA.L Dn,An; MOVE.L An,Dn copies a value out and immediately
+			// copies the unchanged value back. Only the address copy and the final
+			// MOVE condition codes can be observable.
+			if ((first.Opcode & 0xF1F8) == 0x2040 &&
+				(second.Opcode & 0xF1F8) == 0x2008)
+			{
+				var dataRegister = first.Opcode & 7;
+				var addressRegister = first.Opcode >> 9 & 7;
+				if ((second.Opcode & 7) != addressRegister ||
+					(second.Opcode >> 9 & 7) != dataRegister)
+				{
+					continue;
+				}
+
+				var addressLive =
+					(secondFacts.LiveAddressAfter & (1 << addressRegister)) != 0;
+				var conditionsLive =
+					(secondFacts.Effects.WritesConditions &
+					 secondFacts.LiveConditionsAfter) != M68kConditionCodeSet.None;
+				if (addressLive)
+				{
+					if (conditionsLive)
+					{
+						continue;
+					}
+					_buffer.RemoveBytes(second.Offset, second.Length);
+					return true;
+				}
+
+				if (IsReferencedLabelAt(first.Offset))
+				{
+					continue;
+				}
+				if (conditionsLive)
+				{
+					_buffer.WriteWord(
+						first.Offset,
+						(ushort)(0x4A80 | dataRegister)); // TST.L Dn
+					_buffer.RemoveBytes(second.Offset, second.Length);
+				}
+				else
+				{
+					_buffer.RemoveBytes(second.Offset, second.Length);
+					_buffer.RemoveBytes(first.Offset, first.Length);
+				}
+				return true;
+			}
+
+			// MOVE.L An,Dn; MOVEA.L Dn,An writes the original address value back.
+			// The second instruction has no flag effect and is always redundant; the
+			// first remains when its data result or MOVE condition codes are observed.
+			if ((first.Opcode & 0xF1F8) == 0x2008 &&
+				(second.Opcode & 0xF1F8) == 0x2040)
+			{
+				var addressRegister = first.Opcode & 7;
+				var dataRegister = first.Opcode >> 9 & 7;
+				if ((second.Opcode & 7) != dataRegister ||
+					(second.Opcode >> 9 & 7) != addressRegister)
+				{
+					continue;
+				}
+
+				var dataLive =
+					(secondFacts.LiveDataAfter & (1 << dataRegister)) != 0;
+				var conditionsLive =
+					(firstFacts.Effects.WritesConditions &
+					 secondFacts.LiveConditionsAfter) != M68kConditionCodeSet.None;
+				if (!dataLive && !conditionsLive &&
+					!IsReferencedLabelAt(first.Offset))
+				{
+					_buffer.RemoveBytes(second.Offset, second.Length);
+					_buffer.RemoveBytes(first.Offset, first.Length);
+				}
+				else
+				{
+					_buffer.RemoveBytes(second.Offset, second.Length);
+				}
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	private bool TryForwardDataRegisterCopyChain(M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
@@ -2488,6 +3017,203 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			return true;
 		}
 		return false;
+	}
+
+	private bool TryFoldBaseIndexMemoryAccess(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var copyIndex = 0; copyIndex + 2 < instructions.Count; copyIndex++)
+		{
+			var copy = instructions[copyIndex];
+			if ((copy.Opcode & 0xF1F8) != 0x2048 || // MOVEA.L An,Atemp
+				copy.Length != 2)
+			{
+				continue;
+			}
+
+			var baseRegister = copy.Opcode & 7;
+			var temporary = copy.Opcode >> 9 & 7;
+			if (baseRegister == 7 ||
+				temporary == 7 ||
+				baseRegister == temporary)
+			{
+				continue;
+			}
+
+			// Generated argument/value setup can sit between the base copy and ADDA.
+			// Search only a small local window and leave those independent instructions
+			// in their original order.
+			var lastAddIndex = Math.Min(copyIndex + 3, instructions.Count - 2);
+			for (var addIndex = copyIndex + 1;
+				addIndex <= lastAddIndex;
+				addIndex++)
+			{
+				var add = instructions[addIndex];
+				var access = instructions[addIndex + 1];
+				var addUsesDataIndex = (add.Opcode & 0xF1F8) == 0xD1C0;
+				var addUsesAddressIndex = (add.Opcode & 0xF1F8) == 0xD1C8;
+				var sizeCode = (access.Opcode >> 12) & 0x0F;
+				var sourceMode = (access.Opcode >> 3) & 7;
+				var sourceRegister = access.Opcode & 7;
+				var destinationMode = (access.Opcode >> 6) & 7;
+				var destinationRegister = (access.Opcode >> 9) & 7;
+				if ((!addUsesDataIndex && !addUsesAddressIndex) || // ADDA.L Rn,Atemp
+					add.Length != 2 ||
+					(add.Opcode >> 9 & 7) != temporary ||
+					sizeCode is not (1 or 2 or 3) ||
+					IsReferencedLabelAt(add.Offset) ||
+					IsReferencedLabelAt(access.Offset) ||
+					HasInternalLabel(access) ||
+					!dataflow.TryGetFacts(access.Offset, out var accessFacts) ||
+					!InterveningInstructionsPreserveBaseIndexAddress(
+						instructions,
+						copyIndex + 1,
+						addIndex,
+						temporary,
+						baseRegister,
+						dataflow))
+				{
+					continue;
+				}
+
+				var indexRegister = add.Opcode & 7;
+				var isLoad = sourceMode == 2 &&
+					sourceRegister == temporary &&
+					(destinationMode == 0 ||
+						(destinationMode == 1 && sizeCode == 2));
+				var registerStore = destinationMode == 2 &&
+					destinationRegister == temporary &&
+					(sourceMode == 0 || (sourceMode == 1 && sizeCode == 2)) &&
+					access.Length == 2;
+				var stackStore = destinationMode == 2 &&
+					destinationRegister == temporary &&
+					sourceRegister == 7 &&
+					((sourceMode == 2 && access.Length == 2) ||
+						(sourceMode == 5 && access.Length == 4));
+				if ((addUsesAddressIndex && indexRegister == temporary) ||
+					(!isLoad && !registerStore && !stackStore) ||
+					(isLoad && destinationMode == 1 &&
+						destinationRegister == temporary) ||
+					(registerStore && sourceMode == 1 &&
+						sourceRegister == temporary) ||
+					((accessFacts.LiveAddressAfter & (1 << temporary)) != 0 &&
+					 IsLinearAddressRegisterReadBeforeOverwrite(
+						 instructions,
+						 addIndex + 2,
+						 temporary,
+						 dataflow)))
+				{
+					continue;
+				}
+
+				// The brief indexed mode performs the same full-width addition. MOVEA
+				// and ADDA do not touch flags, while the indexed MOVE retains the access's
+				// condition-code and source-before-destination behavior.
+				var replacement = isLoad
+					? (ushort)((access.Opcode & ~0x3F) | (6 << 3) | baseRegister)
+					: (ushort)((access.Opcode & 0xF03F) |
+						(baseRegister << 9) | (6 << 6));
+				var sourceExtensionBytes = stackStore && sourceMode == 5 ? 2 : 0;
+				var extensionOffset = access.Offset + 2 + sourceExtensionBytes;
+				_buffer.InsertBytes(extensionOffset, 2);
+				_buffer.WriteWord(access.Offset, replacement);
+				_buffer.WriteWord(
+					extensionOffset,
+					(ushort)((addUsesAddressIndex ? 0x8000 : 0) |
+						(indexRegister << 12) | 0x0800)); // Rn.L, scale 1, d8=0
+				_buffer.RemoveBytes(add.Offset, add.Length);
+				_buffer.RemoveBytes(copy.Offset, copy.Length);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool IsLinearAddressRegisterReadBeforeOverwrite(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var registerMask = (ushort)(1 << register);
+		for (var index = startIndex; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			// Compiler-internal anchors with no incoming reference are not control-flow
+			// merges. Only a referenced label ends this linear liveness proof.
+			if (IsReferencedLabelAt(instruction.Offset) ||
+				instruction.Kind != M68kInstructionKind.Normal ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts))
+			{
+				return true;
+			}
+			if (instruction.Opcode == 0x4C01 &&
+				instruction.ExtensionWord == 0x0800)
+			{
+				// MULS.L D1,D0 is the only long multiply form emitted by the
+				// current backend. It is address-register neutral even though the
+				// generic dataflow classifier conservatively treats it as a barrier.
+				continue;
+			}
+
+			// Require a concrete full overwrite on this linear path. Any other
+			// conservative barrier reports every address register as used here.
+			if ((facts.Effects.UsesAddress & registerMask) != 0)
+			{
+				return true;
+			}
+			if ((facts.Effects.DefinesAddress & registerMask) != 0)
+			{
+				return !IsKnownFullAddressRegisterOverwrite(
+					instruction,
+					register);
+			}
+		}
+
+		return true;
+	}
+
+	private static bool IsKnownFullAddressRegisterOverwrite(
+		M68kEmittedInstruction instruction,
+		int register)
+	{
+		var opcode = instruction.Opcode;
+		return (opcode & 0xF1C0) == 0x2040 && // MOVEA.[WL] <ea>,An
+			((opcode >> 9) & 7) == register ||
+			(opcode & 0xF1C0) == 0x41C0 && // LEA <ea>,An
+				((opcode >> 9) & 7) == register;
+	}
+
+	private bool InterveningInstructionsPreserveBaseIndexAddress(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int endIndex,
+		int temporary,
+		int baseRegister,
+		M68kInstructionDataflow dataflow)
+	{
+		var temporaryMask = (ushort)(1 << temporary);
+		var baseMask = (ushort)(1 << baseRegister);
+		for (var index = startIndex; index < endIndex; index++)
+		{
+			var instruction = instructions[index];
+			if (IsReferencedLabelAt(instruction.Offset) ||
+				instruction.Kind != M68kInstructionKind.Normal ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				facts.Effects.IsBarrier ||
+				facts.Effects.StackDelta is not (null or 0) ||
+				facts.Effects.ReadsMemory != M68kMemorySet.None ||
+				facts.Effects.WritesMemory != M68kMemorySet.None ||
+				(facts.Effects.UsesAddress & temporaryMask) != 0 ||
+				(facts.Effects.DefinesAddress &
+				 (temporaryMask | baseMask)) != 0)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	private bool TryForwardLeaToMemoryLoad(M68kInstructionDataflow dataflow)
@@ -3084,8 +3810,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	private bool TryRemoveDeadMoveQuick(M68kInstructionDataflow dataflow)
 	{
-		foreach (var instruction in dataflow.Instructions)
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index < instructions.Count; index++)
 		{
+			var instruction = instructions[index];
 			if ((instruction.Opcode & 0xF100) != 0x7000 ||
 				instruction.Length != 2 ||
 				!dataflow.TryGetFacts(instruction.Offset, out var facts))
@@ -3094,6 +3822,16 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			}
 
 			var register = (instruction.Opcode >> 9) & 7;
+			if (index + 1 < instructions.Count &&
+				IsPartialMoveDefinition(instructions[index + 1], register))
+			{
+				// Register liveness is intentionally tracked at whole-register
+				// granularity. A following MOVE.B/MOVE.W defines that register in
+				// the dataflow graph, but retains the upper bytes physically. Keep
+				// the MOVEQ which establishes those bytes for a later canonical
+				// byte/ushort use.
+				continue;
+			}
 			if ((facts.LiveDataAfter & (1 << register)) != 0 ||
 				(facts.Effects.WritesConditions & facts.LiveConditionsAfter) != 0 ||
 				HasInternalLabel(instruction))
@@ -3105,6 +3843,113 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			// after removal they naturally name the following instruction.
 			_buffer.RemoveBytes(instruction.Offset, instruction.Length);
 			return true;
+		}
+
+		return false;
+
+		static bool IsPartialMoveDefinition(
+			M68kEmittedInstruction instruction,
+			int register) =>
+			(instruction.Opcode & 0xF000) is 0x1000 or 0x3000 &&
+			((instruction.Opcode >> 6) & 7) == 0 &&
+			((instruction.Opcode >> 9) & 7) == register;
+	}
+
+	private bool TryRemoveRedundantZeroBeforeByteDefinition(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 2 < instructions.Count; index++)
+		{
+			var zero = instructions[index];
+			var byteDefinition = instructions[index + 1];
+			if ((zero.Opcode & 0xF1FF) != 0x7000 || // MOVEQ #0,Dn
+				zero.Length != 2 ||
+				(byteDefinition.Opcode & 0xF000) != 0x1000 || // MOVE.B <ea>,Dn
+				((byteDefinition.Opcode >> 6) & 7) != 0 ||
+				!byteDefinition.IsDecoded ||
+				byteDefinition.Kind != M68kInstructionKind.Normal ||
+				HasInternalLabel(zero) ||
+				HasLabelAt(byteDefinition.Offset))
+			{
+				continue;
+			}
+
+			var register = (zero.Opcode >> 9) & 7;
+			if (((byteDefinition.Opcode >> 9) & 7) != register ||
+				ByteMoveSourceUsesDataRegister(byteDefinition, register) ||
+				!UpperDataBytesAreUnobservedUntilFullOverwrite(
+					instructions,
+					index + 2,
+					register,
+					dataflow))
+			{
+				continue;
+			}
+
+			// The adjacent byte definition replaces MOVEQ's N/Z/V/C state. Every
+			// subsequent observation is byte-sized until a proved full overwrite,
+			// so the zeroed upper 24 bits cannot affect execution or published flags.
+			_buffer.RemoveBytes(zero.Offset, zero.Length);
+			return true;
+		}
+
+		return false;
+
+		static bool ByteMoveSourceUsesDataRegister(
+			M68kEmittedInstruction instruction,
+			int register)
+		{
+			var sourceMode = (instruction.Opcode >> 3) & 7;
+			var sourceRegister = instruction.Opcode & 7;
+			if (sourceMode == 0)
+			{
+				return sourceRegister == register;
+			}
+
+			var indexed = sourceMode == 6 ||
+				sourceMode == 7 && sourceRegister == 3;
+			return indexed &&
+				(instruction.ExtensionWord & 0x8000) == 0 &&
+				((instruction.ExtensionWord >> 12) & 7) == register;
+		}
+	}
+
+	private bool UpperDataBytesAreUnobservedUntilFullOverwrite(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var registerMask = (ushort)(1 << register);
+		for (var index = startIndex; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			// Unreferenced diagnostic/layout anchors do not split execution. A real
+			// incoming branch still terminates the byte-observation proof below.
+			if (IsReferencedLabelAt(instruction.Offset) ||
+				instruction.Kind != M68kInstructionKind.Normal ||
+				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				facts.Effects.IsBarrier)
+			{
+				return false;
+			}
+
+			if (IsKnownFullDataRegisterOverwrite(
+					instruction,
+					register,
+					facts.Effects))
+			{
+				return true;
+			}
+
+			var usesRegister = (facts.Effects.UsesData & registerMask) != 0;
+			var definesRegister = (facts.Effects.DefinesData & registerMask) != 0;
+			if (usesRegister && !ObservesOnlyLowByte(instruction, register) ||
+				definesRegister && !usesRegister)
+			{
+				return false;
+			}
 		}
 
 		return false;
@@ -3500,6 +4345,429 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var register = effectiveAddress & 7;
 			return mode is >= 2 and <= 6 || mode == 7 && register <= 1;
 		}
+	}
+
+	private bool TryForwardDataRegisterCopyToMemory(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var copy = instructions[index];
+			var store = instructions[index + 1];
+			var storeSize = (store.Opcode >> 12) & 0x0F;
+			var destinationMode = (store.Opcode >> 6) & 7;
+			var destinationRegister = (store.Opcode >> 9) & 7;
+			if ((copy.Opcode & 0xF1F8) != 0x2000 || // MOVE.L Ds,Dtemp
+				copy.Length != 2 ||
+				storeSize is not (1 or 2 or 3) ||
+				((store.Opcode >> 3) & 7) != 0 ||
+				!IsAlterableMemoryDestination(destinationMode, destinationRegister) ||
+				IsReferencedLabelAt(store.Offset) ||
+				!dataflow.TryGetFacts(store.Offset, out var storeFacts))
+			{
+				continue;
+			}
+
+			var source = copy.Opcode & 7;
+			var temporary = copy.Opcode >> 9 & 7;
+			if (source == temporary ||
+				(store.Opcode & 7) != temporary ||
+				(storeFacts.LiveDataAfter & (1 << temporary)) != 0 ||
+				DestinationUsesDataRegister(
+					store,
+					destinationMode,
+					temporary))
+			{
+				continue;
+			}
+
+			// The store consumes only the selected low byte/word/long of the copied
+			// value and publishes the final flags. Read the same bits from the source
+			// register directly when the temporary dies here.
+			_buffer.WriteWord(
+				store.Offset,
+				(ushort)((store.Opcode & ~7) | source));
+			_buffer.RemoveBytes(copy.Offset, copy.Length);
+			return true;
+		}
+
+		return false;
+
+		static bool DestinationUsesDataRegister(
+			M68kEmittedInstruction instruction,
+			int mode,
+			int register) =>
+			mode == 6 &&
+			(instruction.ExtensionWord & 0x8000) == 0 &&
+			((instruction.ExtensionWord >> 12) & 7) == register;
+	}
+
+	private bool TryForwardMemoryLoadToFinalDataRegister(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		IReadOnlyList<M68kEmittedInstruction>? wholeImageInstructions = null;
+		var callTargetProofs = new Dictionary<(int TargetOffset, int Register), bool>();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var load = instructions[index];
+			var copy = instructions[index + 1];
+			var sizeCode = (load.Opcode >> 12) & 0x0F;
+			var sourceMode = (load.Opcode >> 3) & 7;
+			var sourceRegister = load.Opcode & 7;
+			if (sizeCode is not (1 or 2 or 3) ||
+				((load.Opcode >> 6) & 7) != 0 ||
+				!IsReadableMemoryEffectiveAddress(sourceMode, sourceRegister) ||
+				((copy.Opcode >> 12) & 0x0F) != sizeCode ||
+				((copy.Opcode >> 6) & 7) != 0 ||
+				((copy.Opcode >> 3) & 7) != 0 ||
+				copy.Length != 2 ||
+				(copy.Opcode & 7) != ((load.Opcode >> 9) & 7) ||
+				IsReferencedLabelAt(copy.Offset) ||
+				!dataflow.TryGetFacts(copy.Offset, out var copyFacts))
+			{
+				continue;
+			}
+
+			var temporary = (load.Opcode >> 9) & 7;
+			var destination = (copy.Opcode >> 9) & 7;
+			if (destination == temporary ||
+				(copyFacts.LiveDataAfter & (1 << temporary)) != 0 &&
+				IsDataRegisterReadBeforeOverwriteWithKnownCalls(
+					instructions,
+					index + 2,
+					temporary,
+					dataflow,
+					ref wholeImageInstructions,
+					callTargetProofs))
+			{
+				continue;
+			}
+
+			// MOVE evaluates its source EA before writing the data register. Retargeting
+			// therefore also preserves indexed and auto-updating source semantics. Equal
+			// byte/word/long values publish the same final N/Z/V/C state and leave X
+			// unchanged, while avoiding the temporary register copy.
+			_buffer.WriteWord(
+				load.Offset,
+				(ushort)((load.Opcode & 0xF1FF) | (destination << 9)));
+			_buffer.RemoveBytes(copy.Offset, copy.Length);
+			return true;
+		}
+
+		return false;
+
+		static bool IsReadableMemoryEffectiveAddress(int mode, int register) =>
+			mode is >= 2 and <= 6 || mode == 7 && register <= 3;
+	}
+
+	private bool IsDataRegisterReadBeforeOverwriteWithKnownCalls(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow,
+		ref IReadOnlyList<M68kEmittedInstruction>? wholeImageInstructions,
+		Dictionary<(int TargetOffset, int Register), bool> callTargetProofs)
+	{
+		if (startIndex >= instructions.Count)
+		{
+			return true;
+		}
+
+		var indexByOffset = instructions
+			.Select((instruction, index) => (instruction.Offset, index))
+			.ToDictionary(static item => item.Offset, static item => item.index);
+		var pending = new Stack<int>();
+		var visited = new HashSet<int>();
+		var registerMask = (ushort)(1 << register);
+		pending.Push(startIndex);
+
+		while (pending.TryPop(out var index))
+		{
+			if (!visited.Add(index))
+			{
+				continue;
+			}
+
+			var instruction = instructions[index];
+			if (instruction.Kind == M68kInstructionKind.Return)
+			{
+				return true;
+			}
+			if (instruction.Kind == M68kInstructionKind.Call)
+			{
+				if (instruction.ExternalTarget ||
+					instruction.TargetOffset is not { } targetOffset ||
+					CallTargetReadsDataRegisterBeforeOverwrite(
+						targetOffset,
+						register,
+						ref wholeImageInstructions,
+						callTargetProofs))
+				{
+					return true;
+				}
+
+				// The proved callee overwrites the incoming value on every path.
+				// Nothing after the returning call can observe that original value.
+				continue;
+			}
+			if (!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
+				facts.Effects.IsBarrier)
+			{
+				return true;
+			}
+			if ((facts.Effects.UsesData & registerMask) != 0)
+			{
+				return true;
+			}
+			if (IsKnownFullDataRegisterOverwrite(
+					instruction,
+					register,
+					facts.Effects))
+			{
+				continue;
+			}
+
+			var nextIndex = index + 1;
+			switch (instruction.Kind)
+			{
+				case M68kInstructionKind.ConditionalBranch:
+				case M68kInstructionKind.Dbcc:
+					if (!PushTarget(instruction.TargetOffset) ||
+						!PushNext())
+					{
+						return true;
+					}
+					break;
+				case M68kInstructionKind.UnconditionalBranch:
+					if (!PushTarget(instruction.TargetOffset))
+					{
+						return true;
+					}
+					break;
+				default:
+					if (!PushNext())
+					{
+						return true;
+					}
+					break;
+			}
+
+			bool PushTarget(int? targetOffset)
+			{
+				if (!targetOffset.HasValue ||
+					!indexByOffset.TryGetValue(targetOffset.Value, out var targetIndex))
+				{
+					return false;
+				}
+				pending.Push(targetIndex);
+				return true;
+			}
+
+			bool PushNext()
+			{
+				if (nextIndex >= instructions.Count)
+				{
+					return false;
+				}
+				pending.Push(nextIndex);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private bool CallTargetReadsDataRegisterBeforeOverwrite(
+		int targetOffset,
+		int register,
+		ref IReadOnlyList<M68kEmittedInstruction>? wholeImageInstructions,
+		Dictionary<(int TargetOffset, int Register), bool> proofs)
+	{
+		var key = (targetOffset, register);
+		if (proofs.TryGetValue(key, out var cached))
+		{
+			return cached;
+		}
+
+		// Mark recursion/cycles conservatively before walking the target.
+		proofs[key] = true;
+		if (wholeImageInstructions is null &&
+			!TryGetWholeImageExecutableInstructionStream(
+				out wholeImageInstructions))
+		{
+			return true;
+		}
+
+		var instructions = wholeImageInstructions!;
+		var indexByOffset = instructions
+			.Select((instruction, index) => (instruction.Offset, index))
+			.ToDictionary(static item => item.Offset, static item => item.index);
+		if (!indexByOffset.TryGetValue(targetOffset, out var startIndex))
+		{
+			return true;
+		}
+		var methodEnd = _buffer.Labels
+			.Where(label => label.Value > targetOffset &&
+				label.Key.EndsWith(":end", StringComparison.Ordinal))
+			.Select(static label => label.Value)
+			.DefaultIfEmpty(-1)
+			.Min();
+		if (methodEnd < 0)
+		{
+			return true;
+		}
+
+		var pending = new Stack<int>();
+		var visited = new HashSet<int>();
+		var registerMask = (ushort)(1 << register);
+		pending.Push(startIndex);
+		while (pending.TryPop(out var index))
+		{
+			if (!visited.Add(index))
+			{
+				continue;
+			}
+			var instruction = instructions[index];
+			if (instruction.Offset >= methodEnd ||
+				instruction.Kind is M68kInstructionKind.Return or
+					M68kInstructionKind.Call)
+			{
+				return true;
+			}
+
+			var effects = _assembler.TryGetInstructionEffects(
+				instruction.Offset,
+				out var annotated)
+				? annotated
+				: M68kInstructionDataflow.GetEffects(instruction);
+			if (effects.IsBarrier ||
+				(effects.UsesData & registerMask) != 0)
+			{
+				return true;
+			}
+			if (IsKnownFullDataRegisterOverwrite(
+					instruction,
+					register,
+					effects))
+			{
+				continue;
+			}
+
+			var nextIndex = index + 1;
+			switch (instruction.Kind)
+			{
+				case M68kInstructionKind.ConditionalBranch:
+				case M68kInstructionKind.Dbcc:
+					if (!PushTarget(instruction.TargetOffset) ||
+						!PushNext())
+					{
+						return true;
+					}
+					break;
+				case M68kInstructionKind.UnconditionalBranch:
+					if (!PushTarget(instruction.TargetOffset))
+					{
+						return true;
+					}
+					break;
+				default:
+					if (!PushNext())
+					{
+						return true;
+					}
+					break;
+			}
+
+			bool PushTarget(int? branchTarget)
+			{
+				if (!branchTarget.HasValue ||
+					branchTarget.Value < targetOffset ||
+					branchTarget.Value >= methodEnd ||
+					!indexByOffset.TryGetValue(branchTarget.Value, out var targetIndex))
+				{
+					return false;
+				}
+				pending.Push(targetIndex);
+				return true;
+			}
+
+			bool PushNext()
+			{
+				if (nextIndex >= instructions.Count ||
+					instructions[nextIndex].Offset >= methodEnd)
+				{
+					return false;
+				}
+				pending.Push(nextIndex);
+				return true;
+			}
+		}
+
+		proofs[key] = false;
+		return false;
+	}
+
+	private bool TryGetWholeImageExecutableInstructionStream(
+		out IReadOnlyList<M68kEmittedInstruction>? instructions)
+	{
+		if (!_assembler.HasAnalysisScope)
+		{
+			instructions = _assembler.GetExecutableInstructionStream();
+			return true;
+		}
+
+		var (startOffset, endOffset) = _assembler.GetAnalysisRange();
+		var labelNames = _assembler.AnalysisLabelNames?.ToArray();
+		var endLabel = labelNames?.FirstOrDefault(label =>
+			_buffer.Labels.TryGetValue(label, out var offset) &&
+			offset == endOffset &&
+			label.EndsWith(":end", StringComparison.Ordinal));
+		var startLabel = startOffset == 0
+			? null
+			: labelNames?.FirstOrDefault(label =>
+				_buffer.Labels.TryGetValue(label, out var offset) &&
+				offset == startOffset &&
+				label.EndsWith(":end", StringComparison.Ordinal));
+		if (labelNames is null || endLabel is null ||
+			startOffset != 0 && startLabel is null)
+		{
+			instructions = null;
+			return false;
+		}
+
+		_assembler.ClearAnalysisScope();
+		try
+		{
+			instructions = _assembler.GetExecutableInstructionStream();
+			return true;
+		}
+		finally
+		{
+			_assembler.SetAnalysisScope(startLabel, endLabel, labelNames);
+		}
+	}
+
+	private static bool IsKnownFullDataRegisterOverwrite(
+		M68kEmittedInstruction instruction,
+		int register,
+		M68kInstructionEffects effects)
+	{
+		var registerMask = (ushort)(1 << register);
+		if ((effects.DefinesData & registerMask) == 0 ||
+			(effects.UsesData & registerMask) != 0)
+		{
+			return false;
+		}
+
+		var opcode = instruction.Opcode;
+		return (opcode & 0xF000) == 0x2000 &&
+			((opcode >> 6) & 7) == 0 &&
+			((opcode >> 9) & 7) == register ||
+			(opcode & 0xF100) == 0x7000 &&
+				((opcode >> 9) & 7) == register ||
+			(opcode & 0xFFF8) == 0x4280 && (opcode & 7) == register;
 	}
 
 	private bool TryForwardMemoryLoadIntoArithmetic(
@@ -8321,6 +9589,32 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				allocation.Offset,
 				(ushort)(0x2F00 | (store.Opcode & 0x000F))); // MOVE.L Dn/An,-(A7)
 			_buffer.RemoveBytes(store.Offset, store.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryFoldStackAllocationIntoClearPush()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var allocation = instructions[index];
+			var clear = instructions[index + 1];
+			if (allocation.Opcode != 0x598F || // SUBQ.L #4,A7
+				allocation.Length != 2 ||
+				clear.Opcode != 0x4297 || // CLR.L (A7)
+				clear.Length != 2 ||
+				HasLabelAt(clear.Offset))
+			{
+				continue;
+			}
+
+			// CLR.L -(A7) has the same final stack pointer, stored value, and
+			// condition codes as SUBQ.L #4,A7 followed by CLR.L (A7).
+			_buffer.WriteWord(allocation.Offset, 0x42A7); // CLR.L -(A7)
+			_buffer.RemoveBytes(clear.Offset, clear.Length);
 			return true;
 		}
 

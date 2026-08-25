@@ -29,6 +29,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
 	<ProjectReference Include="..\Compiler.Tests.PackageDependency\CopperSharp.Compiler.Tests.PackageDependency.csproj" />
+	<ProjectReference Include="..\Compiler.Tests.FunctionAddressFixtures\CopperSharp.Compiler.Tests.FunctionAddressFixtures.csproj" />
     <ProjectReference Include="..\Compiler.Tests.MultiModule\CopperSharp.Compiler.Tests.MultiModule.csproj" />
     <ProjectReference Include="..\Runtime.Managed\CopperSharp.Runtime.Managed.csproj" />
     <ProjectReference Include="..\Runtime.AmigaPal\CopperSharp.Runtime.AmigaPal.csproj" />
@@ -42,6 +43,7 @@
     <ProjectReference Include="..\Sdk.Amiga\Examples\Polymorphism\Polymorphism.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\ConsoleIO\ConsoleIO.csproj" />
 	<ProjectReference Include="..\Sdk.Amiga\Examples\CopperBars\CopperBars.csproj" />
+    <ProjectReference Include="..\Sdk.Amiga\Examples\StopwatchBenchmark\StopwatchBenchmark.csproj" />
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
     <ProjectReference Include="..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj"
                       ReferenceOutputAssembly="false"

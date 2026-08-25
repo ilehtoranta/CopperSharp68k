@@ -1,5 +1,6 @@
-using System.Text.RegularExpressions;
+using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using Amiga;
 using CopperSharp.Compiler;
 using CopperSharp.Targets.Amiga;
@@ -23,9 +24,9 @@ public sealed partial class CopperBarsAssemblyTests
 		var buildCopperList = MethodBody(result, "CopperBarsExample.Program::BuildCopperList");
 		var copperWait = MethodBody(result, "CopperBarsExample.Program::CopperWait");
 
-		var wrap = buildCopperList.IndexOf("#$0000FFDF", StringComparison.Ordinal);
-		var physicalLine280 = buildCopperList.IndexOf("#$00000118", StringComparison.Ordinal);
-		var interruptRequest = buildCopperList.IndexOf("#$00008010", StringComparison.Ordinal);
+		var wrap = HexImmediateIndex(buildCopperList, value: 0xFFDF);
+		var physicalLine280 = HexImmediateIndex(buildCopperList, value: 280);
+		var interruptRequest = HexImmediateIndex(buildCopperList, value: 0x8010);
 
 		Assert.True(wrap >= 0, "BuildCopperList must emit the realizable line-255 wrap WAIT $FFDF.");
 		Assert.True(physicalLine280 > wrap, "The low eight bits of line 280 must follow the wrap WAIT.");
@@ -70,7 +71,9 @@ public sealed partial class CopperBarsAssemblyTests
 		Assert.True(Instruction().Matches(assembly).Count <= 447);
 		Assert.True(CallInstruction().Matches(assembly).Count <= 44);
 		Assert.Empty(LongMaskConstant().Matches(assembly).Cast<Match>());
-		Assert.True(WordZeroExtension().Matches(assembly).Count <= 1);
+		// CopperWait normalizes its ushort ABI return, and WriteCopperWait
+		// independently canonicalizes that call result before widening/store.
+		Assert.True(WordZeroExtension().Matches(assembly).Count <= 2);
 	}
 
 	[Fact]
@@ -162,12 +165,32 @@ public sealed partial class CopperBarsAssemblyTests
 		return assembly[start..end];
 	}
 
+	private static int HexImmediateIndex(string assembly, uint value)
+	{
+		foreach (Match match in HexImmediate().Matches(assembly))
+		{
+			if (uint.TryParse(
+					match.Groups[1].Value,
+					NumberStyles.HexNumber,
+					CultureInfo.InvariantCulture,
+					out var parsed) &&
+				parsed == value)
+			{
+				return match.Index;
+			}
+		}
+		return -1;
+	}
+
 	[GeneratedRegex(
 		"^C68K_method_003A(?![^\\r\\n]*_003A(?:BB|end))[^\\r\\n]+:\\r?$",
 		RegexOptions.Multiline)]
 	private static partial Regex TopLevelMethodLabel();
 
-	[GeneratedRegex("^\\s*move\\.w\\s+[^,]+,\\d*\\(a[0-7]\\)\\r?$", RegexOptions.Multiline)]
+	[GeneratedRegex("#\\$([0-9A-Fa-f]+)")]
+	private static partial Regex HexImmediate();
+
+	[GeneratedRegex("^\\s*move\\.w\\s+[^,]+,-?\\d*\\(a[0-7](?:,[^)]+)?\\)\\r?$", RegexOptions.Multiline)]
 	private static partial Regex WordIndirectWrite();
 
 	[GeneratedRegex("^\\s*move\\.(?:b|l)\\s+[^,]+,(?:136|150|154|156|158)\\(a[0-7]\\)\\r?$", RegexOptions.Multiline)]

@@ -15,6 +15,26 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kMachineOptimizerTests
 {
 	[Fact]
+	public void FrameFieldByrefCallRequiresLiveCallerFrame()
+	{
+		using var module = new CompilationModule(
+			typeof(CompilerFixtures).Assembly.Location);
+		var method = module.ResolveEntryPoint(
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TailFrameAliasEntry");
+		var function = CilMachineIrBuilder.Build(method, module);
+		M68kCallAbiLowering.FinalizeLogicalCalls(function);
+		var allocated = M68kRegisterAllocatorPipeline.Run(
+			function,
+			allowUntrackedManagedByrefs: true);
+		var call = Assert.Single(allocated.Function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.Where(static instruction =>
+				instruction.Operation == M68kMachineOperation.Call));
+
+		Assert.True(call.RequiresLiveCallerFrame);
+	}
+
+	[Fact]
 	public void DirectMultiwordBranchReturnsReuseOneHiddenBuffer()
 	{
 		using var module = new CompilationModule(

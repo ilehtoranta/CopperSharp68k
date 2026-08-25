@@ -308,6 +308,58 @@ public sealed class CopperScreenHeadlessIntegrationTests
         }
     }
 
+    [Fact]
+    [Trait("Category", "Benchmark")]
+    [Trait("Category", "Emulator")]
+    public async Task FileStatsEmptyInputHasPinnedA500PalExecutionCost()
+    {
+        const uint expectedReturnValue = 10;
+        var cliPath = FindHeadlessCli();
+        if (cliPath is null)
+        {
+            throw SkipException.ForSkip(
+                $"Set {HeadlessCliEnvironmentVariable} to CopperScreen.Headless.Cli.exe or its DLL to run emulator benchmarks.");
+        }
+
+        var compilation = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+        {
+            AssemblyPath = Path.Combine(AppContext.BaseDirectory, "FileStats.dll"),
+            EntryPoint = "FileStatsExample.Program::Main",
+            Cpu = M68kCpuTarget.M68000,
+            OutputFormat = M68kOutputFormat.Hunk,
+            RuntimeProfile = M68kRuntimeProfile.Application,
+            ExceptionMode = M68kExceptionMode.Yolo
+        });
+        var temporaryDirectory = Path.Combine(Path.GetTempPath(),
+            "coppersharp-filestats-benchmark-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(temporaryDirectory);
+        try
+        {
+            var hunkPath = Path.Combine(temporaryDirectory, "FileStats");
+            await File.WriteAllBytesAsync(hunkPath, compilation.Image);
+            var result = await RunHeadlessAsync(
+                cliPath, hunkPath, "AccurateM68000", expectedReturnValue);
+            var context = FormatFailureContext(
+                cliPath, "FileStatsExample.Program::Main", M68kCpuTarget.M68000,
+                "AccurateM68000", result);
+            Assert.True(result.ExitCode == 0, context);
+
+            using var json = JsonDocument.Parse(result.StandardOutput);
+            var run = json.RootElement.GetProperty("result");
+            Assert.Equal(expectedReturnValue, run.GetProperty("ReturnValue").GetUInt32());
+            Assert.Equal(0, run.GetProperty("StopReason").GetInt32());
+            var snapshot = run.GetProperty("Snapshot");
+            var cycles = snapshot.GetProperty("Cpu").GetProperty("Cycles").GetInt64();
+            var instructions = snapshot.GetProperty("InstructionsExecuted").GetInt64();
+            Assert.InRange(cycles, 1, 100_000);
+            Assert.InRange(instructions, 1, 10_000);
+        }
+        finally
+        {
+            Directory.Delete(temporaryDirectory, recursive: true);
+        }
+    }
+
     private static async Task RunFixtureAsync(
         string entryPoint,
         uint expectedReturnValue,

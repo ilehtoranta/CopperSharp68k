@@ -126,7 +126,8 @@ static int Run(string[] args)
 				compatibilityReport,
 				result.FrameworkAnalysis,
 				request,
-				platform);
+				platform,
+				result.NativeCompatibility);
 		}
 
 		var directory = Path.GetDirectoryName(Path.GetFullPath(output!));
@@ -280,7 +281,8 @@ static void WriteFrameworkReport(
 	string reportPath,
 	M68kFrameworkAnalysisResult analysis,
 	M68kCompilationRequest request,
-	CompilerPlatform platform)
+	CompilerPlatform platform,
+	M68kNativeCompatibility? nativeCompatibility = null)
 {
 	var options = new JsonSerializerOptions
 	{
@@ -298,7 +300,7 @@ static void WriteFrameworkReport(
 			"CopperSharp.Compiler",
 			compilerVersion);
 	var report = new CompatibilityReport(
-		1,
+		nativeCompatibility is null ? 1 : 2,
 		new CompatibilityPackageIdentity("CopperSharp.Compiler", compilerVersion),
 		$"{analysis.Contract.TargetFramework}-{analysis.Contract.ReferencePackVersion}",
 		analysis.Contract,
@@ -312,7 +314,8 @@ static void WriteFrameworkReport(
 		analysis.ManagedAllocationSites,
 		analysis.RootMethodCount,
 		analysis.ReachableMethodCount,
-		request.IncludedExportNames);
+		request.IncludedExportNames,
+		nativeCompatibility);
 	var json = JsonSerializer.Serialize(report, options);
 	if (reportPath == "-")
 	{
@@ -636,4 +639,6 @@ sealed record CompatibilityReport(
 	IReadOnlyList<M68kManagedAllocationSite> ManagedAllocationSites,
 	int RootMethodCount,
 	int ReachableMethodCount,
-	IReadOnlyList<string>? IncludedExportNames);
+	IReadOnlyList<string>? IncludedExportNames,
+	[property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+	M68kNativeCompatibility? NativeCompatibility);

@@ -29,7 +29,14 @@ UTF-8 path per line. `@response-manifest` accepts the versioned SDK `key=value`
 format, including repeated `managed-assembly` entries, so dependency paths and
 publish settings do not expand the shell command.
 `--compatibility-report` writes the exact framework analysis already produced
-by a successful compilation; it does not run a second reachability pass.
+by a successful compilation; it does not run a second reachability pass. Its
+schema-version 2 `NativeCompatibility` object also records the selected
+exception and effective memory modes, final exception-region and fatal-machine-
+fault-site counts, linked runtime features and helpers, every external native
+assembler target, and exact identities of the managed assemblies that contributed
+to the reachable graph. Fatal-machine-fault sites are decoded only from the final
+executable section ending at the first data boundary; read-only, writable, and BSS
+data words are excluded.
 
 `--framework-implementation-manifest <file>` opts into compiler-approved bodies
 from an explicitly pinned framework implementation pack. The same setting is

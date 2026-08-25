@@ -581,6 +581,37 @@ public sealed record M68kLoopFootprint(
 	int CacheLineCount,
 	bool FitsIn256ByteInstructionCache);
 
+/// <summary>Exact managed PE identity contributing to the reachable compilation graph.</summary>
+public sealed record M68kReachableAssemblyIdentity(
+	string Name,
+	string Version,
+	string PublicKeyToken,
+	Guid Mvid,
+	string Sha256);
+
+/// <summary>
+/// Machine-verifiable native compatibility evidence derived from the final
+/// compilation, without changing the generated image.
+/// </summary>
+public sealed record M68kNativeCompatibility(
+	M68kExceptionMode ExceptionMode,
+	M68kMemoryManagement MemoryManagement,
+	int ExceptionRegionCount,
+	int FatalMachineFaultSiteCount,
+	IReadOnlyList<string> RuntimeFeatures,
+	IReadOnlyList<string> RuntimeHelpers,
+	IReadOnlyList<string> ExternalNativeTargets,
+	IReadOnlyList<M68kReachableAssemblyIdentity> ReachableAssemblies)
+{
+	public int RuntimeFeatureCount => RuntimeFeatures.Count;
+
+	public int RuntimeHelperCount => RuntimeHelpers.Count;
+
+	public int ExternalNativeTargetCount => ExternalNativeTargets.Count;
+
+	public int ReachableAssemblyCount => ReachableAssemblies.Count;
+}
+
 /// <summary>Successful compiler output.</summary>
 public sealed class M68kCompilationResult
 {
@@ -598,6 +629,7 @@ public sealed class M68kCompilationResult
 			terminalDeadStoreStatistics,
 		IReadOnlyList<M68kLoopFootprint> loopFootprints,
 		IReadOnlyList<string> frameworkFeatures,
+		M68kNativeCompatibility nativeCompatibility,
 		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		Image = image;
@@ -611,6 +643,7 @@ public sealed class M68kCompilationResult
 		TerminalDeadStoreStatistics = terminalDeadStoreStatistics;
 		LoopFootprints = loopFootprints;
 		FrameworkFeatures = frameworkFeatures;
+		NativeCompatibility = nativeCompatibility;
 		FrameworkAnalysis = frameworkAnalysis;
 	}
 
@@ -638,6 +671,9 @@ public sealed class M68kCompilationResult
 
 	/// <summary>Independently linked framework/runtime capabilities.</summary>
 	public IReadOnlyList<string> FrameworkFeatures { get; }
+
+	/// <summary>Native policy and final-image evidence for compatibility gates.</summary>
+	public M68kNativeCompatibility NativeCompatibility { get; }
 
 	/// <summary>The exact closed-world framework analysis reused by this compilation.</summary>
 	public M68kFrameworkAnalysisResult FrameworkAnalysis { get; }

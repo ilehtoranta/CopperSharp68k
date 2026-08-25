@@ -381,6 +381,102 @@ public sealed class ExecLayoutTests
 	}
 
 	[Fact]
+	public void MorphOsCliDataCallsUsePublishedM68kRegistersAndVoidResults()
+	{
+		AssertRegisters(typeof(DOS), nameof(DOS.ReleaseCLINumber),
+			M68kRegister.D1);
+		AssertRegisters(typeof(DOS), nameof(DOS.QueryCLIDataTagList),
+			M68kRegister.D1);
+		AssertRegisters(typeof(DOS), nameof(DOS.FreeCLIData),
+			M68kRegister.D1);
+
+		var release = typeof(DOS).GetMethod(nameof(DOS.ReleaseCLINumber),
+			BindingFlags.Public | BindingFlags.Static)!;
+		var query = typeof(DOS).GetMethod(nameof(DOS.QueryCLIDataTagList),
+			BindingFlags.Public | BindingFlags.Static)!;
+		var free = typeof(DOS).GetMethod(nameof(DOS.FreeCLIData),
+			BindingFlags.Public | BindingFlags.Static)!;
+		Assert.Equal(typeof(void), release.ReturnType);
+		Assert.Equal(typeof(void), free.ReturnType);
+		Assert.Null(release.ReturnParameter.GetCustomAttribute<M68kRegisterAttribute>());
+		Assert.Null(free.ReturnParameter.GetCustomAttribute<M68kRegisterAttribute>());
+		Assert.Equal(M68kRegister.D0,
+			query.ReturnParameter.GetCustomAttribute<M68kRegisterAttribute>()?.Register);
+	}
+
+	[Fact]
+	public void EveryUniqueMorphOsDosExtensionUsesItsPublishedM68kRegisters()
+	{
+		(string Name, M68kRegister[] Parameters, bool IsVoid)[] calls =
+		{
+			(nameof(DOS.AddSegmentTagList), [M68kRegister.A0], false),
+			(nameof(DOS.FindSegmentTagList), [M68kRegister.A0], false),
+			(nameof(DOS.Seek64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D4], false),
+			(nameof(DOS.SetFileSize64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D4], false),
+			(nameof(DOS.LockRecord64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D4, M68kRegister.D6, M68kRegister.D7], false),
+			(nameof(DOS.LockRecords64), [M68kRegister.D1, M68kRegister.D2], false),
+			(nameof(DOS.UnLockRecord64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D4], false),
+			(nameof(DOS.UnLockRecords64), [M68kRegister.D1], false),
+			(nameof(DOS.NewReadLink), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3, M68kRegister.D4, M68kRegister.D5], false),
+			(nameof(DOS.GetFileSysAttr), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3, M68kRegister.D4], false),
+			(nameof(DOS.GetSegListAttr), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3, M68kRegister.D4], false),
+			(nameof(DOS.SetDosObjectAttr), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3], false),
+			(nameof(DOS.GetDosObjectAttr), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3], false),
+			(nameof(DOS.Examine64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3], false),
+			(nameof(DOS.ExNext64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3], false),
+			(nameof(DOS.ExamineFH64), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3], false),
+			(nameof(DOS.ReleaseCLINumber), [M68kRegister.D1], true),
+			(nameof(DOS.QueryCLIDataTagList), [M68kRegister.D1], false),
+			(nameof(DOS.FreeCLIData), [M68kRegister.D1], true),
+			(nameof(DOS.GetSegListAttrTagList), [M68kRegister.D1,
+				M68kRegister.D2, M68kRegister.D3, M68kRegister.D4,
+				M68kRegister.D5], false),
+			(nameof(DOS.SetFilePosixDate), [M68kRegister.D1, M68kRegister.D2,
+				M68kRegister.D3], false),
+			(nameof(DOS.PosixDateStamp), [M68kRegister.D1], false),
+			(nameof(DOS.PosixDateStampToDateStamp), [M68kRegister.D1,
+				M68kRegister.D2], false),
+			(nameof(DOS.DateStampToPosixDateStamp), [M68kRegister.D1,
+				M68kRegister.D2], false),
+		};
+
+		Assert.Equal(24, calls.Length);
+		foreach (var call in calls)
+		{
+			AssertRegisters(typeof(DOS), call.Name, call.Parameters);
+			var method = typeof(DOS).GetMethod(call.Name,
+				BindingFlags.Public | BindingFlags.Static)!;
+			if (call.IsVoid)
+			{
+				Assert.Equal(typeof(void), method.ReturnType);
+				Assert.Null(method.ReturnParameter.GetCustomAttribute<
+					M68kRegisterAttribute>());
+			}
+			else Assert.Equal(M68kRegister.D0, method.ReturnParameter
+				.GetCustomAttribute<M68kRegisterAttribute>()?.Register);
+		}
+
+		var seek = typeof(DOS).GetMethod(nameof(DOS.Seek64))!;
+		Assert.Equal(typeof(long), seek.ReturnType);
+		Assert.Equal(typeof(long), seek.GetParameters()[1].ParameterType);
+		var lockRecord = typeof(DOS).GetMethod(nameof(DOS.LockRecord64))!;
+		Assert.Equal(typeof(ulong), lockRecord.GetParameters()[1].ParameterType);
+		Assert.Equal(typeof(ulong), lockRecord.GetParameters()[2].ParameterType);
+	}
+
+	[Fact]
 	public void RunCommandCallbackUsesPublishedM68kRegisters()
 	{
 		AssertRegisters(typeof(DosRunCommandCallbacks),

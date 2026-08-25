@@ -642,6 +642,17 @@ internal static class M68kByrefProvenanceAnalyzer
 				objectOwner);
 			return true;
 		}
+		if (instruction.SourceInstruction?.OpCode == OpCodes.Ldflda &&
+			instruction.Uses.Length != 0 &&
+			inferred.TryGetValue(instruction.Uses[0], out var containingByref) &&
+			containingByref is not null)
+		{
+			// A field address projected from a managed pointer retains the
+			// containing storage's lifetime. In particular, ldflda over a local
+			// aggregate must keep that local frame alive across the call.
+			provenance = containingByref.Value;
+			return true;
+		}
 		if (instruction.Operation == M68kMachineOperation.ArrayAddress &&
 			instruction.Uses.Length != 0 &&
 			canonicalOwners.TryGetValue(instruction.Uses[0], out var arrayOwner))
