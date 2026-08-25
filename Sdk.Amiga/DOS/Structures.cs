@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 namespace Amiga;
 
 [System.Runtime.InteropServices.StructLayout(
-	System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2)]
+	System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2, Size = 16)]
 public struct ExAllControl
 {
 	public const uint Size = 16;
@@ -23,7 +23,7 @@ public struct ExAllControl
 /// by <see cref="DosExAllDataLevel"/>, followed by inline strings.
 /// </summary>
 [System.Runtime.InteropServices.StructLayout(
-	System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2)]
+	System.Runtime.InteropServices.LayoutKind.Sequential, Pack = 2, Size = 40)]
 public struct ExAllData
 {
 	public const uint Size = 40;
@@ -41,7 +41,7 @@ public struct ExAllData
 }
 
 /// <summary>Published dos/dosasl.h wildcard traversal anchor.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 282)]
 public unsafe struct AnchorPath
 {
 	public const uint MinimumSize = 281;
@@ -59,7 +59,7 @@ public unsafe struct AnchorPath
 }
 
 /// <summary>Published dos/dosasl.h component in an AnchorPath traversal.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 274)]
 public unsafe struct AChain
 {
 	public const uint MinimumSize = 274;
@@ -94,7 +94,7 @@ public struct DosAChainControl
 	public AChainFlags Flags;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 8)]
 public struct DosAttrBuffer
 {
 	public const uint Size = 8;
@@ -115,7 +115,7 @@ public struct NotifyRequestTarget
 }
 
 /// <summary>Published dos/notify.h request record.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 48)]
 public struct NotifyRequest
 {
 	public const uint Size = 48;
@@ -134,7 +134,7 @@ public struct NotifyRequest
 }
 
 /// <summary>Published message delivered for NRF_SEND_MESSAGE requests.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 38)]
 public struct NotifyMessage
 {
 	public const uint Size = 38;
@@ -149,7 +149,7 @@ public struct NotifyMessage
 	public uint Private1;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 12)]
 public struct DateStamp
 {
 	public const uint Size = 12;
@@ -160,7 +160,7 @@ public struct DateStamp
 }
 
 /// <summary>Published dos/datetime.h DateTime record.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 26)]
 public struct DosDateTime
 {
 	public const uint Size = 26;
@@ -175,7 +175,7 @@ public struct DosDateTime
 }
 
 /// <summary>MorphOS UTC timestamp used by the m68k DOS ABI.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 12)]
 public struct PosixDateStamp
 {
 	public const uint Size = 12;
@@ -184,7 +184,7 @@ public struct PosixDateStamp
 	public int Nanoseconds;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 12)]
 public struct CSource
 {
 	public const uint Size = 12;
@@ -194,7 +194,7 @@ public struct CSource
 	public int CurrentCharacter;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 32)]
 public struct RDArgs
 {
 	public const uint Size = 32;
@@ -207,7 +207,7 @@ public struct RDArgs
 	public int Flags;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 16)]
 public struct RecordLock
 {
 	public const uint Size = 16;
@@ -219,7 +219,7 @@ public struct RecordLock
 }
 
 /// <summary>MorphOS 64-bit record-lock descriptor used by the m68k DOS ABI.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 24)]
 public struct RecordLock64
 {
 	public const uint Size = 24;
@@ -230,7 +230,7 @@ public struct RecordLock64
 	public uint Mode;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 36)]
 public struct InfoData
 {
 	public const uint Size = 36;
@@ -246,7 +246,7 @@ public struct InfoData
 	public int InUse;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 80)]
 public struct DosEnvec
 {
 	public const uint Size = 80;
@@ -273,7 +273,7 @@ public struct DosEnvec
 	public uint BootBlocks;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 16)]
 public struct FileSysStartupMsg
 {
 	public const uint Size = 16;
@@ -284,7 +284,7 @@ public struct FileSysStartupMsg
 	public uint Flags;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 44)]
 public struct DeviceNode
 {
 	public const uint Size = 44;
@@ -302,7 +302,7 @@ public struct DeviceNode
 	public BPTR Name;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 44)]
 public struct FileHandle
 {
 	public const uint Size = 44;
@@ -317,10 +317,10 @@ public struct FileHandle
 	public int Function2;
 	public int Function3;
 	public int Arguments;
-	public int Argument2;
+	public int Argument1;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 48)]
 public struct DosPacket
 {
 	public const uint Size = 48;
@@ -339,7 +339,7 @@ public struct DosPacket
 	public int Argument7;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 68)]
 public struct StandardPacket
 {
 	public const uint Size = 68;
@@ -348,7 +348,7 @@ public struct StandardPacket
 	public DosPacket Packet;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 8)]
 public struct ErrorString
 {
 	public const uint Size = 8;
@@ -357,7 +357,29 @@ public struct ErrorString
 	public APTR ErrorStrings;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+/// <summary>
+/// Published dos.library base.  The leading <see cref="Library"/> is the
+/// ordinary Exec library header; the remaining fields are the V36+ DOS
+/// public extension from dos/dosextens.h.
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 70)]
+public struct DosLibrary
+{
+	public const uint Size = 70;
+
+	public Library Library;
+	public APTR Root;
+	public APTR GlobalVector;
+	public int BcplA2;
+	public int BcplA5;
+	public int BcplA6;
+	public APTR Errors;
+	public APTR TimeRequest;
+	public APTR UtilityBase;
+	public APTR IntuitionBase;
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 56)]
 public struct RootNode
 {
 	public const uint Size = 56;
@@ -374,7 +396,7 @@ public struct RootNode
 	public int Flags;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 16)]
 public struct CliProcList
 {
 	public const uint Size = 16;
@@ -384,7 +406,7 @@ public struct CliProcList
 	public APTR Array;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 158)]
 public struct DosInfo
 {
 	public const uint Size = 158;
@@ -399,7 +421,7 @@ public struct DosInfo
 	public SignalSemaphore DeleteLock;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 16)]
 public struct Segment
 {
 	public const uint Size = 16;
@@ -414,7 +436,7 @@ public struct Segment
 /// One element of the BPTR-linked CLI command search path. Both fields are
 /// BCPL pointers; the path terminates when <see cref="Next"/> is zero.
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 8)]
 public struct PathLock
 {
 	public const uint Size = 8;
@@ -423,7 +445,7 @@ public struct PathLock
 	public BPTR Lock;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 64)]
 public struct CommandLineInterface
 {
 	public const uint Size = 64;
@@ -447,7 +469,7 @@ public struct CommandLineInterface
 }
 
 /// <summary>MorphOS V51.51 snapshot of one command-line process.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 20)]
 public unsafe struct CLIDataItem
 {
 	/// <summary>Fixed prefix including the first byte of the variable command.</summary>
@@ -464,7 +486,7 @@ public unsafe struct CLIDataItem
 }
 
 /// <summary>MorphOS V51.51 CLI snapshot and variable pointer table.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 8)]
 public unsafe struct CLIData
 {
 	/// <summary>Fixed prefix including the first CLI pointer slot.</summary>
@@ -480,7 +502,7 @@ public unsafe struct CLIData
 /// BPTR addresses <see cref="Next"/>; <see cref="AllocationSize"/> is one longword
 /// before it and the segment data starts one longword after it.
 /// </summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 8)]
 public struct DosHunkSegmentHeader
 {
 	public const uint Size = 8;
@@ -489,7 +511,7 @@ public struct DosHunkSegmentHeader
 	public BPTR Next;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 44)]
 public struct DeviceList
 {
 	public const uint Size = 44;
@@ -505,7 +527,7 @@ public struct DeviceList
 	public BPTR Name;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 44)]
 public struct DevInfo
 {
 	public const uint Size = 44;
@@ -523,7 +545,7 @@ public struct DevInfo
 	public BPTR Name;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 24)]
 public struct DosListHandler
 {
 	public const uint Size = 24;
@@ -537,7 +559,7 @@ public struct DosListHandler
 }
 
 /// <summary>Named view of the 24-byte assign arm in the public DosList union.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 24)]
 public struct DosListAssignData
 {
 	public const uint Size = 24;
@@ -550,7 +572,7 @@ public struct DosListAssignData
 	public uint Reserved3;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 44)]
 public struct DosList
 {
 	public const uint Size = 44;
@@ -564,7 +586,7 @@ public struct DosList
 	public BPTR Name;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 8)]
 public struct AssignList
 {
 	public const uint Size = 8;
@@ -573,7 +595,7 @@ public struct AssignList
 	public BPTR Lock;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 16)]
 public struct DevProc
 {
 	public const uint Size = 16;
@@ -584,7 +606,7 @@ public struct DevProc
 	public APTR DeviceNode;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 20)]
 public struct FileLock
 {
 	public const uint Size = 20;
@@ -596,7 +618,7 @@ public struct FileLock
 	public BPTR Volume;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 228)]
 public struct Process
 {
 	public const uint Size = 228;
@@ -629,7 +651,7 @@ public struct Process
 	public BPTR CurrentError;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 24)]
 public struct LocalVar
 {
 	public const uint Size = 24;

@@ -7,6 +7,17 @@ namespace Amiga;
 
 public static class BOOPSIGuestCodec
 {
+	public const uint MethodMessageSize = 4;
+	public const uint OpGetStorageSize = 4;
+
+	public static uint ReadMethodId<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory =>
+		memory.ReadUInt32(address, 0);
+
+	public static void WriteMethodId<TMemory>(ref TMemory memory, APTR address,
+		uint methodId) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, 0, methodId);
+
 	public static IClass ReadClass<TMemory>(ref TMemory memory, APTR address)
 		where TMemory : struct, IAmigaGuestMemory => new()
 	{
@@ -83,6 +94,14 @@ public static class BOOPSIGuestCodec
 		ops_GInfo = APTR.FromPointer(memory.ReadUInt32(address, 8)),
 	};
 
+	public static void WriteOpSet<TMemory>(ref TMemory memory, APTR address,
+		opSet value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, 0, value.MethodID);
+		memory.WriteUInt32(address, 4, value.ops_AttrList.Raw);
+		memory.WriteUInt32(address, 8, value.ops_GInfo.Raw);
+	}
+
 	public static opUpdate ReadOpUpdate<TMemory>(ref TMemory memory, APTR address)
 		where TMemory : struct, IAmigaGuestMemory => new()
 	{
@@ -99,4 +118,12 @@ public static class BOOPSIGuestCodec
 		opg_AttrID = memory.ReadUInt32(address, 4),
 		opg_Storage = APTR.FromPointer(memory.ReadUInt32(address, 8)),
 	};
+
+	public static void WriteOpGet<TMemory>(ref TMemory memory, APTR address,
+		opGet value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, 0, value.MethodID);
+		memory.WriteUInt32(address, 4, value.opg_AttrID);
+		memory.WriteUInt32(address, 8, value.opg_Storage.Raw);
+	}
 }

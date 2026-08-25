@@ -4,13 +4,22 @@
  */
 
 using System.Runtime.InteropServices;
+using CopperSharp.Compiler;
+using CopperSharp.Sdk.Amiga;
 
 namespace Amiga;
 
+[AmigaLibrary(Name, AmigaLibraryBasePolicy.CallerProvided)]
 public static class InputDevice
 {
 	public const string Name = "input.device";
 	public const short BeginIO = -30;
+	public const short PeekQualifierLvo = -42;
+
+	[AmigaLvo(PeekQualifierLvo)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern ushort PeekQualifier(
+		[M68kRegister(M68kRegister.A6)] APTR deviceBase);
 }
 
 public enum InputDeviceCommand : ushort

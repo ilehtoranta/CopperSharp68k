@@ -102,6 +102,35 @@ public static class DosNotifyMessageCodec
 		Private0 = memory.ReadUInt32(address, DosLayout.NotifyMessage.Private0),
 		Private1 = memory.ReadUInt32(address, DosLayout.NotifyMessage.Private1),
 	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		NotifyMessage value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, ExecLayout.Node.Successor,
+			value.ExecMessage.Node.Successor.Raw);
+		memory.WriteUInt32(address, ExecLayout.Node.Predecessor,
+			value.ExecMessage.Node.Predecessor.Raw);
+		memory.WriteUInt8(address, ExecLayout.Node.Type,
+			value.ExecMessage.Node.Type);
+		memory.WriteUInt8(address, ExecLayout.Node.Priority,
+			unchecked((byte)value.ExecMessage.Node.Priority));
+		memory.WriteUInt32(address, ExecLayout.Node.Name,
+			value.ExecMessage.Node.Name.Raw);
+		memory.WriteUInt32(address, ExecLayout.Message.ReplyPort,
+			value.ExecMessage.ReplyPort.Raw);
+		memory.WriteUInt16(address, ExecLayout.Message.Length,
+			value.ExecMessage.Length);
+		memory.WriteUInt32(address, DosLayout.NotifyMessage.MessageClass,
+			value.MessageClass);
+		memory.WriteUInt16(address, DosLayout.NotifyMessage.MessageCode,
+			value.MessageCode);
+		memory.WriteUInt32(address, DosLayout.NotifyMessage.Request,
+			value.Request.Raw);
+		memory.WriteUInt32(address, DosLayout.NotifyMessage.Private0,
+			value.Private0);
+		memory.WriteUInt32(address, DosLayout.NotifyMessage.Private1,
+			value.Private1);
+	}
 }
 
 public static class DosAnchorPathCodec
@@ -170,10 +199,429 @@ public static class DosAChainCodec
 		memory.WriteUInt32(address, DosLayout.AChain.Lock, value.Lock.Raw);
 		memory.WriteUInt8(address, DosLayout.AChain.Flags, (byte)value.Flags);
 	}
+	public static AChainFlags ReadFlags<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory =>
+		(AChainFlags)memory.ReadUInt8(address, DosLayout.AChain.Flags);
+	public static void WriteFlags<TMemory>(ref TMemory memory, APTR address,
+		AChainFlags value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt8(address, DosLayout.AChain.Flags, (byte)value);
+	public static bool HasAnyFlags<TMemory>(ref TMemory memory, APTR address,
+		AChainFlags value) where TMemory : struct, IAmigaGuestMemory =>
+		(memory.ReadUInt8(address, DosLayout.AChain.Flags) & (byte)value) != 0;
+	public static void SetFlags<TMemory>(ref TMemory memory, APTR address,
+		AChainFlags value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt8(address, DosLayout.AChain.Flags, unchecked((byte)(
+			memory.ReadUInt8(address, DosLayout.AChain.Flags) | (byte)value)));
+	public static void ClearFlags<TMemory>(ref TMemory memory, APTR address,
+		AChainFlags value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt8(address, DosLayout.AChain.Flags, unchecked((byte)(
+			memory.ReadUInt8(address, DosLayout.AChain.Flags) & ~(byte)value)));
 	public static APTR InfoAddress(APTR address) => APTR.FromPointer(address.Raw +
 		DosLayout.AChain.Info);
 	public static APTR PatternAddress(APTR address) => APTR.FromPointer(address.Raw +
 		DosLayout.AChain.Pattern);
+}
+
+/// <summary>Big-endian codec for the public V36+ dos.library base.</summary>
+public static class DosLibraryCodec
+{
+	public const uint Size = DosLibrary.Size;
+
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		(address.Raw & 1u) == 0 && memory.IsMapped(address, Size);
+
+	public static DosLibrary Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Library = ExecLibraryCodec.Read(ref memory, address),
+		Root = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosLibrary.Root)),
+		GlobalVector = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosLibrary.GlobalVector)),
+		BcplA2 = unchecked((int)memory.ReadUInt32(address,
+			DosLayout.DosLibrary.BcplA2)),
+		BcplA5 = unchecked((int)memory.ReadUInt32(address,
+			DosLayout.DosLibrary.BcplA5)),
+		BcplA6 = unchecked((int)memory.ReadUInt32(address,
+			DosLayout.DosLibrary.BcplA6)),
+		Errors = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosLibrary.Errors)),
+		TimeRequest = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosLibrary.TimeRequest)),
+		UtilityBase = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosLibrary.UtilityBase)),
+		IntuitionBase = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosLibrary.IntuitionBase)),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		DosLibrary value) where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecLibraryCodec.Write(ref memory, address, value.Library);
+		WriteRoot(ref memory, address, value.Root);
+		WriteGlobalVector(ref memory, address, value.GlobalVector);
+		memory.WriteUInt32(address, DosLayout.DosLibrary.BcplA2,
+			unchecked((uint)value.BcplA2));
+		memory.WriteUInt32(address, DosLayout.DosLibrary.BcplA5,
+			unchecked((uint)value.BcplA5));
+		memory.WriteUInt32(address, DosLayout.DosLibrary.BcplA6,
+			unchecked((uint)value.BcplA6));
+		memory.WriteUInt32(address, DosLayout.DosLibrary.Errors,
+			value.Errors.Raw);
+		memory.WriteUInt32(address, DosLayout.DosLibrary.TimeRequest,
+			value.TimeRequest.Raw);
+		memory.WriteUInt32(address, DosLayout.DosLibrary.UtilityBase,
+			value.UtilityBase.Raw);
+		memory.WriteUInt32(address, DosLayout.DosLibrary.IntuitionBase,
+			value.IntuitionBase.Raw);
+	}
+
+	public static APTR ReadRoot<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => APTR.FromPointer(
+		memory.ReadUInt32(address, DosLayout.DosLibrary.Root));
+
+	public static void WriteRoot<TMemory>(ref TMemory memory, APTR address,
+		APTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.DosLibrary.Root, value.Raw);
+
+	public static APTR ReadGlobalVector<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory => APTR.FromPointer(
+		memory.ReadUInt32(address, DosLayout.DosLibrary.GlobalVector));
+
+	public static void WriteGlobalVector<TMemory>(ref TMemory memory,
+		APTR address, APTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.DosLibrary.GlobalVector, value.Raw);
+}
+
+/// <summary>Big-endian codec for the public DOS RootNode.</summary>
+public static class DosRootNodeCodec
+{
+	public const uint Size = RootNode.Size;
+
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		(address.Raw & 1u) == 0 && address.Raw <= uint.MaxValue - Size &&
+		memory.IsMapped(address, Size);
+
+	public static APTR CliListAddress(APTR address) => APTR.FromPointer(
+		address.Raw + DosLayout.RootNode.CliList);
+	public static APTR CliListTailAddress(APTR address) => APTR.FromPointer(
+		CliListAddress(address).Raw + ExecLayout.MinList.Tail);
+
+	public static BPTR ReadTaskArray<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => BPTR.FromRaw(
+		memory.ReadUInt32(address, DosLayout.RootNode.TaskArray));
+
+	public static void WriteTaskArray<TMemory>(ref TMemory memory, APTR address,
+		BPTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.RootNode.TaskArray, value.Raw);
+
+	public static MinList ReadCliList<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory =>
+		ReadMinList(ref memory, CliListAddress(address));
+
+	public static void WriteCliList<TMemory>(ref TMemory memory, APTR address,
+		MinList value) where TMemory : struct, IAmigaGuestMemory =>
+		WriteMinList(ref memory, CliListAddress(address), value);
+
+	public static BPTR ReadInfo<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => BPTR.FromRaw(
+		memory.ReadUInt32(address, DosLayout.RootNode.Info));
+
+	public static RootNode Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		TaskArray = ReadTaskArray(ref memory, address),
+		ConsoleSegment = BPTR.FromRaw(memory.ReadUInt32(address,
+			DosLayout.RootNode.ConsoleSegment)),
+		Time = DosDateStampCodec.Read(ref memory, APTR.FromPointer(address.Raw +
+			DosLayout.RootNode.Time)),
+		RestartSegment = unchecked((int)memory.ReadUInt32(address,
+			DosLayout.RootNode.RestartSegment)),
+		Info = ReadInfo(ref memory, address),
+		FileHandlerSegment = BPTR.FromRaw(memory.ReadUInt32(address,
+			DosLayout.RootNode.FileHandlerSegment)),
+		CliList = ReadCliList(ref memory, address),
+		BootProcess = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.RootNode.BootProcess)),
+		ShellSegment = BPTR.FromRaw(memory.ReadUInt32(address,
+			DosLayout.RootNode.ShellSegment)),
+		Flags = unchecked((int)memory.ReadUInt32(address,
+			DosLayout.RootNode.Flags)),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		RootNode value) where TMemory : struct, IAmigaGuestMemory
+	{
+		WriteTaskArray(ref memory, address, value.TaskArray);
+		memory.WriteUInt32(address, DosLayout.RootNode.ConsoleSegment,
+			value.ConsoleSegment.Raw);
+		DosDateStampCodec.Write(ref memory, APTR.FromPointer(address.Raw +
+			DosLayout.RootNode.Time), value.Time);
+		memory.WriteUInt32(address, DosLayout.RootNode.RestartSegment,
+			unchecked((uint)value.RestartSegment));
+		memory.WriteUInt32(address, DosLayout.RootNode.Info, value.Info.Raw);
+		memory.WriteUInt32(address, DosLayout.RootNode.FileHandlerSegment,
+			value.FileHandlerSegment.Raw);
+		WriteCliList(ref memory, address, value.CliList);
+		memory.WriteUInt32(address, DosLayout.RootNode.BootProcess,
+			value.BootProcess.Raw);
+		memory.WriteUInt32(address, DosLayout.RootNode.ShellSegment,
+			value.ShellSegment.Raw);
+		memory.WriteUInt32(address, DosLayout.RootNode.Flags,
+			unchecked((uint)value.Flags));
+	}
+
+	/// <summary>Creates the exact empty CLI list and binds rn_Info.</summary>
+	public static void Initialize<TMemory>(ref TMemory memory, APTR address,
+		BPTR info) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.Clear(address, Size);
+		memory.WriteUInt32(address, DosLayout.RootNode.Info, info.Raw);
+		InitializeMinList(ref memory, CliListAddress(address));
+	}
+
+	internal static MinList ReadMinList<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Head = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.MinList.Head)),
+		Tail = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.MinList.Tail)),
+		TailPred = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.MinList.TailPred)),
+	};
+
+	internal static void WriteMinList<TMemory>(ref TMemory memory, APTR address,
+		MinList value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, ExecLayout.MinList.Head, value.Head.Raw);
+		memory.WriteUInt32(address, ExecLayout.MinList.Tail, value.Tail.Raw);
+		memory.WriteUInt32(address, ExecLayout.MinList.TailPred,
+			value.TailPred.Raw);
+	}
+
+	internal static void InitializeMinList<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, ExecLayout.MinList.Head,
+			address.Raw + ExecLayout.MinList.Tail);
+		memory.WriteUInt32(address, ExecLayout.MinList.Tail, 0);
+		memory.WriteUInt32(address, ExecLayout.MinList.TailPred, address.Raw);
+	}
+}
+
+/// <summary>Big-endian codec for the public DOS shell-table range node.</summary>
+public static class DosCliProcListCodec
+{
+	public const uint Size = CliProcList.Size;
+
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		(address.Raw & 1u) == 0 && address.Raw <= uint.MaxValue - Size &&
+		memory.IsMapped(address, Size);
+
+	public static CliProcList Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Node = new MinNode
+		{
+			Successor = ExecNodeCodec.ReadSuccessor(ref memory, address),
+			Predecessor = ExecNodeCodec.ReadPredecessor(ref memory, address),
+		},
+		First = unchecked((int)memory.ReadUInt32(address,
+			DosLayout.CliProcList.First)),
+		Array = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.CliProcList.Array)),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		CliProcList value) where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecNodeCodec.WriteSuccessor(ref memory, address, value.Node.Successor);
+		ExecNodeCodec.WritePredecessor(ref memory, address,
+			value.Node.Predecessor);
+		memory.WriteUInt32(address, DosLayout.CliProcList.First,
+			unchecked((uint)value.First));
+		memory.WriteUInt32(address, DosLayout.CliProcList.Array,
+			value.Array.Raw);
+	}
+}
+
+/// <summary>
+/// Typed access to a public DOS shell-process array. Entry zero is the table
+/// capacity; entries one through capacity contain embedded Process MsgPorts.
+/// </summary>
+public static class DosCliProcessArrayCodec
+{
+	public const uint HeaderSize = 4;
+	public const uint MaximumCapacity = 4096;
+
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory
+	{
+		if (address.IsNull || (address.Raw & 3u) != 0 ||
+			address.Raw > uint.MaxValue - HeaderSize ||
+			!memory.IsMapped(address, HeaderSize)) return false;
+		var capacity = ReadCapacity(ref memory, address);
+		if (capacity == 0 || capacity > MaximumCapacity ||
+			capacity > (uint.MaxValue - HeaderSize) / 4u) return false;
+		var size = HeaderSize + capacity * 4u;
+		return address.Raw <= uint.MaxValue - size &&
+			memory.IsMapped(address, size);
+	}
+
+	public static uint ByteSize(uint capacity) => capacity == 0 ||
+		capacity > MaximumCapacity ? 0 : HeaderSize + capacity * 4u;
+
+	public static uint ReadCapacity<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory =>
+		memory.ReadUInt32(address, 0);
+
+	public static void WriteCapacity<TMemory>(ref TMemory memory, APTR address,
+		uint capacity) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, 0, capacity);
+
+	public static APTR ReadProcessPort<TMemory>(ref TMemory memory, APTR address,
+		uint index) where TMemory : struct, IAmigaGuestMemory => APTR.FromPointer(
+		memory.ReadUInt32(address, unchecked((int)((index + 1u) * 4u))));
+
+	public static void WriteProcessPort<TMemory>(ref TMemory memory,
+		APTR address, uint index, APTR processPort)
+		where TMemory : struct, IAmigaGuestMemory => memory.WriteUInt32(address,
+		unchecked((int)((index + 1u) * 4u)), processPort.Raw);
+}
+
+/// <summary>Big-endian codec for the public DOS DosInfo record.</summary>
+public static class DosInfoCodec
+{
+	public const uint Size = DosInfo.Size;
+
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		(address.Raw & 1u) == 0 && address.Raw <= uint.MaxValue - Size &&
+		memory.IsMapped(address, Size);
+
+	public static APTR DeviceLockAddress(APTR address) => APTR.FromPointer(
+		address.Raw + DosLayout.DosInfo.DeviceLock);
+	public static APTR EntryLockAddress(APTR address) => APTR.FromPointer(
+		address.Raw + DosLayout.DosInfo.EntryLock);
+	public static APTR DeleteLockAddress(APTR address) => APTR.FromPointer(
+		address.Raw + DosLayout.DosInfo.DeleteLock);
+
+	public static BPTR ReadDeviceInfo<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => BPTR.FromRaw(
+		memory.ReadUInt32(address, DosLayout.DosInfo.DeviceInfo));
+
+	public static void WriteDeviceInfo<TMemory>(ref TMemory memory, APTR address,
+		BPTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.DosInfo.DeviceInfo, value.Raw);
+
+	public static DosInfo Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		ResidentList = BPTR.FromRaw(memory.ReadUInt32(address,
+			DosLayout.DosInfo.ResidentList)),
+		DeviceInfo = ReadDeviceInfo(ref memory, address),
+		Devices = BPTR.FromRaw(memory.ReadUInt32(address,
+			DosLayout.DosInfo.Devices)),
+		Handlers = BPTR.FromRaw(memory.ReadUInt32(address,
+			DosLayout.DosInfo.Handlers)),
+		NetworkHandler = APTR.FromPointer(memory.ReadUInt32(address,
+			DosLayout.DosInfo.NetworkHandler)),
+		DeviceLock = ReadSignalSemaphore(ref memory, DeviceLockAddress(address)),
+		EntryLock = ReadSignalSemaphore(ref memory, EntryLockAddress(address)),
+		DeleteLock = ReadSignalSemaphore(ref memory, DeleteLockAddress(address)),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		DosInfo value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, DosLayout.DosInfo.ResidentList,
+			value.ResidentList.Raw);
+		WriteDeviceInfo(ref memory, address, value.DeviceInfo);
+		memory.WriteUInt32(address, DosLayout.DosInfo.Devices, value.Devices.Raw);
+		memory.WriteUInt32(address, DosLayout.DosInfo.Handlers,
+			value.Handlers.Raw);
+		memory.WriteUInt32(address, DosLayout.DosInfo.NetworkHandler,
+			value.NetworkHandler.Raw);
+		WriteSignalSemaphore(ref memory, DeviceLockAddress(address),
+			value.DeviceLock);
+		WriteSignalSemaphore(ref memory, EntryLockAddress(address),
+			value.EntryLock);
+		WriteSignalSemaphore(ref memory, DeleteLockAddress(address),
+			value.DeleteLock);
+	}
+
+	/// <summary>Initializes all three public semaphores as unlocked.</summary>
+	public static void Initialize<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.Clear(address, Size);
+		InitializeSignalSemaphore(ref memory, DeviceLockAddress(address));
+		InitializeSignalSemaphore(ref memory, EntryLockAddress(address));
+		InitializeSignalSemaphore(ref memory, DeleteLockAddress(address));
+	}
+
+	private static SignalSemaphore ReadSignalSemaphore<TMemory>(
+		ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Link = ExecNodeCodec.Read(ref memory, address),
+		NestCount = unchecked((short)memory.ReadUInt16(address,
+			ExecLayout.SignalSemaphore.NestCount)),
+		WaitQueue = DosRootNodeCodec.ReadMinList(ref memory, APTR.FromPointer(
+			address.Raw + ExecLayout.SignalSemaphore.WaitQueue)),
+		MultipleLink = new SemaphoreRequest
+		{
+			Link = new MinNode
+			{
+				Successor = APTR.FromPointer(memory.ReadUInt32(address,
+					ExecLayout.SignalSemaphore.MultipleLink)),
+				Predecessor = APTR.FromPointer(memory.ReadUInt32(address,
+					ExecLayout.SignalSemaphore.MultipleLink + 4)),
+			},
+			Waiter = APTR.FromPointer(memory.ReadUInt32(address,
+				ExecLayout.SignalSemaphore.MultipleLink +
+				unchecked((int)MinNode.Size))),
+		},
+		Owner = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.SignalSemaphore.Owner)),
+		QueueCount = unchecked((short)memory.ReadUInt16(address,
+			ExecLayout.SignalSemaphore.QueueCount)),
+	};
+
+	private static void WriteSignalSemaphore<TMemory>(ref TMemory memory,
+		APTR address, SignalSemaphore value)
+		where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecNodeCodec.Write(ref memory, address, value.Link);
+		memory.WriteUInt16(address, ExecLayout.SignalSemaphore.NestCount,
+			unchecked((ushort)value.NestCount));
+		DosRootNodeCodec.WriteMinList(ref memory, APTR.FromPointer(address.Raw +
+			ExecLayout.SignalSemaphore.WaitQueue), value.WaitQueue);
+		memory.WriteUInt32(address, ExecLayout.SignalSemaphore.MultipleLink,
+			value.MultipleLink.Link.Successor.Raw);
+		memory.WriteUInt32(address, ExecLayout.SignalSemaphore.MultipleLink + 4,
+			value.MultipleLink.Link.Predecessor.Raw);
+		memory.WriteUInt32(address, ExecLayout.SignalSemaphore.MultipleLink +
+			unchecked((int)MinNode.Size), value.MultipleLink.Waiter.Raw);
+		memory.WriteUInt32(address, ExecLayout.SignalSemaphore.Owner,
+			value.Owner.Raw);
+		memory.WriteUInt16(address, ExecLayout.SignalSemaphore.QueueCount,
+			unchecked((ushort)value.QueueCount));
+	}
+
+	private static void InitializeSignalSemaphore<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt16(address, ExecLayout.SignalSemaphore.NestCount, 0);
+		DosRootNodeCodec.InitializeMinList(ref memory, APTR.FromPointer(
+			address.Raw + ExecLayout.SignalSemaphore.WaitQueue));
+		memory.WriteUInt32(address, ExecLayout.SignalSemaphore.Owner, 0);
+		memory.WriteUInt16(address, ExecLayout.SignalSemaphore.QueueCount, 0);
+	}
 }
 
 /// <summary>Big-endian scalar storage for MorphOS GetFileSysAttr results.</summary>
@@ -1030,7 +1478,7 @@ public static class DosFileHandleCodec
 		Function2 = S(ref memory, address, DosLayout.FileHandle.Function2),
 		Function3 = S(ref memory, address, DosLayout.FileHandle.Function3),
 		Arguments = S(ref memory, address, DosLayout.FileHandle.Arguments),
-		Argument2 = S(ref memory, address, DosLayout.FileHandle.Argument2),
+		Argument1 = S(ref memory, address, DosLayout.FileHandle.Argument1),
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
@@ -1046,7 +1494,7 @@ public static class DosFileHandleCodec
 		W(ref memory, address, DosLayout.FileHandle.Function2, value.Function2);
 		W(ref memory, address, DosLayout.FileHandle.Function3, value.Function3);
 		W(ref memory, address, DosLayout.FileHandle.Arguments, value.Arguments);
-		W(ref memory, address, DosLayout.FileHandle.Argument2, value.Argument2);
+		W(ref memory, address, DosLayout.FileHandle.Argument1, value.Argument1);
 	}
 
 	public static void WritePosition<TMemory>(ref TMemory memory, APTR address,
@@ -1437,6 +1885,13 @@ public static class DosListCodec
 	public static void WriteNext<TMemory>(ref TMemory memory, APTR address,
 		BPTR value) where TMemory : struct, IAmigaGuestMemory =>
 		memory.WriteUInt32(address, DosLayout.DosList.Next, value.Raw);
+	public static void WriteTask<TMemory>(ref TMemory memory, APTR address,
+		APTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.DosList.Task, value.Raw);
+	/// <summary>Writes only the handler arm's dol_SegList field.</summary>
+	public static void WriteHandlerSegmentList<TMemory>(ref TMemory memory,
+		APTR address, BPTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.DeviceNode.SegmentList, value.Raw);
 
 	public static DosList Read<TMemory>(ref TMemory memory, APTR address)
 		where TMemory : struct, IAmigaGuestMemory => new()
@@ -1518,6 +1973,9 @@ public static class DosProcessCodec
 	public const uint Size = Process.Size;
 	public static APTR MessagePortAddress(APTR address) =>
 		APTR.FromPointer(address.Raw + DosLayout.Process.MessagePort);
+	public static APTR ProcessAddressFromMessagePort(APTR address) =>
+		address.Raw < DosLayout.Process.MessagePort ? APTR.Null :
+		APTR.FromPointer(address.Raw - DosLayout.Process.MessagePort);
 	public static APTR LocalVariablesAddress(APTR address) =>
 		APTR.FromPointer(address.Raw + DosLayout.Process.LocalVariables);
 	public static sbyte ReadPriority<TMemory>(ref TMemory memory, APTR address)
@@ -1538,6 +1996,9 @@ public static class DosProcessCodec
 	public static APTR ReadGlobalVector<TMemory>(ref TMemory memory, APTR address)
 		where TMemory : struct, IAmigaGuestMemory => A(ref memory, address,
 			DosLayout.Process.GlobalVector);
+	public static void WriteGlobalVector<TMemory>(ref TMemory memory, APTR address,
+		APTR value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt32(address, DosLayout.Process.GlobalVector, value.Raw);
 
 	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
 		where TMemory : struct, IAmigaGuestMemory =>

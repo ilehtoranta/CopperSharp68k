@@ -367,7 +367,7 @@ public unsafe struct PPCStackSwapArgs
 }
 
 /// <summary>MorphOS 68k exception-frame record.</summary>
-[StructLayout(LayoutKind.Sequential, Pack = 2)]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 66)]
 public unsafe struct TaskFrame68k
 {
 	public const uint Size = 66;

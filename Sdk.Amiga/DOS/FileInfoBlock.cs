@@ -6,9 +6,11 @@
 namespace Amiga;
 
 using CopperSharp.Compiler;
+using System.Runtime.InteropServices;
 
 [M68kStackAlignment(4)]
 [M68kUninitializedStorage]
+[StructLayout(LayoutKind.Sequential, Pack = 2, Size = 260)]
 public unsafe struct FileInfoBlock
 {
 	public const int SizeInBytes = 260;

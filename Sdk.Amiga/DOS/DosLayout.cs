@@ -116,7 +116,7 @@ public static class DosLayout
 	{
 		public const int Link = 0, Port = 4, Type = 8, Buffer = 12, Position = 16;
 		public const int End = 20, Functions = 24, Function2 = 28, Function3 = 32;
-		public const int Arguments = 36, Argument2 = 40;
+		public const int Arguments = 36, Argument1 = 40;
 		public const int Size = 44;
 	}
 
@@ -178,12 +178,26 @@ public static class DosLayout
 		public const int Size = 64;
 	}
 
+	public static class DosLibrary
+	{
+		public const int Library = 0, Root = 34, GlobalVector = 38,
+			BcplA2 = 42, BcplA5 = 46, BcplA6 = 50, Errors = 54,
+			TimeRequest = 58, UtilityBase = 62, IntuitionBase = 66;
+		public const int Size = 70;
+	}
+
 	public static class RootNode
 	{
 		public const int TaskArray = 0, ConsoleSegment = 4, Time = 8,
 			RestartSegment = 20, Info = 24, FileHandlerSegment = 28,
 			CliList = 32, BootProcess = 44, ShellSegment = 48, Flags = 52;
 		public const int Size = 56;
+	}
+
+	public static class CliProcList
+	{
+		public const int Node = 0, First = 8, Array = 12;
+		public const int Size = 16;
 	}
 
 	public static class DosInfo
