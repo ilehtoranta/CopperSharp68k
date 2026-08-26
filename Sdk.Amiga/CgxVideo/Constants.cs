@@ -120,3 +120,25 @@ public enum CgxVideoError : uint
 	InvalidSourceFormat = 3,
 	NoMemory = 4,
 }
+
+/// <summary>Typed builders for stack-allocated CGXVideo tag lists.</summary>
+public static class CgxVideoTags
+{
+	public static TagItem Item(CgxVideoTag tag, uint value) =>
+		TagItem.Create((uint)tag, value);
+
+	public static TagItem Item(CgxVideoTag tag, APTR value) =>
+		Item(tag, value.Raw);
+
+	public static TagItem Item(CgxVideoTag tag, CgxVideoSourceFormat value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(CgxVideoTag tag, CgxVideoFeature value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(CgxVideoTag tag, CgxVideoFormat value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(CgxVideoTag tag, CgxVideoError value) =>
+		Item(tag, (uint)value);
+}

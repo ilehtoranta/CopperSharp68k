@@ -142,3 +142,37 @@ public enum TTEngineRequesterTag : uint
 	DoPreview = 0x6EDA2012,
 	FixedWidthOnly = 0x6EDA2013,
 }
+
+/// <summary>Typed builders for stack-allocated TTengine tag lists.</summary>
+public static class TTEngineTags
+{
+	public static TagItem Item(TTEngineTag tag, uint value) =>
+		TagItem.Create((uint)tag, value);
+
+	public static TagItem Item(TTEngineTag tag, APTR value) =>
+		Item(tag, value.Raw);
+
+	public static TagItem Item(TTEngineTag tag, TTEngineFontStyle value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(TTEngineTag tag, TTEngineFontWeight value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(TTEngineTag tag, TTEngineAntialias value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(TTEngineTag tag, TTEngineSoftStyle value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem Item(TTEngineTag tag, TTEngineEncoding value) =>
+		Item(tag, unchecked((uint)(int)value));
+
+	public static TagItem Item(TTEngineTag tag, TTEngineDestinationAlpha value) =>
+		Item(tag, (uint)value);
+
+	public static TagItem RequesterItem(TTEngineRequesterTag tag, uint value) =>
+		TagItem.Create((uint)tag, value);
+
+	public static TagItem RequesterItem(TTEngineRequesterTag tag, APTR value) =>
+		RequesterItem(tag, value.Raw);
+}
