@@ -7457,6 +7457,12 @@ internal sealed partial class M68kCodeGenerator
 		RegisterRuntimeTypeDescriptor("System.ArgumentNullException");
 		EmitExceptionRaise(reason: 11, hasException: false);
 		_assembler.Mark(nonNull);
+		if (!_usesFinalizers)
+		{
+			// The standard APIs still validate null, but a closed-world program
+			// with no reachable finalizable allocation needs no runtime adapter.
+			return;
+		}
 		_assembler.EmitBsr(
 			reRegister
 				? RuntimeReRegisterFinalizerLabel

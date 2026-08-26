@@ -213,8 +213,51 @@ public static class ManagedPool
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static void Collect()
 	{
-		TraceMarkedObjects();
-		Sweep();
+		uint scanned;
+		do
+		{
+			scanned = 0;
+			var current = AllocatedHead;
+			while (current != 0)
+			{
+				var block = M68kAddress.FromUInt32(current);
+				var next = M68kAddress.ReadUInt32(block, NextOffset);
+				var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+				if ((flags & MarkFlag) != 0 && (flags & ScanFlag) == 0)
+				{
+					M68kAddress.WriteUInt32(block, FlagsOffset, flags | ScanFlag);
+					TraceObject(current + BlockHeaderSize);
+					scanned = 1;
+				}
+				current = next;
+			}
+		}
+		while (scanned != 0);
+
+		var sweep = AllocatedHead;
+		while (sweep != 0)
+		{
+			var block = M68kAddress.FromUInt32(sweep);
+			var next = M68kAddress.ReadUInt32(block, NextOffset);
+			var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+			if ((flags & MarkFlag) == 0)
+			{
+				UnlinkAllocatedBlock(sweep);
+				LinkFreeBlock(sweep);
+			}
+			else
+			{
+				M68kAddress.WriteUInt32(
+					block,
+					FlagsOffset,
+					flags & ~(MarkFlag | ScanFlag));
+			}
+			sweep = next;
+		}
+
+		StaleBytes = 0;
+		StaleBlocks = 0;
+		Coalesce();
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

@@ -31,6 +31,20 @@ object reference fields and reference-array elements until the graph is closed,
 sweeps unmarked allocated blocks back to the free list, and coalesces adjacent
 free physical blocks. It does not depend on Exec pool internals.
 
+`ManagedPoolMarkSweepGc` also supports C# finalizers when `ExceptionMode` is
+`Full`. Finalization is synchronous: a collection promotes unreachable
+registered objects, traces their object graphs, sweeps everything else, and
+then drains their finalizers on the collecting thread. A finalizer exception is
+caught and discarded so later finalizers still run. Nested collection and
+allocation are supported; recursive queue draining is deferred until the outer
+drain resumes. `ExecPoolMarkSweepGc`, external allocation, and unmanaged
+profiles continue to diagnose reachable finalizable allocations.
+
+Finalizer support is linked only when a reachable `newobj` creates a type with
+an effective finalizer, including an inherited one. Programs without such an
+allocation retain the original collector, 20-byte class descriptors, and
+single mark/trace/sweep pass.
+
 ## Sweep Strategies
 
 `M68kCompilationRequest.GcSweepStrategy` controls when the linked GC runtime
@@ -38,7 +52,9 @@ runs collection:
 
 - `OnDemand` runs only when user code calls `M68kRuntime.Collect()`.
 - `OnAllocationFailure` tries allocation first, collects once on failure, then
-  retries allocation. This is the default for GC backends.
+  retries allocation. This is the default for GC backends. When finalizers ran
+  but their retained blocks still prevent that retry, the generated code runs
+  one additional reclaim cycle and makes one final retry.
 - `EveryAllocation` runs root-aware collection before each allocation. It is
   useful for tests but is intentionally expensive.
 - `TelemetryTriggered` lets the runtime publish approximate stale-pressure
@@ -103,7 +119,7 @@ GcHeader:
   next   uint
   prev   uint
   size   uint   ; total block size, including header
-  flags  uint   ; mark bit and backend-private flags
+  flags  uint   ; mark/scan bits and backend-private finalizer state/count
 
 payload + 0  descriptor pointer
 payload + 4  object size in bytes
@@ -179,7 +195,38 @@ TypeDescriptor:
   +8  base type descriptor pointer
   +12 class vtable pointer, or zero when the type has no virtual slots
   +16 interface map pointer, or zero when no reachable interface call applies
+  +20 finalizer code pointer, only when finalizer support is linked
 ```
+
+The first 20 bytes remain the common class-descriptor prefix. The `+20`
+extension is emitted for every fixed-size class descriptor only in a closed
+world that contains a reachable finalizable allocation. Variable-size array
+and string descriptors keep their existing layout.
+
+Finalizable objects are registered after their descriptor and size fields are
+initialized and before their constructor runs. The allocation header stores
+pending/running/suppressed state and a bounded outstanding-registration count;
+the header remains 16 bytes. `GC.SuppressFinalize(object)` is idempotent and
+suppresses one outstanding registration, while every
+`GC.ReRegisterForFinalize(object)` adds one. Counter overflow raises
+`InvalidOperationException`. Both calls raise `ArgumentNullException` for a
+null argument and otherwise do nothing for objects whose type has no finalizer.
+
+`GC.Collect()` aliases the normal root-aware collection intrinsic.
+`GC.WaitForPendingFinalizers()` returns immediately because draining is
+synchronous, and `GC.KeepAlive(object)` is a code-free intrinsic whose argument
+use extends managed liveness through the call site. Pending and currently
+running finalizers remain GC roots. Re-registration during a running finalizer
+is reserved for a later collection, which permits resurrection without
+recursively invoking the same finalizer.
+
+After a normal return from `Main`, the entry adapter snapshots all outstanding
+registrations and drains that snapshot before managed lifecycle and platform
+shutdown. Allocations and re-registrations performed by shutdown finalizers are
+not added to the snapshot. Abnormal/unhandled termination does not run this
+exit drain. The low-level `M68kRuntime.Dispose*` hooks remain immediate explicit
+free operations: a released object is removed from the pool and is not later
+finalized.
 
 Each vtable entry is a 32-bit code pointer. Derived class tables retain base
 slot numbering and replace entries for overrides in place.

@@ -40,6 +40,10 @@ public sealed class FinalizerExecutionTests
 	[InlineData("ResurrectsAndFinalizesAgainEntry", 2u)]
 	[InlineData("NestedCollectionEntry", 2u)]
 	[InlineData("ThrowingFinalizerDoesNotStopDrainEntry", 2u)]
+	[InlineData("RepeatedSuppressionConsumesOneRegistrationEntry", 1u)]
+	[InlineData("NullFinalizerControlsThrowEntry", 2u)]
+	[InlineData("NonFinalizableControlsAreNoOpsEntry", 42u)]
+	[InlineData("ExplicitFreeSkipsFinalizerEntry", 42u)]
 	public void FinalizerSemanticsExecute(string entry, uint expected) =>
 		Assert.Equal(expected, Execute(Compile(entry), M68kCpuModel.M68000).Result);
 

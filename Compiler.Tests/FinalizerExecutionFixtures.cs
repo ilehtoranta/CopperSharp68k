@@ -97,6 +97,61 @@ public static class FinalizerExecutionFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint RepeatedSuppressionConsumesOneRegistrationEntry()
+	{
+		_count = 0;
+		var value = new CountingFinalizable(1);
+		GC.ReRegisterForFinalize(value);
+		GC.SuppressFinalize(value);
+		GC.SuppressFinalize(value);
+		value = null;
+		GC.Collect();
+		return _count;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NullFinalizerControlsThrowEntry()
+	{
+		uint result = 0;
+		try
+		{
+			GC.SuppressFinalize(null!);
+		}
+		catch (ArgumentNullException)
+		{
+			result++;
+		}
+		try
+		{
+			GC.ReRegisterForFinalize(null!);
+		}
+		catch (ArgumentNullException)
+		{
+			result++;
+		}
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NonFinalizableControlsAreNoOpsEntry()
+	{
+		var value = new FinalizerChild();
+		GC.SuppressFinalize(value);
+		GC.ReRegisterForFinalize(value);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ExplicitFreeSkipsFinalizerEntry()
+	{
+		_count = 0;
+		object? value = new CountingFinalizable(1);
+		M68kRuntime.DisposeObject(ref value);
+		GC.Collect();
+		return value is null ? 42 + _count : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint RootedObjectWaitsUntilExitEntry()
 	{
 		M68kAddress.WriteUInt32(M68kAddress.FromUInt32(ShutdownSignalAddress), 0, 0);
