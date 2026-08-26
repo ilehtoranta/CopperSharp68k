@@ -142,6 +142,12 @@ internal sealed partial class M68kCodeGenerator
 				EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
 				EmitMoveRegister(M68kRegister.D1, M68kRegister.D3);
 			}
+			if (_usesFinalizers && _managedPoolRuntime is { } finalizerRuntime)
+			{
+				_assembler.EmitCall(MethodLabel(finalizerRuntime.PrepareShutdownFinalizers));
+				_assembler.EmitCall(MethodLabel(finalizerRuntime.DrainFinalizers));
+				_loadedPlatformBase = null;
+			}
 			EmitManagedLifecycleShutdown();
 			if (usesManagedRuntime)
 			{
@@ -276,6 +282,24 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitCall(MethodLabel(runtime.Dispose));
 		_assembler.EmitWord(0x4E75); // RTS
 
+		if (_usesFinalizers)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeRegisterFinalizerLabel);
+			_assembler.EmitCall(MethodLabel(runtime.RegisterFinalizer));
+			_assembler.EmitWord(0x4E75); // RTS
+
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeSuppressFinalizerLabel);
+			_assembler.EmitCall(MethodLabel(runtime.SuppressFinalizer));
+			_assembler.EmitWord(0x4E75); // RTS
+
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeReRegisterFinalizerLabel);
+			_assembler.EmitCall(MethodLabel(runtime.ReRegisterFinalizer));
+			_assembler.EmitWord(0x4E75); // RTS
+		}
+
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeMarkLabel);
 		_assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
@@ -308,9 +332,17 @@ internal sealed partial class M68kCodeGenerator
 		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitCall(MethodLabel(
 			UsesExtendedUnwindMetadata
-				? runtime.CollectWithRootsExtended
-				: runtime.CollectWithRoots));
+				? _usesFinalizers
+					? runtime.CollectFinalizableWithRootsExtended
+					: runtime.CollectWithRootsExtended
+				: _usesFinalizers
+					? runtime.CollectFinalizableWithRoots
+					: runtime.CollectWithRoots));
 		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 3 : 2);
+		if (_usesFinalizers)
+		{
+			_assembler.EmitCall(MethodLabel(runtime.DrainFinalizers));
+		}
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 
@@ -401,6 +433,9 @@ internal sealed partial class M68kCodeGenerator
 	private const string RuntimeInitLabel = "__c68k_gc_init";
 	private const string RuntimeAllocLabel = "__c68k_alloc";
 	private const string RuntimeDisposeLabel = "__c68k_dispose";
+	private const string RuntimeRegisterFinalizerLabel = "__c68k_gc_register_finalizer";
+	private const string RuntimeSuppressFinalizerLabel = "__c68k_gc_suppress_finalizer";
+	private const string RuntimeReRegisterFinalizerLabel = "__c68k_gc_reregister_finalizer";
 	private const string RuntimeMarkLabel = "__c68k_gc_mark";
 	private const string RuntimeMarkRootsLabel = "__c68k_gc_mark_roots";
 	private const string RuntimeCollectWithRootsLabel = "__c68k_gc_collect_with_roots";

@@ -1598,6 +1598,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 			_assembler.EmitLong(0); // No compiler-managed vtable.
 			_assembler.EmitLong(0); // No compiler-managed interface map.
+			EmitEmptyClassFinalizerDescriptorEntry();
 		}
 
 		if (!_usesExceptionRuntime)

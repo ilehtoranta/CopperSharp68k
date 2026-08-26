@@ -201,6 +201,25 @@ internal static class M68kStaticAnalyzer
 				!module.IsTransparentScalarConstructor(constructor))) ||
 			op == OpCodes.Newarr)
 		{
+			// Prefer the actionable finalizer-profile diagnostic over the generic
+			// no-heap diagnostic when the allocated type is known here.
+			if (op == OpCodes.Newobj &&
+				target?.Definition is { IsImport: false } allocationConstructor)
+			{
+				var allocationLayout = module.GetTypeLayout(allocationConstructor);
+				if (module.TryGetEffectiveFinalizer(allocationLayout) is not null &&
+					(memoryManagement != M68kMemoryManagement.ManagedPoolMarkSweepGc ||
+					 request.ExceptionMode != M68kExceptionMode.Full))
+				{
+					ValidateFinalizableAllocation(
+						module,
+						method,
+						instruction,
+						allocationLayout,
+						request,
+						memoryManagement);
+				}
+			}
 			RequireManagedHeap(method, instruction, memoryManagement, "managed allocation");
 		}
 
@@ -214,7 +233,16 @@ internal static class M68kStaticAnalyzer
 			target.Definition is { IsImport: false } layoutConstructor)
 		{
 			var layout = module.GetTypeLayout(layoutConstructor);
-			RejectFinalizableAllocation(module, method, instruction, layout);
+			if (ValidateFinalizableAllocation(
+				module,
+				method,
+				instruction,
+				layout,
+				request,
+				memoryManagement) is { } finalizer)
+			{
+				pending.Enqueue(finalizer);
+			}
 			reachableDispatchLayouts.TryAdd(layout.Identity, layout);
 		}
 		ValidateCallDispatch(method, instruction, target);
@@ -265,36 +293,44 @@ internal static class M68kStaticAnalyzer
 		}
 
 		if (target.ImportName is not null &&
+			IsRuntimeFinalizerOperation(target.ImportName))
+		{
+			RequireFinalizerRuntime(method, instruction, request);
+		}
+		else if (target.ImportName is not null &&
 			IsRuntimeGcOperation(target.ImportName))
 		{
 			RequireGcRuntime(method, instruction, request, target.ImportName);
 		}
 	}
 
-	private static void RejectFinalizableAllocation(
+	private static CilMethod? ValidateFinalizableAllocation(
 		CompilationModule module,
 		CilMethod method,
 		CilInstruction instruction,
-		CilTypeLayout layout)
+		CilTypeLayout layout,
+		M68kCompilationRequest request,
+		M68kMemoryManagement memoryManagement)
 	{
-		var finalizer = module.GetVirtualTable(layout).Slots.FirstOrDefault(
-			static candidate =>
-				candidate.Name == "Finalize" &&
-				candidate.Signature.Header.IsInstance &&
-				candidate.Signature.ParameterTypes.Length == 0 &&
-				candidate.Signature.ReturnType.IsVoid &&
-				candidate.IsVirtual &&
-				!candidate.IsNewSlot);
+		var finalizer = module.TryGetEffectiveFinalizer(layout);
 		if (finalizer is null)
 		{
-			return;
+			return null;
+		}
+		if (memoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc &&
+			request.ExceptionMode == M68kExceptionMode.Full)
+		{
+			return finalizer;
 		}
 
+		var reason = memoryManagement == M68kMemoryManagement.ManagedPoolMarkSweepGc
+			? "Finalizers require Full exception mode; select Full instead of YOLO."
+			: "Select ManagedPoolMarkSweepGc with Full exception mode, or use deterministic Dispose/try-finally cleanup instead.";
 		throw new M68kCompilationException(
 			M68kDiagnosticIds.StaticAnalysis,
 			$"Managed allocation of finalizable type '{layout.DisplayName}' is not supported. " +
 			$"Effective finalizer: '{finalizer.DisplayName}'. " +
-			"Use deterministic Dispose/try-finally cleanup instead.",
+			reason,
 			method.DisplayName,
 			instruction.Offset);
 	}
@@ -361,6 +397,29 @@ internal static class M68kStaticAnalyzer
 			M68kRuntimeImports.GcCollect or
 			M68kRuntimeImports.GcGetStaleBytes or
 			M68kRuntimeImports.GcGetStaleBlocks;
+
+	private static bool IsRuntimeFinalizerOperation(string name) =>
+		name is "intrinsic:runtime-gc-suppress-finalize" or
+			"intrinsic:runtime-gc-reregister-finalize";
+
+	private static void RequireFinalizerRuntime(
+		CilMethod method,
+		CilInstruction instruction,
+		M68kCompilationRequest request)
+	{
+		if (M68kCompiler.GetEffectiveMemoryManagement(request) ==
+				M68kMemoryManagement.ManagedPoolMarkSweepGc &&
+			request.ExceptionMode == M68kExceptionMode.Full)
+		{
+			return;
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.StaticAnalysis,
+			"finalizer control requires ManagedPoolMarkSweepGc with Full exception mode.",
+			method.DisplayName,
+			instruction.Offset);
+	}
 
 	private static void RequireDisposeRuntime(
 		CilMethod method,

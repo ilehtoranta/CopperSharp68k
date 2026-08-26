@@ -165,6 +165,14 @@ public static class M68kRuntime
 			"M68kRuntime.AllocateString is a CopperSharp compiler primitive.");
 
 	/// <summary>
+	/// Invokes the effective finalizer stored in a compiler-emitted type descriptor.
+	/// This private-runtime primitive is meaningful only after compiler lowering.
+	/// </summary>
+	public static void InvokeFinalizer(uint objectAddress) =>
+		throw new PlatformNotSupportedException(
+			"M68kRuntime.InvokeFinalizer is a CopperSharp compiler primitive.");
+
+	/// <summary>
 	/// Writes one UTF-16 code unit into a string under construction. This is a
 	/// trusted private-runtime primitive; public managed strings remain immutable.
 	/// </summary>

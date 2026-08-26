@@ -2561,6 +2561,15 @@ internal sealed partial class M68kCodeGenerator
 			M68kRegister.A0,
 			M68kMachineValueWidth.Long,
 			4);
+		if (_module.TryGetEffectiveFinalizer(layout) is not null)
+		{
+			// ObjectAllocate defines its result in A0. Register it after the
+			// descriptor is valid and before the separately lowered constructor.
+			EmitPushRegister(M68kRegister.A0);
+			_assembler.EmitWord(0x2008); // MOVE.L A0,D0
+			_assembler.EmitBsr(RuntimeRegisterFinalizerLabel);
+			EmitPopRegister(M68kRegister.A0);
+		}
 	}
 
 	private void EmitAllocatedFunctionAddress(
@@ -8175,6 +8184,34 @@ internal sealed partial class M68kCodeGenerator
 			_loadedPlatformBase = null;
 			return;
 		}
+		if (name == "intrinsic:runtime-invoke-finalizer")
+		{
+			EmitAllocatedMove(
+				Use(0),
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long);
+			EmitInvokeFinalizerFromD0();
+			return;
+		}
+		if (name is
+			"intrinsic:runtime-gc-suppress-finalize" or
+			"intrinsic:runtime-gc-reregister-finalize")
+		{
+			EmitAllocatedMove(
+				Use(0),
+				M68kRegister.D0,
+				M68kMachineValueWidth.Long);
+			EmitFinalizerControlFromD0(
+				name.EndsWith("reregister-finalize", StringComparison.Ordinal));
+			return;
+		}
+		if (name is
+			"intrinsic:object-finalize" or
+			"intrinsic:runtime-gc-wait-finalizers" or
+			"intrinsic:runtime-gc-keep-alive")
+		{
+			return;
+		}
 		if (name == "intrinsic:runtime-gc-collect")
 		{
 			EmitManagedCollectWithRoots();
@@ -9984,6 +10021,12 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:runtime-throw-unauthorized-access" or
 			"intrinsic:runtime-throw-key-not-found" or
 			"intrinsic:runtime-throw-out-of-memory" or
+			"intrinsic:runtime-invoke-finalizer" or
+			"intrinsic:runtime-gc-suppress-finalize" or
+			"intrinsic:runtime-gc-reregister-finalize" or
+			"intrinsic:object-finalize" or
+			"intrinsic:runtime-gc-wait-finalizers" or
+			"intrinsic:runtime-gc-keep-alive" or
 			"intrinsic:runtime-gc-collect" or
 			"intrinsic:runtime-GetGcStaleBytes" or
 			"intrinsic:runtime-GetGcStaleBlocks";

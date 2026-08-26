@@ -276,6 +276,14 @@ public static class M68kCompiler
 			Method("CollectWithRoots"),
 			Method("CollectWithRootsExtended"),
 			Method("Collect"),
+			Method("RegisterFinalizer"),
+			Method("SuppressFinalizer"),
+			Method("ReRegisterFinalizer"),
+			Method("CollectFinalizableWithRoots"),
+			Method("CollectFinalizableWithRootsExtended"),
+			Method("CollectFinalizable"),
+			Method("DrainFinalizers"),
+			Method("PrepareShutdownFinalizers"),
 			Method("Coalesce"),
 			Method("GetStaleBytes"),
 			Method("GetStaleBlocks"),
@@ -287,7 +295,11 @@ public static class M68kCompiler
 			Field("StaleBytes"),
 			Field("StaleBlocks"),
 			Field("StaleBytesThreshold"),
-			Field("StaleBlocksThreshold"));
+			Field("StaleBlocksThreshold"),
+			Field("FinalizerDrainActive"),
+			Field("ActiveFinalizerObject"),
+			Field("ActiveFinalizerRemaining"),
+			Field("FinalizersCompleted"));
 	}
 
 	private static IReadOnlyList<ManagedLifecycleModule> ResolveManagedLifecycles(

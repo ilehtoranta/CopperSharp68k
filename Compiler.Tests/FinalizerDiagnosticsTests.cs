@@ -13,8 +13,8 @@ public sealed class FinalizerDiagnosticsTests
 		typeof(FinalizerDiagnosticsFixtures).Assembly.Location;
 
 	[Theory]
+	[InlineData(M68kMemoryManagement.None)]
 	[InlineData(M68kMemoryManagement.ExternalAllocator)]
-	[InlineData(M68kMemoryManagement.ManagedPoolMarkSweepGc)]
 	[InlineData(M68kMemoryManagement.ExecPoolMarkSweepGc)]
 	public void ReachableFinalizerAllocationIsRejected(
 		M68kMemoryManagement memoryManagement)
@@ -29,6 +29,49 @@ public sealed class FinalizerDiagnosticsTests
 		Assert.Contains("Dispose/try-finally", exception.Message, StringComparison.Ordinal);
 		Assert.Equal($"{FixtureType}::DirectFinalizerEntry", exception.Method);
 		Assert.NotNull(exception.IlOffset);
+	}
+
+	[Fact]
+	public void BumpAllocatorStillRejectsFinalizerProgram() =>
+		Assert.Throws<M68kCompilationException>(() =>
+			Compile("DirectFinalizerEntry", M68kMemoryManagement.BumpAllocator));
+
+	[Fact]
+	public void ManagedPoolWithFullExceptionsAcceptsFinalizerAllocation()
+	{
+		var result = Compile(
+			"DirectFinalizerEntry",
+			M68kMemoryManagement.ManagedPoolMarkSweepGc);
+
+		Assert.NotEmpty(result.Image);
+	}
+
+	[Fact]
+	public void ManagedPoolWithFullExceptionsCompilesInheritedEffectiveFinalizer()
+	{
+		var result = Compile(
+			"InheritedFinalizerEntry",
+			M68kMemoryManagement.ManagedPoolMarkSweepGc);
+
+		Assert.Contains(
+			result.Symbols,
+			symbol => symbol.Name.Contains(
+				"BaseFinalizableFixture::Finalize",
+				StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void ManagedPoolWithYoloExceptionsReportsFullRequirement()
+	{
+		var exception = Assert.Throws<M68kCompilationException>(() =>
+			Compile(
+				"DirectFinalizerEntry",
+				M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				M68kExceptionMode.Yolo));
+
+		Assert.Equal(M68kDiagnosticIds.StaticAnalysis, exception.DiagnosticId);
+		Assert.Contains("require Full exception mode", exception.Message,
+			StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -52,10 +95,25 @@ public sealed class FinalizerDiagnosticsTests
 		Assert.NotEmpty(result.Image);
 	}
 
+	[Fact]
+	public void UnreachableFinalizerAllocationDoesNotLinkFinalizerRuntime()
+	{
+		var result = Compile(
+			"UnreachableFinalizerEntry",
+			M68kMemoryManagement.ManagedPoolMarkSweepGc);
+
+		Assert.DoesNotContain(
+			result.Symbols,
+			symbol =>
+				symbol.Name.StartsWith("CopperSharp.Runtime.ManagedPool::", StringComparison.Ordinal) &&
+				symbol.Name.Contains("Finaliz", StringComparison.Ordinal));
+	}
+
 	private static M68kCompilationResult Compile(
 		string method,
 		M68kMemoryManagement memoryManagement =
-			M68kMemoryManagement.ExternalAllocator) =>
+			M68kMemoryManagement.ExternalAllocator,
+		M68kExceptionMode exceptionMode = M68kExceptionMode.Full) =>
 		M68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
@@ -63,6 +121,7 @@ public sealed class FinalizerDiagnosticsTests
 			Cpu = M68kCpuTarget.M68000,
 			OutputFormat = M68kOutputFormat.Hunk,
 			MemoryManagement = memoryManagement,
+			ExceptionMode = exceptionMode,
 			Heap = new M68kHeapOptions
 			{
 				StartAddress = 0x0000_4000,

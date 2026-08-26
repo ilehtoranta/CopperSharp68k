@@ -32,6 +32,7 @@ internal static class FrameworkReachabilityAnalyzer
 			CilMethodIdentity,
 			(CilMethod Method, IReadOnlyList<string> RootPath)>();
 		var pending = new Queue<ReachableMethod>();
+		var finalizerRuntimeQueued = false;
 		EnqueueRoot(entry);
 		foreach (var export in exports)
 		{
@@ -200,6 +201,19 @@ internal static class FrameworkReachabilityAnalyzer
 				{
 					var layout = module.GetTypeLayout(constructor);
 					reachableDispatchLayouts.TryAdd(layout.Identity, layout);
+					if (managedPoolRuntime is not null &&
+						module.TryGetEffectiveFinalizer(layout) is { } finalizer)
+					{
+						EnqueueChild(finalizer, reachable.RootPath);
+						if (!finalizerRuntimeQueued)
+						{
+							finalizerRuntimeQueued = true;
+							foreach (var runtimeMethod in managedPoolRuntime.FinalizerMethods)
+							{
+								EnqueueChild(runtimeMethod, reachable.RootPath);
+							}
+						}
+					}
 				}
 
 				if (target?.ImportName is

@@ -27,6 +27,8 @@ internal static class M68kRuntimeAbi
 	public const short TypeVirtualTableOffset = 12;
 	public const short TypeInterfaceMapOffset = 16;
 	public const int TypeDescriptorBytes = 20;
+	public const short ClassFinalizerOffset = 20;
+	public const int FinalizableClassDescriptorBytes = 24;
 
 	public const short ArrayElementTypeOffset = 20;
 	public const short ArrayElementKindOffset = 24;

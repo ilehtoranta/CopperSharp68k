@@ -65,6 +65,7 @@ internal sealed partial class M68kCodeGenerator
 	private readonly Dictionary<CilMethodIdentity, CilMethod> _typeInitializers = new();
 	private readonly Dictionary<CilMethodIdentity, CilMethod> _foldedMethodAliases = new();
 	private readonly List<SwitchAddressTable> _switchAddressTables = new();
+	private bool _usesFinalizers;
 
 	private readonly record struct SwitchAddressTable(
 		string Label,
@@ -184,6 +185,13 @@ internal sealed partial class M68kCodeGenerator
 		ValidateMethodSignature(entry, isEntry: true, isExport: false);
 		var exports = _exports;
 		var methods = PruneAlwaysInlinedMethods(DiscoverReachableMethods(entry, exports), entry, exports);
+		if (_usesFinalizers && _managedPoolRuntime is { } finalizerRuntime)
+		{
+			foreach (var field in finalizerRuntime.FinalizerFields)
+			{
+				_staticFields.TryAdd(field.Identity, field);
+			}
+		}
 		PlanIdenticalMethodFolds(methods, entry, exports);
 		var exportedMethods = exports
 			.Select(static export => export.Method.Identity)
@@ -441,6 +449,7 @@ internal sealed partial class M68kCodeGenerator
 
 		var requiresExtendedRootWalk = false;
 		var extendedRootWalkQueued = false;
+		var finalizerRuntimeQueued = false;
 	ProcessQueue:
 		while (queue.Count != 0)
 		{
@@ -530,6 +539,20 @@ internal sealed partial class M68kCodeGenerator
 				{
 					var layout = _module.GetTypeLayout(constructor);
 					reachableDispatchLayouts.TryAdd(layout.Identity, layout);
+					if (_managedPoolRuntime is not null &&
+						_module.TryGetEffectiveFinalizer(layout) is { } finalizer)
+					{
+						_usesFinalizers = true;
+						queue.Enqueue(finalizer);
+						if (!finalizerRuntimeQueued)
+						{
+							finalizerRuntimeQueued = true;
+							foreach (var runtimeMethod in _managedPoolRuntime.FinalizerMethods)
+							{
+								queue.Enqueue(runtimeMethod);
+							}
+						}
+					}
 				}
 				if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 				{
@@ -5979,6 +6002,29 @@ internal sealed partial class M68kCodeGenerator
 
 		if (target.Definition is null)
 		{
+			if (target.ImportName == "intrinsic:runtime-invoke-finalizer")
+			{
+				EmitPopD0();
+				EmitInvokeFinalizerFromD0();
+				return;
+			}
+			if (target.ImportName is
+				"intrinsic:runtime-gc-suppress-finalize" or
+				"intrinsic:runtime-gc-reregister-finalize")
+			{
+				EmitPopD0();
+				EmitFinalizerControlFromD0(
+					target.ImportName.EndsWith("reregister-finalize", StringComparison.Ordinal));
+				return;
+			}
+			if (target.ImportName is
+				"intrinsic:object-finalize" or
+				"intrinsic:runtime-gc-wait-finalizers" or
+				"intrinsic:runtime-gc-keep-alive")
+			{
+				EmitDiscardStackArguments(target.ParameterCount);
+				return;
+			}
 			if (target.ImportName == "intrinsic:runtime-throw-overflow")
 			{
 				EmitExceptionRaise(reason: 4, hasException: false);
@@ -7392,6 +7438,43 @@ internal sealed partial class M68kCodeGenerator
 		return result;
 	}
 
+	private void EmitInvokeFinalizerFromD0()
+	{
+		_assembler.EmitWord(0x2040); // MOVEA.L D0,A0 object
+		_assembler.EmitWord(0x2250); // MOVEA.L (A0),A1 descriptor
+		_assembler.EmitWord(0x2469); // MOVEA.L finalizer(A1),A2
+		_assembler.EmitWord(unchecked((ushort)M68kRuntimeAbi.ClassFinalizerOffset));
+		_assembler.EmitWord(0x4E92); // JSR (A2)
+		RegisterCurrentUnwindSite(exception: true, gc: true);
+		_loadedPlatformBase = null;
+	}
+
+	private void EmitFinalizerControlFromD0(bool reRegister)
+	{
+		var nonNull = UniqueLabel("gc_finalizer_object_non_null");
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.NotEqual, nonNull);
+		RegisterRuntimeTypeDescriptor("System.ArgumentNullException");
+		EmitExceptionRaise(reason: 11, hasException: false);
+		_assembler.Mark(nonNull);
+		_assembler.EmitBsr(
+			reRegister
+				? RuntimeReRegisterFinalizerLabel
+				: RuntimeSuppressFinalizerLabel);
+		_loadedPlatformBase = null;
+		if (!reRegister)
+		{
+			return;
+		}
+
+		var registered = UniqueLabel("gc_finalizer_registered");
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.NotEqual, registered);
+		RegisterRuntimeTypeDescriptor("System.InvalidOperationException");
+		EmitExceptionRaise(reason: 13, hasException: false);
+		_assembler.Mark(registered);
+	}
+
 	private int InternalStackArgumentBytes(CilMethod method) =>
 		checked(InternalStackArgumentSlotLongs(method) * 4);
 
@@ -8554,6 +8637,14 @@ internal sealed partial class M68kCodeGenerator
 		}
 		_assembler.EmitWord(0x2141); // MOVE.L D1,4(A0)
 		_assembler.EmitWord(0x0004);
+		if (_module.TryGetEffectiveFinalizer(layout) is not null)
+		{
+			EmitPushRegister(M68kRegister.A0);
+			_assembler.EmitWord(0x2008); // MOVE.L A0,D0
+			_assembler.EmitBsr(RuntimeRegisterFinalizerLabel);
+			EmitPopRegister(M68kRegister.A0);
+			_assembler.EmitWord(0x2008); // MOVE.L A0,D0
+		}
 
 		EmitMoveRegister(M68kRegister.D0, M68kRegister.A0);
 		EmitPrepareInternalCall(constructor, constructorAbi, receiverAlreadyLoaded: true);
@@ -8879,9 +8970,36 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitBranch(M68kCondition.NotEqual, done);
 			EmitManagedCollectWithRoots(preserveInD2 ? 4 : 0);
 			_loadedPlatformBase = null;
-			RestoreAllocationSize();
-			_assembler.EmitBsr(RuntimeAllocLabel);
-			_loadedPlatformBase = null;
+			if (_usesFinalizers)
+			{
+				// The finalizer-aware collector keeps newly finalized objects allocated
+				// until the next sweep. Preserve the drain count across the first retry;
+				// if it still fails and work completed, reclaim once more and retry once.
+				var firstRetryFailed = UniqueLabel("gc_alloc_first_retry_failed");
+				EmitPushRegister(M68kRegister.D0);
+				RestoreAllocationSize();
+				_assembler.EmitBsr(RuntimeAllocLabel);
+				_loadedPlatformBase = null;
+				_assembler.EmitWord(0x4A80); // TST.L D0
+				_assembler.EmitBranch(M68kCondition.Equal, firstRetryFailed);
+				EmitReleaseStackBytes(4);
+				_assembler.EmitBranch(M68kCondition.True, done);
+				_assembler.Mark(firstRetryFailed);
+				EmitPopRegister(M68kRegister.D1);
+				_assembler.EmitWord(0x4A81); // TST.L D1
+				_assembler.EmitBranch(M68kCondition.Equal, done);
+				EmitManagedCollectWithRoots(preserveInD2 ? 4 : 0);
+				_loadedPlatformBase = null;
+				RestoreAllocationSize();
+				_assembler.EmitBsr(RuntimeAllocLabel);
+				_loadedPlatformBase = null;
+			}
+			else
+			{
+				RestoreAllocationSize();
+				_assembler.EmitBsr(RuntimeAllocLabel);
+				_loadedPlatformBase = null;
+			}
 			_assembler.Mark(done);
 		}
 
@@ -9400,6 +9518,7 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.EmitAddress(InterfaceMapLabel(layout));
 			}
+			EmitClassFinalizerDescriptorEntry(layout);
 		}
 
 		foreach (var item in _constructedTypeDescriptors.Values
@@ -9428,6 +9547,7 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.EmitAddress(InterfaceMapLabel(layout));
 			}
+			EmitClassFinalizerDescriptorEntry(layout);
 		}
 
 		var compiledMethods = methods
@@ -9607,6 +9727,7 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.EmitAddress(BoxedInterfaceMapLabel(type));
 			}
+			EmitEmptyClassFinalizerDescriptorEntry();
 		}
 
 		foreach (var item in _boxedStructLayouts.OrderBy(item => item.Key, StringComparer.Ordinal))
@@ -9644,6 +9765,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.MulticastDelegate"));
 			_assembler.EmitLong(0);
 			_assembler.EmitLong(0);
+			EmitEmptyClassFinalizerDescriptorEntry();
 		}
 		if (_delegateTypes.Count != 0)
 		{
@@ -9668,6 +9790,7 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.EmitAddress(RuntimeTypeDescriptorLabel("System.MulticastDelegate"));
 				_assembler.EmitLong(0);
 				_assembler.EmitLong(0);
+				EmitEmptyClassFinalizerDescriptorEntry();
 			}
 		}
 
@@ -9878,6 +10001,30 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitZeroInitializedStatics();
+	}
+
+	private void EmitClassFinalizerDescriptorEntry(CilTypeLayout layout)
+	{
+		if (!_usesFinalizers)
+		{
+			return;
+		}
+		if (_module.TryGetEffectiveFinalizer(layout) is { } finalizer)
+		{
+			_assembler.EmitAddress(MethodLabel(finalizer));
+		}
+		else
+		{
+			_assembler.EmitLong(0);
+		}
+	}
+
+	private void EmitEmptyClassFinalizerDescriptorEntry()
+	{
+		if (_usesFinalizers)
+		{
+			_assembler.EmitLong(0);
+		}
 	}
 
 	private void EmitZeroInitializedStatics()

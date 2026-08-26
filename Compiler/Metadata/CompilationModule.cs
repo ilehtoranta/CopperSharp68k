@@ -1116,6 +1116,16 @@ internal sealed class CompilationModule : IDisposable
 			layout.Handle,
 			layout.ConstructedType);
 
+	public CilMethod? TryGetEffectiveFinalizer(CilTypeLayout layout) =>
+		GetVirtualTable(layout).Slots.FirstOrDefault(
+			static candidate =>
+				candidate.Name == "Finalize" &&
+				candidate.Signature.Header.IsInstance &&
+				candidate.Signature.ParameterTypes.Length == 0 &&
+				candidate.Signature.ReturnType.IsVoid &&
+				candidate.IsVirtual &&
+				!candidate.IsNewSlot);
+
 	public int GetVirtualSlot(CilMethod method) =>
 		GetModule(method.ModuleName).GetVirtualSlotCore(method);
 

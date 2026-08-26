@@ -49,7 +49,7 @@ internal sealed partial class M68kCodeGenerator
 		if (_managedPoolRuntime is not null)
 		{
 			externallyReachable.UnionWith(
-				_managedPoolRuntime.Methods.Select(static method => method.Identity));
+				ReachableManagedPoolMethods.Select(static method => method.Identity));
 		}
 		foreach (var lifecycle in _managedLifecycles)
 		{

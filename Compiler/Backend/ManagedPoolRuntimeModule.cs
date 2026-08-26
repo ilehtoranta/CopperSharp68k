@@ -18,6 +18,14 @@ internal sealed record ManagedPoolRuntimeModule(
 	CilMethod CollectWithRoots,
 	CilMethod CollectWithRootsExtended,
 	CilMethod Collect,
+	CilMethod RegisterFinalizer,
+	CilMethod SuppressFinalizer,
+	CilMethod ReRegisterFinalizer,
+	CilMethod CollectFinalizableWithRoots,
+	CilMethod CollectFinalizableWithRootsExtended,
+	CilMethod CollectFinalizable,
+	CilMethod DrainFinalizers,
+	CilMethod PrepareShutdownFinalizers,
 	CilMethod Coalesce,
 	CilMethod GetStaleBytes,
 	CilMethod GetStaleBlocks,
@@ -29,7 +37,11 @@ internal sealed record ManagedPoolRuntimeModule(
 	CilField StaleBytes,
 	CilField StaleBlocks,
 	CilField StaleBytesThreshold,
-	CilField StaleBlocksThreshold)
+	CilField StaleBlocksThreshold,
+	CilField FinalizerDrainActive,
+	CilField ActiveFinalizerObject,
+	CilField ActiveFinalizerRemaining,
+	CilField FinalizersCompleted)
 {
 	public IEnumerable<CilMethod> Methods
 	{
@@ -76,6 +88,21 @@ internal sealed record ManagedPoolRuntimeModule(
 		}
 	}
 
+	public IEnumerable<CilMethod> FinalizerMethods
+	{
+		get
+		{
+			yield return RegisterFinalizer;
+			yield return SuppressFinalizer;
+			yield return ReRegisterFinalizer;
+			yield return CollectFinalizableWithRoots;
+			yield return CollectFinalizableWithRootsExtended;
+			yield return CollectFinalizable;
+			yield return DrainFinalizers;
+			yield return PrepareShutdownFinalizers;
+		}
+	}
+
 	public IEnumerable<CilField> Fields
 	{
 		get
@@ -88,6 +115,17 @@ internal sealed record ManagedPoolRuntimeModule(
 			yield return StaleBlocks;
 			yield return StaleBytesThreshold;
 			yield return StaleBlocksThreshold;
+		}
+	}
+
+	public IEnumerable<CilField> FinalizerFields
+	{
+		get
+		{
+			yield return FinalizerDrainActive;
+			yield return ActiveFinalizerObject;
+			yield return ActiveFinalizerRemaining;
+			yield return FinalizersCompleted;
 		}
 	}
 }

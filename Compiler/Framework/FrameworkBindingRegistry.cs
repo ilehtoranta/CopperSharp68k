@@ -3815,6 +3815,77 @@ internal static class FrameworkBindingRegistry
 		}
 
 		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "InvokeFinalizer" &&
+			signature.ParameterTypes is [{ DisplayName: "uint" }])
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:runtime-invoke-finalizer",
+				Effects(
+					FrameworkEffects.MayAllocate |
+						FrameworkEffects.MayThrow |
+						FrameworkEffects.MayCollect |
+						FrameworkEffects.ReadsManagedMemory |
+						FrameworkEffects.WritesManagedMemory,
+					FrameworkFeature.ManagedObjects,
+					FrameworkFeature.ManagedGc));
+		}
+
+		if (typeName == "System.Object" &&
+			name == "Finalize" &&
+			signature.Header.IsInstance &&
+			signature.ReturnType.IsVoid &&
+			signature.ParameterTypes.Length == 0)
+		{
+			return Intrinsic(
+				member,
+				"intrinsic:object-finalize",
+				FrameworkEffectSummary.None);
+		}
+
+		if (typeName == "System.GC" && signature.ReturnType.IsVoid)
+		{
+			if (name == "Collect" && signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-gc-collect",
+					Effects(
+						FrameworkEffects.MayCollect |
+							FrameworkEffects.WritesManagedMemory,
+						FrameworkFeature.ManagedGc));
+			}
+			if (name is "SuppressFinalize" or "ReRegisterForFinalize" &&
+				signature.ParameterTypes is [{ DisplayName: "object" }])
+			{
+				return Intrinsic(
+					member,
+					name == "SuppressFinalize"
+						? "intrinsic:runtime-gc-suppress-finalize"
+						: "intrinsic:runtime-gc-reregister-finalize",
+					Effects(
+						FrameworkEffects.MayThrow |
+							FrameworkEffects.WritesManagedMemory,
+						FrameworkFeature.ManagedGc));
+			}
+			if (name == "WaitForPendingFinalizers" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-gc-wait-finalizers",
+					Effects(FrameworkEffects.None, FrameworkFeature.ManagedGc));
+			}
+			if (name == "KeepAlive" && signature.ParameterTypes.Length == 1)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-gc-keep-alive",
+					Effects(FrameworkEffects.None, FrameworkFeature.ManagedGc));
+			}
+		}
+
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
 			name is "GetGcStaleBytes" or "GetGcStaleBlocks" &&
 			signature.ParameterTypes.Length == 0)
 		{

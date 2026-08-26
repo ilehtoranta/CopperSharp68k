@@ -20,6 +20,13 @@ public static class ManagedPool
 	private const uint AllocatedFlag = 1;
 	private const uint MarkFlag = 2;
 	private const uint ScanFlag = 4;
+	private const uint FinalizerPendingFlag = 8;
+	private const uint FinalizerRunningFlag = 16;
+	private const uint FinalizerSuppressedFlag = 32;
+	private const int FinalizerCountShift = 8;
+	private const uint FinalizerCountIncrement = 1u << FinalizerCountShift;
+	private const uint FinalizerCountMask = 0xFFFF_FF00;
+	private const int TypeFinalizerOffset = 20;
 
 	public static uint HeapStart;
 	public static uint HeapEnd;
@@ -29,6 +36,10 @@ public static class ManagedPool
 	public static uint StaleBlocks;
 	public static uint StaleBytesThreshold;
 	public static uint StaleBlocksThreshold;
+	public static uint FinalizerDrainActive;
+	public static uint ActiveFinalizerObject;
+	public static uint ActiveFinalizerRemaining;
+	public static uint FinalizersCompleted;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint Initialize(M68kAddress config)
@@ -48,6 +59,10 @@ public static class ManagedPool
 		StaleBlocks = 0;
 		StaleBytesThreshold = M68kAddress.ReadUInt32(config, 16);
 		StaleBlocksThreshold = M68kAddress.ReadUInt32(config, 20);
+		FinalizerDrainActive = 0;
+		ActiveFinalizerObject = 0;
+		ActiveFinalizerRemaining = 0;
+		FinalizersCompleted = 0;
 
 		var first = M68kAddress.FromUInt32(heapStart);
 		M68kAddress.WriteUInt32(first, 0, 0);
@@ -143,7 +158,76 @@ public static class ManagedPool
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void RegisterFinalizer(uint payloadAddress)
+	{
+		var block = M68kAddress.FromUInt32(payloadAddress - BlockHeaderSize);
+		var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+		M68kAddress.WriteUInt32(
+			block,
+			FlagsOffset,
+			(flags & ~FinalizerCountMask) | FinalizerCountIncrement);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void SuppressFinalizer(uint payloadAddress)
+	{
+		if (!HasFinalizer(payloadAddress))
+		{
+			return;
+		}
+
+		var block = M68kAddress.FromUInt32(payloadAddress - BlockHeaderSize);
+		var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+		if ((flags & (FinalizerPendingFlag | FinalizerRunningFlag)) != 0 ||
+			(flags & FinalizerCountMask) == 0)
+		{
+			return;
+		}
+		M68kAddress.WriteUInt32(
+			block,
+			FlagsOffset,
+			flags | FinalizerSuppressedFlag);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ReRegisterFinalizer(uint payloadAddress)
+	{
+		if (!HasFinalizer(payloadAddress))
+		{
+			return 1;
+		}
+
+		var block = M68kAddress.FromUInt32(payloadAddress - BlockHeaderSize);
+		var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+		if ((flags & FinalizerCountMask) == FinalizerCountMask)
+		{
+			return 0;
+		}
+		M68kAddress.WriteUInt32(
+			block,
+			FlagsOffset,
+			flags + FinalizerCountIncrement);
+		return 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static void Collect()
+	{
+		TraceMarkedObjects();
+		Sweep();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectFinalizable()
+	{
+		MarkFinalizerRoots();
+		TraceMarkedObjects();
+		PromoteFinalizers();
+		TraceMarkedObjects();
+		Sweep();
+	}
+
+	private static void TraceMarkedObjects()
 	{
 		uint scanned;
 		do
@@ -166,6 +250,10 @@ public static class ManagedPool
 		}
 		while (scanned != 0);
 
+	}
+
+	private static void Sweep()
+	{
 		var sweep = AllocatedHead;
 		while (sweep != 0)
 		{
@@ -190,6 +278,56 @@ public static class ManagedPool
 		StaleBytes = 0;
 		StaleBlocks = 0;
 		Coalesce();
+	}
+
+	private static void MarkFinalizerRoots()
+	{
+		var current = AllocatedHead;
+		while (current != 0)
+		{
+			var block = M68kAddress.FromUInt32(current);
+			var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+			if ((flags & (FinalizerPendingFlag | FinalizerRunningFlag)) != 0)
+			{
+				M68kAddress.WriteUInt32(block, FlagsOffset, flags | MarkFlag);
+			}
+			current = M68kAddress.ReadUInt32(block, NextOffset);
+		}
+	}
+
+	private static void PromoteFinalizers()
+	{
+		var current = AllocatedHead;
+		while (current != 0)
+		{
+			var block = M68kAddress.FromUInt32(current);
+			var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+			if ((flags & MarkFlag) == 0 &&
+				HasFinalizer(current + BlockHeaderSize))
+			{
+				flags = ApplyFinalizerSuppression(flags);
+				if ((flags & FinalizerCountMask) != 0)
+				{
+					flags |= MarkFlag | FinalizerPendingFlag;
+				}
+				M68kAddress.WriteUInt32(block, FlagsOffset, flags);
+			}
+			current = M68kAddress.ReadUInt32(block, NextOffset);
+		}
+	}
+
+	private static uint ApplyFinalizerSuppression(uint flags)
+	{
+		if ((flags & FinalizerSuppressedFlag) == 0)
+		{
+			return flags;
+		}
+		var result = flags & ~FinalizerSuppressedFlag;
+		if ((result & FinalizerCountMask) != 0)
+		{
+			result -= FinalizerCountIncrement;
+		}
+		return result;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -370,6 +508,132 @@ public static class ManagedPool
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectFinalizableWithRoots(
+		uint cursorAddress,
+		uint resumePc,
+		M68kAddress methodTable,
+		M68kAddress staticRoots)
+	{
+		MarkRoots(cursorAddress, resumePc, methodTable, staticRoots);
+		CollectFinalizable();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectFinalizableWithRootsExtended(
+		uint cursorAddress,
+		uint resumePc,
+		M68kAddress methodTable,
+		M68kAddress staticRoots,
+		uint frameAnchor)
+	{
+		MarkRootsExtended(cursorAddress, resumePc, methodTable, staticRoots, frameAnchor);
+		CollectFinalizable();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint DrainFinalizers()
+	{
+		if (FinalizerDrainActive != 0)
+		{
+			return 0;
+		}
+
+		FinalizerDrainActive = 1;
+		var completedBefore = FinalizersCompleted;
+		try
+		{
+			uint payloadAddress;
+			while ((payloadAddress = GetNextFinalizer()) != 0)
+			{
+				try
+				{
+					M68kRuntime.InvokeFinalizer(payloadAddress);
+				}
+				catch
+				{
+				}
+				CompleteFinalizer();
+			}
+		}
+		finally
+		{
+			FinalizerDrainActive = 0;
+			ActiveFinalizerObject = 0;
+			ActiveFinalizerRemaining = 0;
+		}
+		return FinalizersCompleted - completedBefore;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void PrepareShutdownFinalizers()
+	{
+		var current = AllocatedHead;
+		while (current != 0)
+		{
+			var block = M68kAddress.FromUInt32(current);
+			var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+			if ((flags & (FinalizerPendingFlag | FinalizerRunningFlag)) == 0 &&
+				HasFinalizer(current + BlockHeaderSize))
+			{
+				flags = ApplyFinalizerSuppression(flags);
+				if ((flags & FinalizerCountMask) != 0)
+				{
+					flags |= FinalizerPendingFlag;
+				}
+				M68kAddress.WriteUInt32(block, FlagsOffset, flags);
+			}
+			current = M68kAddress.ReadUInt32(block, NextOffset);
+		}
+	}
+
+	private static uint GetNextFinalizer()
+	{
+		if (ActiveFinalizerRemaining != 0)
+		{
+			return ActiveFinalizerObject;
+		}
+
+		var current = AllocatedHead;
+		while (current != 0)
+		{
+			var block = M68kAddress.FromUInt32(current);
+			var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+			var registrations = flags & FinalizerCountMask;
+			if ((flags & FinalizerPendingFlag) != 0 && registrations != 0)
+			{
+				ActiveFinalizerObject = current + BlockHeaderSize;
+				ActiveFinalizerRemaining = registrations;
+				M68kAddress.WriteUInt32(
+					block,
+					FlagsOffset,
+					(flags & ~(FinalizerCountMask | FinalizerPendingFlag)) |
+						FinalizerRunningFlag);
+				return ActiveFinalizerObject;
+			}
+			current = M68kAddress.ReadUInt32(block, NextOffset);
+		}
+		return 0;
+	}
+
+	private static void CompleteFinalizer()
+	{
+		ActiveFinalizerRemaining -= FinalizerCountIncrement;
+		FinalizersCompleted++;
+		if (ActiveFinalizerRemaining != 0)
+		{
+			return;
+		}
+
+		var block = M68kAddress.FromUInt32(ActiveFinalizerObject - BlockHeaderSize);
+		var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
+		M68kAddress.WriteUInt32(
+			block,
+			FlagsOffset,
+			flags & ~FinalizerRunningFlag);
+		ActiveFinalizerObject = 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static void Coalesce()
 	{
 		var current = HeapStart;
@@ -418,6 +682,9 @@ public static class ManagedPool
 		AllocatedHead = 0;
 		HeapStart = 0;
 		HeapEnd = 0;
+		FinalizerDrainActive = 0;
+		ActiveFinalizerObject = 0;
+		ActiveFinalizerRemaining = 0;
 	}
 
 	private static void SplitFreeBlock(uint blockAddress, uint requiredSize, uint remainder)
@@ -496,6 +763,23 @@ public static class ManagedPool
 			fieldAddress += 4;
 			bitmap >>= 1;
 		}
+	}
+
+	private static bool HasFinalizer(uint payloadAddress)
+	{
+		if (payloadAddress == 0)
+		{
+			return false;
+		}
+		var payload = M68kAddress.FromUInt32(payloadAddress);
+		var descriptorAddress = M68kAddress.ReadUInt32(payload, 0);
+		if (descriptorAddress == 0)
+		{
+			return false;
+		}
+		var descriptor = M68kAddress.FromUInt32(descriptorAddress);
+		return M68kAddress.ReadUInt32(descriptor, 0) != 0 &&
+			M68kAddress.ReadUInt32(descriptor, TypeFinalizerOffset) != 0;
 	}
 
 	private static void UnlinkFreeBlock(uint blockAddress)
