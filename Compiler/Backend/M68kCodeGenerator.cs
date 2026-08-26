@@ -145,6 +145,12 @@ internal sealed partial class M68kCodeGenerator
 	private bool UsesManagedExceptionRuntime =>
 		_usesExceptionRuntime;
 
+	private IEnumerable<CilMethod> ReachableManagedPoolMethods =>
+		_managedPoolRuntime is null
+			? []
+			: _managedPoolRuntime.Methods.Concat(
+				_usesFinalizers ? _managedPoolRuntime.FinalizerMethods : []);
+
 	private bool UseClr => _request.ClrPolicy switch
 	{
 		M68kClrPolicy.Always => true,
