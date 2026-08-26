@@ -304,7 +304,7 @@ try {
     if (-not $frameworkReport.isCompatible) {
         throw "The generated template framework report is not compatible."
     }
-    if ($frameworkReport.SchemaVersion -ne 1 -or
+    if ($frameworkReport.SchemaVersion -ne 2 -or
         $frameworkReport.Compiler.PackageId -ne "CopperSharp.Compiler" -or
         $frameworkReport.Compiler.PackageVersion -ne $packageVersion -or
         $frameworkReport.ContractId -ne "net10.0-10.0.9" -or
