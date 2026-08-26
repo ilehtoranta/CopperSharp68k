@@ -362,6 +362,11 @@ internal static class CilStackAnalyzer
 		{
 			return 2;
 		}
+		if (op == OpCodes.Sizeof)
+		{
+			module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset);
+			return 1;
+		}
 
 		if (op == OpCodes.Ldftn)
 		{
@@ -1179,6 +1184,12 @@ internal static class CilStackAnalyzer
 			return Push(
 				Pop(method, instruction, stack, 1),
 				CilStackValueKind.ManagedPointer);
+		}
+
+		if (op == OpCodes.Sizeof)
+		{
+			module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset);
+			return Push(stack, CilStackValueKind.Int32);
 		}
 
 		if (IsConversion(op))

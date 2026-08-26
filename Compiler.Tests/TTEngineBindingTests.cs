@@ -18,6 +18,35 @@ public sealed class TTEngineBindingTests
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static APTR CallOpenFont() => TTEngine.TT_OpenFontA(0x0000_4300u);
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	internal static void CallStackScopedHandles()
+	{
+		Span<TagItem> tags = stackalloc TagItem[2];
+		tags[0] = TTEngineTags.Item(TTEngineTag.FontSize, 16u);
+		tags[1] = TagItem.Done;
+
+		if (TTFontHandle.TryCreate(ref tags[0], out var font))
+		{
+			if (font.TryGetPixmap(0x0000_4400u, 0, ref tags[0], out var pixmap))
+			{
+				pixmap.Dispose();
+			}
+
+			font.Dispose();
+		}
+
+		if (TTRequesterHandle.TryCreate(out var requester))
+		{
+			requester.Request(ref tags[0]);
+			requester.Dispose();
+		}
+
+		if (TTFamilyListHandle.TryObtain(ref tags[0], out var familyList))
+		{
+			familyList.Dispose();
+		}
+	}
+
 	[Fact]
 	public void TTEngineIsExplicitlyManual()
 	{
@@ -98,6 +127,47 @@ public sealed class TTEngineBindingTests
 		Assert.Equal(0x6EDA000Fu, (uint)TTEngineTag.Antialias);
 		Assert.Equal(0x6EDA2013u, (uint)TTEngineRequesterTag.FixedWidthOnly);
 		Assert.Equal(-1, (int)TTEngineEncoding.SystemUtf8);
+	}
+
+	[Fact]
+	public void StackTagItemsAndTypedTTEngineValuesAreRepresentedCorrectly()
+	{
+		var done = TagItem.Done;
+		var item = TTEngineTags.Item(TTEngineTag.Encoding,
+			TTEngineEncoding.SystemUtf8);
+		var requester = TTEngineTags.RequesterItem(
+			TTEngineRequesterTag.InitialWidth, 640u);
+
+		Assert.Equal((uint)UtilityTag.Done, done.Tag);
+		Assert.Equal(0u, done.Data);
+		Assert.Equal((uint)TTEngineTag.Encoding, item.Tag);
+		Assert.Equal(uint.MaxValue, item.Data);
+		Assert.Equal((uint)TTEngineRequesterTag.InitialWidth, requester.Tag);
+		Assert.Equal(640u, requester.Data);
+		Assert.Equal(typeof(APTR), typeof(TagItem).GetMethod(nameof(TagItem.AddressOf))!
+			.ReturnType);
+	}
+
+	[Fact]
+	public void StackScopedTTEngineHandlesLowerThroughEveryOwnedVector()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = Assembly.GetExecutingAssembly().Location,
+			EntryPoint = $"{typeof(TTEngineBindingTests).FullName}::CallStackScopedHandles",
+			OutputFormat = M68kOutputFormat.Assembly
+		}, new AmigaCompilationOptions
+		{
+			LibraryBases = new Dictionary<string, uint>
+			{
+				[TTEngine.Name] = 0x0000_4200
+			}
+		});
+
+		foreach (var lvo in new[] { -30, -42, -84, -90, -102, -108, -114, -120, -126 })
+		{
+			Assert.Contains($"{lvo}(a6)", result.Text, StringComparison.Ordinal);
+		}
 	}
 
 	private static object[] Vector(string methodName, int lvo,

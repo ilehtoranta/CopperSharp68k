@@ -2084,6 +2084,8 @@ internal static class CilMachineIrBuilder
 					argumentIndex: frameIndex,
 					constantValue: ConstantValueFor(
 						function,
+						method,
+						module,
 						operation,
 						instruction,
 						definitions)));
@@ -3005,6 +3007,14 @@ internal static class CilMachineIrBuilder
 			{
 				value = definition.Uses[0];
 				continue;
+			}
+			if (definition.Operation == M68kMachineOperation.Constant &&
+				definition.ConstantValue is { } constantValue &&
+				constantValue.TryGetIntegral(out var integral) &&
+				integral is >= int.MinValue and <= int.MaxValue)
+			{
+				constant = (int)integral;
+				return true;
 			}
 			if (definition.Operation == M68kMachineOperation.Constant &&
 				definition.SourceInstruction is { } source)
@@ -6022,6 +6032,7 @@ internal static class CilMachineIrBuilder
 			return M68kMachineOperation.Other;
 		}
 		if (IsIntegerConstant(op) ||
+			op == OpCodes.Sizeof ||
 			op == OpCodes.Ldc_I8 ||
 			op == OpCodes.Ldc_R4 ||
 			op == OpCodes.Ldc_R8 ||
@@ -6159,6 +6170,8 @@ internal static class CilMachineIrBuilder
 
 	private static M68kMachineConstant? ConstantValueFor(
 		M68kMachineFunction function,
+		CilMethod method,
+		CompilationModule module,
 		M68kMachineOperation operation,
 		CilInstruction instruction,
 		IReadOnlyList<int> definitions)
@@ -6170,6 +6183,21 @@ internal static class CilMachineIrBuilder
 		}
 		var boolean = function.Values[definitions[0]].Kind ==
 			CilStackValueKind.BooleanByte;
+		if (instruction.OpCode == OpCodes.Sizeof)
+		{
+			var type = module.ResolveTypeToken(
+				(int)instruction.Operand!, method, instruction.Offset);
+			if (!module.TryGetReferenceFreeStructLayout(
+				type, method.ModuleName, out var layout))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedInstruction,
+					$"sizeof requires a fixed-layout value type, not '{type.DisplayName}'.",
+					method.DisplayName,
+					instruction.Offset);
+			}
+			return M68kMachineConstant.Int32(layout.Size);
+		}
 		return M68kMachineConstant.TryFromCil(
 			instruction,
 			boolean,

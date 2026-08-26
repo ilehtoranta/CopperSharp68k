@@ -18,6 +18,28 @@ public sealed class CgxVideoBindingTests
 	public static APTR CallCreateVLayer() => CgxVideo.CreateVLayerHandleTagList(
 		0x0000_4300u, 0x0000_4400u);
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	internal static void CallStackScopedLayer()
+	{
+		Span<TagItem> tags = stackalloc TagItem[2];
+		tags[0] = CgxVideoTags.Item(CgxVideoTag.SourceType,
+			CgxVideoSourceFormat.YCbCr16);
+		tags[1] = TagItem.Done;
+
+		if (CgxVideoLayerHandle.TryCreate(0x0000_4300u, ref tags[0], out var layer))
+		{
+			layer.Attach(0x0000_4400u, ref tags[0]);
+			layer.GetAttribute(CgxVideoTag.Width);
+			layer.Lock();
+			layer.SetAttributes(ref tags[0]);
+			layer.SwapBuffers();
+			layer.WriteSPLine(0x0000_4500u, 0, 0, 16);
+			CgxVideoLayerHandle.QueryAttribute(0x0000_4300u,
+				CgxVideoQueryTag.MaximumWidth);
+			layer.Dispose();
+		}
+	}
+
 	[Fact]
 	public void CgxVideoIsExplicitlyManual()
 	{
@@ -88,6 +110,43 @@ public sealed class CgxVideoBindingTests
 		Assert.Equal(0x800A5000u, (uint)CgxVideoQueryTag.Dummy);
 		Assert.Equal(1u << 8, (uint)CgxVideoFeature.SubPicture);
 		Assert.Equal(4u, (uint)CgxVideoSourceFormat.YCbCr420);
+	}
+
+	[Fact]
+	public void TypedCgxVideoTagItemsAreRepresentedCorrectly()
+	{
+		var source = CgxVideoTags.Item(CgxVideoTag.SourceType,
+			CgxVideoSourceFormat.YCbCr420);
+		var features = CgxVideoTags.Item(CgxVideoTag.Identifier,
+			CgxVideoFeature.DoubleBuffer | CgxVideoFeature.Filtering);
+
+		Assert.Equal((uint)CgxVideoTag.SourceType, source.Tag);
+		Assert.Equal((uint)CgxVideoSourceFormat.YCbCr420, source.Data);
+		Assert.Equal((uint)CgxVideoTag.Identifier, features.Tag);
+		Assert.Equal((uint)(CgxVideoFeature.DoubleBuffer | CgxVideoFeature.Filtering),
+			features.Data);
+	}
+
+	[Fact]
+	public void StackScopedCgxVideoLayerLowersCleanupAndAllConvenienceVectors()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = Assembly.GetExecutingAssembly().Location,
+			EntryPoint = $"{typeof(CgxVideoBindingTests).FullName}::CallStackScopedLayer",
+			OutputFormat = M68kOutputFormat.Assembly
+		}, new AmigaCompilationOptions
+		{
+			LibraryBases = new Dictionary<string, uint>
+			{
+				[CgxVideo.Name] = 0x0000_4200
+			}
+		});
+
+		foreach (var lvo in new[] { -30, -36, -42, -48, -54, -60, -66, -72, -96, -102, -108 })
+		{
+			Assert.Contains($"{lvo}(a6)", result.Text, StringComparison.Ordinal);
+		}
 	}
 
 	private static object[] Vector(string methodName, int lvo,

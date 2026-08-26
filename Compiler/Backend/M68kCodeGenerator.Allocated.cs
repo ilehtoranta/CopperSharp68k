@@ -10174,9 +10174,11 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (destination.IsPair)
 		{
-			var value = instruction.SourceInstruction is { } pairSource
-				? GetAllocatedLongConstant(pairSource)
-				: 0;
+			var value = instruction.ConstantValue is { } pairConstant
+				? unchecked((long)pairConstant.Bits)
+				: instruction.SourceInstruction is { } pairSource
+					? GetAllocatedLongConstant(pairSource)
+					: 0;
 			EmitAllocatedImmediate(
 				unchecked((int)(value >> 32)),
 				destination.Register);
@@ -10185,9 +10187,11 @@ internal sealed partial class M68kCodeGenerator
 				(M68kRegister)((int)destination.Register + 1));
 			return;
 		}
-		var scalar = instruction.SourceInstruction is { } source
-			? GetAllocatedIntConstant(source)
-			: 0;
+		var scalar = instruction.ConstantValue is { } scalarConstant
+			? unchecked((int)(uint)scalarConstant.Bits)
+			: instruction.SourceInstruction is { } source
+				? GetAllocatedIntConstant(source)
+				: 0;
 		EmitAllocatedImmediate(scalar, destination.Register);
 	}
 

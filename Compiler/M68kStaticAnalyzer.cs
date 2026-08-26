@@ -214,6 +214,7 @@ internal static class M68kStaticAnalyzer
 			target.Definition is { IsImport: false } layoutConstructor)
 		{
 			var layout = module.GetTypeLayout(layoutConstructor);
+			RejectFinalizableAllocation(module, method, instruction, layout);
 			reachableDispatchLayouts.TryAdd(layout.Identity, layout);
 		}
 		ValidateCallDispatch(method, instruction, target);
@@ -268,6 +269,34 @@ internal static class M68kStaticAnalyzer
 		{
 			RequireGcRuntime(method, instruction, request, target.ImportName);
 		}
+	}
+
+	private static void RejectFinalizableAllocation(
+		CompilationModule module,
+		CilMethod method,
+		CilInstruction instruction,
+		CilTypeLayout layout)
+	{
+		var finalizer = module.GetVirtualTable(layout).Slots.FirstOrDefault(
+			static candidate =>
+				candidate.Name == "Finalize" &&
+				candidate.Signature.Header.IsInstance &&
+				candidate.Signature.ParameterTypes.Length == 0 &&
+				candidate.Signature.ReturnType.IsVoid &&
+				candidate.IsVirtual &&
+				!candidate.IsNewSlot);
+		if (finalizer is null)
+		{
+			return;
+		}
+
+		throw new M68kCompilationException(
+			M68kDiagnosticIds.StaticAnalysis,
+			$"Managed allocation of finalizable type '{layout.DisplayName}' is not supported. " +
+			$"Effective finalizer: '{finalizer.DisplayName}'. " +
+			"Use deterministic Dispose/try-finally cleanup instead.",
+			method.DisplayName,
+			instruction.Offset);
 	}
 
 	private static void ValidateCallDispatch(
