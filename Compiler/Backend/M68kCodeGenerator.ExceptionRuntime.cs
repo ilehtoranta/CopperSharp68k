@@ -1433,6 +1433,7 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitRuntimeObjectAddress(M68kRegister register, string typeName)
 	{
 		RegisterRuntimeTypeDescriptor(typeName);
+		_runtimeExceptionObjectTypes.Add(typeName);
 		var index = (int)register - (int)M68kRegister.A0;
 		_assembler.EmitWord((ushort)(0x207C | (index << 9)));
 		_assembler.EmitAddress(RuntimeExceptionObjectLabel(typeName));
@@ -1453,7 +1454,9 @@ internal sealed partial class M68kCodeGenerator
 	{
 		var done = UniqueLabel("eh_reason_done");
 		foreach (var mapping in ExceptionReasonMappings
-			.Where(mapping => _exceptionRaiseReasons.Contains(mapping.Reason))
+			.Where(mapping =>
+				_exceptionRaiseReasons.Contains(mapping.Reason) ||
+				_runtimeExceptionObjectTypes.Contains(mapping.TypeName))
 			.DistinctBy(static mapping => mapping.TypeName))
 		{
 			var reason = mapping.TypeName == "System.NullReferenceException"
@@ -1605,6 +1608,7 @@ internal sealed partial class M68kCodeGenerator
 		var exceptionTypes = ExceptionReasonMappings
 			.Where(mapping => _exceptionRaiseReasons.Contains(mapping.Reason))
 			.Select(static mapping => mapping.TypeName)
+			.Concat(_runtimeExceptionObjectTypes)
 			.Append("System.Exception")
 			.Distinct(StringComparer.Ordinal);
 		foreach (var typeName in exceptionTypes)

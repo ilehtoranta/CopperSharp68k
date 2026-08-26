@@ -87,9 +87,9 @@
   },
   {
     "Name": "example:ConsoleIO",
-    "ImageBytes": 7596,
-    "CodeBytes": 6420,
-    "AssemblyTextBytes": 110373,
+    "ImageBytes": 7612,
+    "CodeBytes": 6432,
+    "AssemblyTextBytes": 110605,
     "CompiledMethods": 20,
     "SpilledValues": 1,
     "MaximumSpillFrameBytes": 4,
@@ -97,10 +97,10 @@
     "ManagedAllocationSites": 0,
     "Mc68000Cycles": null,
     "SymbolCount": 24,
-    "RelocationCount": 281,
-    "InstructionCount": 1322,
+    "RelocationCount": 282,
+    "InstructionCount": 1327,
     "CallInstructionCount": 79,
-    "BranchInstructionCount": 204,
+    "BranchInstructionCount": 206,
     "ExplicitStackOperationCount": 42,
     "ExceptionRegionCount": 5,
     "FatalMachineFaultSiteCount": 2,
@@ -136,22 +136,22 @@
       {
         "Name": "ConsoleIO",
         "Version": "0.1.0.0",
-        "Sha256": "30c1d2e214d7c68df757d8ff5124fe25eb3f0d661c2e39f2ed4f75f5880bc58c"
+        "Sha256": "67abc5614f33dc709ca3d531ad74bb393c6bf41f5942ad07723bfd6cd4830a7f"
       },
       {
         "Name": "CopperSharp.Runtime.AmigaPal",
         "Version": "0.1.0.0",
-        "Sha256": "93b719203cc5a744e13d91d0f3db047fb2013726554836b35fc80eff56bf83ec"
+        "Sha256": "984ec2b8c4e5b42cfb7fcd82c7d0f77f3506decf8512b7e668d882d3a7df4294"
       },
       {
         "Name": "CopperSharp.Runtime.Managed",
         "Version": "0.1.0.0",
-        "Sha256": "070a9ebd09844650d341bd51d165587528348fd72837eb89665e2bbc43c59c10"
+        "Sha256": "0045c69bf90932b200d99e35b9455fea5c8421507e8ca48d265bd2e5d5d65303"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       }
     ]
   },
@@ -189,12 +189,12 @@
       {
         "Name": "CopperBars",
         "Version": "0.1.0.0",
-        "Sha256": "b4afc9a458d670c0ee0d16e302ed0a9e529a9b58778b444f47fcbaee347803a1"
+        "Sha256": "a51848640eb3c3c3d03e170a71e1f8bdcb8dbe639be32420375d9c0386a4b164"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       }
     ]
   },
@@ -232,12 +232,12 @@
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "DOS",
         "Version": "0.1.0.0",
-        "Sha256": "eedb1f1bcb32bb7d3317b9efef56b5609456d3e8bb9dff9944948d728e0a2948"
+        "Sha256": "ece7c4c28b0c5222ddcf151d2dd84f56c17627e2b32516e7888fd9bafb0fd882"
       }
     ]
   },
@@ -275,20 +275,20 @@
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "FileStats",
         "Version": "0.1.0.0",
-        "Sha256": "324c62936cef4936e60ad69e5c6d5ff2cbf89d20b3d7db4854a512ce00a32063"
+        "Sha256": "156679324e2b438d784f462066c76171b59f7abe8bfed51aeb3cf47e1d836f22"
       }
     ]
   },
   {
     "Name": "example:IFFInspect",
-    "ImageBytes": 6532,
-    "CodeBytes": 5464,
-    "AssemblyTextBytes": 80551,
+    "ImageBytes": 6552,
+    "CodeBytes": 5480,
+    "AssemblyTextBytes": 80809,
     "CompiledMethods": 24,
     "SpilledValues": 0,
     "MaximumSpillFrameBytes": 0,
@@ -296,10 +296,10 @@
     "ManagedAllocationSites": 5,
     "Mc68000Cycles": null,
     "SymbolCount": 29,
-    "RelocationCount": 254,
-    "InstructionCount": 1067,
+    "RelocationCount": 255,
+    "InstructionCount": 1072,
     "CallInstructionCount": 83,
-    "BranchInstructionCount": 150,
+    "BranchInstructionCount": 152,
     "ExplicitStackOperationCount": 47,
     "ExceptionRegionCount": 6,
     "FatalMachineFaultSiteCount": 2,
@@ -340,17 +340,17 @@
       {
         "Name": "CopperSharp.Runtime.Managed",
         "Version": "0.1.0.0",
-        "Sha256": "070a9ebd09844650d341bd51d165587528348fd72837eb89665e2bbc43c59c10"
+        "Sha256": "0045c69bf90932b200d99e35b9455fea5c8421507e8ca48d265bd2e5d5d65303"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "IFFInspect",
         "Version": "0.1.0.0",
-        "Sha256": "27d5410c289f4ca2c5e4e0bbc096478194a88f02ff4611f9e122e843afaa3abd"
+        "Sha256": "d0ae9b111b8f28324966d15316b6a1d7b7fac036c8e19072e60280bc0ab2cf48"
       }
     ]
   },
@@ -390,12 +390,12 @@
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "MUISunflower",
         "Version": "0.1.0.0",
-        "Sha256": "0af3f1886a02582cd2cd587cdc65d9ee567ba76ead93eed392c1070e88fd1e67"
+        "Sha256": "684b7920c1529fc7d5bfa322299f05258bfa62fba5c9f1973ddd12123f5a6570"
       }
     ]
   },
@@ -436,12 +436,12 @@
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "MUITaskList",
         "Version": "0.1.0.0",
-        "Sha256": "0d42fb25dcff9a1e36352f0c21e0a09ffd19b28b4d7ce38500642ae959c0376b"
+        "Sha256": "448058ff425e64d341909a11fb613de49c30758d83f32ba9b3c9ecfcf7095b20"
       }
     ]
   },
@@ -481,20 +481,20 @@
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "Polymorphism",
         "Version": "0.1.0.0",
-        "Sha256": "0e5cf3d30b91030a36949ce5206b685e3781343ff6b1461b55fdca9743a0cda6"
+        "Sha256": "04d775afb2ae95c389aa96859c2af398219e95c425cf11cd347f347fa6328325"
       }
     ]
   },
   {
     "Name": "example:StopwatchBenchmark",
-    "ImageBytes": 13484,
-    "CodeBytes": 11840,
-    "AssemblyTextBytes": 181666,
+    "ImageBytes": 13504,
+    "CodeBytes": 11856,
+    "AssemblyTextBytes": 181927,
     "CompiledMethods": 39,
     "SpilledValues": 6,
     "MaximumSpillFrameBytes": 8,
@@ -502,10 +502,10 @@
     "ManagedAllocationSites": 0,
     "Mc68000Cycles": null,
     "SymbolCount": 43,
-    "RelocationCount": 398,
-    "InstructionCount": 2352,
+    "RelocationCount": 399,
+    "InstructionCount": 2357,
     "CallInstructionCount": 126,
-    "BranchInstructionCount": 337,
+    "BranchInstructionCount": 339,
     "ExplicitStackOperationCount": 102,
     "ExceptionRegionCount": 5,
     "FatalMachineFaultSiteCount": 2,
@@ -541,22 +541,22 @@
       {
         "Name": "CopperSharp.Runtime.AmigaPal",
         "Version": "0.1.0.0",
-        "Sha256": "93b719203cc5a744e13d91d0f3db047fb2013726554836b35fc80eff56bf83ec"
+        "Sha256": "984ec2b8c4e5b42cfb7fcd82c7d0f77f3506decf8512b7e668d882d3a7df4294"
       },
       {
         "Name": "CopperSharp.Runtime.Managed",
         "Version": "0.1.0.0",
-        "Sha256": "070a9ebd09844650d341bd51d165587528348fd72837eb89665e2bbc43c59c10"
+        "Sha256": "0045c69bf90932b200d99e35b9455fea5c8421507e8ca48d265bd2e5d5d65303"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
         "Version": "0.1.0.0",
-        "Sha256": "aa5aa7efdc8210f5d48b8f1f0dde61f4ab1bb97609b691deb88cae36dd1de9dd"
+        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
       },
       {
         "Name": "StopwatchBenchmark",
         "Version": "0.1.0.0",
-        "Sha256": "864888d79b46af73bd3904a22f55c73b9a711c0c1788a2b70d7e5b331a76243a"
+        "Sha256": "9220ac30875a2cae1b2ded94d09a8ccdd0c0bae89e83b6738e8932ef733ccc6a"
       }
     ]
   }

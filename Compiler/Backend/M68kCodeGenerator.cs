@@ -41,6 +41,7 @@ internal sealed partial class M68kCodeGenerator
 	private int _currentStackDepth = 0;
 	private bool _usesExceptionRuntime;
 	private readonly HashSet<int> _exceptionRaiseReasons = new();
+	private readonly HashSet<string> _runtimeExceptionObjectTypes = new(StringComparer.Ordinal);
 	private bool _hasExceptionFrames;
 	private ImmutableArray<CilStackValueKind> _currentStackTypes = ImmutableArray<CilStackValueKind>.Empty;
 	private ImmutableArray<CilStackValueKind> _nextStackTypes = ImmutableArray<CilStackValueKind>.Empty;
@@ -265,7 +266,7 @@ internal sealed partial class M68kCodeGenerator
 			.Append(entry.Identity)
 			.Concat(_managedLifecycles.SelectMany(static lifecycle =>
 				lifecycle.Methods.Select(static method => method.Identity)))
-			.Concat(_managedPoolRuntime?.Methods.Select(static method => method.Identity) ?? [])
+			.Concat(ReachableManagedPoolMethods.Select(static method => method.Identity))
 			.Concat(_foldedMethodAliases.Keys)
 			.Concat(_foldedMethodAliases.Values.Select(static method => method.Identity))
 			.Concat(methods.Where(static method =>
@@ -675,7 +676,7 @@ internal sealed partial class M68kCodeGenerator
 		};
 		if (_managedPoolRuntime is not null)
 		{
-			roots.UnionWith(_managedPoolRuntime.Methods.Select(method => method.Identity));
+			roots.UnionWith(ReachableManagedPoolMethods.Select(method => method.Identity));
 		}
 		var referencedByNonInlinedCall = new HashSet<CilMethodIdentity>();
 		foreach (var method in methods)
@@ -741,7 +742,7 @@ internal sealed partial class M68kCodeGenerator
 		if (_managedPoolRuntime is not null)
 		{
 			protectedMethods.UnionWith(
-				_managedPoolRuntime.Methods.Select(static method => method.Identity));
+				ReachableManagedPoolMethods.Select(static method => method.Identity));
 		}
 		foreach (var lifecycle in _managedLifecycles)
 		{

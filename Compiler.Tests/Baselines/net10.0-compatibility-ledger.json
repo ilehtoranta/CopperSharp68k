@@ -105,31 +105,31 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatDecimalInt32",
-          "IlOffset": 38,
+          "IlOffset": 52,
           "Kind": "string",
           "AllocatedType": "string"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatDecimalUInt32",
-          "IlOffset": 17,
+          "IlOffset": 18,
           "Kind": "string",
           "AllocatedType": "string"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatHexUInt32",
-          "IlOffset": 17,
+          "IlOffset": 18,
           "Kind": "string",
           "AllocatedType": "string"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatInt32",
-          "IlOffset": 28,
+          "IlOffset": 40,
           "Kind": "string",
           "AllocatedType": "string"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowIntegerFormatter::FormatUInt32",
-          "IlOffset": 8,
+          "IlOffset": 9,
           "Kind": "string",
           "AllocatedType": "string"
         }
@@ -277,13 +277,13 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "int[]"
         },
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry",
-          "IlOffset": 173,
+          "IlOffset": 214,
           "Kind": "array",
           "AllocatedType": "int[]"
         }
@@ -421,43 +421,43 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
-          "IlOffset": 0,
+          "IlOffset": 1,
           "Kind": "object",
           "AllocatedType": "System.Collections.Generic.Dictionary\u00602\u003Cstring,string\u003E"
         },
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
-          "IlOffset": 93,
+          "IlOffset": 99,
           "Kind": "string",
           "AllocatedType": "string"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::Grow",
-          "IlOffset": 10,
+          "IlOffset": 17,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowDictionaryStorage\u00602\u003C!0,!1\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::Grow",
-          "IlOffset": 88,
+          "IlOffset": 108,
           "Kind": "array",
           "AllocatedType": "int[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::GrowHashes",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "int[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::GrowKeys",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "string[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cstring,string\u003E::GrowValues",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "string[]"
         }
@@ -662,91 +662,91 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
-          "IlOffset": 0,
+          "IlOffset": 1,
           "Kind": "object",
           "AllocatedType": "System.Collections.Generic.Dictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E"
         },
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
-          "IlOffset": 125,
+          "IlOffset": 131,
           "Kind": "object",
           "AllocatedType": "System.Func\u00602\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E"
         },
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
-          "IlOffset": 157,
+          "IlOffset": 163,
           "Kind": "object",
           "AllocatedType": "System.Func\u00602\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::Grow",
-          "IlOffset": 10,
+          "IlOffset": 17,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowDictionaryStorage\u00602\u003C!0,!1\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::Grow",
-          "IlOffset": 88,
+          "IlOffset": 108,
           "Kind": "array",
           "AllocatedType": "int[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GrowHashes",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "int[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GrowKeys",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "uint[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GrowValues",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowDictionary\u00602\u003Cuint,CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::get_Values",
-          "IlOffset": 11,
+          "IlOffset": 18,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowDictionaryValueCollection\u00602\u003C!0,!1\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowEnumerable::DictionaryUInt32ValuesOrderBy\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E",
-          "IlOffset": 18,
+          "IlOffset": 30,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowPrimaryOrderedEnumerable\u00601\u003C!!0\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowEnumerable::DictionaryUInt32ValuesThenBy\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor,int\u003E",
-          "IlOffset": 18,
+          "IlOffset": 30,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003C!!0\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator",
-          "IlOffset": 32,
+          "IlOffset": 33,
           "Kind": "array",
           "AllocatedType": "CopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator",
-          "IlOffset": 39,
+          "IlOffset": 40,
           "Kind": "array",
           "AllocatedType": "int[]"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::GetEnumerator",
-          "IlOffset": 133,
+          "IlOffset": 143,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowOrderedEnumerator\u00601\u003C!0\u003E"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowOrderedEnumerable\u00601\u003CCopperSharp.Compiler.Tests.CompilerFixtures/DictionaryImageDescriptor\u003E::MaterializeKeys",
-          "IlOffset": 3,
+          "IlOffset": 4,
           "Kind": "array",
           "AllocatedType": "int[]"
         }
@@ -851,13 +851,13 @@
         },
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry",
-          "IlOffset": 20,
+          "IlOffset": 21,
           "Kind": "object",
           "AllocatedType": "System.Func\u00602\u003Cint,int\u003E"
         },
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::MulticastDelegateRemoveEntry",
-          "IlOffset": 33,
+          "IlOffset": 34,
           "Kind": "object",
           "AllocatedType": "System.Func\u00602\u003Cint,int\u003E"
         }
@@ -894,7 +894,7 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry",
-          "IlOffset": 0,
+          "IlOffset": 2,
           "Kind": "object",
           "AllocatedType": "FixtureException"
         }
@@ -957,31 +957,31 @@
       "ManagedAllocationSites": [
         {
           "Caller": "IFFInspect.Program::Inspect",
-          "IlOffset": 25,
+          "IlOffset": 30,
           "Kind": "object",
           "AllocatedType": "IFFInspect.IFFInspectException"
         },
         {
           "Caller": "IFFInspect.Program::Inspect",
-          "IlOffset": 59,
+          "IlOffset": 75,
           "Kind": "object",
           "AllocatedType": "IFFInspect.IFFInspectException"
         },
         {
           "Caller": "IFFInspect.Program::Inspect",
-          "IlOffset": 80,
+          "IlOffset": 107,
           "Kind": "object",
           "AllocatedType": "IFFInspect.IFFInspectException"
         },
         {
           "Caller": "IFFInspect.Program::Main",
-          "IlOffset": 94,
+          "IlOffset": 121,
           "Kind": "object",
           "AllocatedType": "IFFInspect.IFFInspectException"
         },
         {
           "Caller": "IFFInspect.Program::OpenFile",
-          "IlOffset": 27,
+          "IlOffset": 34,
           "Kind": "object",
           "AllocatedType": "IFFInspect.IFFInspectException"
         }
@@ -1089,7 +1089,7 @@
         {
           "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::ToArray instance !0[]()",
           "Status": "unsupported",
-          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000E: External method reference \u0027ToArray\u0027 must be represented by a local [M68kImport] declaration.",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000F: External method reference \u0027ToArray\u0027 must be represented by a local [M68kImport] declaration.",
           "Effects": [],
           "RequiredFeatures": []
         },
@@ -1110,7 +1110,7 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry",
-          "IlOffset": 1,
+          "IlOffset": 2,
           "Kind": "array",
           "AllocatedType": "int[]"
         }
@@ -1125,11 +1125,11 @@
           "Member": "[System.Runtime]System.Memory\u00601\u003Cint\u003E::ToArray instance !0[]()",
           "Classification": "profile-exclusion",
           "Owner": "framework-profile",
-          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000E: External method reference \u0027ToArray\u0027 must be represented by a local [M68kImport] declaration.",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry IL_000F: External method reference \u0027ToArray\u0027 must be represented by a local [M68kImport] declaration.",
           "CallSites": [
             {
               "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry",
-              "IlOffset": 14,
+              "IlOffset": 15,
               "RootPath": [
                 "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedMemoryToArrayEntry"
               ]
@@ -1190,7 +1190,7 @@
         {
           "Member": "[System.Linq]System.Linq.Enumerable::ToArray\u003Cint\u003E static !!0[](System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)",
           "Status": "unsupported",
-          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_0016: Framework member \u0027[System.Linq]System.Linq.Enumerable::ToArray\u003CSystem.Int32\u003E !!0[]([System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)\u0027 is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_001D: Framework member \u0027[System.Linq]System.Linq.Enumerable::ToArray\u003CSystem.Int32\u003E !!0[]([System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)\u0027 is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.",
           "Effects": [],
           "RequiredFeatures": []
         },
@@ -1205,13 +1205,13 @@
       "ManagedAllocationSites": [
         {
           "Caller": "CopperSharp.Runtime.ShadowEnumerable::Range",
-          "IlOffset": 26,
+          "IlOffset": 40,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowRangeIterator"
         },
         {
           "Caller": "CopperSharp.Runtime.ShadowEnumerable::Repeat\u003Cint\u003E",
-          "IlOffset": 11,
+          "IlOffset": 19,
           "Kind": "object",
           "AllocatedType": "CopperSharp.Runtime.ShadowRepeatIterator\u00601\u003C!!0\u003E"
         }
@@ -1226,11 +1226,11 @@
           "Member": "[System.Linq]System.Linq.Enumerable::ToArray\u003Cint\u003E static !!0[](System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)",
           "Classification": "profile-exclusion",
           "Owner": "framework-profile",
-          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_0016: Framework member \u0027[System.Linq]System.Linq.Enumerable::ToArray\u003CSystem.Int32\u003E !!0[]([System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)\u0027 is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge IL_001D: Framework member \u0027[System.Linq]System.Linq.Enumerable::ToArray\u003CSystem.Int32\u003E !!0[]([System.Runtime]System.Collections.Generic.IEnumerable\u00601\u003C!!0\u003E)\u0027 is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the source provenance is unknown or merges different iterator families.",
           "CallSites": [
             {
               "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge",
-              "IlOffset": 22,
+              "IlOffset": 29,
               "RootPath": [
                 "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMergeEntry",
                 "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedLinqMixedFactoryMerge"
@@ -1258,7 +1258,7 @@
         {
           "Member": "[System.Runtime]System.IO.Directory::CreateDirectory static System.IO.DirectoryInfo(string)",
           "Status": "unsupported",
-          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0005: External method reference \u0027CreateDirectory\u0027 must be represented by a local [M68kImport] declaration.",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0006: External method reference \u0027CreateDirectory\u0027 must be represented by a local [M68kImport] declaration.",
           "Effects": [],
           "RequiredFeatures": []
         }
@@ -1270,11 +1270,11 @@
           "Member": "[System.Runtime]System.IO.Directory::CreateDirectory static System.IO.DirectoryInfo(string)",
           "Classification": "pal-gap",
           "Owner": "Runtime.AmigaPal",
-          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0005: External method reference \u0027CreateDirectory\u0027 must be represented by a local [M68kImport] declaration.",
+          "Reason": "The compiler could not resolve an exact implementation for this constructed framework member: C68K0004: CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry IL_0006: External method reference \u0027CreateDirectory\u0027 must be represented by a local [M68kImport] declaration.",
           "CallSites": [
             {
               "Caller": "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry",
-              "IlOffset": 5,
+              "IlOffset": 6,
               "RootPath": [
                 "CopperSharp.Compiler.Tests.CompilerFixtures::UnsupportedDirectoryCreateEntry"
               ]

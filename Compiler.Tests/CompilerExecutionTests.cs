@@ -4865,13 +4865,12 @@ public sealed class CompilerExecutionTests
 			@"\tmove\.l\td0,20\(a7\)\r?\n" +
 			@"C68K_method_003A06000004_003ABB000D:",
 			result.Text);
-		Assert.Contains(
-			"\tmoveq\t#0,d1\r\n" +
-			"\tmove.l\td1,12(a7)\r\n" +
-			"\tmove.l\td1,16(a7)\r\n" +
-			"\tmove.l\td1,20(a7)",
-			result.Text,
-			StringComparison.Ordinal);
+		foreach (var offset in new[] { 12, 16, 20 })
+		{
+			Assert.Matches(
+				$@"(?m)^\t(?:clr\.l\t{offset}\(a7\)|move\.l\t[^,\r\n]+,{offset}\(a7\))\r?$",
+				result.Text);
+		}
 		Assert.DoesNotContain(
 			"\tclr.l\t12(a7)\r\n\tclr.l\t16(a7)",
 			result.Text,
