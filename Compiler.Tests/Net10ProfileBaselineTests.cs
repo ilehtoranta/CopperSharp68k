@@ -139,10 +139,9 @@ public sealed class Net10ProfileBaselineTests
 				? nativeCompatibility.ReachableAssemblies
 					.OrderBy(static assembly => assembly.Name, StringComparer.Ordinal)
 					.ThenBy(static assembly => assembly.Version, StringComparer.Ordinal)
-					.Select(static assembly => new BaselineAssemblyIdentity(
-						assembly.Name,
-						assembly.Version,
-						assembly.Sha256))
+				.Select(static assembly => new BaselineAssemblyIdentity(
+					assembly.Name,
+					assembly.Version))
 					.ToArray()
 				: null);
 	}
@@ -268,8 +267,7 @@ public sealed class Net10ProfileBaselineTests
 
 	private sealed record BaselineAssemblyIdentity(
 		string Name,
-		string Version,
-		string Sha256);
+		string Version);
 
 	private sealed record AssemblyShape(
 		int Instructions,

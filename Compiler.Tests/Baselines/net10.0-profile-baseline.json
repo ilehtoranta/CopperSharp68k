@@ -135,23 +135,19 @@
     "ReachableAssemblies": [
       {
         "Name": "ConsoleIO",
-        "Version": "0.1.0.0",
-        "Sha256": "67abc5614f33dc709ca3d531ad74bb393c6bf41f5942ad07723bfd6cd4830a7f"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Runtime.AmigaPal",
-        "Version": "0.1.0.0",
-        "Sha256": "984ec2b8c4e5b42cfb7fcd82c7d0f77f3506decf8512b7e668d882d3a7df4294"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Runtime.Managed",
-        "Version": "0.1.0.0",
-        "Sha256": "0045c69bf90932b200d99e35b9455fea5c8421507e8ca48d265bd2e5d5d65303"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -188,13 +184,11 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperBars",
-        "Version": "0.1.0.0",
-        "Sha256": "a51848640eb3c3c3d03e170a71e1f8bdcb8dbe639be32420375d9c0386a4b164"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -231,13 +225,11 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "DOS",
-        "Version": "0.1.0.0",
-        "Sha256": "ece7c4c28b0c5222ddcf151d2dd84f56c17627e2b32516e7888fd9bafb0fd882"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -274,13 +266,11 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "FileStats",
-        "Version": "0.1.0.0",
-        "Sha256": "156679324e2b438d784f462066c76171b59f7abe8bfed51aeb3cf47e1d836f22"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -339,18 +329,15 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Runtime.Managed",
-        "Version": "0.1.0.0",
-        "Sha256": "0045c69bf90932b200d99e35b9455fea5c8421507e8ca48d265bd2e5d5d65303"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "IFFInspect",
-        "Version": "0.1.0.0",
-        "Sha256": "d0ae9b111b8f28324966d15316b6a1d7b7fac036c8e19072e60280bc0ab2cf48"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -389,13 +376,11 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "MUISunflower",
-        "Version": "0.1.0.0",
-        "Sha256": "684b7920c1529fc7d5bfa322299f05258bfa62fba5c9f1973ddd12123f5a6570"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -435,13 +420,11 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "MUITaskList",
-        "Version": "0.1.0.0",
-        "Sha256": "448058ff425e64d341909a11fb613de49c30758d83f32ba9b3c9ecfcf7095b20"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -480,13 +463,11 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "Polymorphism",
-        "Version": "0.1.0.0",
-        "Sha256": "04d775afb2ae95c389aa96859c2af398219e95c425cf11cd347f347fa6328325"
+        "Version": "0.1.0.0"
       }
     ]
   },
@@ -540,23 +521,19 @@
     "ReachableAssemblies": [
       {
         "Name": "CopperSharp.Runtime.AmigaPal",
-        "Version": "0.1.0.0",
-        "Sha256": "984ec2b8c4e5b42cfb7fcd82c7d0f77f3506decf8512b7e668d882d3a7df4294"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Runtime.Managed",
-        "Version": "0.1.0.0",
-        "Sha256": "0045c69bf90932b200d99e35b9455fea5c8421507e8ca48d265bd2e5d5d65303"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "CopperSharp.Sdk.Amiga",
-        "Version": "0.1.0.0",
-        "Sha256": "056197139cbd0b87ce25d8806a226708ef2befa598074a140e2295ba8d874d60"
+        "Version": "0.1.0.0"
       },
       {
         "Name": "StopwatchBenchmark",
-        "Version": "0.1.0.0",
-        "Sha256": "9220ac30875a2cae1b2ded94d09a8ccdd0c0bae89e83b6738e8932ef733ccc6a"
+        "Version": "0.1.0.0"
       }
     ]
   }

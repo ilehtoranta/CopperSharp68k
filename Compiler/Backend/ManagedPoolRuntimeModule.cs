@@ -9,6 +9,7 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed record ManagedPoolRuntimeModule(
 	CilMethod Initialize,
+	CilMethod InitializeFinalizers,
 	CilMethod GetAllocationSize,
 	CilMethod Allocate,
 	CilMethod Dispose,
@@ -92,6 +93,7 @@ internal sealed record ManagedPoolRuntimeModule(
 	{
 		get
 		{
+			yield return InitializeFinalizers;
 			yield return RegisterFinalizer;
 			yield return SuppressFinalizer;
 			yield return ReRegisterFinalizer;

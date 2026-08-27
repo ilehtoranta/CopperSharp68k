@@ -118,6 +118,11 @@ internal sealed partial class M68kCodeGenerator
 			}
 			_loadedPlatformBase = null;
 			EmitRequireNonNull();
+			if (_usesFinalizers && _managedPoolRuntime is { } finalizerRuntime)
+			{
+				_assembler.EmitCall(MethodLabel(finalizerRuntime.InitializeFinalizers));
+				_loadedPlatformBase = null;
+			}
 		}
 		EmitManagedLifecycleInitialize();
 		if (wrapsEntry)

@@ -59,17 +59,21 @@ public static class ManagedPool
 		StaleBlocks = 0;
 		StaleBytesThreshold = M68kAddress.ReadUInt32(config, 16);
 		StaleBlocksThreshold = M68kAddress.ReadUInt32(config, 20);
-		FinalizerDrainActive = 0;
-		ActiveFinalizerObject = 0;
-		ActiveFinalizerRemaining = 0;
-		FinalizersCompleted = 0;
-
 		var first = M68kAddress.FromUInt32(heapStart);
 		M68kAddress.WriteUInt32(first, 0, 0);
 		M68kAddress.WriteUInt32(first, 4, 0);
 		M68kAddress.WriteUInt32(first, 8, heapSize);
 		M68kAddress.WriteUInt32(first, 12, 0);
 		return 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void InitializeFinalizers()
+	{
+		FinalizerDrainActive = 0;
+		ActiveFinalizerObject = 0;
+		ActiveFinalizerRemaining = 0;
+		FinalizersCompleted = 0;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -725,9 +729,6 @@ public static class ManagedPool
 		AllocatedHead = 0;
 		HeapStart = 0;
 		HeapEnd = 0;
-		FinalizerDrainActive = 0;
-		ActiveFinalizerObject = 0;
-		ActiveFinalizerRemaining = 0;
 	}
 
 	private static void SplitFreeBlock(uint blockAddress, uint requiredSize, uint remainder)

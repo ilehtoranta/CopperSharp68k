@@ -3895,6 +3895,12 @@ internal sealed class CompilationModule : IDisposable
 			catch (BadImageFormatException)
 			{
 			}
+			catch (FileNotFoundException)
+			{
+			}
+			catch (FileLoadException)
+			{
+			}
 		}
 
 		_reflectionAttributeCache.Add(cacheKey, false);

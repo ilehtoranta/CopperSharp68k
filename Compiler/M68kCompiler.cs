@@ -267,6 +267,7 @@ public static class M68kCompiler
 
 		return new ManagedPoolRuntimeModule(
 			Method("Initialize"),
+			Method("InitializeFinalizers"),
 			Method("GetAllocationSize"),
 			Method("Allocate"),
 			Method("Dispose"),
