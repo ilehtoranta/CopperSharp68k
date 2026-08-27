@@ -35,7 +35,7 @@ $auditRoot = Join-Path $tempRoot ("CopperSharp package ää-" + [Guid]::NewGuid(
 $feed = Join-Path $auditRoot "feed"
 $cliHome = Join-Path $auditRoot "cli-home"
 $projectPath = Join-Path $auditRoot "HelloAmiga"
-$nugetConfig = Join-Path $auditRoot "NuGet.Config"
+$nugetConfig = Join-Path $auditRoot "nuget.config"
 [xml]$buildProperties = Get-Content -Raw (Join-Path $repoRoot "Directory.Build.props")
 $packageVersion = [string]$buildProperties.Project.PropertyGroup.CopperSharpPackageVersion
 if ([string]::IsNullOrWhiteSpace($packageVersion)) {
