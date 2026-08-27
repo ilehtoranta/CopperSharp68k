@@ -83,7 +83,7 @@ try {
         "Compiler.Cli\CopperSharp.Compiler.Cli.csproj",
         "Templates\CopperSharp.Templates.csproj"
     )) {
-        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($project)
+        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($project.Replace('\', '/'))
         $packBuildRoot = Join-Path $auditRoot "pack-bin\$projectName"
         $packArguments = @(
             "pack", (Join-Path $repoRoot $project), "-c", $Configuration,
