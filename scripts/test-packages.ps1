@@ -27,6 +27,7 @@ function Assert-DotNetFailure {
         throw "dotnet $($Arguments -join ' ') did not report '$ExpectedText'. Output: $output"
     }
     $script:LastDotNetFailureOutput = $output
+    $global:LASTEXITCODE = 0
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
