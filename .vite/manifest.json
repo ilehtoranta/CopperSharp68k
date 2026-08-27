@@ -10,10 +10,10 @@
     "file": "assets/rolldown-runtime-S-ySWqyJ.js",
     "name": "rolldown-runtime"
   },
-  "node_modules/vinext/dist/shims/layout-segment-context.js": {
-    "file": "assets/layout-segment-context-BRmgGGHe.js",
+  "node_modules/.pnpm/vinext@0.0.50_@vitejs+plugi_28aaadcbd0ff266496bcc7e0d4cfb477/node_modules/vinext/dist/shims/layout-segment-context.js": {
+    "file": "assets/layout-segment-context-1kP-qR6N.js",
     "name": "layout-segment-context",
-    "src": "node_modules/vinext/dist/shims/layout-segment-context.js",
+    "src": "node_modules/.pnpm/vinext@0.0.50_@vitejs+plugi_28aaadcbd0ff266496bcc7e0d4cfb477/node_modules/vinext/dist/shims/layout-segment-context.js",
     "isDynamicEntry": true,
     "imports": [
       "_rolldown-runtime-S-ySWqyJ.js",
@@ -22,7 +22,7 @@
     ]
   },
   "virtual:vinext-app-browser-entry": {
-    "file": "assets/index-CtVXNBql.js",
+    "file": "assets/index-BHKgZHKg.js",
     "name": "index",
     "src": "virtual:vinext-app-browser-entry",
     "isEntry": true,
@@ -31,7 +31,7 @@
       "_framework-XU8gKkFC.js"
     ],
     "dynamicImports": [
-      "node_modules/vinext/dist/shims/layout-segment-context.js",
+      "node_modules/.pnpm/vinext@0.0.50_@vitejs+plugi_28aaadcbd0ff266496bcc7e0d4cfb477/node_modules/vinext/dist/shims/layout-segment-context.js",
       "virtual:vinext-app-browser-entry"
     ]
   }

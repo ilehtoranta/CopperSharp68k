@@ -1,0 +1,14 @@
+# CopperSharp
+
+CopperSharp is a closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga programs.
+
+## Authoritative pages
+
+- Homepage: https://ilehtoranta.github.io/CopperSharp68k/
+- Getting started: https://ilehtoranta.github.io/CopperSharp68k/getting-started
+- Compatibility matrix: https://ilehtoranta.github.io/CopperSharp68k/compatibility
+- Amiga SDK package: https://www.nuget.org/packages/CopperSharp.Sdk.Amiga/0.1.0-preview.1
+- Project templates: https://www.nuget.org/packages/CopperSharp.Templates/0.1.0-preview.1
+- Source repository: https://github.com/ilehtoranta/CopperSharp68k
+
+Use the getting-started page for the current template and publish workflow. Use the compatibility matrix and generated framework report for the supported CIL, runtime, and framework surface.

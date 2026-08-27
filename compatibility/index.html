@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-BAhXz4dk.css" data-rsc-css-href="/CopperSharp68k/assets/index-BAhXz4dk.css" data-precedence="vite-rsc/importer-resources"/><title>Compatibility matrix | CopperSharp</title><meta name="description" content="Current CopperSharp CPU, output, CIL, runtime, and .NET 10 framework compatibility."/><meta property="og:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta property="og:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta property="og:url" content="https://coppersharp.dev"/><meta property="og:site_name" content="CopperSharp"/><meta property="og:type" content="website"/><meta property="og:image" content="https://coppersharp.dev/og.png"/><meta property="og:image:width" content="1734"/><meta property="og:image:height" content="907"/><meta property="og:image:alt" content="CopperSharp CIL to Motorola 68k compiler"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="compatibility-page"><div class="noise" aria-hidden="true"></div><header class="site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Compatibility navigation"><a href="/CopperSharp68k/">Home</a><a href="#targets">Targets</a><a href="#framework">Framework</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><section class="compatibility-hero"><div><p class="eyebrow"><span></span> CURRENT IMPLEMENTED SURFACE</p><h1>Compatibility<br/><em>matrix.</em></h1><p class="hero-lede">CPU, output, CIL, runtime, and framework support in the current compiler. Compatibility is closed-world and member-specific.</p></div><aside class="contract-panel" aria-label=".NET framework contract summary"><div class="contract-panel-header"><span>FRAMEWORK CONTRACT</span><span>net10.0</span></div><dl class="contract-stats"><div><dt>Reference pack</dt><dd>10.0.9</dd></div><div><dt>Bound members</dt><dd>152</dd></div><div><dt>Implemented</dt><dd>62</dd></div><div><dt>Intrinsics</dt><dd>84</dd></div><div><dt>Platform</dt><dd>6</dd></div><div><dt>Tracked types</dt><dd>35</dd></div></dl><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Inspect the exact member contract <span>↗</span></a></aside></section><section class="compatibility-notice" aria-label="How to read the matrix"><span>READING THE MATRIX</span><p><strong>Supported subset</strong> means the listed forms are implemented. Other reachable forms fail with a compiler diagnostic. It does not mean full CLR or full framework compatibility.</p></section><div class="matrix-index" aria-label="Matrix sections"><a href="#targets"><span>01</span>TARGETS AND OUTPUT</a><a href="#runtime"><span>02</span>CIL AND RUNTIME</a><a href="#framework"><span>03</span>.NET 10 CONTRACT</a><a href="#deferred"><span>04</span>OUTSIDE THE CURRENT CONTRACT</a></div><section class="matrix-section" id="targets"><div class="matrix-heading"><div><p class="section-kicker">01<!-- --> / <!-- -->TARGETS AND OUTPUT</p><h2>Generated code and containers</h2></div><p>CPU selection changes code generation and optimization. It is not an emulator setting.</p></div><div class="matrix-table-wrap"><table class="compatibility-table"><thead><tr><th scope="col">Area</th><th scope="col">Status</th><th scope="col">Current surface</th><th scope="col">Evidence</th></tr></thead><tbody><tr><th scope="row">Integer backend</th><td><span class="status-pill status-supported">SUPPORTED</span></td><td>MC68000, MC68020, MC68040, and MC68060, with separate optimization profiles.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/PublicApi.cs">Public API<!-- --> ↗</a></td></tr><tr><th scope="row">Native floating point</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>MC68882 with a 68020 host, or the integrated 68040 and 68060 FPU. Constants, add, subtract, multiply, divide, and negation are implemented for single and double precision.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/README.md">Compiler notes<!-- --> ↗</a></td></tr><tr><th scope="row">SoftFloat</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>The CopperFloat raw-bit ABI is reserved. Operations that need its target runtime are diagnosed as unsupported.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/README.md">Compiler notes<!-- --> ↗</a></td></tr><tr><th scope="row">Amiga</th><td><span class="status-pill status-supported">SUPPORTED</span></td><td>Native m68k programs using Amiga library vectors and the typed SDK declarations.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/README.md">Amiga SDK<!-- --> ↗</a></td></tr><tr><th scope="row">MorphOS</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>m68k programs and MorphOS m68k ABI extensions. The compiler does not emit native PPC code.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/README.md">Amiga SDK<!-- --> ↗</a></td></tr><tr><th scope="row">Output formats</th><td><span class="status-pill status-supported">SUPPORTED</span></td><td>Amiga HUNK executable, 256 or 512 KiB Kickstart ROM image, and assembler text.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/README.md">Compiler notes<!-- --> ↗</a></td></tr><tr><th scope="row">Runtime profiles</th><td><span class="status-pill status-configurable">CONFIGURABLE</span></td><td>Freestanding, single-entry application, and persistent ROM profiles.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/PublicApi.cs">Public API<!-- --> ↗</a></td></tr></tbody></table></div></section><section class="matrix-section" id="runtime"><div class="matrix-heading"><div><p class="section-kicker">02<!-- --> / <!-- -->CIL AND RUNTIME</p><h2>Managed execution surface</h2></div><p>The compiler accepts a bounded CIL subset. Unsupported reachable instructions and types produce diagnostics.</p></div><div class="matrix-table-wrap"><table class="compatibility-table"><thead><tr><th scope="col">Area</th><th scope="col">Status</th><th scope="col">Current surface</th><th scope="col">Evidence</th></tr></thead><tbody><tr><th scope="row">32-bit integers</th><td><span class="status-pill status-supported">SUPPORTED</span></td><td>Signed and unsigned arithmetic, comparisons, conversions, branches, calls, locals, and arguments.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/README.md">Compiler notes<!-- --> ↗</a></td></tr><tr><th scope="row">64-bit integers</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Constants, locals, returns, and register-pair import or platform parameters. General arithmetic and comparisons remain outside the supported subset.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/README.md">Compiler notes<!-- --> ↗</a></td></tr><tr><th scope="row">Object model</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Classes, single inheritance, virtual dispatch, interface maps, boxing, delegates, and type initialization in closed-world forms.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Generics</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Constructed types and shared method bodies where generic values use compatible scalar or reference representations.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Arrays and byrefs</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Single-dimensional scalar and reference arrays, managed byrefs, and the subset required by Span&lt;T&gt;. Multidimensional arrays are deferred.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Managed exceptions</th><td><span class="status-pill status-supported">SUPPORTED</span></td><td>Table-driven catch, finally, rethrow, leave, and callee-saved restoration during unwind.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/README.md">Compiler notes<!-- --> ↗</a></td></tr><tr><th scope="row">Managed memory</th><td><span class="status-pill status-configurable">CONFIGURABLE</span></td><td>No heap, external allocator, generated bump allocator, or a non-moving mark-and-sweep runtime with exact roots and an unchanged single-pass fast path when finalizers are absent.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/RuntimeMemory.md">Runtime memory<!-- --> ↗</a></td></tr><tr><th scope="row">Finalizers</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Synchronous C# finalization with suppression, re-registration, resurrection, nested collection, and normal-exit draining under ManagedPoolMarkSweepGc plus Full exceptions.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/RuntimeMemory.md">Runtime memory<!-- --> ↗</a></td></tr></tbody></table></div></section><section class="matrix-section" id="framework"><div class="matrix-heading"><div><p class="section-kicker">03<!-- --> / <!-- -->.NET 10 CONTRACT</p><h2>Framework member surface</h2></div><p>Framework compatibility is recorded per member. A listed assembly, namespace, or type does not imply that every overload is supported.</p></div><div class="matrix-table-wrap"><table class="compatibility-table"><thead><tr><th scope="col">Area</th><th scope="col">Status</th><th scope="col">Current surface</th><th scope="col">Evidence</th></tr></thead><tbody><tr><th scope="row">Core runtime</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Object, Exception, Nullable&lt;T&gt;, delegates, equality infrastructure, and selected runtime helpers.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Member contract<!-- --> ↗</a></td></tr><tr><th scope="row">Strings and numerics</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Managed strings, integer formatting, interpolation, Int32, UInt32, Math, and selected binary primitives.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Member contract<!-- --> ↗</a></td></tr><tr><th scope="row">Collections</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>List&lt;T&gt;, Dictionary&lt;TKey,TValue&gt;, equality comparers, and selected generic enumeration forms.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Member contract<!-- --> ↗</a></td></tr><tr><th scope="row">LINQ</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Selected allocation-conscious operators over proven collection and array sources.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Member contract<!-- --> ↗</a></td></tr><tr><th scope="row">Span and memory</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Span&lt;T&gt;, ReadOnlySpan&lt;T&gt;, Memory&lt;T&gt;, ReadOnlyMemory&lt;T&gt;, MemoryExtensions, and BitConverter member subsets.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Member contract<!-- --> ↗</a></td></tr><tr><th scope="row">Amiga platform APIs</th><td><span class="status-pill status-supported-subset">SUPPORTED SUBSET</span></td><td>Console output and selected platform operations are bound through the Amiga runtime layer.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Member contract<!-- --> ↗</a></td></tr></tbody></table></div></section><section class="matrix-section" id="deferred"><div class="matrix-heading"><div><p class="section-kicker">04<!-- --> / <!-- -->OUTSIDE THE CURRENT CONTRACT</p><h2>Deferred capabilities</h2></div><p>Reachable use is diagnosed. These capabilities are not replaced with silent stubs.</p></div><div class="matrix-table-wrap"><table class="compatibility-table"><thead><tr><th scope="col">Area</th><th scope="col">Status</th><th scope="col">Current surface</th><th scope="col">Evidence</th></tr></thead><tbody><tr><th scope="row">Reflection</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>General reflection, metadata-driven activation, and runtime code generation.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Concurrency</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>Threads, tasks, and general synchronization beyond explicitly declared platform contracts.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Networking</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>Sockets, HTTP, and network streams.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Runtime services</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>Weak references, dependent handles, dynamic loading, COM, and desktop frameworks.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Globalization</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>Culture packs and complete Unicode globalization.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr><tr><th scope="row">Array and interop forms</th><td><span class="status-pill status-deferred">DEFERRED</span></td><td>Multidimensional arrays and uncommon marshaling forms.</td><td><a class="evidence-link" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/Net10Profile.md">.NET 10 design<!-- --> ↗</a></td></tr></tbody></table></div></section><section class="compatibility-close"><p class="section-kicker">FRAMEWORK SUPPORT</p><h2>Only listed APIs are supported.</h2><p>CopperSharp checks every reachable framework call against the versioned contract. If a method or constructor is not listed, compilation stops with a diagnostic.</p><div class="closing-actions"><a class="button button-primary" href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler/Framework/net10.0-10.0.9.json">Framework contract <span>↗</span></a><a class="button button-secondary" href="/CopperSharp68k/">Back to homepage <span>←</span></a></div></section><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Compatibility matrix for the current compiler surface.</p><div><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a><a href="/CopperSharp68k/">Homepage</a></div></footer></main></body></html>
