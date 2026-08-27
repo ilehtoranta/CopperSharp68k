@@ -1,0 +1,156 @@
+name: Publish NuGet packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version declared in Directory.Build.props
+        required: true
+        type: string
+      publish:
+        description: Publish to NuGet.org after validation
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-nuget-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Validate and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.301
+
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          [xml]$properties = Get-Content -Raw Directory.Build.props
+          $version = [string]$properties.Project.PropertyGroup.CopperSharpPackageVersion
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Directory.Build.props does not define CopperSharpPackageVersion."
+          }
+
+          if ($env:EVENT_NAME -eq "push") {
+            if ($env:TAG_NAME -ne "v$version") {
+              throw "Tag '$env:TAG_NAME' must match the declared package version 'v$version'."
+            }
+          }
+          elseif ($env:REQUESTED_VERSION -ne $version) {
+            throw "Requested version '$env:REQUESTED_VERSION' must match the declared package version '$version'."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Run package smoke test
+        shell: pwsh
+        run: ./scripts/test-packages.ps1 -Configuration Release
+
+      - name: Pack public packages
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $projects = @(
+            "Compiler/CopperSharp.Compiler.csproj",
+            "Sdk.Amiga/CopperSharp.Sdk.Amiga.csproj",
+            "Sdk.Amiga.Support/CopperSharp.Sdk.Amiga.Support.csproj",
+            "Compiler.Cli/CopperSharp.Compiler.Cli.csproj",
+            "Sdk/CopperSharp.Sdk.csproj",
+            "Templates/CopperSharp.Templates.csproj"
+          )
+
+          New-Item -ItemType Directory -Path artifacts | Out-Null
+          foreach ($project in $projects) {
+            dotnet pack $project `
+              --configuration Release `
+              --output artifacts `
+              --nologo `
+              -p:PackageVersion=$env:PACKAGE_VERSION
+            if ($LASTEXITCODE -ne 0) {
+              throw "Packing '$project' failed with exit code $LASTEXITCODE."
+            }
+          }
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: coppersharp-nuget-${{ steps.version.outputs.version }}
+          path: artifacts/*.*nupkg
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish to NuGet.org
+    if: ${{ github.event_name == 'push' || inputs.publish }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: nuget
+
+    steps:
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.301
+
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: coppersharp-nuget-${{ needs.package.outputs.version }}
+          path: artifacts
+
+      - name: Publish packages
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          PACKAGE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            throw "Configure NUGET_API_KEY as a repository or nuget-environment secret."
+          }
+
+          $packageIds = @(
+            "CopperSharp.Compiler",
+            "CopperSharp.Sdk.Amiga",
+            "CopperSharp.Sdk.Amiga.Support",
+            "CopperSharp.Compiler.Cli",
+            "CopperSharp.Sdk",
+            "CopperSharp.Templates"
+          )
+          foreach ($packageId in $packageIds) {
+            $package = "artifacts/$packageId.$env:PACKAGE_VERSION.nupkg"
+            if (-not (Test-Path -LiteralPath $package -PathType Leaf)) {
+              throw "Expected release package '$package' was not produced."
+            }
+            dotnet nuget push $package `
+              --api-key $env:NUGET_API_KEY `
+              --source https://api.nuget.org/v3/index.json `
+              --skip-duplicate
+            if ($LASTEXITCODE -ne 0) {
+              throw "Publishing '$package' failed with exit code $LASTEXITCODE."
+            }
+          }
