@@ -30,6 +30,18 @@ function Assert-DotNetFailure {
     $global:LASTEXITCODE = 0
 }
 
+function Assert-TextContains {
+    param(
+        [string]$Text,
+        [string]$Expected,
+        [string]$Description
+    )
+
+    if ($Text.IndexOf($Expected, [StringComparison]::Ordinal) -lt 0) {
+        throw "$Description does not contain '$Expected'."
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $tempRoot = [System.IO.Path]::GetTempPath().TrimEnd([System.IO.Path]::DirectorySeparatorChar)
 $auditRoot = Join-Path $tempRoot ("CopperSharp package ää-" + [Guid]::NewGuid().ToString("N"))
@@ -65,6 +77,37 @@ if ($templateVersions.Count -eq 0 -or $templateVersions.Where({ $_ -ne $packageV
 $templateSdkVersion = [regex]::Match($templateProject, 'CopperSharp\.Sdk/([^";]+)').Groups[1].Value
 if ($templateSdkVersion -ne $packageVersion) {
     throw "Template CopperSharp.Sdk version must match $packageVersion."
+}
+
+$amigaSdkReadmePath = Join-Path $repoRoot "Sdk.Amiga\README.md"
+$amigaSdkReadme = (Get-Content -Raw -LiteralPath $amigaSdkReadmePath).Replace("`r`n", "`n")
+$templateConfig = Get-Content -Raw -LiteralPath `
+    (Join-Path $repoRoot "Templates\AmigaApp\.template.config\template.json") | ConvertFrom-Json
+$templateProgram = Get-Content -Raw -LiteralPath `
+    (Join-Path $repoRoot "Templates\AmigaApp\Program.cs")
+$documentedProject = $templateProject.Replace(
+    $templateConfig.sourceName,
+    "HelloAmiga").Replace(
+    "__COPPERSHARP_CPU__",
+    [string]$templateConfig.symbols.cpu.defaultValue).Replace("`r`n", "`n").Trim()
+$documentedProgram = $templateProgram.Replace(
+    $templateConfig.sourceName,
+    "HelloAmiga").Replace("`r`n", "`n").Trim()
+
+foreach ($requiredDocumentation in @(
+    "dotnet new install CopperSharp.Templates::$packageVersion",
+    "dotnet new amiga -n HelloAmiga",
+    "dotnet publish -r amiga-m68k",
+    "CopperSharp.Sdk/$packageVersion",
+    "CopperSharp.Sdk.Amiga`" Version=`"$packageVersion`"",
+    "<CopperSharpEntry>HelloAmiga.Program::Main</CopperSharpEntry>",
+    $documentedProject,
+    $documentedProgram
+)) {
+    Assert-TextContains $amigaSdkReadme $requiredDocumentation $amigaSdkReadmePath
+}
+foreach ($cpu in $templateConfig.symbols.cpu.choices.choice) {
+    Assert-TextContains $amigaSdkReadme "--cpu $cpu" $amigaSdkReadmePath
 }
 
 $oldCliHome = $env:DOTNET_CLI_HOME
@@ -151,6 +194,20 @@ try {
             $_.IndexOf("CopperSharp.Sdk.Amiga.Support", [StringComparison]::OrdinalIgnoreCase) -ge 0
         }).Count -ne 0) {
             throw "$amigaSdkPackage unexpectedly contains host-support artifacts."
+        }
+        $readmeEntry = $amigaSdkArchive.GetEntry("README.md")
+        if ($null -eq $readmeEntry) {
+            throw "$amigaSdkPackage does not contain README.md."
+        }
+        $readmeReader = [System.IO.StreamReader]::new($readmeEntry.Open())
+        try {
+            $packedReadme = $readmeReader.ReadToEnd().Replace("`r`n", "`n")
+        }
+        finally {
+            $readmeReader.Dispose()
+        }
+        if ($packedReadme -ne $amigaSdkReadme) {
+            throw "$amigaSdkPackage README.md does not match $amigaSdkReadmePath."
         }
     }
     finally {

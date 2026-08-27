@@ -21,27 +21,119 @@ values:
 the current 68k ABI. A future target can widen the native integer without
 changing the semantic API type.
 
-## Start a project
+## Getting started
 
-Install the compiler tool and project templates:
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0),
+then install the CopperSharp preview templates:
 
 ```text
-dotnet tool install --global CopperSharp.Compiler.Cli --version 0.1.0-preview.1
 dotnet new install CopperSharp.Templates::0.1.0-preview.1
 ```
 
-Create and build a minimal Amiga program:
+Create and publish a minimal Amiga program:
 
 ```text
 dotnet new amiga -n HelloAmiga
 cd HelloAmiga
-dotnet build
+dotnet publish -r amiga-m68k
 ```
 
-The generated project references this SDK and `CopperSharp.Compiler`. Its build
-produces a managed assembly followed by a Motorola 68k HUNK executable. The
-sample opens `dos.library`, writes a line, and closes the library before
-returning.
+The template uses the packaged `CopperSharp.Sdk` MSBuild project SDK. It
+restores and runs the compiler during publish, so a global compiler tool is not
+required.
+
+### Generated project
+
+`HelloAmiga.csproj`:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk;CopperSharp.Sdk/0.1.0-preview.1">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>amiga-m68k</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <CopperSharpEntry>HelloAmiga.Program::Main</CopperSharpEntry>
+    <CopperSharpCpu>68000</CopperSharpCpu>
+    <CopperSharpOutputFormat>hunk</CopperSharpOutputFormat>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CopperSharp.Sdk.Amiga" Version="0.1.0-preview.1" />
+  </ItemGroup>
+</Project>
+```
+
+`Program.cs`:
+
+```csharp
+using Amiga;
+using CopperSharp.Compiler;
+
+namespace HelloAmiga;
+
+public static class Program
+{
+    [M68kEntryPoint]
+    public static int Main()
+    {
+        var dosBase = Exec.OpenLibrary("dos.library", 33);
+        if (dosBase is null)
+        {
+            return DOS.RETURN_FAIL;
+        }
+
+        DOS.DOSLibraryBase = dosBase.Value;
+        DOS.PutStr("Hello from CopperSharp.\n");
+        Exec.CloseLibrary(DOS.DOSLibraryBase);
+        DOS.DOSLibraryBase = APTR.Null;
+        return DOS.RETURN_OK;
+    }
+}
+```
+
+The example opens `dos.library`, writes a line, closes the library, and returns
+an Amiga DOS status code.
+
+### Publish output
+
+`dotnet build` produces the ordinary managed .NET assembly. It does not produce
+an Amiga executable by default. `dotnet publish -r amiga-m68k` writes these
+files under `bin/Release/net10.0/amiga-m68k/publish/`:
+
+- `HelloAmiga.hunk`: the Amiga HUNK executable.
+- `HelloAmiga.hunk.map`: symbols and exact compiler, contract, target, CPU, and
+  output provenance.
+- `HelloAmiga.hunk.framework.json`: the closed-world framework compatibility
+  report for the published program.
+
+Copy `HelloAmiga.hunk` to an Amiga filesystem and run it from the Shell, or run
+it with an Amiga emulator that can access the file.
+
+### Select a CPU
+
+The default target is MC68000. Select MC68020, MC68040, or MC68060 when creating
+the project:
+
+```text
+dotnet new amiga -n HelloAmiga --cpu 68000
+dotnet new amiga -n HelloAmiga --cpu 68020
+dotnet new amiga -n HelloAmiga --cpu 68040
+dotnet new amiga -n HelloAmiga --cpu 68060
+```
+
+CPU selection changes generated instructions and optimization. It is not an
+emulator setting.
+
+### Compatibility and direct CLI use
+
+CopperSharp supports a bounded CIL and .NET framework surface. Read the
+[compatibility matrix](https://coppersharp68k.ilkka-lehtoranta.chatgpt.site/compatibility)
+and inspect the generated `.framework.json` report when adding framework APIs.
+
+The packaged project SDK is the normal workflow. For direct compiler use,
+custom ROM layouts, or standalone reports, see the
+[`CopperSharp.Compiler.Cli` documentation](https://github.com/ilehtoranta/CopperSharp68k/blob/main/Compiler.Cli/README.md).
 
 The initial reference surface includes:
 

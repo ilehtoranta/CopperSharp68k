@@ -30,3 +30,7 @@ dotnet new amiga -n HelloAmiga --cpu 68040
 
 The generated project contains ordinary C# source, explicit package
 references, the CopperSharp entry point, and the `amiga-m68k` publish RID.
+
+For the complete generated project, output files, CPU choices, and
+compatibility workflow, read the
+[`CopperSharp.Sdk.Amiga` getting-started guide](https://www.nuget.org/packages/CopperSharp.Sdk.Amiga/0.1.0-preview.1#readme-body).
