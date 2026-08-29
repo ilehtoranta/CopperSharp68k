@@ -88,7 +88,15 @@ public enum M68kRuntimeProfile
 	Application,
 
 	/// <summary>The generated image is persistent and may be entered again.</summary>
-	Rom
+	Rom,
+
+	/// <summary>
+	/// The generated Amiga image remains resident and its entry may run
+	/// concurrently in multiple tasks. Compiler-owned Amiga library-base state
+	/// is allocated per invocation; program-wide mutable static state is not
+	/// supported by this profile.
+	/// </summary>
+	Resident
 }
 
 /// <summary>Managed heap policy used by generated allocation instructions.</summary>
@@ -452,6 +460,13 @@ public sealed record M68kFrameworkImplementationPackOptions(string ManifestPath)
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
+	/// <summary>
+	/// Default maximum size of compiler-owned resident invocation state placed on
+	/// the current task stack. Larger resident contexts use Exec <c>AllocMem</c>
+	/// for the duration of the invocation.
+	/// </summary>
+	public const int DefaultResidentStackContextThresholdBytes = 512;
+
 	public required string AssemblyPath { get; init; }
 
 	/// <summary>
@@ -528,6 +543,15 @@ public sealed record M68kCompilationRequest
 
 	public M68kRuntimeProfile RuntimeProfile { get; init; } =
 		M68kRuntimeProfile.Freestanding;
+
+	/// <summary>
+	/// Maximum number of bytes of compiler-owned per-invocation state that the
+	/// resident runtime profile may place on the current task stack. A larger
+	/// context is allocated with Exec <c>AllocMem</c> and freed before the entry
+	/// or export adapter returns. Set to zero to always use Exec memory.
+	/// </summary>
+	public int ResidentStackContextThresholdBytes { get; init; } =
+		DefaultResidentStackContextThresholdBytes;
 
 	/// <summary>
 	/// Selects managed exception behavior. Full mode is the default; YOLO is an

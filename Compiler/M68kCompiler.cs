@@ -410,13 +410,48 @@ public static class M68kCompiler
 				"M68882 floating-point mode requires the M68020 CPU target.");
 		}
 
+		if (request.ResidentStackContextThresholdBytes < 0)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidOutputOptions,
+				"Resident stack-context threshold must not be negative.");
+		}
+
 		if (request.RuntimeProfile == M68kRuntimeProfile.Rom &&
 			request.OutputFormat is not M68kOutputFormat.KickstartRom and
-				not M68kOutputFormat.Assembly)
+			not M68kOutputFormat.Assembly)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.InvalidOutputOptions,
 				"ROM runtime profile requires Kickstart ROM or assembly output.");
+		}
+
+		if (request.RuntimeProfile == M68kRuntimeProfile.Resident)
+		{
+			if (!IsAmigaTarget(request))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					"Resident runtime profile currently requires the Amiga target.");
+			}
+			if (request.OutputFormat is M68kOutputFormat.KickstartRom)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					"Resident runtime profile requires HUNK or assembly output.");
+			}
+			if (IsManagedRuntime(request))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					"Resident runtime profile does not yet support a managed heap; use ExternalAllocator or None.");
+			}
+			if (request.ManagedLifecycleHooks.Count != 0)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					"Resident runtime profile does not support managed lifecycle hooks.");
+			}
 		}
 
 		if (GetEffectiveMemoryManagement(request) == M68kMemoryManagement.BumpAllocator)
@@ -449,6 +484,9 @@ public static class M68kCompiler
 			M68kMemoryManagement.ManagedPoolMarkSweepGc or
 			M68kMemoryManagement.ExecPoolMarkSweepGc;
 	}
+
+	internal static bool IsAmigaTarget(M68kCompilationRequest request) =>
+		request.TargetContract?.RuntimeIdentifier == "amiga-m68k";
 
 	private static M68kCompilationResult WriteAssembly(
 		GeneratedProgram program,
@@ -687,9 +725,15 @@ public static class M68kCompiler
 			item => item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 				item.Label is not null))
 		{
+			if (!linked.Labels.TryGetValue(platformBase.Label!, out var platformBaseOffset))
+			{
+				// Resident images keep compiler-owned library bases in the caller's
+				// activation record, so there is intentionally no image symbol.
+				continue;
+			}
 			result.Add(new M68kSymbol(
 				platformBase.Binding.SlotSymbol!,
-				checked(origin + (uint)linked.Labels[platformBase.Label!]),
+				checked(origin + (uint)platformBaseOffset),
 				4));
 		}
 
@@ -707,7 +751,6 @@ public static class M68kCompiler
 				checked(origin + (uint)methodTableOffset),
 				0));
 		}
-
 		return result
 			.OrderBy(symbol => symbol.Address)
 			.ThenBy(symbol => symbol.Name, StringComparer.Ordinal)

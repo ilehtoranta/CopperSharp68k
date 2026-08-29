@@ -11,57 +11,6 @@ using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Backend;
 
-internal enum M68kMemoryObjectKind
-{
-	StaticField,
-	LibraryBase,
-	RuntimeSlot,
-	FrameSlot,
-	ArgumentHome,
-	ManagedRoot,
-	UnknownHeap
-}
-
-internal readonly record struct M68kMemoryObject(
-	M68kMemoryObjectKind Kind,
-	string Identity,
-	bool IsManagedRoot = false);
-
-internal sealed record M68kObjectMemoryEffect(
-	ImmutableHashSet<M68kMemoryObject> ReadsExact,
-	ImmutableHashSet<M68kMemoryObject> WritesExact,
-	ImmutableHashSet<M68kMemoryObject> EscapesExact,
-	bool ReadsUnknown,
-	bool WritesUnknown,
-	bool ObservesRoots,
-	bool IsVolatile,
-	bool MayTrap)
-{
-	public static M68kObjectMemoryEffect None { get; } = new(
-		ImmutableHashSet<M68kMemoryObject>.Empty,
-		ImmutableHashSet<M68kMemoryObject>.Empty,
-		ImmutableHashSet<M68kMemoryObject>.Empty,
-		ReadsUnknown: false,
-		WritesUnknown: false,
-		ObservesRoots: false,
-		IsVolatile: false,
-		MayTrap: false);
-
-	public static M68kObjectMemoryEffect Unknown(
-		M68kMachineInstruction instruction) =>
-		None with
-		{
-			ReadsUnknown =
-				(instruction.MemoryEffect & M68kMachineMemoryEffect.Read) != 0,
-			WritesUnknown =
-				(instruction.MemoryEffect & M68kMachineMemoryEffect.Write) != 0,
-			ObservesRoots = instruction.IsSafepoint,
-			IsVolatile =
-				(instruction.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0,
-			MayTrap = instruction.MayThrow
-		};
-}
-
 internal sealed record M68kTerminalDeadStoreStatistics(
 	int Candidates,
 	int Removed,
@@ -85,11 +34,6 @@ internal sealed record M68kTerminalDeadStoreCandidate(
 
 internal static class M68kTerminalDeadStoreEliminator
 {
-	private const string LibraryBaseGetPrefix =
-		"intrinsic:amiga-library-base-get:";
-	private const string LibraryBaseSetPrefix =
-		"intrinsic:amiga-library-base-set:";
-
 	public static M68kTerminalDeadStoreStatistics Run(
 		M68kMachineFunction function,
 		CilMethod method,
@@ -106,7 +50,10 @@ internal static class M68kTerminalDeadStoreEliminator
 			.SelectMany(static block => block.Instructions)
 			.ToDictionary(
 				static instruction => instruction.Id,
-				instruction => Summarize(method, module, instruction));
+				instruction => M68kMemoryModel.Summarize(
+					method,
+					module,
+					instruction));
 		var candidates = FindCandidates(
 			function,
 			method,
@@ -238,16 +185,22 @@ internal static class M68kTerminalDeadStoreEliminator
 			static block => block.Instructions))
 		{
 			var effect = effects[instruction.Id];
+			var isKnownZeroLibraryBaseSet =
+				effect.WritesExact.Count == 1 &&
+				effect.WritesExact.Single().Kind == M68kMemoryObjectKind.LibraryBase &&
+				instruction.Uses.Length == 0 &&
+				instruction.Immediate == 0;
 			if (effect.WritesExact.Count != 1 ||
 				effect.IsVolatile ||
 				effect.MayTrap ||
-				instruction.Uses.Length != 1 ||
-				!IsDefaultValue(
-					instruction.Uses[0],
-					definitions,
-					method,
-					module,
-					new HashSet<int>()))
+				(!isKnownZeroLibraryBaseSet &&
+					(instruction.Uses.Length != 1 ||
+					 !IsDefaultValue(
+						instruction.Uses[0],
+						definitions,
+						method,
+						module,
+						new HashSet<int>()))))
 			{
 				continue;
 			}
@@ -329,10 +282,15 @@ internal static class M68kTerminalDeadStoreEliminator
 		{
 			return IsDefaultValue(source, definitions, method, module, visited);
 		}
-		if (definition.Operation == M68kMachineOperation.Constant &&
-			definition.SourceInstruction is { } constant)
+		if (definition.Operation == M68kMachineOperation.Constant)
 		{
-			return IsZeroConstant(constant);
+			if (definition.ConstantValue is { } constantValue &&
+				constantValue.TryGetIntegral(out var integral))
+			{
+				return integral == 0;
+			}
+			return definition.SourceInstruction is { } constant &&
+				IsZeroConstant(constant);
 		}
 		if (definition.Operation == M68kMachineOperation.Call &&
 			definition.SourceInstruction is { Operand: int token } call)
@@ -376,146 +334,6 @@ internal static class M68kTerminalDeadStoreEliminator
 				? Convert.ToInt32(instruction.Operand) == 0
 				: op == OpCodes.Ldc_I8 && Convert.ToInt64(instruction.Operand) == 0;
 	}
-
-	private static M68kObjectMemoryEffect Summarize(
-		CilMethod method,
-		CompilationModule module,
-		M68kMachineInstruction instruction)
-	{
-		var sourceMethod = instruction.Origin?.SourceMethod ?? method;
-		var source = instruction.Origin?.SourceInstruction ??
-			instruction.SourceInstruction;
-		if (source is not null &&
-			source.OpCode is var fieldOp &&
-			(fieldOp == OpCodes.Ldsfld || fieldOp == OpCodes.Ldsflda ||
-			 fieldOp == OpCodes.Stsfld) &&
-			source.Operand is int fieldToken)
-		{
-			var field = module.ResolveFieldToken(
-				fieldToken,
-				sourceMethod,
-				source.Offset);
-			var memoryObject = StaticFieldObject(field);
-			if (fieldOp == OpCodes.Ldsflda)
-			{
-				return M68kObjectMemoryEffect.None with
-				{
-					ReadsExact = ImmutableHashSet.Create(memoryObject),
-					EscapesExact = ImmutableHashSet.Create(memoryObject)
-				};
-			}
-			return fieldOp == OpCodes.Stsfld
-				? M68kObjectMemoryEffect.None with
-				{
-					WritesExact = ImmutableHashSet.Create(memoryObject)
-				}
-				: M68kObjectMemoryEffect.None with
-				{
-					ReadsExact = ImmutableHashSet.Create(memoryObject)
-				};
-		}
-
-		if (instruction.Operation == M68kMachineOperation.Call &&
-			source is { Operand: int token } call)
-		{
-			var target = module.ResolveMethodToken(
-				token,
-				sourceMethod,
-				call.Offset);
-			var name = target.ImportName;
-			if (name?.StartsWith(LibraryBaseGetPrefix, StringComparison.Ordinal) == true)
-			{
-				return M68kObjectMemoryEffect.None with
-				{
-					ReadsExact = ImmutableHashSet.Create(
-						LibraryBaseObject(name[LibraryBaseGetPrefix.Length..]))
-				};
-			}
-			if (name?.StartsWith(LibraryBaseSetPrefix, StringComparison.Ordinal) == true)
-			{
-				return M68kObjectMemoryEffect.None with
-				{
-					WritesExact = ImmutableHashSet.Create(
-						LibraryBaseObject(name[LibraryBaseSetPrefix.Length..]))
-				};
-			}
-			if (target.Definition?.ExternalCall is not null)
-			{
-				var externalCall = target.Definition.ExternalCall;
-				// A described platform vector can access memory reached through its
-				// explicit arguments and reads its declared writable base slot. It
-				// cannot otherwise name an exact, non-escaped compiler slot. Linked
-				// imports without an external-call descriptor remain unknown below.
-				return M68kObjectMemoryEffect.None with
-				{
-					ReadsExact = externalCall.Convention.BaseSource ==
-							M68kExternalBaseSource.WritableSlot &&
-						externalCall.Convention.SlotSymbol is { } slotSymbol
-						? ImmutableHashSet.Create(LibraryBaseObject(slotSymbol))
-						: ImmutableHashSet<M68kMemoryObject>.Empty,
-					WritesUnknown = true,
-					ObservesRoots = instruction.IsSafepoint,
-					MayTrap = instruction.MayThrow
-				};
-			}
-			if (name is
-				"intrinsic:object-ctor" or
-				"intrinsic:cstring-from-pointer" or
-				"intrinsic:cstring-to-uint32" or
-				"intrinsic:aptr-from-pointer" or
-				"intrinsic:aptr-to-uint32" or
-				"intrinsic:amiga-vararg-from-value" or
-				"intrinsic:address-of-ref" or
-				"intrinsic:address-to-ref" or
-				"intrinsic:ref-cast" or
-				"intrinsic:hook-address-of" or
-				"intrinsic:boopsi-message-address-of" or
-				"intrinsic:aptr-null" or
-				"intrinsic:cstring-from-literal" or
-				"intrinsic:amiga-vararg-from-literal" or
-				"intrinsic:aptr-export-address")
-			{
-				return M68kObjectMemoryEffect.None;
-			}
-		}
-
-		if (instruction.Operation is
-			M68kMachineOperation.LocalLoad or
-			M68kMachineOperation.ArgumentLoad or
-			M68kMachineOperation.LocalStore or
-			M68kMachineOperation.ArgumentStore or
-			M68kMachineOperation.LocalAddress or
-			M68kMachineOperation.ArgumentAddress or
-			M68kMachineOperation.SpillLoad or
-			M68kMachineOperation.SpillStore or
-			M68kMachineOperation.SpillClear or
-			M68kMachineOperation.RootStore or
-			M68kMachineOperation.RootClear or
-			M68kMachineOperation.OutgoingArgumentPush or
-			M68kMachineOperation.IncomingArgumentPush or
-			M68kMachineOperation.OutgoingArgumentCleanup)
-		{
-			// Frame and outgoing-stack storage cannot alias a static or library
-			// base object. Frame-slot identities can be added here when terminal
-			// elimination is deliberately widened to stack objects.
-			return M68kObjectMemoryEffect.None;
-		}
-
-		return M68kObjectMemoryEffect.Unknown(instruction);
-	}
-
-	private static M68kMemoryObject StaticFieldObject(CilField field) =>
-		new(
-			M68kMemoryObjectKind.StaticField,
-			$"{field.ModuleName}:{field.Handle}",
-			field.Type.IsReference);
-
-	private static M68kMemoryObject LibraryBaseObject(string identity) =>
-		new(
-			M68kMemoryObjectKind.LibraryBase,
-			identity.StartsWith('_')
-				? identity
-				: $"_{(identity == "IffParse" ? "IFFParse" : identity)}LibraryBase");
 
 	private static Dictionary<int, HashSet<int>> BuildEffectiveSuccessors(
 		M68kMachineFunction function,
@@ -671,7 +489,10 @@ internal static class M68kTerminalDeadStoreEliminator
 		{
 			var used = function.Blocks
 				.SelectMany(static block =>
-					block.Instructions.SelectMany(static instruction => instruction.Uses)
+					block.Instructions.SelectMany(static instruction =>
+						instruction.Uses
+							.Concat(instruction.LogicalCall?.ArgumentValueIds ?? [])
+							.Concat(instruction.LogicalCall?.ResultValueIds ?? []))
 						.Concat(block.Phis.SelectMany(static phi => phi.Inputs.Values)))
 				.ToHashSet();
 			changed = false;
@@ -695,7 +516,9 @@ internal static class M68kTerminalDeadStoreEliminator
 		var referenced = function.Blocks
 			.SelectMany(static block =>
 				block.Instructions.SelectMany(static instruction =>
-					instruction.Uses.Concat(instruction.Definitions))
+					instruction.Uses.Concat(instruction.Definitions)
+						.Concat(instruction.LogicalCall?.ArgumentValueIds ?? [])
+						.Concat(instruction.LogicalCall?.ResultValueIds ?? []))
 				.Concat(block.Phis.SelectMany(static phi =>
 					phi.Inputs.Values.Append(phi.Definition))))
 			.ToHashSet();

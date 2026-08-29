@@ -69,6 +69,17 @@ HUNK output defaults to the terminating `application` lifetime. Assembly
 output defaults to `freestanding`; pass `--runtime application` only when the
 entry is invoked once and private image storage becomes unobservable after it
 returns. ROM output is persistent and never receives terminal-store removal.
+Use `--runtime resident` for an Amiga image that remains loaded and may run
+concurrently in multiple tasks. Its compiler-owned writable library bases live
+in a per-invocation record: records up to 512 bytes use the task stack, while
+larger records use `Exec.AllocMem` and are freed before return. It emits no
+`Exec.Forbid`/`Permit` guard. This initial profile rejects mutable C# static fields, type
+initialization, `localloc`, and managed object allocation. Keep small state in
+registers or stack locals, and use explicit `Exec.AllocMem` blocks for larger
+per-invocation state. It requires `--memory external` or `--memory none`, does
+not support managed lifecycle hooks, and requires the Amiga target.
+This is a code-generation lifetime contract, not a loader: the host is still
+responsible for keeping the image loaded and invoking its entry point again.
 HUNK output includes method symbols by default. Pass `--symbols off` to omit
 `HUNK_SYMBOL` records from release executables. The equivalent response
 manifest entry is `symbols=off`.

@@ -77,6 +77,11 @@ internal static class M68kMachineModuleOptimizer
 		var estimatedBefore = functions.Values.Sum(function =>
 			M68kTargetCostModel.Score(EstimateCost(function, cpu), cpu));
 		var devirtualized = 0;
+		RunEarlyFramePromotion(
+			methodsByIdentity,
+			functions,
+			module,
+			cpu);
 
 		foreach (var (identity, function) in functions.OrderBy(static item =>
 			item.Key.ModuleName, StringComparer.Ordinal).ThenBy(static item =>
@@ -155,6 +160,13 @@ internal static class M68kMachineModuleOptimizer
 			}
 		}
 
+		RunMemoryPromotionFixedPoint(
+			methods,
+			methodsByIdentity,
+			functions,
+			module,
+			cpu);
+
 		var perMethod = functions
 			.Where(static item => item.Value.OptimizationStatistics is not null)
 			.ToDictionary(
@@ -175,6 +187,175 @@ internal static class M68kMachineModuleOptimizer
 			estimatedBefore,
 			functions.Values.Sum(function =>
 				M68kTargetCostModel.Score(EstimateCost(function, cpu), cpu)));
+	}
+
+	private static void RunEarlyFramePromotion(
+		IReadOnlyDictionary<CilMethodIdentity, CilMethod> methodsByIdentity,
+		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
+		CompilationModule module,
+		M68kCpuTarget cpu)
+	{
+		var emptySummaries = new Dictionary<
+			CilMethodIdentity,
+			M68kMethodMemorySummary>();
+		var emptyGlobals = new HashSet<M68kMemoryObject>();
+		var emptyOwners = new Dictionary<int, M68kHeapOwnerFacts>();
+		foreach (var (identity, function) in functions)
+		{
+			if (!methodsByIdentity.TryGetValue(identity, out var method))
+			{
+				continue;
+			}
+			M68kExactMemoryAnnotator.AnnotateFrameAndArgumentAccesses(function);
+			var promotion = M68kMemoryPromotionPass.Run(
+				function,
+				new M68kMemoryPromotionContext(
+					method,
+					module,
+					emptySummaries,
+					emptyGlobals,
+					emptyOwners,
+					function,
+					FrameAndArgumentOnly: true));
+			if (promotion.Changed)
+			{
+				function.OptimizationStatistics =
+					M68kMachineOptimizer.Run(function, cpu);
+			}
+		}
+	}
+
+	private static void RunMemoryPromotionFixedPoint(
+		IReadOnlyList<CilMethod> methods,
+		IReadOnlyDictionary<CilMethodIdentity, CilMethod> methodsByIdentity,
+		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
+		CompilationModule module,
+		M68kCpuTarget cpu)
+	{
+		const int maximumIterations = 8;
+		for (var iteration = 0; iteration < maximumIterations; iteration++)
+		{
+			var summaries = M68kMethodMemorySummaryAnalyzer.Compute(
+				methods,
+				functions,
+				module);
+			var annotations = new Dictionary<
+				CilMethodIdentity,
+				M68kExactMemoryAnnotation>();
+			foreach (var (identity, function) in functions)
+			{
+				if (!methodsByIdentity.TryGetValue(identity, out var method))
+				{
+					continue;
+				}
+				annotations[identity] = M68kExactMemoryAnnotator.Annotate(
+					function,
+					method,
+					module,
+					summaries);
+				var trace = Environment.GetEnvironmentVariable(
+					"COPPERSHARP_DIAGNOSTIC_TRACE_MEMORY_PROMOTION");
+				if (!string.IsNullOrEmpty(trace) &&
+					function.DisplayName.Contains(trace, StringComparison.Ordinal))
+				{
+					Console.Error.WriteLine(
+						$"PROMOTION {iteration} {function.DisplayName}");
+					foreach (var facts in annotations[identity].HeapOwners.Values)
+					{
+						Console.Error.WriteLine(
+							$"OWNER v{facts.OwnerValueId} array={facts.IsArray} " +
+							$"promotable={facts.IsPromotable} length={facts.ConstantLength} " +
+							$"ctor={facts.ConstructorMayWrite} finalizer={facts.HasFinalizer}");
+					}
+					foreach (var block in function.Blocks)
+					{
+						foreach (var instruction in block.Instructions.Where(static item =>
+							!item.ExactMemoryAccesses.IsDefaultOrEmpty))
+						{
+							Console.Error.WriteLine(
+								$"  B{block.Id} I{instruction.Id} {instruction.Operation} " +
+								$"{string.Join(';', instruction.ExactMemoryAccesses)}");
+						}
+					}
+				}
+			}
+			summaries = M68kMethodMemorySummaryAnalyzer.Compute(
+				methods,
+				functions,
+				module);
+			var localGlobals = FindLocallyOwnedGlobals(functions);
+			var changed = false;
+			foreach (var (identity, function) in functions)
+			{
+				if (!methodsByIdentity.TryGetValue(identity, out var method) ||
+					!annotations.TryGetValue(identity, out var annotation))
+				{
+					continue;
+				}
+				if (string.Equals(
+						method.ModuleName,
+						"CopperSharp.Runtime.Managed",
+						StringComparison.Ordinal))
+				{
+					// The collector manipulates allocator metadata through raw native
+					// addresses that deliberately sit outside managed owner identity.
+					// Treat it as the memory-model boundary: promoting its implementation
+					// fields can hide state from a collection performed by another method.
+					continue;
+				}
+				var promotion = M68kMemoryPromotionPass.Run(
+					function,
+					new M68kMemoryPromotionContext(
+						method,
+						module,
+						summaries,
+						localGlobals,
+						annotation.HeapOwners,
+						function));
+				if (!promotion.Changed)
+				{
+					continue;
+				}
+				changed = true;
+				function.OptimizationStatistics =
+					M68kMachineOptimizer.Run(function, cpu);
+			}
+			if (!changed)
+			{
+				break;
+			}
+		}
+	}
+
+	private static IReadOnlySet<M68kMemoryObject> FindLocallyOwnedGlobals(
+		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions)
+	{
+		var accesses = functions.SelectMany(item =>
+			item.Value.Blocks
+				.SelectMany(static block => block.Instructions)
+				.SelectMany(instruction => instruction.ExactMemoryAccesses.Select(
+					access => (Method: item.Key, Access: access))))
+			.Where(static item => item.Access.Object.IsGlobalObject)
+			.GroupBy(static item => item.Access.Object);
+		var result = new HashSet<M68kMemoryObject>();
+		foreach (var group in accesses)
+		{
+			var materialized = group.ToArray();
+			if (group.Key.IsManagedRoot ||
+				materialized.Select(static item => item.Method).Distinct().Count() != 1 ||
+				!materialized.Any(static item => item.Access.Kind ==
+					M68kExactMemoryAccessKind.Read) ||
+				!materialized.Any(static item => item.Access.Kind ==
+					M68kExactMemoryAccessKind.Write) ||
+				materialized.Any(static item => item.Access.Kind is
+					M68kExactMemoryAccessKind.Address or
+					M68kExactMemoryAccessKind.Escape))
+			{
+				continue;
+			}
+			result.Add(group.Key);
+		}
+		return result;
 	}
 
 	private static IReadOnlySet<CilMethodIdentity> ComputeRetainedMethods(

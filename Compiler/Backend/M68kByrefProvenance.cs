@@ -694,7 +694,7 @@ internal static class M68kByrefProvenanceAnalyzer
 			M68kMachineOperation.SpillLoad;
 	}
 
-	private static IReadOnlyDictionary<int, int> BuildCanonicalGcOwners(
+	internal static IReadOnlyDictionary<int, int> BuildCanonicalGcOwners(
 		M68kMachineFunction function)
 	{
 		var gcValues = function.Values.Values
@@ -746,24 +746,71 @@ internal static class M68kByrefProvenanceAnalyzer
 		while (changed)
 		{
 			changed = false;
+			var dependencies = new Dictionary<int, HashSet<int>>();
 			foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
 			{
 				if (!gcValues.Contains(phi.Definition) || phi.Inputs.Count == 0)
+				{
 					continue;
-				var roots = phi.Inputs.Values
-					.Where(gcValues.Contains)
-					.Select(Find)
-					.Distinct()
-					.ToArray();
-				if (roots.Length != 1)
+				}
+				var definitionRoot = Find(phi.Definition);
+				if (!dependencies.TryGetValue(definitionRoot, out var inputs))
+				{
+					inputs = new HashSet<int>();
+					dependencies.Add(definitionRoot, inputs);
+				}
+				foreach (var input in phi.Inputs.Values.Where(gcValues.Contains))
+				{
+					inputs.Add(Find(input));
+				}
+			}
+
+			foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
+			{
+				if (!gcValues.Contains(phi.Definition))
+				{
 					continue;
+				}
+				var terminals = new HashSet<int>();
+				CollectTerminalRoots(
+					Find(phi.Definition),
+					dependencies,
+					new HashSet<int>(),
+					terminals);
+				if (terminals.Count != 1)
+				{
+					continue;
+				}
+				var terminal = terminals.Single();
 				var prior = Find(phi.Definition);
-				Union(phi.Definition, roots[0]);
+				Union(phi.Definition, terminal);
 				changed |= Find(phi.Definition) != prior;
 			}
 		}
 
 		return gcValues.ToDictionary(static value => value, Find);
+
+		static void CollectTerminalRoots(
+			int root,
+			IReadOnlyDictionary<int, HashSet<int>> dependencies,
+			HashSet<int> visiting,
+			HashSet<int> terminals)
+		{
+			if (!dependencies.TryGetValue(root, out var inputs))
+			{
+				terminals.Add(root);
+				return;
+			}
+			if (!visiting.Add(root))
+			{
+				return;
+			}
+			foreach (var input in inputs)
+			{
+				CollectTerminalRoots(input, dependencies, visiting, terminals);
+			}
+			visiting.Remove(root);
+		}
 	}
 
 	private static bool TryMerge(

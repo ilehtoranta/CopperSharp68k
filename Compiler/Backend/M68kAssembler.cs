@@ -616,6 +616,7 @@ internal sealed class M68kAssembler
 
 	private bool TryRelaxLocalAbsoluteLoad()
 	{
+		var alignmentOffsets = GetSortedAlignmentOffsets();
 		for (var index = 0; index < _addresses.Count; index++)
 		{
 			var address = _addresses[index];
@@ -637,7 +638,8 @@ internal sealed class M68kAssembler
 			// word, labels after the instruction move two bytes closer.
 			var relaxedTargetOffset = GetTargetOffsetAfterTwoByteRelaxation(
 				targetOffset,
-				opcodeOffset + 6);
+				opcodeOffset + 6,
+				alignmentOffsets);
 			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
 			if (displacement < short.MinValue || displacement > short.MaxValue)
 			{
@@ -686,6 +688,10 @@ internal sealed class M68kAssembler
 
 	private bool TryRelaxShortBranches()
 	{
+		// The layout stays fixed while candidates are collected.  Taking a
+		// sorted snapshot avoids scanning every requested alignment label for
+		// every branch in large production images.
+		var alignmentOffsets = GetSortedAlignmentOffsets();
 		var candidates = new List<(BranchFixup Branch, ushort Opcode)>();
 		for (var index = 0; index < _branches.Count; index++)
 		{
@@ -694,14 +700,16 @@ internal sealed class M68kAssembler
 			if (!branch.CanRelaxToShort ||
 				!IsWordBranchOpcode(opcode) ||
 				!_labels.TryGetValue(branch.Target, out var targetOffset) ||
-				GetAlignmentRegion(branch.OpcodeOffset) != GetAlignmentRegion(targetOffset))
+				GetAlignmentRegion(branch.OpcodeOffset, alignmentOffsets) !=
+					GetAlignmentRegion(targetOffset, alignmentOffsets))
 			{
 				continue;
 			}
 
 			var relaxedTargetOffset = GetTargetOffsetAfterTwoByteRelaxation(
 				targetOffset,
-				branch.OpcodeOffset + 4);
+				branch.OpcodeOffset + 4,
+				alignmentOffsets);
 			var displacement = relaxedTargetOffset - (branch.OpcodeOffset + 2);
 			if (displacement is < sbyte.MinValue or > sbyte.MaxValue || displacement == 0)
 			{
@@ -783,11 +791,30 @@ internal sealed class M68kAssembler
 		}
 	}
 
-	private int GetAlignmentRegion(int offset) =>
-		_longAlignmentLabels.Count(label => _labels[label] <= offset);
+	private static int GetAlignmentRegion(
+		int offset,
+		IReadOnlyList<int> alignmentOffsets)
+	{
+		var low = 0;
+		var high = alignmentOffsets.Count;
+		while (low < high)
+		{
+			var middle = low + ((high - low) / 2);
+			if (alignmentOffsets[middle] <= offset)
+			{
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle;
+			}
+		}
+		return low;
+	}
 
 	private bool TryRelaxLocalAbsoluteControlTransfer()
 	{
+		var alignmentOffsets = GetSortedAlignmentOffsets();
 		for (var index = 0; index < _addresses.Count; index++)
 		{
 			var address = _addresses[index];
@@ -807,7 +834,8 @@ internal sealed class M68kAssembler
 
 			var relaxedTargetOffset = GetTargetOffsetAfterTwoByteRelaxation(
 				targetOffset,
-				opcodeOffset + 6);
+				opcodeOffset + 6,
+				alignmentOffsets);
 			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
 			if (displacement < short.MinValue || displacement > short.MaxValue)
 			{
@@ -831,7 +859,8 @@ internal sealed class M68kAssembler
 
 	private int GetTargetOffsetAfterTwoByteRelaxation(
 		int targetOffset,
-		int instructionEndOffset)
+		int instructionEndOffset,
+		IReadOnlyList<int> alignmentOffsets)
 	{
 		if (targetOffset < instructionEndOffset)
 		{
@@ -841,12 +870,40 @@ internal sealed class M68kAssembler
 		// Removing two bytes before an aligned loop header makes that header
 		// misaligned. Re-applying its padding absorbs the size reduction, so a
 		// forward target at or beyond the first such header does not move.
-		var alignmentAbsorbsReduction = _longAlignmentLabels.Any(label =>
-		{
-			var labelOffset = _labels[label];
-			return labelOffset >= instructionEndOffset && labelOffset <= targetOffset;
-		});
+		var alignmentAbsorbsReduction = HasAlignmentInRange(
+			alignmentOffsets,
+			instructionEndOffset,
+			targetOffset);
 		return alignmentAbsorbsReduction ? targetOffset : targetOffset - 2;
+	}
+
+	private int[] GetSortedAlignmentOffsets() =>
+		_longAlignmentLabels
+			.Select(label => _labels[label])
+			.Order()
+			.ToArray();
+
+	private static bool HasAlignmentInRange(
+		IReadOnlyList<int> alignmentOffsets,
+		int startOffset,
+		int endOffset)
+	{
+		var low = 0;
+		var high = alignmentOffsets.Count;
+		while (low < high)
+		{
+			var middle = low + ((high - low) / 2);
+			if (alignmentOffsets[middle] < startOffset)
+			{
+				low = middle + 1;
+			}
+			else
+			{
+				high = middle;
+			}
+		}
+		return low < alignmentOffsets.Count &&
+			alignmentOffsets[low] <= endOffset;
 	}
 
 	private static bool IsWordBranchOpcode(ushort opcode) =>

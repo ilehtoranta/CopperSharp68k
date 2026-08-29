@@ -57,7 +57,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		const string label = "entry:managed";
 		var usesManagedLifecycle = _managedLifecycles.Count != 0;
-		var wrapsEntry = usesManagedRuntime || usesManagedLifecycle;
+		var wrapsEntry = usesManagedRuntime || usesManagedLifecycle || UsesResidentInvocationContext;
 		_assembler.AlignWord();
 		_assembler.Mark(label);
 		if (UsesAmigaUnhandledExceptionRequester)
@@ -77,6 +77,9 @@ internal sealed partial class M68kCodeGenerator
 			preservesWideResult;
 		var needsD3 = preservesWideResult;
 		var needsA2 = usesAmigaStartupArguments || preservesAddressResult;
+		var residentAllocationFailed = UsesResidentHeapInvocationContext
+			? UniqueLabel("resident_context_allocation_failed")
+			: null;
 		if (wrapsEntry)
 		{
 			// D0/D1/A0/A1 are volatile in the private ABI. Only the result
@@ -94,11 +97,18 @@ internal sealed partial class M68kCodeGenerator
 			{
 				EmitPushRegister(M68kRegister.A2);
 			}
-		}
-		if (wrapsEntry && usesAmigaStartupArguments)
-		{
-			EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
-			EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
+			if (usesAmigaStartupArguments)
+			{
+				// AllocMem returns its block in D0, so preserve the process
+				// startup pair before an oversized resident context can take the
+				// Exec allocation path.
+				EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
+				EmitMoveRegister(M68kRegister.A0, M68kRegister.A2);
+			}
+			if (UsesResidentInvocationContext)
+			{
+				EmitCreateResidentInvocationContext(residentAllocationFailed!);
+			}
 		}
 		EmitInitializePlatformBases();
 		if (usesManagedRuntime)
@@ -147,6 +157,10 @@ internal sealed partial class M68kCodeGenerator
 				EmitMoveRegister(M68kRegister.D0, M68kRegister.D2);
 				EmitMoveRegister(M68kRegister.D1, M68kRegister.D3);
 			}
+			if (UsesResidentInvocationContext)
+			{
+				EmitDestroyResidentInvocationContext();
+			}
 			if (_usesFinalizers && _managedPoolRuntime is { } finalizerRuntime)
 			{
 				_assembler.EmitCall(MethodLabel(finalizerRuntime.PrepareShutdownFinalizers));
@@ -172,6 +186,10 @@ internal sealed partial class M68kCodeGenerator
 				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
 				EmitMoveRegister(M68kRegister.D3, M68kRegister.D1);
 			}
+			if (UsesResidentInvocationContext)
+			{
+				EmitPopRegister(M68kRegister.A5);
+			}
 			if (needsA2)
 			{
 				EmitPopRegister(M68kRegister.A2);
@@ -185,6 +203,27 @@ internal sealed partial class M68kCodeGenerator
 				EmitPopRegister(M68kRegister.D2);
 			}
 			_assembler.EmitWord(0x4E75); // RTS
+			if (residentAllocationFailed is not null)
+			{
+				_assembler.Mark(residentAllocationFailed);
+				EmitPopRegister(M68kRegister.A5);
+				EmitResidentInvocationAllocationFailureResult(
+					preservesAddressResult,
+					preservesWideResult);
+				if (needsA2)
+				{
+					EmitPopRegister(M68kRegister.A2);
+				}
+				if (needsD3)
+				{
+					EmitPopRegister(M68kRegister.D3);
+				}
+				if (needsD2)
+				{
+					EmitPopRegister(M68kRegister.D2);
+				}
+				_assembler.EmitWord(0x4E75); // RTS
+			}
 			return label;
 		}
 
@@ -197,6 +236,61 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		return label;
+	}
+
+	private void EmitCreateResidentInvocationContext(
+		string allocationFailure,
+		bool preserveCallerA5 = true)
+	{
+		if (preserveCallerA5)
+		{
+			EmitPushRegister(M68kRegister.A5);
+		}
+		if (UsesResidentStackInvocationContext)
+		{
+			EmitAllocateFrame(ResidentInvocationContextBytes);
+			EmitMoveStackPointerToRegister(M68kRegister.A5);
+			return;
+		}
+
+		EmitImmediateToRegister(M68kRegister.D0, ResidentInvocationContextBytes);
+		EmitImmediateToRegister(M68kRegister.D1, 0); // no memory attributes
+		EmitLoadAddressRegisterFromMemory(M68kRegister.A6, 4);
+		EmitBaseRelativeJsr(M68kRegister.A6, -198); // Exec.AllocMem
+		_loadedPlatformBase = null;
+		_assembler.EmitWord(0x4A80); // TST.L D0
+		_assembler.EmitBranch(M68kCondition.Equal, allocationFailure);
+		EmitMoveRegister(M68kRegister.D0, M68kRegister.A5);
+	}
+
+	private void EmitDestroyResidentInvocationContext()
+	{
+		if (UsesResidentStackInvocationContext)
+		{
+			EmitReleaseStackBytes(ResidentInvocationContextBytes);
+			return;
+		}
+
+		EmitMoveRegister(M68kRegister.A5, M68kRegister.A1);
+		EmitImmediateToRegister(M68kRegister.D0, ResidentInvocationContextBytes);
+		EmitLoadAddressRegisterFromMemory(M68kRegister.A6, 4);
+		EmitBaseRelativeJsr(M68kRegister.A6, -210); // Exec.FreeMem
+		_loadedPlatformBase = null;
+	}
+
+	private void EmitResidentInvocationAllocationFailureResult(
+		bool isAddressResult,
+		bool isWideResult)
+	{
+		EmitImmediateToRegister(M68kRegister.D0, 0);
+		if (isWideResult)
+		{
+			EmitImmediateToRegister(M68kRegister.D1, 0);
+		}
+		if (isAddressResult)
+		{
+			EmitMoveRegister(M68kRegister.D0, M68kRegister.A0);
+		}
 	}
 
 	private void EmitManagedLifecycleInitialize()

@@ -367,11 +367,11 @@ internal sealed partial class M68kCodeGenerator
 			{
 				if (stateLabel is null)
 				{
-					EmitRuntimeFrameImmediate(0, RuntimeFrameStateOffset);
+					EmitEhFrameImmediate(0, RuntimeFrameStateOffset);
 				}
 				else
 				{
-					EmitRuntimeFrameAddress(stateLabel, RuntimeFrameStateOffset);
+					EmitEhFrameAddress(stateLabel, RuntimeFrameStateOffset);
 				}
 
 				emittedExceptionStateLabel = stateLabel;
@@ -380,6 +380,37 @@ internal sealed partial class M68kCodeGenerator
 
 		if (M68kCompiler.IsManagedRuntime(_request) &&
 			InstructionMayReachGcSafepoint(method, instruction))
+		{
+			EmitSyncRuntimeFrameRoots();
+		}
+	}
+
+	private void EmitProtectedInstructionState(
+		CilMethod method,
+		M68kMachineInstruction instruction,
+		ref string? emittedExceptionStateLabel)
+	{
+		if (method.ExceptionRegions.Count != 0)
+		{
+			var stateLabel = RegisterExceptionState(
+				method,
+				GetActiveExceptionGroups(method, instruction.IlOffset));
+			if (!StringComparer.Ordinal.Equals(stateLabel, emittedExceptionStateLabel))
+			{
+				if (stateLabel is null)
+				{
+					EmitEhFrameImmediate(0, RuntimeFrameStateOffset);
+				}
+				else
+				{
+					EmitEhFrameAddress(stateLabel, RuntimeFrameStateOffset);
+				}
+
+				emittedExceptionStateLabel = stateLabel;
+			}
+		}
+
+		if (M68kCompiler.IsManagedRuntime(_request) && instruction.IsSafepoint)
 		{
 			EmitSyncRuntimeFrameRoots();
 		}
@@ -585,6 +616,10 @@ internal sealed partial class M68kCodeGenerator
 			return null;
 		}
 
+		// A protected control-flow entry references the state action table even
+		// when the method body has not yet emitted a direct raise helper call.
+		// Retain the exception runtime so that table is materialized.
+		_usesExceptionRuntime = true;
 		var token = MetadataTokens.GetToken(method.Handle);
 		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{string.Join(",", groups.Select(static group => group.Id))}";
 		if (!_exceptionStates.TryGetValue(key, out var state))
@@ -597,7 +632,7 @@ internal sealed partial class M68kCodeGenerator
 			RegisterExceptionState(method, groups.RemoveAt(0));
 			foreach (var region in groups[0].Regions.Where(static entry => entry.Region.IsCatch))
 			{
-				RegisterRuntimeTypeDescriptor(region.Region.CatchType);
+				RegisterRuntimeTypeDescriptor(region.Region.CatchType, method);
 			}
 		}
 
@@ -1161,8 +1196,20 @@ internal sealed partial class M68kCodeGenerator
 	{
 		var restoreAndJump = UniqueLabel("eh_restore_and_jump");
 		var usesRestoreAndJump = false;
-		foreach (var state in _exceptionStates.Values.ToArray())
+		// Registering a state's suffix can introduce a parent state which also
+		// needs a concrete action table.  Drain the growing set rather than
+		// iterating a one-time snapshot, otherwise generated frame-state labels
+		// can be referenced without ever being emitted.
+		var emittedStates = new HashSet<string>(StringComparer.Ordinal);
+		while (true)
 		{
+			var state = _exceptionStates.Values.FirstOrDefault(
+				candidate => emittedStates.Add(candidate.Label));
+			if (state is null)
+			{
+				break;
+			}
+
 			var group = state.Groups[0];
 			var suffix = RegisterExceptionState(
 				state.Method,
@@ -1180,7 +1227,8 @@ internal sealed partial class M68kCodeGenerator
 						ExceptionContextExceptionOffset);
 					EmitRuntimeTypeAddress(
 						M68kRegister.A1,
-						entry.Region.CatchType);
+						entry.Region.CatchType,
+						state.Method);
 					_assembler.EmitBsr(RuntimeExceptionTypeMatchLabel);
 					_assembler.EmitWord(0x4A80); // TST.L D0
 					_assembler.EmitBranch(M68kCondition.Equal, nextCatch);
@@ -1313,11 +1361,11 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (label is null)
 		{
-			EmitRuntimeFrameImmediate(0, RuntimeFrameStateOffset);
+			EmitEhFrameImmediate(0, RuntimeFrameStateOffset);
 		}
 		else
 		{
-			EmitRuntimeFrameAddress(label, RuntimeFrameStateOffset);
+			EmitEhFrameAddress(label, RuntimeFrameStateOffset);
 		}
 	}
 
@@ -1422,12 +1470,15 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitAddress(RuntimeTypeDescriptorLabel(typeName));
 	}
 
-	private void EmitRuntimeTypeAddress(M68kRegister register, EntityHandle handle)
+	private void EmitRuntimeTypeAddress(
+		M68kRegister register,
+		EntityHandle handle,
+		CilMethod owner)
 	{
-		RegisterRuntimeTypeDescriptor(handle);
+		RegisterRuntimeTypeDescriptor(handle, owner);
 		var index = (int)register - (int)M68kRegister.A0;
 		_assembler.EmitWord((ushort)(0x207C | (index << 9)));
-		_assembler.EmitAddress(TypeDescriptorLabel(handle));
+		_assembler.EmitAddress(TypeDescriptorLabel(handle, owner));
 	}
 
 	private void EmitRuntimeObjectAddress(M68kRegister register, string typeName)
@@ -1475,7 +1526,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(done);
 	}
 
-	private void RegisterRuntimeTypeDescriptor(EntityHandle handle)
+	private void RegisterRuntimeTypeDescriptor(EntityHandle handle, CilMethod owner)
 	{
 		if (handle.IsNil)
 		{
@@ -1484,12 +1535,12 @@ internal sealed partial class M68kCodeGenerator
 
 		if (handle.Kind == HandleKind.TypeDefinition)
 		{
-			var layout = _module.GetTypeLayout((TypeDefinitionHandle)handle);
+			var layout = _module.GetTypeLayout(owner, (TypeDefinitionHandle)handle);
 			_usedTypeLayouts.TryAdd(layout.Identity, layout);
 			return;
 		}
 
-		RegisterRuntimeTypeDescriptor(_module.GetTypeDisplayName(handle));
+		RegisterRuntimeTypeDescriptor(_module.GetTypeDisplayName(handle, owner));
 	}
 
 	private void RegisterRuntimeTypeDescriptor(string typeName)
@@ -1525,7 +1576,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			foreach (var region in method.ExceptionRegions.Where(static region => region.IsCatch))
 			{
-				RegisterRuntimeTypeDescriptor(region.CatchType);
+				RegisterRuntimeTypeDescriptor(region.CatchType, method);
 			}
 		}
 
@@ -1666,10 +1717,10 @@ internal sealed partial class M68kCodeGenerator
 	private static string RuntimeTypeDescriptorLabel(string typeName) =>
 		$"runtime:type-descriptor:{typeName}";
 
-	private string TypeDescriptorLabel(EntityHandle handle) =>
+	private string TypeDescriptorLabel(EntityHandle handle, CilMethod owner) =>
 		handle.Kind == HandleKind.TypeDefinition
-			? TypeDescriptorLabel((TypeDefinitionHandle)handle)
-			: RuntimeTypeDescriptorLabel(_module.GetTypeDisplayName(handle));
+			? TypeDescriptorLabel(_module.GetTypeLayout(owner, (TypeDefinitionHandle)handle))
+			: RuntimeTypeDescriptorLabel(_module.GetTypeDisplayName(handle, owner));
 
 	private static string RuntimeExceptionObjectLabel(string typeName) =>
 		$"runtime:exception-object:{typeName}";

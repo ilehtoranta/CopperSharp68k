@@ -5,6 +5,33 @@
 
 namespace Amiga;
 
+/// <summary>Typed big-endian guest-memory boundary for timer values.</summary>
+public static class TimeValCodec
+{
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		address.Raw <= uint.MaxValue - TimeVal.Size &&
+		memory.IsMapped(address, TimeVal.Size);
+
+	public static TimeVal Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Seconds = memory.ReadUInt32(address,
+			TimerDeviceLayout.TimeVal.Seconds),
+		Microseconds = memory.ReadUInt32(address,
+			TimerDeviceLayout.TimeVal.Microseconds),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		TimeVal value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, TimerDeviceLayout.TimeVal.Seconds,
+			value.Seconds);
+		memory.WriteUInt32(address, TimerDeviceLayout.TimeVal.Microseconds,
+			value.Microseconds);
+	}
+}
+
 /// <summary>
 /// Typed big-endian guest-memory boundary for timer.device requests. Algorithms
 /// use <see cref="TimerRequest"/> members; numeric ABI offsets remain here.
@@ -49,13 +76,8 @@ public static class TimerRequestCodec
 			Error = unchecked((sbyte)memory.ReadUInt8(address,
 				ExecLayout.IORequest.Error)),
 		},
-		Time = new TimeVal
-		{
-			Seconds = memory.ReadUInt32(address,
-				TimerDeviceLayout.TimerRequest.Seconds),
-			Microseconds = memory.ReadUInt32(address,
-				TimerDeviceLayout.TimerRequest.Microseconds),
-		},
+		Time = TimeValCodec.Read(ref memory, APTR.FromPointer(address.Raw +
+			TimerDeviceLayout.TimerRequest.Time)),
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
@@ -85,10 +107,8 @@ public static class TimerRequestCodec
 			(byte)value.Request.Flags);
 		memory.WriteUInt8(address, ExecLayout.IORequest.Error,
 			unchecked((byte)value.Request.Error));
-		memory.WriteUInt32(address, TimerDeviceLayout.TimerRequest.Seconds,
-			value.Time.Seconds);
-		memory.WriteUInt32(address, TimerDeviceLayout.TimerRequest.Microseconds,
-			value.Time.Microseconds);
+		TimeValCodec.Write(ref memory, APTR.FromPointer(address.Raw +
+			TimerDeviceLayout.TimerRequest.Time), value.Time);
 	}
 
 	public static APTR ReadDevice<TMemory>(ref TMemory memory, APTR address)

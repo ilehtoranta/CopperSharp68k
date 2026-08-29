@@ -36,6 +36,8 @@ internal sealed partial class M68kCodeGenerator
 	private readonly Dictionary<CilTypeIdentity, CilInterfaceDefinition>
 		_runtimeDispatchInterfaces = new();
 	private readonly Dictionary<string, GeneratedPlatformBase> _usedPlatformBases = new(StringComparer.Ordinal);
+	private readonly HashSet<string> _materializedPlatformBaseIdentities =
+		new(StringComparer.Ordinal);
 	private readonly M68kMemoryManagement _memoryManagement;
 	private int _uniqueLabel;
 	private int _currentStackDepth = 0;
@@ -66,6 +68,23 @@ internal sealed partial class M68kCodeGenerator
 	private readonly Dictionary<CilMethodIdentity, CilMethod> _foldedMethodAliases = new();
 	private readonly List<SwitchAddressTable> _switchAddressTables = new();
 	private bool _usesFinalizers;
+	private readonly Dictionary<string, short> _residentPlatformBaseOffsets =
+		new(StringComparer.Ordinal);
+
+	private bool UsesResidentInvocationContext =>
+		_request.RuntimeProfile == M68kRuntimeProfile.Resident &&
+		_residentPlatformBaseOffsets.Count != 0;
+
+	private int ResidentInvocationContextBytes =>
+		_residentPlatformBaseOffsets.Count * sizeof(uint);
+
+	private bool UsesResidentStackInvocationContext =>
+		UsesResidentInvocationContext &&
+		ResidentInvocationContextBytes <=
+			_request.ResidentStackContextThresholdBytes;
+
+	private bool UsesResidentHeapInvocationContext =>
+		UsesResidentInvocationContext && !UsesResidentStackInvocationContext;
 
 	private readonly record struct SwitchAddressTable(
 		string Label,
@@ -205,8 +224,8 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 		PreRegisterPlatformBases(methods);
+		ValidateResidentStaticState(methods);
 		EnsureManagedPoolExecBase();
-		var initializesPlatformBase = _usedPlatformBases.Values.Any(RequiresPlatformBaseInitialization);
 		var usesManagedRuntime = M68kCompiler.IsManagedRuntime(_request);
 		var usesManagedLifecycle = _managedLifecycles.Count != 0;
 		var usesAmigaStartupArguments = HasAmigaStartupArguments(entry);
@@ -226,9 +245,8 @@ internal sealed partial class M68kCodeGenerator
 						instruction.Offset).Definition?.Identity ==
 							entry.Identity));
 		var hasTerminatingTargetLifetime =
-			_request.OutputFormat == M68kOutputFormat.Hunk ||
-			(_request.OutputFormat == M68kOutputFormat.Assembly &&
-			 _request.RuntimeProfile == M68kRuntimeProfile.Application);
+			_request.RuntimeProfile == M68kRuntimeProfile.Application &&
+			_request.OutputFormat is M68kOutputFormat.Hunk or M68kOutputFormat.Assembly;
 		if (!entryHasOtherInvocation &&
 			hasTerminatingTargetLifetime &&
 			(!usesManagedRuntime || _managedPoolRuntime is not null))
@@ -246,35 +264,9 @@ internal sealed partial class M68kCodeGenerator
 					instruction.Offset).Identity);
 			}
 		}
-		var entryLabel = MethodLabel(entry);
-		if (initializesPlatformBase ||
-			usesManagedRuntime ||
-			usesManagedLifecycle ||
-			usesAmigaStartupArguments ||
-			_hasExceptionFrames)
-		{
-			entryLabel = EmitEntryAdapter(
-				entry,
-				usesManagedRuntime,
-				usesAmigaStartupArguments,
-				_hasExceptionFrames);
-			if (!entryHasOtherInvocation &&
-				!usesManagedRuntime &&
-				!usesManagedLifecycle)
-			{
-				// This adapter only initializes process/exception state before entering
-				// the sole managed root. The Amiga process boundary has no caller-owned
-				// callee-saved registers, so keep the entry allocation root-only even
-				// when the adapter calls it to establish an exception return boundary.
-				_rootOnlyMethods.Add(entry.Identity);
-			}
-		}
-		else if (!entryHasOtherInvocation)
-		{
-			_rootOnlyMethods.Add(entry.Identity);
-		}
 		AnalyzePlatformBaseMethodEntries(methods, entry, exports);
 		var rawFunctions = BuildRawMachineFunctions(methods);
+		ValidateResidentMachineState(rawFunctions.Values);
 		var optimizerRoots = exports
 			.Select(static export => export.Method.Identity)
 			.Append(entry.Identity)
@@ -297,6 +289,53 @@ internal sealed partial class M68kCodeGenerator
 			!rawFunctions.ContainsKey(method.Identity) ||
 			_machineOptimizationStatistics.RetainedMethodIdentities.Contains(
 				method.Identity)).ToArray();
+		RunTerminalDeadStoreElimination(methods, rawFunctions);
+		MaterializeSurvivingPlatformBases(methods, rawFunctions);
+		PlanResidentInvocationContext();
+		if (UsesResidentInvocationContext)
+		{
+			foreach (var function in rawFunctions.Values)
+			{
+				function.ReservedRegisters =
+					function.ReservedRegisters.Add(M68kRegister.A5);
+			}
+		}
+		var initializesPlatformBase = _usedPlatformBases.Values.Any(item =>
+			IsMaterializedPlatformBase(item) &&
+			RequiresPlatformBaseInitialization(item));
+		var entryLabel = MethodLabel(entry);
+		if (initializesPlatformBase ||
+			usesManagedRuntime ||
+			usesManagedLifecycle ||
+			usesAmigaStartupArguments ||
+			_hasExceptionFrames ||
+			UsesResidentInvocationContext)
+		{
+			entryLabel = EmitEntryAdapter(
+				entry,
+				usesManagedRuntime,
+				usesAmigaStartupArguments,
+				_hasExceptionFrames);
+			if (!entryHasOtherInvocation &&
+				!usesManagedRuntime &&
+				!usesManagedLifecycle)
+			{
+				// This adapter only initializes process/exception state before entering
+				// the sole managed root. The Amiga process boundary has no caller-owned
+				// callee-saved registers, so keep the entry allocation root-only even
+				// when the adapter calls it to establish an exception return boundary.
+				_rootOnlyMethods.Add(entry.Identity);
+			}
+		}
+		else if (!entryHasOtherInvocation)
+		{
+			_rootOnlyMethods.Add(entry.Identity);
+		}
+		if (_rootOnlyMethods.Contains(entry.Identity) &&
+			rawFunctions.TryGetValue(entry.Identity, out var entryFunction))
+		{
+			entryFunction.PreserveCalleeSavedRegisters = false;
+		}
 		foreach (var method in methods)
 		{
 			if (_foldedMethodAliases.ContainsKey(method.Identity))
@@ -313,6 +352,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitBoxedInterfaceThunks();
 		if (_usesExceptionRuntime &&
 			!M68kCompiler.IsManagedRuntime(_request) &&
+			_exceptionStates.Count == 0 &&
 			!_assembler.ReferencesTargetPrefix("__c68k_exception_"))
 		{
 			// Method-level analysis is conservative. If final reachable code emitted
@@ -690,6 +730,111 @@ internal sealed partial class M68kCodeGenerator
 				{
 					GetOrAddPlatformBase(externalCall.Convention, method);
 				}
+				else if (target.ImportName is { } importName &&
+					importName.StartsWith(
+						"intrinsic:amiga-library-base-",
+						StringComparison.Ordinal))
+				{
+					var separator = importName.LastIndexOf(':');
+					if (separator >= 0 && separator + 1 < importName.Length)
+					{
+						EnsureAmigaLibraryBaseSlot(method, importName[(separator + 1)..]);
+					}
+				}
+			}
+		}
+	}
+
+	private void ValidateResidentStaticState(IEnumerable<CilMethod> methods)
+	{
+		if (_request.RuntimeProfile != M68kRuntimeProfile.Resident)
+		{
+			return;
+		}
+
+		foreach (var method in methods)
+		{
+			foreach (var instruction in method.Instructions.Where(static instruction =>
+				instruction.OpCode is OpCode { } opCode &&
+				(opCode == OpCodes.Ldsfld ||
+				 opCode == OpCodes.Ldsflda ||
+				 opCode == OpCodes.Stsfld)))
+			{
+				var field = _module.ResolveFieldToken(
+					(int)instruction.Operand!,
+					method,
+					instruction.Offset);
+				if (field.IsStatic)
+				{
+					throw new M68kCompilationException(
+						M68kDiagnosticIds.StaticAnalysis,
+						$"Resident runtime profile does not support static field '{field.DisplayName}'. " +
+						"Use per-call stack storage or an explicit Exec AllocMem block instead.",
+						method.DisplayName,
+						instruction.Offset);
+				}
+			}
+		}
+	}
+
+	private void PlanResidentInvocationContext()
+	{
+		if (_request.RuntimeProfile != M68kRuntimeProfile.Resident)
+		{
+			return;
+		}
+
+		foreach (var platformBase in _usedPlatformBases.Values
+			.Where(item =>
+				IsMaterializedPlatformBase(item) &&
+				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				item.Label is not null)
+			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
+		{
+			var offset = checked(_residentPlatformBaseOffsets.Count * sizeof(uint));
+			if (offset > short.MaxValue - sizeof(uint))
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidOutputOptions,
+					"Resident invocation storage exceeds the 68k d16(A5) addressing range.");
+			}
+			_residentPlatformBaseOffsets.Add(platformBase.Label!, checked((short)offset));
+		}
+	}
+
+	private void ValidateResidentMachineState(IEnumerable<M68kMachineFunction> functions)
+	{
+		if (_request.RuntimeProfile != M68kRuntimeProfile.Resident)
+		{
+			return;
+		}
+
+		foreach (var function in functions)
+		{
+			if (function.HasDynamicStackAllocation)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedInstruction,
+					"Resident runtime profile does not support localloc because A5 holds per-invocation platform state.",
+					function.DisplayName);
+			}
+
+			var statefulOperation = function.Blocks
+				.SelectMany(static block => block.Instructions)
+				.FirstOrDefault(static instruction => instruction.Operation is
+					M68kMachineOperation.TypeInitialize or
+					M68kMachineOperation.ObjectAllocate or
+					M68kMachineOperation.ArrayAllocate or
+					M68kMachineOperation.Box or
+					M68kMachineOperation.DelegateCreate);
+			if (statefulOperation is not null)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.UnsupportedInstruction,
+					$"Resident runtime profile does not support '{statefulOperation.Operation}' yet. " +
+					"Use registers, stack locals, or an explicit Exec AllocMem block.",
+					function.DisplayName,
+					statefulOperation.IlOffset);
 			}
 		}
 	}
@@ -1243,10 +1388,86 @@ internal sealed partial class M68kCodeGenerator
 					.ToArray());
 			machineFunction.PreserveCalleeSavedRegisters =
 				!_rootOnlyMethods.Contains(method.Identity);
+			if (UsesResidentInvocationContext)
+			{
+				machineFunction.ReservedRegisters =
+					machineFunction.ReservedRegisters.Add(M68kRegister.A5);
+			}
 			functions.Add(method.Identity, machineFunction);
 		}
 		return functions;
 	}
+
+	private void RunTerminalDeadStoreElimination(
+		IReadOnlyList<CilMethod> methods,
+		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions)
+	{
+		foreach (var method in methods)
+		{
+			if (_foldedMethodAliases.ContainsKey(method.Identity) ||
+				!functions.TryGetValue(method.Identity, out var function))
+			{
+				continue;
+			}
+			_terminalDeadStoreStatistics[method.Identity] =
+				M68kTerminalDeadStoreEliminator.Run(
+					function,
+					method,
+					_module,
+					_terminatingEntryMethods.Contains(method.Identity),
+					_escapedStaticFields);
+		}
+	}
+
+	private void MaterializeSurvivingPlatformBases(
+		IReadOnlyList<CilMethod> methods,
+		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions)
+	{
+		_materializedPlatformBaseIdentities.Clear();
+		if (UsesAmigaManagedPoolArena)
+		{
+			// Arena allocation and shutdown are generated runtime adapters rather
+			// than machine functions, so their Exec dependency is an additional
+			// root for the post-optimization slot scan.
+			_materializedPlatformBaseIdentities.Add("exec.library");
+		}
+		var retained = methods.Select(static method => method.Identity).ToHashSet();
+		foreach (var (identity, function) in functions)
+		{
+			if (!retained.Contains(identity))
+			{
+				continue;
+			}
+			foreach (var instruction in function.Blocks.SelectMany(static block =>
+				block.Instructions))
+			{
+				if (instruction.Operation is
+						M68kMachineOperation.PlatformBaseLoad or
+						M68kMachineOperation.PlatformBaseStore &&
+					instruction.PlatformBaseConvention is { } convention)
+				{
+					_materializedPlatformBaseIdentities.Add(convention.Identity);
+				}
+				foreach (var memoryObject in instruction.ExactMemoryAccesses
+					.Select(static access => access.Object)
+					.Where(static item => item.Kind == M68kMemoryObjectKind.LibraryBase))
+				{
+					foreach (var platformBase in _usedPlatformBases.Values.Where(item =>
+						string.Equals(
+							item.Label,
+							memoryObject.Identity,
+							StringComparison.Ordinal)))
+					{
+						_materializedPlatformBaseIdentities.Add(
+							platformBase.Binding.Identity);
+					}
+				}
+			}
+		}
+	}
+
+	private bool IsMaterializedPlatformBase(GeneratedPlatformBase platformBase) =>
+		_materializedPlatformBaseIdentities.Contains(platformBase.Binding.Identity);
 
 	private void CompileMethod(
 		CilMethod method,
@@ -1261,13 +1482,6 @@ internal sealed partial class M68kCodeGenerator
 		var ilOptimizations = CilOptimizer.Optimize(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
 		M68kCallAbiLowering.FinalizeLogicalCalls(machineFunction);
-		_terminalDeadStoreStatistics[method.Identity] =
-			M68kTerminalDeadStoreEliminator.Run(
-			machineFunction,
-			method,
-			_module,
-			_terminatingEntryMethods.Contains(method.Identity),
-			_escapedStaticFields);
 		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(
 			machineFunction,
 			!M68kCompiler.IsManagedRuntime(_request) ||
@@ -9818,58 +10032,137 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_assembler.AlignWord();
 		_assembler.Mark(ExportLabel(export.Name));
-		EmitPushRegisters(stackalloc[]
+		var residentAllocationFailed = UsesResidentHeapInvocationContext
+			? UniqueLabel("resident_context_allocation_failed")
+			: null;
+		if (UsesResidentHeapInvocationContext)
 		{
-			M68kRegister.D2,
-			M68kRegister.D3,
-			M68kRegister.D4,
-			M68kRegister.D5,
-			M68kRegister.D6,
-			M68kRegister.D7,
-			M68kRegister.A2,
-			M68kRegister.A3,
-			M68kRegister.A4,
-			M68kRegister.A5,
-			M68kRegister.A6
-		});
-		if (export.ParameterRegisters.Count >= 3 &&
-			export.ParameterRegisters
-				.Zip(export.ParameterRegisters.Skip(1), static (left, right) => left < right)
-				.All(static ordered => ordered))
+			// AllocMem is allowed to clobber the volatile export argument
+			// registers. Stage them before the call, while keeping the caller's
+			// A5 and every Amiga callee-saved register beneath that staging.
+		EmitPushRegister(M68kRegister.A5);
+			EmitPushRegisters(stackalloc[]
+			{
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kRegister.D5,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kRegister.A4,
+				M68kRegister.A6
+			});
+			EmitPushExportParameters(export);
+			EmitCreateResidentInvocationContext(
+				residentAllocationFailed!,
+				preserveCallerA5: false);
+		}
+		else if (UsesResidentInvocationContext)
 		{
-			EmitPushRegisters(export.ParameterRegisters.ToArray());
+			// Keep the activation record below the adapter's ABI staging. The
+			// incoming export arguments must remain at their usual A7 offsets
+			// until they have been copied into the internal calling convention.
+			EmitCreateResidentInvocationContext(residentAllocationFailed!);
+			EmitPushRegisters(stackalloc[]
+			{
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kRegister.D5,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kRegister.A4,
+				M68kRegister.A6
+			});
+			EmitPushExportParameters(export);
 		}
 		else
 		{
-			for (var index = export.ParameterRegisters.Count - 1; index >= 0; index--)
+			EmitPushRegisters(stackalloc[]
 			{
-				EmitPushRegister(export.ParameterRegisters[index]);
-			}
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kRegister.D5,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kRegister.A4,
+				M68kRegister.A5,
+				M68kRegister.A6
+			});
+			EmitPushExportParameters(export);
 		}
-
 		var internalAbi = GetInternalCallAbi(export.Method);
 		EmitPrepareInternalCallFromDeclarationOrderedStack(export.Method, internalAbi);
-		if (initializesPlatformBase)
+		if (initializesPlatformBase || UsesResidentInvocationContext)
 		{
 			EmitInitializePlatformBases();
 		}
 		_assembler.EmitCall(MethodLabel(export.Method));
 		EmitReleaseStackBytes(internalAbi.StackBytes);
-
-		EmitPopRegisters(stackalloc[]
+		if (UsesResidentInvocationContext)
 		{
-			M68kRegister.D2,
-			M68kRegister.D3,
-			M68kRegister.D4,
-			M68kRegister.D5,
-			M68kRegister.D6,
-			M68kRegister.D7,
-			M68kRegister.A2,
-			M68kRegister.A3,
-			M68kRegister.A4,
-			M68kRegister.A5,
-			M68kRegister.A6
-		});
+			EmitPopRegisters(stackalloc[]
+			{
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kRegister.D5,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kRegister.A4,
+				M68kRegister.A6
+			});
+			var resultRegister = IsInternalAddressReturn(export.Method.Signature.ReturnType)
+				? M68kRegister.A0
+				: M68kRegister.D0;
+			var isWideResult = Is64BitScalar(export.Method.Signature.ReturnType);
+			if (!export.Method.Signature.ReturnType.IsVoid &&
+				UsesResidentHeapInvocationContext)
+			{
+				EmitPushRegister(resultRegister);
+				if (isWideResult)
+				{
+					EmitPushRegister(M68kRegister.D1);
+				}
+			}
+			EmitDestroyResidentInvocationContext();
+			if (!export.Method.Signature.ReturnType.IsVoid &&
+				UsesResidentHeapInvocationContext)
+			{
+				if (isWideResult)
+				{
+					EmitPopRegister(M68kRegister.D1);
+				}
+				EmitPopRegister(resultRegister);
+			}
+			EmitPopRegister(M68kRegister.A5);
+		}
+		else
+		{
+			EmitPopRegisters(stackalloc[]
+			{
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kRegister.D5,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kRegister.A4,
+				M68kRegister.A5,
+				M68kRegister.A6
+			});
+		}
 
 		if (IsInternalAddressReturn(export.Method.Signature.ReturnType))
 		{
@@ -9880,6 +10173,55 @@ internal sealed partial class M68kCodeGenerator
 			EmitMoveReturnFromD0(export.ReturnRegister);
 		}
 		_assembler.EmitWord(0x4E75); // RTS
+		if (residentAllocationFailed is not null)
+		{
+			_assembler.Mark(residentAllocationFailed);
+			EmitReleaseStackBytes(checked(export.ParameterRegisters.Count * 4));
+			EmitPopRegisters(stackalloc[]
+			{
+				M68kRegister.D2,
+				M68kRegister.D3,
+				M68kRegister.D4,
+				M68kRegister.D5,
+				M68kRegister.D6,
+				M68kRegister.D7,
+				M68kRegister.A2,
+				M68kRegister.A3,
+				M68kRegister.A4,
+				M68kRegister.A6
+			});
+			EmitPopRegister(M68kRegister.A5);
+			var isAddressResult = IsInternalAddressReturn(export.Method.Signature.ReturnType);
+			EmitResidentInvocationAllocationFailureResult(
+				isAddressResult,
+				Is64BitScalar(export.Method.Signature.ReturnType));
+			if (isAddressResult)
+			{
+				EmitMoveRegister(M68kRegister.A0, export.ReturnRegister);
+			}
+			else
+			{
+				EmitMoveReturnFromD0(export.ReturnRegister);
+			}
+			_assembler.EmitWord(0x4E75); // RTS
+		}
+	}
+
+	private void EmitPushExportParameters(CilExport export)
+	{
+		if (export.ParameterRegisters.Count >= 3 &&
+			export.ParameterRegisters
+				.Zip(export.ParameterRegisters.Skip(1), static (left, right) => left < right)
+				.All(static ordered => ordered))
+		{
+			EmitPushRegisters(export.ParameterRegisters.ToArray());
+			return;
+		}
+
+		for (var index = export.ParameterRegisters.Count - 1; index >= 0; index--)
+		{
+			EmitPushRegister(export.ParameterRegisters[index]);
+		}
 	}
 
 	private bool RequiresPlatformBaseInitialization(GeneratedPlatformBase platformBase) =>
@@ -9891,8 +10233,11 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitInitializePlatformBases()
 	{
 		_loadedPlatformBase = null;
+		EmitInitializeResidentInvocationSlots();
 		foreach (var platformBase in _usedPlatformBases.Values
-			.Where(item => item.Binding.BaseSource == M68kExternalBaseSource.CachedPointer)
+			.Where(item =>
+				IsMaterializedPlatformBase(item) &&
+				item.Binding.BaseSource == M68kExternalBaseSource.CachedPointer)
 			.DistinctBy(item => (item.Binding.CacheRegister, item.Binding.SourceAddress)))
 		{
 			EmitLoadAddressRegisterFromMemory(
@@ -9902,6 +10247,7 @@ internal sealed partial class M68kCodeGenerator
 
 		foreach (var platformBase in _usedPlatformBases.Values
 			.Where(item =>
+				IsMaterializedPlatformBase(item) &&
 				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 				item.Binding.SourceAddress != 0 &&
 				!UsesRomSourceAddress(item.Binding))
@@ -9928,8 +10274,10 @@ internal sealed partial class M68kCodeGenerator
 
 		var bssBytes = _staticFields.Values.Sum(field => SlotLongs(field.Type) * 4) +
 			_usedPlatformBases.Values.Count(item =>
+				IsMaterializedPlatformBase(item) &&
 				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 				item.Label is not null &&
+				!IsResidentInvocationSlot(item.Label!) &&
 				item.Binding.InitialValue == 0) * 4;
 		if (bssBytes == 0)
 		{
@@ -9960,8 +10308,10 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.MarkWritableDataStart();
 		foreach (var platformBase in _usedPlatformBases.Values
 			.Where(item =>
+				IsMaterializedPlatformBase(item) &&
 				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 				item.Label is not null &&
+				!IsResidentInvocationSlot(item.Label!) &&
 				(!deferZeroInitializedStorage || item.Binding.InitialValue != 0))
 			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 		{
@@ -9996,8 +10346,10 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.MarkBssStart();
 			foreach (var platformBase in _usedPlatformBases.Values
 				.Where(item =>
+					IsMaterializedPlatformBase(item) &&
 					item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 					item.Label is not null &&
+					!IsResidentInvocationSlot(item.Label!) &&
 					item.Binding.InitialValue == 0)
 				.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 			{
@@ -10008,6 +10360,9 @@ internal sealed partial class M68kCodeGenerator
 
 		EmitZeroInitializedStatics();
 	}
+
+	private bool IsResidentInvocationSlot(string label) =>
+		_residentPlatformBaseOffsets.ContainsKey(label);
 
 	private void EmitClassFinalizerDescriptorEntry(CilTypeLayout layout)
 	{
@@ -10022,6 +10377,27 @@ internal sealed partial class M68kCodeGenerator
 		else
 		{
 			_assembler.EmitLong(0);
+		}
+	}
+
+	private void EmitInitializeResidentInvocationSlots()
+	{
+		if (!UsesResidentInvocationContext)
+		{
+			return;
+		}
+
+		foreach (var platformBase in _usedPlatformBases.Values
+			.Where(item =>
+				IsMaterializedPlatformBase(item) &&
+				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				item.Label is not null)
+			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
+		{
+			var offset = _residentPlatformBaseOffsets[platformBase.Label!];
+			_assembler.EmitWord(0x2B7C); // MOVE.L #initial-value,d16(A5)
+			_assembler.EmitLong(platformBase.Binding.InitialValue);
+			_assembler.EmitWord(unchecked((ushort)offset));
 		}
 	}
 
@@ -10255,6 +10631,15 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitLoadAddressRegisterLocal(M68kRegister register, string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			InvalidatePlatformBaseIfWritingRegister(register);
+			var index = (int)register - (int)M68kRegister.A0;
+			_assembler.EmitWord((ushort)(0x2040 | (index << 9) | 0x002D)); // MOVEA.L d16(A5),An
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		// Emit the relocation-safe maximum form. Final layout relaxation converts
 		// it to MOVEA.L d16(PC),An only when the selected slot remains in range.
 		EmitLoadAddressRegisterAbsolute(register, label);
@@ -10277,6 +10662,13 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitLoadD0FromLabel(string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord(0x202D); // MOVE.L d16(A5),D0
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		_assembler.EmitWord(0x2039); // MOVE.L abs.l,D0
 		_assembler.EmitAddress(label);
 	}
@@ -10302,12 +10694,26 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitLoadA0FromLabel(string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord(0x206D); // MOVEA.L d16(A5),A0
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		_assembler.EmitWord(0x2079); // MOVEA.L abs.l,A0
 		_assembler.EmitAddress(label);
 	}
 
 	private void EmitStoreD0ToLabel(string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord(0x2B40); // MOVE.L D0,d16(A5)
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		EmitPushD0();
 		_assembler.EmitWord(0x23DF); // MOVE.L (A7)+,abs.l
 		_assembler.EmitAddress(label);
@@ -10315,12 +10721,29 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitStoreD0DirectToLabel(string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord(0x2B40); // MOVE.L D0,d16(A5)
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		_assembler.EmitWord(0x23C0); // MOVE.L D0,abs.l
 		_assembler.EmitAddress(label);
 	}
 
 	private void EmitStoreRegisterDirectToLabel(M68kRegister register, string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			var sourceEa = register <= M68kRegister.D7
+				? (int)register
+				: 0x0008 | ((int)register - (int)M68kRegister.A0);
+			_assembler.EmitWord((ushort)(0x2B40 | sourceEa)); // MOVE.L reg,d16(A5)
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		if (register <= M68kRegister.D7)
 		{
 			_assembler.EmitWord((ushort)(0x23C0 | (int)register)); // MOVE.L Dn,abs.l
@@ -10334,6 +10757,14 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitStoreFrameLongDirectToLabel(short displacement, string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord(0x2B6F); // MOVE.L d16(A7),d16(A5)
+			_assembler.EmitWord(unchecked((ushort)displacement));
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		_assembler.EmitWord(0x23EF); // MOVE.L d16(A7),abs.l
 		_assembler.EmitWord(unchecked((ushort)displacement));
 		_assembler.EmitAddress(label);
@@ -10341,11 +10772,21 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitClearLabel(string label)
 	{
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord(0x42AD); // CLR.L d16(A5)
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+
 		// These labels are compiler-owned writable slots, so CLR's MC68000
 		// read-before-write is safe even when general memory uses MOVE.
 		_assembler.EmitWord(0x42B9); // CLR.L abs.l
 		_assembler.EmitAddress(label);
 	}
+
+	private bool TryGetResidentInvocationOffset(string label, out short offset) =>
+		_residentPlatformBaseOffsets.TryGetValue(label, out offset);
 
 	private void EmitLoadAddressRegisterImmediate(M68kRegister register, uint value)
 	{
@@ -11344,7 +11785,6 @@ internal sealed partial class M68kCodeGenerator
 
 	private const string RuntimeEmptyStringLabel = "runtime:string-empty";
 	private const string RuntimeEmptyCharArrayLabel = "runtime:char-array-empty";
-
 	private string CStringLabel(CilUserStringIdentity identity) =>
 		$"cstring:{ModuleLabelPrefix(identity.ModuleName)}{identity.Token:X8}";
 

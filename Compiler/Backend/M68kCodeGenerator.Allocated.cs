@@ -1249,11 +1249,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (stateLabel is null)
 		{
-			EmitRuntimeFrameImmediate(0, RuntimeFrameStateOffset);
+			EmitEhFrameImmediate(0, RuntimeFrameStateOffset);
 		}
 		else
 		{
-			EmitRuntimeFrameAddress(stateLabel, RuntimeFrameStateOffset);
+			EmitEhFrameAddress(stateLabel, RuntimeFrameStateOffset);
 		}
 		emittedExceptionStateLabel = stateLabel;
 	}
@@ -1271,6 +1271,8 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.AggregateFieldLoad or
 			M68kMachineOperation.AggregateArrayLoad or
 			M68kMachineOperation.AggregateArrayStore or
+			M68kMachineOperation.PlatformBaseLoad or
+			M68kMachineOperation.PlatformBaseStore or
 			M68kMachineOperation.AggregateIndirectLoad or
 			M68kMachineOperation.AggregateIndirectStore or
 			M68kMachineOperation.AggregateIndirectCopy or
@@ -1281,6 +1283,7 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.RootStore or
 			M68kMachineOperation.RootClear or
 			M68kMachineOperation.ByrefOwnerKeepAlive or
+			M68kMachineOperation.GcKeepAlive or
 			M68kMachineOperation.OutgoingArgumentPush or
 			M68kMachineOperation.IncomingArgumentPush or
 			M68kMachineOperation.OutgoingArgumentCleanup or
@@ -1461,6 +1464,7 @@ internal sealed partial class M68kCodeGenerator
 				out var foldedConstant))
 		{
 			EmitAllocatedConstant(
+				method,
 				foldedConstant,
 				Location(instruction.Definitions[0]));
 			EmitAllocatedDefinitionNormalization(
@@ -1832,6 +1836,20 @@ internal sealed partial class M68kCodeGenerator
 					instruction);
 				return;
 
+			case M68kMachineOperation.PlatformBaseLoad:
+				EmitAllocatedPlatformBaseLoad(
+					method,
+					instruction,
+					Location(instruction.Definitions[0]).Register);
+				return;
+
+			case M68kMachineOperation.PlatformBaseStore:
+				EmitAllocatedPlatformBaseStore(
+					method,
+					allocated,
+					instruction);
+				return;
+
 			case M68kMachineOperation.AggregateIndirectLoad:
 			case M68kMachineOperation.AggregateIndirectStore:
 			case M68kMachineOperation.AggregateIndirectCopy:
@@ -1842,8 +1860,9 @@ internal sealed partial class M68kCodeGenerator
 					instruction);
 				return;
 
-			case M68kMachineOperation.Constant:
+		case M68kMachineOperation.Constant:
 				EmitAllocatedConstant(
+					method,
 					instruction,
 					Location(instruction.Definitions[0]));
 				return;
@@ -1906,6 +1925,7 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.ByrefOwnerKeepAlive:
+			case M68kMachineOperation.GcKeepAlive:
 				return;
 
 			case M68kMachineOperation.OutgoingArgumentPush:
@@ -5204,6 +5224,136 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitAddress(label);
 	}
 
+	private void EmitAllocatedPlatformBaseLoad(
+		CilMethod method,
+		M68kMachineInstruction instruction,
+		M68kRegister destination)
+	{
+		var requested = instruction.PlatformBaseConvention ??
+			throw new InvalidOperationException(
+				$"Platform-base load {instruction.Id} has no convention.");
+		var binding = ResolveAllocatedPlatformBase(requested, method).Binding;
+		switch (binding.BaseSource)
+		{
+			case M68kExternalBaseSource.CachedPointer:
+				EmitAllocatedMove(
+					binding.CacheRegister ??
+						throw new InvalidOperationException(
+							"Cached platform-base load has no cache register."),
+					destination,
+					M68kMachineValueWidth.Long);
+				return;
+
+			case M68kExternalBaseSource.WritableSlot:
+				if (UsesRomSourceAddress(binding))
+				{
+					EmitAllocatedAbsoluteLongLoad(binding.SourceAddress, destination);
+					return;
+				}
+				EmitAllocatedPlatformSlotLoad(
+					binding.SlotSymbol ??
+						throw new InvalidOperationException(
+							"Writable platform-base load has no slot symbol."),
+					destination);
+				return;
+
+			case M68kExternalBaseSource.Immediate:
+				EmitAllocatedImmediate(unchecked((int)binding.InitialValue), destination);
+				return;
+
+			default:
+				throw new InvalidOperationException(
+					$"Explicit platform-base load cannot use {binding.BaseSource}.");
+		}
+	}
+
+	private void EmitAllocatedPlatformBaseStore(
+		CilMethod method,
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		var requested = instruction.PlatformBaseConvention ??
+			throw new InvalidOperationException(
+				$"Platform-base store {instruction.Id} has no convention.");
+		var binding = ResolveAllocatedPlatformBase(requested, method).Binding;
+		if (binding.BaseSource != M68kExternalBaseSource.WritableSlot ||
+			binding.SlotSymbol is not { } slotSymbol)
+		{
+			throw new InvalidOperationException(
+				"Platform-base stores require a writable slot.");
+		}
+		if (instruction.Immediate == 0)
+		{
+			EmitClearLabel(slotSymbol);
+		}
+		else
+		{
+			if (instruction.Uses is not [var source])
+			{
+				throw new InvalidOperationException(
+					$"Platform-base store {instruction.Id} has no source value.");
+			}
+			EmitStoreRegisterDirectToLabel(
+				allocated.Allocation.Registers[source].Register,
+				slotSymbol);
+		}
+		_loadedPlatformBase = null;
+	}
+
+	private GeneratedPlatformBase ResolveAllocatedPlatformBase(
+		M68kExternalCallConvention requested,
+		CilMethod method)
+	{
+		if (_usedPlatformBases.TryGetValue(requested.Identity, out var existing))
+		{
+			if (existing.Binding.BaseSource != requested.BaseSource ||
+				existing.Binding.BaseRegister != requested.BaseRegister ||
+				existing.Binding.SlotSymbol != requested.SlotSymbol)
+			{
+				throw new M68kCompilationException(
+					M68kDiagnosticIds.InvalidMetadata,
+					$"Platform base '{requested.Identity}' has conflicting declarations.",
+					method.DisplayName);
+			}
+			return existing;
+		}
+		return GetOrAddPlatformBase(requested, method);
+	}
+
+	private void EmitAllocatedPlatformSlotLoad(
+		string label,
+		M68kRegister destination)
+	{
+		var destinationEa = destination <= M68kRegister.D7
+			? (int)destination << 9
+			: (((int)destination - (int)M68kRegister.A0) << 9) | 0x40;
+		if (TryGetResidentInvocationOffset(label, out var offset))
+		{
+			_assembler.EmitWord((ushort)(0x202D | destinationEa)); // MOVE.L d16(A5),reg
+			_assembler.EmitWord(unchecked((ushort)offset));
+			return;
+		}
+		_assembler.EmitWord((ushort)(0x2039 | destinationEa)); // MOVE.L abs.l,reg
+		_assembler.EmitAddress(label);
+	}
+
+	private void EmitAllocatedAbsoluteLongLoad(
+		uint address,
+		M68kRegister destination)
+	{
+		var destinationEa = destination <= M68kRegister.D7
+			? (int)destination << 9
+			: (((int)destination - (int)M68kRegister.A0) << 9) | 0x40;
+		if (address <= short.MaxValue)
+		{
+			_assembler.EmitWord((ushort)(0x2038 | destinationEa)); // MOVE.L abs.w,reg
+			_assembler.EmitWord((ushort)address);
+			return;
+		}
+		_assembler.EmitWord((ushort)(0x2039 | destinationEa)); // MOVE.L abs.l,reg
+		_assembler.EmitLong(address);
+	}
+
 	private void EmitAllocatedTypeInitialization(
 		CilMethod caller,
 		M68kMachineInstruction instruction)
@@ -5708,14 +5858,14 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (definition.ExternalCall is { } externalCall)
 		{
-			if (externalCall.Convention.BaseSource != M68kExternalBaseSource.Argument)
+			if (!instruction.HasExplicitPlatformBase &&
+				externalCall.Convention.BaseSource != M68kExternalBaseSource.Argument)
 			{
-				// CIL platform-base analysis cannot observe physical register writes
-				// introduced by allocation. Reload a non-argument base at the call
-				// boundary so an allocated A6 definition cannot stale the proof.
-				_loadedPlatformBase = null;
+				throw new InvalidOperationException(
+					$"Allocated external call '{definition.DisplayName}' has no " +
+					"explicit platform-base SSA operand.");
 			}
-			EmitEnsurePlatformBase(externalCall.Convention, definition);
+			_loadedPlatformBase = null;
 			var callOffset = _assembler.Offset;
 			EmitBaseRelativeJsr(
 				externalCall.Convention.BaseRegister,
@@ -8531,7 +8681,8 @@ internal sealed partial class M68kCodeGenerator
 			var libraryTypeName =
 				name["intrinsic:amiga-library-base-set:".Length..];
 			EnsureAmigaLibraryBaseSlot(caller, libraryTypeName);
-			if (IsAllocatedAptrNullValue(
+			if (instruction.Immediate == 0 ||
+				IsAllocatedAptrNullValue(
 					caller,
 					allocated.Function,
 					instruction.Uses[0]))
@@ -8541,11 +8692,21 @@ internal sealed partial class M68kCodeGenerator
 				_loadedPlatformBase = null;
 				return;
 			}
-			_assembler.EmitWord((ushort)(
-				0x23C0 |
-				AllocatedRegisterEa(Use(0))));
-			_assembler.EmitAddress(
-				AmigaLibraryBaseSlotSymbol(libraryTypeName));
+			var slotLabel = AmigaLibraryBaseSlotSymbol(libraryTypeName);
+			if (TryGetResidentInvocationOffset(slotLabel, out var offset))
+			{
+				_assembler.EmitWord((ushort)(
+					0x2B40 |
+					AllocatedRegisterEa(Use(0)))); // MOVE.L reg,d16(A5)
+				_assembler.EmitWord(unchecked((ushort)offset));
+			}
+			else
+			{
+				_assembler.EmitWord((ushort)(
+					0x23C0 |
+					AllocatedRegisterEa(Use(0))));
+				_assembler.EmitAddress(slotLabel);
+			}
 			_loadedPlatformBase = null;
 			return;
 		}
@@ -8560,9 +8721,17 @@ internal sealed partial class M68kCodeGenerator
 			var destinationEa = destination <= M68kRegister.D7
 				? (int)destination << 9
 				: (((int)destination - (int)M68kRegister.A0) << 9) | 0x40;
-			_assembler.EmitWord((ushort)(0x2039 | destinationEa));
-			_assembler.EmitAddress(
-				AmigaLibraryBaseSlotSymbol(libraryTypeName));
+			var slotLabel = AmigaLibraryBaseSlotSymbol(libraryTypeName);
+			if (TryGetResidentInvocationOffset(slotLabel, out var offset))
+			{
+				_assembler.EmitWord((ushort)(0x202D | destinationEa)); // MOVE.L d16(A5),reg
+				_assembler.EmitWord(unchecked((ushort)offset));
+			}
+			else
+			{
+				_assembler.EmitWord((ushort)(0x2039 | destinationEa));
+				_assembler.EmitAddress(slotLabel);
+			}
 			return;
 		}
 		if (name == "intrinsic:iff-handle-stream")
@@ -9826,13 +9995,15 @@ internal sealed partial class M68kCodeGenerator
 				value = definition.Uses[0];
 				continue;
 			}
-			if (definition is
-				{
-					Operation: M68kMachineOperation.Constant,
-					SourceInstruction: { } constant
-				})
+			if (definition is { Operation: M68kMachineOperation.Constant })
 			{
-				return GetAllocatedIntConstant(constant) == 0;
+				if (definition.ConstantValue is { } constantValue &&
+					constantValue.TryGetIntegral(out var integral))
+				{
+					return integral == 0;
+				}
+				return definition.SourceInstruction is { } constant &&
+					GetAllocatedIntConstant(constant) == 0;
 			}
 			if (definition is
 				{
@@ -10212,6 +10383,7 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private void EmitAllocatedConstant(
+		CilMethod caller,
 		M68kMachineInstruction instruction,
 		M68kAllocatedLocation destination)
 	{
@@ -10233,9 +10405,23 @@ internal sealed partial class M68kCodeGenerator
 		var scalar = instruction.ConstantValue is { } scalarConstant
 			? unchecked((int)(uint)scalarConstant.Bits)
 			: instruction.SourceInstruction is { } source
-				? GetAllocatedIntConstant(source)
+				? GetAllocatedScalarConstant(caller, source)
 				: 0;
 		EmitAllocatedImmediate(scalar, destination.Register);
+	}
+
+	private int GetAllocatedScalarConstant(CilMethod caller, CilInstruction instruction)
+	{
+		if ((instruction.OpCode == OpCodes.Call ||
+			 instruction.OpCode == OpCodes.Callvirt) &&
+			instruction.Operand is int token &&
+			_module.ResolveMethodToken(token, caller, instruction.Offset).ImportName ==
+				"intrinsic:aptr-null")
+		{
+			return 0;
+		}
+
+		return GetAllocatedIntConstant(instruction);
 	}
 
 	private void EmitAllocatedBinary(
@@ -11449,6 +11635,7 @@ internal sealed partial class M68kCodeGenerator
 				M68kRegister.A4, M68kRegister.A5, M68kRegister.A6,
 			}
 			.FirstOrDefault(candidate =>
+				!allocated.Function.ReservedRegisters.Contains(candidate) &&
 				(candidate == M68kRegister.A1 ||
 				 allocated.Frame.CalleeSavedRegisters.Contains(candidate)) &&
 				(occupied & (1u << (int)candidate)) == 0,
@@ -11522,6 +11709,7 @@ internal sealed partial class M68kCodeGenerator
 				M68kRegister.A6,
 			}
 			.FirstOrDefault(candidate =>
+				!allocated.Function.ReservedRegisters.Contains(candidate) &&
 				(candidate <= M68kRegister.A1 ||
 				 allocated.Frame.CalleeSavedRegisters.Contains(candidate)) &&
 				(occupied & (1u << (int)candidate)) == 0,
@@ -12221,14 +12409,20 @@ internal sealed partial class M68kCodeGenerator
 				.SelectMany(static block => block.Instructions)
 				.SingleOrDefault(instruction =>
 					instruction.Definitions.Contains(value));
-			if (definition is
-				{
-					Operation: M68kMachineOperation.Constant,
-					SourceInstruction: { } source
-				})
+			if (definition is { Operation: M68kMachineOperation.Constant })
 			{
-				constant = GetAllocatedIntConstant(source);
-				return true;
+				if (definition.ConstantValue is { } constantValue &&
+					constantValue.TryGetIntegral(out var integral) &&
+					integral is >= int.MinValue and <= int.MaxValue)
+				{
+					constant = (int)integral;
+					return true;
+				}
+				if (definition.SourceInstruction is { } source)
+				{
+					constant = GetAllocatedIntConstant(source);
+					return true;
+				}
 			}
 			if (definition is
 				{
@@ -12274,7 +12468,8 @@ internal sealed partial class M68kCodeGenerator
 			return BitConverter.SingleToInt32Bits(Convert.ToSingle(instruction.Operand));
 		}
 		throw new InvalidOperationException(
-			$"Unsupported allocated constant {op.Name}.");
+			$"Unsupported allocated constant {op.Name} at IL_{instruction.Offset:X4} " +
+			$"(operand {instruction.Operand ?? "<none>"}).");
 	}
 
 	private static long GetAllocatedLongConstant(CilInstruction instruction)

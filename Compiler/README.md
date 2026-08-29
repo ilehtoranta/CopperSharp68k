@@ -107,6 +107,21 @@ The application profile also promises that the selected entry is invoked once
 and its private image storage is unobservable after return. That contract lets
 the compiler remove proven terminal stores. Assembly output otherwise defaults
 to the conservative freestanding profile; HUNK output defaults to application.
+The Amiga-only `resident` profile is for persistent HUNK or assembly images
+whose entry may run concurrently in multiple tasks. Compiler-owned writable
+library bases are allocated in a per-invocation record, rather than in the
+image, so one invocation cannot clear or replace another's library base. The
+default 512-byte stack budget keeps small records on the task stack; larger
+records use `Exec.AllocMem` and are freed before return. Set
+`M68kCompilationRequest.ResidentStackContextThresholdBytes` to tune that
+budget, or to zero to always use Exec memory. It emits no task-wide
+`Forbid`/`Permit` guard. Mutable C# static fields, type initialization,
+`localloc`, and managed object allocation are rejected in this initial profile;
+keep small state in registers or stack locals, or manage larger state explicitly
+with `Exec.AllocMem`. Managed heap and managed lifecycle support remain
+intentionally unavailable until their state can also be made per-invocation.
+It is a code-generation lifetime contract rather than a resident-module
+installer; the host must retain the image and invoke its entry again.
 
 ```text
 --import platform.service=0x00F81234 --import __c68k_alloc=0x00002800

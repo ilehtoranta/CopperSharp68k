@@ -4365,6 +4365,37 @@ internal static class CilMachineIrBuilder
 		var abiTarget = useDefinitionSignature && target.Definition is not null
 			? target with { Signature = target.Definition.Signature }
 			: target;
+		if (target.ImportName == "intrinsic:aptr-null")
+		{
+			if (uses.Count != 0 || definitions.Count != 1)
+			{
+				throw new InvalidOperationException(
+					$"APTR.Null at IL_{instruction.Offset:X4} has invalid arity.");
+			}
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Constant,
+				instruction.Offset,
+				definitions: definitions,
+				sourceInstruction: instruction,
+				constantValue: M68kMachineConstant.Int32(0)));
+			return;
+		}
+		if (target.ImportName?.StartsWith(
+				M68kMemoryModel.LibraryBaseGetPrefix,
+				StringComparison.Ordinal) == true ||
+			target.ImportName?.StartsWith(
+				M68kMemoryModel.LibraryBaseSetPrefix,
+				StringComparison.Ordinal) == true)
+		{
+			AddPlatformBaseIntrinsic(
+				function,
+				block,
+				instruction,
+				target.ImportName,
+				uses,
+				definitions);
+			return;
+		}
 		var callInstruction = instruction;
 		CilMethod? constrainedImplementation = null;
 		var dereferencesConstrainedReference = false;
@@ -4443,21 +4474,6 @@ internal static class CilMachineIrBuilder
 				definitions,
 				sourceInstruction: instruction));
 			return;
-		}
-		if (definitions.Count == 1 &&
-			target.ImportName?.StartsWith(
-				"intrinsic:amiga-library-base-get:",
-				StringComparison.Ordinal) == true)
-		{
-			// MOVE.L/MOVEA.L can load the base slot directly into either bank.
-			// Preserve that freedom so a following external ABI copy can select
-			// its final address register without a D-register staging value.
-			var result = function.Values[definitions[0]];
-			function.Values[definitions[0]] = result with
-			{
-				AllowedRegisters = M68kRegisterSet.DataOrAddress,
-				PrecoloredRegister = null
-			};
 		}
 		var transportsManagedByrefOwner = IsSpanByrefConstructor(
 			target.ImportName);
@@ -4563,6 +4579,20 @@ internal static class CilMachineIrBuilder
 					null,
 				instruction.Offset)));
 			sourceUses[0] = receiver.Id;
+		}
+		var isZeroLibraryBaseSet =
+			target.ImportName?.StartsWith(
+				"intrinsic:amiga-library-base-set:",
+				StringComparison.Ordinal) == true &&
+			sourceUses.Count == 1 &&
+			TryGetMachineIntegerConstant(block, sourceUses[0], out var libraryBaseValue) &&
+			libraryBaseValue == 0;
+		if (isZeroLibraryBaseSet)
+		{
+			// The allocated emitter writes CLR.L directly for a null library base.
+			// Removing the logical argument lets dead-value elimination discard the
+			// otherwise-unused APTR.Null producer and its ABI staging move.
+			sourceUses.Clear();
 		}
 		var logicalOrigin = function.OriginAt(
 			instruction.Offset,
@@ -4824,8 +4854,24 @@ internal static class CilMachineIrBuilder
 		var registerUses = constrainedUses
 			.Where((_, index) =>
 				index >= argumentConstraints.Count ||
-				!argumentConstraints[index].IsStack)
-			.ToArray();
+					!argumentConstraints[index].IsStack)
+			.ToList();
+		var hasExplicitPlatformBase = false;
+		M68kExternalCallConvention? platformBaseConvention = null;
+		if (target.Definition?.ExternalCall is { } externalCall)
+		{
+			hasExplicitPlatformBase = true;
+			platformBaseConvention = externalCall.Convention;
+			if (externalCall.Convention.BaseSource !=
+				M68kExternalBaseSource.Argument)
+			{
+				registerUses.Add(AddExplicitPlatformBase(
+					function,
+					block,
+					callInstruction,
+					externalCall.Convention));
+			}
+		}
 		var isNonThrowingAddressIntrinsic =
 			transportsManagedByrefOwner ||
 			IsNonThrowingMemoryIntrinsic(target.ImportName) ||
@@ -4928,9 +4974,11 @@ internal static class CilMachineIrBuilder
 			mayThrow: !isNonThrowingAddressIntrinsic,
 			sourceInstruction: callInstruction,
 			stackVarargsRegister: stackVarargsRegister,
-			immediate: embeddedDisplacement,
+			immediate: isZeroLibraryBaseSet ? 0 : embeddedDisplacement,
 			transportsManagedByrefOwner: transportsManagedByrefOwner,
-			logicalCall: logicalCall));
+			logicalCall: logicalCall,
+			platformBaseConvention: platformBaseConvention,
+			hasExplicitPlatformBase: hasExplicitPlatformBase));
 		if (stackArgumentBytes != 0)
 		{
 			block.Instructions.Add(function.CreateInstruction(
@@ -4981,6 +5029,152 @@ internal static class CilMachineIrBuilder
 				definitions: definitions,
 				argumentIndex: returnHome));
 		}
+	}
+
+	private static void AddPlatformBaseIntrinsic(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilInstruction instruction,
+		string importName,
+		IReadOnlyList<int> uses,
+		IReadOnlyList<int> definitions)
+	{
+		var isLoad = importName.StartsWith(
+			M68kMemoryModel.LibraryBaseGetPrefix,
+			StringComparison.Ordinal);
+		var prefix = isLoad
+			? M68kMemoryModel.LibraryBaseGetPrefix
+			: M68kMemoryModel.LibraryBaseSetPrefix;
+		var libraryTypeName = importName[prefix.Length..];
+		if (isLoad
+			? uses.Count != 0 || definitions.Count != 1
+			: uses.Count != 1 || definitions.Count != 0)
+		{
+			throw new InvalidOperationException(
+				$"Library-base {(isLoad ? "load" : "store")} at " +
+				$"IL_{instruction.Offset:X4} has invalid arity.");
+		}
+
+		var slotSymbol = $"_{(libraryTypeName == "IffParse" ? "IFFParse" : libraryTypeName)}LibraryBase";
+		var identity = libraryTypeName == "TimerDevice"
+			? "timer.device"
+			: $"{libraryTypeName.ToLowerInvariant()}.library";
+		var convention = new M68kExternalCallConvention(
+			identity,
+			M68kExternalBaseSource.WritableSlot,
+			M68kRegister.A6,
+			0,
+			SlotSymbol: slotSymbol);
+		var memoryObject = M68kMemoryModel.LibraryBaseObject(slotSymbol);
+		if (isLoad)
+		{
+			var result = function.Values[definitions[0]];
+			function.Values[definitions[0]] = result with
+			{
+				AllowedRegisters = M68kRegisterSet.DataOrAddress,
+				PrecoloredRegister = null
+			};
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.PlatformBaseLoad,
+				instruction.Offset,
+				definitions: definitions,
+				memoryEffect: M68kMachineMemoryEffect.Read,
+				sourceInstruction: instruction,
+				exactMemoryAccesses:
+				[
+					new M68kExactMemoryAccess(
+						memoryObject,
+						M68kExactMemoryAccessKind.Read,
+						definitions[0])
+				],
+				platformBaseConvention: convention));
+			return;
+		}
+
+		var isZero = TryGetMachineIntegerConstant(block, uses[0], out var value) &&
+			value == 0;
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.PlatformBaseStore,
+			instruction.Offset,
+			uses: isZero ? [] : uses,
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			sourceInstruction: instruction,
+			immediate: isZero ? 0 : null,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memoryObject,
+					M68kExactMemoryAccessKind.Write,
+					isZero ? null : uses[0])
+			],
+			platformBaseConvention: convention));
+	}
+
+	private static int AddExplicitPlatformBase(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilInstruction instruction,
+		M68kExternalCallConvention convention)
+	{
+		var baseValue = function.CreateValue(
+			CilStackValueKind.Int32,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress);
+		if (convention.BaseSource == M68kExternalBaseSource.Immediate)
+		{
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Constant,
+				instruction.Offset,
+				definitions: [baseValue.Id],
+				constantValue: M68kMachineConstant.Int32(
+					unchecked((int)convention.InitialValue)),
+				sourceInstruction: instruction));
+		}
+		else
+		{
+			if (convention.BaseSource == M68kExternalBaseSource.CachedPointer &&
+				convention.CacheRegister is { } cacheRegister)
+			{
+				function.ReservedRegisters =
+					function.ReservedRegisters.Add(cacheRegister);
+			}
+			var exactAccesses = convention.BaseSource ==
+					M68kExternalBaseSource.WritableSlot &&
+				convention.SlotSymbol is { } slotSymbol
+					? new[]
+					{
+						new M68kExactMemoryAccess(
+							M68kMemoryModel.LibraryBaseObject(slotSymbol),
+							M68kExactMemoryAccessKind.Read,
+							baseValue.Id)
+					}
+					: Array.Empty<M68kExactMemoryAccess>();
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.PlatformBaseLoad,
+				instruction.Offset,
+				definitions: [baseValue.Id],
+				memoryEffect: convention.BaseSource ==
+					M68kExternalBaseSource.WritableSlot
+						? M68kMachineMemoryEffect.Read
+						: M68kMachineMemoryEffect.None,
+				sourceInstruction: instruction,
+				exactMemoryAccesses: exactAccesses,
+				platformBaseConvention: convention));
+		}
+
+		var fixedBase = function.CreateValue(
+			baseValue.Kind,
+			baseValue.Width,
+			M68kRegisterSet.From(convention.BaseRegister),
+			precoloredRegister: convention.BaseRegister,
+			spillWeight: baseValue.SpillWeight);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy,
+			instruction.Offset,
+			uses: [baseValue.Id],
+			definitions: [fixedBase.Id],
+			sourceInstruction: instruction));
+		return fixedBase.Id;
 	}
 
 	private static M68kMachineCallDispatchKind DispatchKindFor(
@@ -5312,6 +5506,10 @@ internal static class CilMachineIrBuilder
 				"intrinsic:amiga-library-base-set:",
 				StringComparison.Ordinal) == true)
 		{
+			if (uses.Count == 0)
+			{
+				return [];
+			}
 			// The store emitter accepts either bank as its source effective
 			// address, so retain the producer's register whenever possible.
 			return [CallArgumentConstraint.RegisterClass(

@@ -1116,7 +1116,8 @@ internal static class M68kMachineOptimizer
 			M68kMachineOperation.Switch or
 			M68kMachineOperation.Return or
 			M68kMachineOperation.Throw or
-			M68kMachineOperation.ByrefOwnerKeepAlive);
+			M68kMachineOperation.ByrefOwnerKeepAlive or
+			M68kMachineOperation.GcKeepAlive);
 
 	private static M68kMachineInstruction AsConstant(
 		M68kMachineInstruction instruction,

@@ -1098,6 +1098,9 @@ internal sealed class CompilationModule : IDisposable
 			: module.GetTypeLayout(field.DeclaringType);
 	}
 
+	public CilTypeLayout GetTypeLayout(CilMethod owner, TypeDefinitionHandle handle) =>
+		GetModule(owner.ModuleName).GetTypeLayout(handle);
+
 	public CilTypeLayout GetTypeLayout(CilTypeLayout owner, TypeDefinitionHandle handle)
 	{
 		var module = GetModule(owner.ModuleName);
@@ -1415,6 +1418,9 @@ internal sealed class CompilationModule : IDisposable
 		GetModule(layout.ModuleName).GetBaseType(layout.Handle);
 
 	public string GetTypeDisplayName(EntityHandle handle, CilTypeLayout owner) =>
+		GetModule(owner.ModuleName).GetTypeDisplayName(handle);
+
+	public string GetTypeDisplayName(EntityHandle handle, CilMethod owner) =>
 		GetModule(owner.ModuleName).GetTypeDisplayName(handle);
 
 	private CompilationModule GetModule(string moduleName)

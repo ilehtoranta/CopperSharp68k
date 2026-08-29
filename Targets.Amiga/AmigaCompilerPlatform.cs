@@ -442,21 +442,24 @@ public static class AmigaM68kCompiler
 	{
 		var paths = request.ManagedAssemblyPaths.ToList();
 		var lifecycleHooks = request.ManagedLifecycleHooks.ToList();
-		if (!lifecycleHooks.Contains(ConsoleLifecycle))
+		if (request.RuntimeProfile != M68kRuntimeProfile.Resident)
 		{
-			lifecycleHooks.Add(ConsoleLifecycle);
-		}
-		if (!lifecycleHooks.Contains(ConsoleInputLifecycle))
-		{
-			lifecycleHooks.Add(ConsoleInputLifecycle);
-		}
-		if (!lifecycleHooks.Contains(FileSystemLifecycle))
-		{
-			lifecycleHooks.Add(FileSystemLifecycle);
-		}
-		if (!lifecycleHooks.Contains(ClockLifecycle))
-		{
-			lifecycleHooks.Add(ClockLifecycle);
+			if (!lifecycleHooks.Contains(ConsoleLifecycle))
+			{
+				lifecycleHooks.Add(ConsoleLifecycle);
+			}
+			if (!lifecycleHooks.Contains(ConsoleInputLifecycle))
+			{
+				lifecycleHooks.Add(ConsoleInputLifecycle);
+			}
+			if (!lifecycleHooks.Contains(FileSystemLifecycle))
+			{
+				lifecycleHooks.Add(FileSystemLifecycle);
+			}
+			if (!lifecycleHooks.Contains(ClockLifecycle))
+			{
+				lifecycleHooks.Add(ClockLifecycle);
+			}
 		}
 		var inputDirectory = Path.GetDirectoryName(
 			Path.GetFullPath(request.AssemblyPath));

@@ -475,6 +475,7 @@ static M68kRuntimeProfile ParseRuntimeProfile(string value) =>
 	{
 		"freestanding" or "unknown" => M68kRuntimeProfile.Freestanding,
 		"application" or "app" => M68kRuntimeProfile.Application,
+		"resident" => M68kRuntimeProfile.Resident,
 		"rom" or "persistent" => M68kRuntimeProfile.Rom,
 		_ => throw new ArgumentException($"Unknown runtime profile '{value}'.")
 	};
@@ -601,7 +602,7 @@ static void PrintUsage()
 		  [--clr auto|always] [--peephole fixed-point|bounded|disabled]
 		  [--exceptions full|yolo] [--format hunk|rom|asm] [--symbols on|off]
 		  [--exports all|none] [--include-export <symbol> ...]
-		  [--runtime freestanding|application|rom]
+		  [--runtime freestanding|application|resident|rom]
 		  [--memory default|none|external|managed-pool|exec-pool] [--heap-size <bytes>]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
 		  [--import name=address ...]

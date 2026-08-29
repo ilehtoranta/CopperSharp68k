@@ -40,6 +40,8 @@ internal enum M68kMachineOperation
 	ArrayAddress,
 	AggregateArrayLoad,
 	AggregateArrayStore,
+	PlatformBaseLoad,
+	PlatformBaseStore,
 	AggregateIndirectLoad,
 	AggregateIndirectStore,
 	AggregateIndirectCopy,
@@ -52,6 +54,7 @@ internal enum M68kMachineOperation
 	RootStore,
 	RootClear,
 	ByrefOwnerKeepAlive,
+	GcKeepAlive,
 	OutgoingArgumentPush,
 	IncomingArgumentPush,
 	OutgoingArgumentCleanup,
@@ -427,7 +430,10 @@ internal sealed record M68kMachineInstruction(
 	bool RequiresLiveCallerFrame = false,
 	M68kMachineConstant? ConstantValue = null,
 	M68kMachineInstructionOrigin? Origin = null,
-	M68kMachineLogicalCall? LogicalCall = null)
+	M68kMachineLogicalCall? LogicalCall = null,
+	ImmutableArray<M68kExactMemoryAccess> ExactMemoryAccesses = default,
+	M68kExternalCallConvention? PlatformBaseConvention = null,
+	bool HasExplicitPlatformBase = false)
 {
 	public static M68kMachineInstruction Create(
 		int id,
@@ -452,7 +458,10 @@ internal sealed record M68kMachineInstruction(
 		bool requiresLiveCallerFrame = false,
 		M68kMachineConstant? constantValue = null,
 		M68kMachineInstructionOrigin? origin = null,
-		M68kMachineLogicalCall? logicalCall = null) =>
+		M68kMachineLogicalCall? logicalCall = null,
+		IEnumerable<M68kExactMemoryAccess>? exactMemoryAccesses = null,
+		M68kExternalCallConvention? platformBaseConvention = null,
+		bool hasExplicitPlatformBase = false) =>
 		new(
 			id,
 			operation,
@@ -476,7 +485,11 @@ internal sealed record M68kMachineInstruction(
 			requiresLiveCallerFrame,
 			constantValue,
 			origin,
-			logicalCall);
+			logicalCall,
+			exactMemoryAccesses?.ToImmutableArray() ??
+				ImmutableArray<M68kExactMemoryAccess>.Empty,
+			platformBaseConvention,
+			hasExplicitPlatformBase);
 }
 
 internal sealed class M68kMachineBlock
@@ -616,7 +629,10 @@ internal sealed class M68kMachineFunction
 		bool requiresLiveCallerFrame = false,
 		M68kMachineConstant? constantValue = null,
 		M68kMachineInstructionOrigin? origin = null,
-		M68kMachineLogicalCall? logicalCall = null) =>
+		M68kMachineLogicalCall? logicalCall = null,
+		IEnumerable<M68kExactMemoryAccess>? exactMemoryAccesses = null,
+		M68kExternalCallConvention? platformBaseConvention = null,
+		bool hasExplicitPlatformBase = false) =>
 		M68kMachineInstruction.Create(
 			_nextInstructionId++,
 			operation,
@@ -640,7 +656,10 @@ internal sealed class M68kMachineFunction
 			requiresLiveCallerFrame,
 			constantValue,
 			origin ?? OriginAt(ilOffset, sourceInstruction),
-			logicalCall);
+			logicalCall,
+			exactMemoryAccesses,
+			platformBaseConvention,
+			hasExplicitPlatformBase);
 
 	public M68kMachineInstructionOrigin? OriginAt(
 		int ilOffset,
@@ -1137,6 +1156,33 @@ internal static class M68kMachineIrVerifier
 				}
 				break;
 
+			case M68kMachineOperation.PlatformBaseLoad:
+				if (instruction.PlatformBaseConvention is null ||
+					instruction.Uses.Length != 0 ||
+					instruction.Definitions.Length != 1 ||
+					instruction.MemoryEffect is not (
+						M68kMachineMemoryEffect.None or
+						M68kMachineMemoryEffect.Read))
+				{
+					throw Invalid(
+						function,
+						$"Platform-base load {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.PlatformBaseStore:
+				if (instruction.PlatformBaseConvention is null ||
+					instruction.Uses.Length > 1 ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Write ||
+					instruction.Uses.Length == 0 && instruction.Immediate is null)
+				{
+					throw Invalid(
+						function,
+						$"Platform-base store {instruction.Id} has an invalid shape.");
+				}
+				break;
+
 			case M68kMachineOperation.LocalStore:
 			case M68kMachineOperation.ArgumentStore:
 				if (instruction.ArgumentIndex is null ||
@@ -1222,6 +1268,7 @@ internal static class M68kMachineIrVerifier
 				break;
 
 			case M68kMachineOperation.ByrefOwnerKeepAlive:
+			case M68kMachineOperation.GcKeepAlive:
 				if (instruction.Uses.Length == 0 ||
 					instruction.Uses.Any(value =>
 						!function.Values[value].IsGcReference) ||
