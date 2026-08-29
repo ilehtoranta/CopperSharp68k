@@ -77,7 +77,7 @@ public static class Program
     [M68kEntryPoint]
     public static int Main()
     {
-        var dosBase = Exec.OpenLibrary("dos.library", 33);
+        var dosBase = Exec.OpenLibrary("dos.library", 0);
         if (dosBase is null)
         {
             return DOS.RETURN_FAIL;

@@ -131,7 +131,7 @@ public static class Program
 	}
 
 	private static APTR OpenLibrary(CString name) =>
-		Exec.OpenLibrary(name, 33).GetValueOrDefault();
+		Exec.OpenLibrary(name, 0).GetValueOrDefault();
 
 	private static BPTR OpenFile(CString path)
 	{
