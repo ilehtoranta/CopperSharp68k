@@ -84,6 +84,12 @@ public sealed class ExecLayoutTests
 			(nameof(Amiga.Task.UserData), 88));
 		AssertOffsets<MorphOSTask>((nameof(MorphOSTask.ETask), 34),
 			(nameof(MorphOSTask.ExceptionData), 38), (nameof(MorphOSTask.UserData), 88));
+		AssertOffsets<Amiga.ExecBase>(
+			(nameof(Amiga.ExecBase.ThisTask), 276),
+			(nameof(Amiga.ExecBase.SysFlags), 292),
+			(nameof(Amiga.ExecBase.IDNestCount), 294),
+			(nameof(Amiga.ExecBase.TaskDisableNestCount), 295),
+			(nameof(Amiga.ExecBase.AttentionReschedule), 298));
 		AssertOffsets<StackSwapStruct>(
 			(nameof(StackSwapStruct.Lower), 0), (nameof(StackSwapStruct.Upper), 4),
 			(nameof(StackSwapStruct.Pointer), 8));

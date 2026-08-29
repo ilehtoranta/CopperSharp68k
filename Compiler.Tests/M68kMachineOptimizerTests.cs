@@ -3,6 +3,7 @@
 - SPDX-License-Identifier: MIT
  */
 
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
@@ -814,6 +815,561 @@ public sealed class M68kMachineOptimizerTests
 	}
 
 	[Fact]
+	public void MemoryPromotionForwardsFrameValueAcrossBlocks()
+	{
+		var function = new M68kMachineFunction("memory-cross-block", 0);
+		var entry = AddBlock(function, 0, 0);
+		var exit = AddBlock(function, 1, 10);
+		Connect(entry, exit);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		var memory = FrameMemory(0, 4);
+		var source = CreateLong(function);
+		var loaded = CreateLong(function);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [source.Id],
+			argumentIndex: 0));
+		entry.Instructions.Add(FrameStore(function, memory, source.Id, 1));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			2));
+		exit.Instructions.Add(FrameLoad(function, memory, loaded.Id, 10));
+		exit.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			11,
+			uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+
+		Assert.Equal(1, statistics.LoadsForwarded);
+		Assert.Equal(1, statistics.StoresRemoved);
+		Assert.DoesNotContain(function.Blocks.SelectMany(static block =>
+			block.Instructions), static instruction => instruction.Operation is
+				M68kMachineOperation.LocalLoad or
+				M68kMachineOperation.LocalStore);
+		var alias = Assert.Single(exit.Instructions.Where(instruction =>
+			instruction.Definitions.Contains(loaded.Id)));
+		Assert.Equal(M68kMachineOperation.Copy, alias.Operation);
+		Assert.Equal([source.Id], alias.Uses);
+	}
+
+	[Fact]
+	public void MemoryPromotionBuildsPhiAtControlFlowJoin()
+	{
+		var function = new M68kMachineFunction("memory-join", 0);
+		var entry = AddBlock(function, 0, 0);
+		var left = AddBlock(function, 1, 10);
+		var right = AddBlock(function, 2, 20);
+		var join = AddBlock(function, 3, 30);
+		Connect(entry, left);
+		Connect(entry, right);
+		Connect(left, join);
+		Connect(right, join);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		var memory = FrameMemory(0, 4);
+		var condition = CreateLong(function);
+		var leftValue = CreateLong(function);
+		var rightValue = CreateLong(function);
+		var loaded = CreateLong(function);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [condition.Id],
+			argumentIndex: 0));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.ConditionalBranch,
+			1,
+			uses: [condition.Id]));
+		AddConstant(function, left, leftValue.Id, 11, 10);
+		left.Instructions.Add(FrameStore(function, memory, leftValue.Id, 11));
+		left.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			12));
+		AddConstant(function, right, rightValue.Id, 22, 20);
+		right.Instructions.Add(FrameStore(function, memory, rightValue.Id, 21));
+		right.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			22));
+		join.Instructions.Add(FrameLoad(function, memory, loaded.Id, 30));
+		join.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			31,
+			uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+
+		var phi = Assert.Single(join.Phis);
+		Assert.Equal(2, phi.Inputs.Count);
+		Assert.Equal(leftValue.Id, phi.Inputs[left.Id]);
+		Assert.Equal(rightValue.Id, phi.Inputs[right.Id]);
+		var alias = Assert.Single(join.Instructions.Where(instruction =>
+			instruction.Definitions.Contains(loaded.Id)));
+		Assert.Equal(M68kMachineOperation.Copy, alias.Operation);
+		Assert.Equal([phi.Definition], alias.Uses);
+		Assert.Equal(1, statistics.PhisInserted);
+		Assert.Equal(2, statistics.StoresRemoved);
+	}
+
+	[Fact]
+	public void MemoryPromotionBuildsLoopCarriedPhi()
+	{
+		var function = new M68kMachineFunction("memory-loop", 0);
+		var entry = AddBlock(function, 0, 0);
+		var header = AddBlock(function, 1, 10);
+		var body = AddBlock(function, 2, 20);
+		var exit = AddBlock(function, 3, 30);
+		Connect(entry, header);
+		Connect(header, body);
+		Connect(header, exit);
+		Connect(body, header);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		var memory = FrameMemory(0, 4);
+		var initial = CreateLong(function);
+		var condition = CreateLong(function);
+		var current = CreateLong(function);
+		var one = CreateLong(function);
+		var next = CreateLong(function);
+		var result = CreateLong(function);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [initial.Id],
+			argumentIndex: 0));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [condition.Id],
+			argumentIndex: 1));
+		entry.Instructions.Add(FrameStore(function, memory, initial.Id, 1));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			2));
+		header.Instructions.Add(FrameLoad(function, memory, current.Id, 10));
+		header.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.ConditionalBranch,
+			11,
+			uses: [condition.Id]));
+		AddConstant(function, body, one.Id, 1, 20);
+		body.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Add,
+			21,
+			uses: [current.Id, one.Id],
+			definitions: [next.Id]));
+		body.Instructions.Add(FrameStore(function, memory, next.Id, 22));
+		body.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			23));
+		exit.Instructions.Add(FrameLoad(function, memory, result.Id, 30));
+		exit.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			31,
+			uses: [result.Id]));
+
+		var statistics = RunPromotion(function);
+
+		var phi = Assert.Single(header.Phis);
+		Assert.Equal(initial.Id, phi.Inputs[entry.Id]);
+		Assert.Equal(next.Id, phi.Inputs[body.Id]);
+		Assert.Equal([phi.Definition], header.Instructions[0].Uses);
+		Assert.Equal(1, statistics.PhisInserted);
+		Assert.Equal(2, statistics.LoadsForwarded);
+	}
+
+	[Fact]
+	public void MemoryPromotionUsesLatestOverwritingStore()
+	{
+		var function = new M68kMachineFunction("memory-overwrite", 0);
+		var block = AddBlock(function, 0, 0);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		var memory = FrameMemory(0, 4);
+		var first = CreateLong(function);
+		var second = CreateLong(function);
+		var loaded = CreateLong(function);
+		AddConstant(function, block, first.Id, 1, 0);
+		AddConstant(function, block, second.Id, 2, 1);
+		block.Instructions.Add(FrameStore(function, memory, first.Id, 2));
+		block.Instructions.Add(FrameStore(function, memory, second.Id, 3));
+		block.Instructions.Add(FrameLoad(function, memory, loaded.Id, 4));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			5,
+			uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+
+		Assert.Equal(2, statistics.StoresRemoved);
+		Assert.Equal(1, statistics.LoadsForwarded);
+		var alias = Assert.Single(block.Instructions.Where(instruction =>
+			instruction.Definitions.Contains(loaded.Id)));
+		Assert.Equal(M68kMachineOperation.Copy, alias.Operation);
+		Assert.Equal([second.Id], alias.Uses);
+	}
+
+	[Fact]
+	public void MemoryPromotionPreservesByteTruncationAndZeroExtension()
+	{
+		var function = new M68kMachineFunction("memory-narrow", 0);
+		var block = AddBlock(function, 0, 0);
+		function.LocalHomes[0] = new M68kFrameHome(0, 1, false);
+		var memory = FrameMemory(0, 1);
+		var source = CreateLong(function);
+		var loaded = CreateLong(function);
+		AddConstant(function, block, source.Id, 0x1ff, 0);
+		block.Instructions.Add(FrameStore(function, memory, source.Id, 1));
+		block.Instructions.Add(FrameLoad(
+			function,
+			memory,
+			loaded.Id,
+			2,
+			new CilInstruction(2, OpCodes.Ldind_U1, null, 3)));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			3,
+			uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+
+		Assert.Equal(1, statistics.NormalizationsInserted);
+		var conversions = block.Instructions.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.Convert).ToArray();
+		Assert.Equal(2, conversions.Length);
+		Assert.All(conversions, static conversion =>
+			Assert.Equal(OpCodes.Conv_U1, conversion.SourceInstruction!.OpCode));
+	}
+
+	[Fact]
+	public void MemoryPromotionRejectsAddressTakenAndVolatileLocations()
+	{
+		var function = new M68kMachineFunction("memory-address-volatile", 0);
+		var block = AddBlock(function, 0, 0);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		function.LocalHomes[1] = new M68kFrameHome(1, 4, false);
+		var addressMemory = FrameMemory(0, 4);
+		var volatileMemory = FrameMemory(1, 4);
+		var address = function.CreateValue(
+			CilStackValueKind.ManagedPointer,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.Address);
+		var value = CreateLong(function);
+		var loaded = CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.LocalAddress,
+			0,
+			definitions: [address.Id],
+			argumentIndex: 0,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					addressMemory,
+					M68kExactMemoryAccessKind.Address,
+					address.Id)
+			]));
+		AddConstant(function, block, value.Id, 7, 1);
+		block.Instructions.Add(FrameStore(
+			function,
+			volatileMemory,
+			value.Id,
+			2,
+			M68kMachineMemoryEffect.Write |
+				M68kMachineMemoryEffect.Volatile,
+			localIndex: 1));
+		block.Instructions.Add(FrameLoad(
+			function,
+			volatileMemory,
+			loaded.Id,
+			3,
+			sourceInstruction: null,
+			memoryEffect: M68kMachineMemoryEffect.Read |
+				M68kMachineMemoryEffect.Volatile,
+			localIndex: 1));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			4,
+			uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+
+		Assert.Equal(0, statistics.PromotedLocations);
+		Assert.Contains(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.LocalAddress);
+		Assert.Contains(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.LocalLoad);
+	}
+
+	[Fact]
+	public void MemoryPromotionLeavesExceptionalObserversMaterialized()
+	{
+		var function = new M68kMachineFunction("memory-exception", 0)
+		{
+			HasExceptionHandlers = true
+		};
+		var block = AddBlock(function, 0, 0);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		var memory = FrameMemory(0, 4);
+		var value = CreateLong(function);
+		var loaded = CreateLong(function);
+		AddConstant(function, block, value.Id, 42, 0);
+		block.Instructions.Add(FrameStore(function, memory, value.Id, 1));
+		block.Instructions.Add(FrameLoad(function, memory, loaded.Id, 2));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			3,
+			uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+
+		Assert.False(statistics.Changed);
+		Assert.Contains(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.LocalStore);
+		Assert.Contains(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.LocalLoad);
+	}
+
+	[Fact]
+	public void PromotedManagedFieldKeepsValueAndOwnerAliveAtSafepoint()
+	{
+		var function = new M68kMachineFunction("memory-gc-keepalive", 0);
+		var block = AddBlock(function, 0, 0);
+		var owner = CreateReference(function);
+		var child = CreateReference(function);
+		var loaded = CreateReference(function);
+		var memory = new M68kMemoryObject(
+			M68kMemoryObjectKind.ObjectField,
+			"object:test",
+			IsManagedRoot: true,
+			OwnerValueId: owner.Id,
+			Offset: 8,
+			Size: 4);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [owner.Id],
+			argumentIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [child.Id],
+			argumentIndex: 1));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Store,
+			1,
+			uses: [owner.Id, child.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Write,
+					child.Id)
+			]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other,
+			2,
+			isSafepoint: true));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Load,
+			3,
+			uses: [owner.Id],
+			definitions: [loaded.Id],
+			memoryEffect: M68kMachineMemoryEffect.Read,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Read,
+					loaded.Id)
+			]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			4,
+			uses: [loaded.Id]));
+		var owners = new Dictionary<int, M68kHeapOwnerFacts>
+		{
+			[owner.Id] = new(
+				owner.Id,
+				IsArray: false,
+				IsPromotable: true,
+				HasFinalizer: false,
+				ConstructorMayWrite: false,
+				ConstantLength: null,
+				ElementSize: 0,
+				StorageIdentity: "object:test")
+		};
+
+		var statistics = RunPromotion(function, owners);
+
+		var keepAlive = Assert.Single(block.Instructions.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.GcKeepAlive));
+		Assert.Equal([child.Id, owner.Id], keepAlive.Uses);
+		Assert.Equal(1, statistics.KeepAlivesInserted);
+		Assert.DoesNotContain(block.Instructions, static instruction =>
+			instruction.Operation is M68kMachineOperation.Load or
+				M68kMachineOperation.Store);
+	}
+
+	[Fact]
+	public void MethodMemorySummariesPropagateReadWriteAndCaptureThroughCalls()
+	{
+		var readMethod = CreateMethod(
+			"Summary.Module",
+			"Summary::Read",
+			[new CilInstruction(0, OpCodes.Ldfld, null, 1)],
+			methodRow: 1);
+		var writeMethod = CreateMethod(
+			"Summary.Module",
+			"Summary::Write",
+			[new CilInstruction(0, OpCodes.Stfld, null, 1)],
+			methodRow: 2);
+		var captureMethod = CreateMethod(
+			"Summary.Module",
+			"Summary::Capture",
+			[new CilInstruction(0, OpCodes.Stfld, null, 1)],
+			methodRow: 3);
+		var callSources = new[]
+		{
+			new CilInstruction(0, OpCodes.Call, 0x06000001, 1),
+			new CilInstruction(1, OpCodes.Call, 0x06000002, 2),
+			new CilInstruction(2, OpCodes.Call, 0x06000003, 3)
+		};
+		var callerMethod = CreateMethod(
+			"Summary.Module",
+			"Summary::Caller",
+			callSources,
+			methodRow: 4);
+
+		var read = new M68kMachineFunction(readMethod.DisplayName, 0, readMethod);
+		var readBlock = AddBlock(read, 0, 0);
+		var readOwner = CreateReference(read);
+		var readResult = CreateLong(read);
+		readBlock.Instructions.Add(read.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [readOwner.Id],
+			argumentIndex: 0));
+		readBlock.Instructions.Add(read.CreateInstruction(
+			M68kMachineOperation.Load,
+			0,
+			uses: [readOwner.Id],
+			definitions: [readResult.Id],
+			memoryEffect: M68kMachineMemoryEffect.Read,
+			sourceInstruction: readMethod.Instructions[0],
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					SummaryField(readOwner.Id, "read"),
+					M68kExactMemoryAccessKind.Read,
+					readResult.Id)
+			]));
+		readBlock.Instructions.Add(read.CreateInstruction(
+			M68kMachineOperation.Return,
+			1,
+			uses: [readResult.Id]));
+
+		var write = new M68kMachineFunction(writeMethod.DisplayName, 0, writeMethod);
+		var writeBlock = AddBlock(write, 0, 0);
+		var writeOwner = CreateReference(write);
+		var writeValue = CreateLong(write);
+		AddArgument(write, writeBlock, writeOwner.Id, 0);
+		AddArgument(write, writeBlock, writeValue.Id, 1);
+		writeBlock.Instructions.Add(write.CreateInstruction(
+			M68kMachineOperation.Store,
+			0,
+			uses: [writeOwner.Id, writeValue.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			sourceInstruction: writeMethod.Instructions[0],
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					SummaryField(writeOwner.Id, "write"),
+					M68kExactMemoryAccessKind.Write,
+					writeValue.Id)
+			]));
+		writeBlock.Instructions.Add(write.CreateInstruction(
+			M68kMachineOperation.Return,
+			1));
+
+		var capture = new M68kMachineFunction(
+			captureMethod.DisplayName,
+			0,
+			captureMethod);
+		var captureBlock = AddBlock(capture, 0, 0);
+		var destination = CreateReference(capture);
+		var captured = CreateReference(capture);
+		AddArgument(capture, captureBlock, destination.Id, 0);
+		AddArgument(capture, captureBlock, captured.Id, 1);
+		captureBlock.Instructions.Add(capture.CreateInstruction(
+			M68kMachineOperation.Store,
+			0,
+			uses: [destination.Id, captured.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			sourceInstruction: captureMethod.Instructions[0],
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					SummaryField(destination.Id, "capture", isRoot: true),
+					M68kExactMemoryAccessKind.Write,
+					captured.Id)
+			]));
+		captureBlock.Instructions.Add(capture.CreateInstruction(
+			M68kMachineOperation.Return,
+			1));
+
+		var caller = new M68kMachineFunction(
+			callerMethod.DisplayName,
+			0,
+			callerMethod);
+		var callerBlock = AddBlock(caller, 0, 0);
+		var value = CreateReference(caller);
+		var captureDestination = CreateReference(caller);
+		var scalar = CreateLong(caller);
+		AddArgument(caller, callerBlock, value.Id, 0);
+		AddArgument(caller, callerBlock, captureDestination.Id, 1);
+		AddArgument(caller, callerBlock, scalar.Id, 2);
+		AddSummaryCall(caller, callerBlock, callSources[0], readMethod, [value.Id]);
+		AddSummaryCall(
+			caller,
+			callerBlock,
+			callSources[1],
+			writeMethod,
+			[value.Id, scalar.Id]);
+		AddSummaryCall(
+			caller,
+			callerBlock,
+			callSources[2],
+			captureMethod,
+			[captureDestination.Id, value.Id]);
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Return,
+			3));
+
+		using var module = new CompilationModule(
+			typeof(M68kMachineOptimizerTests).Assembly.Location);
+		var summaries = M68kMethodMemorySummaryAnalyzer.Compute(
+			[readMethod, writeMethod, captureMethod, callerMethod],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction>
+			{
+				[readMethod.Identity] = read,
+				[writeMethod.Identity] = write,
+				[captureMethod.Identity] = capture,
+				[callerMethod.Identity] = caller
+			},
+			module);
+
+		Assert.Equal(
+			M68kParameterMemoryEffect.Read |
+			M68kParameterMemoryEffect.Write |
+			M68kParameterMemoryEffect.Capture,
+			summaries[callerMethod.Identity].EffectForParameter(0));
+		Assert.Equal(
+			M68kParameterMemoryEffect.Write,
+			summaries[callerMethod.Identity].EffectForParameter(1));
+		Assert.Equal(
+			M68kParameterMemoryEffect.Capture,
+			summaries[callerMethod.Identity].EffectForParameter(2));
+	}
+
+	[Fact]
 	public void LicmHoistsPureInvariantFromNaturalLoop()
 	{
 		var function = new M68kMachineFunction("licm", 0);
@@ -900,6 +1456,123 @@ public sealed class M68kMachineOptimizerTests
 			CilStackValueKind.Int32,
 			M68kMachineValueWidth.Long,
 			M68kRegisterSet.Data);
+
+	private static M68kMachineValue CreateReference(M68kMachineFunction function) =>
+		function.CreateValue(
+			CilStackValueKind.Reference,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress,
+			isGcReference: true);
+
+	private static M68kMemoryObject SummaryField(
+		int owner,
+		string identity,
+		bool isRoot = false) =>
+		new(
+			M68kMemoryObjectKind.ObjectField,
+			$"summary:{identity}",
+			isRoot,
+			owner,
+			Offset: 8,
+			Size: 4);
+
+	private static void AddArgument(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		int definition,
+		int index) =>
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [definition],
+			argumentIndex: index));
+
+	private static void AddSummaryCall(
+		M68kMachineFunction function,
+		M68kMachineBlock block,
+		CilInstruction source,
+		CilMethod target,
+		IReadOnlyList<int> arguments) =>
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call,
+			source.Offset,
+			uses: arguments,
+			memoryEffect: M68kMachineMemoryEffect.Read |
+				M68kMachineMemoryEffect.Write,
+			isSafepoint: true,
+			mayThrow: true,
+			sourceInstruction: source,
+			logicalCall: new M68kMachineLogicalCall(
+				M68kMachineCallDispatchKind.Direct,
+				[target.Identity],
+				arguments.ToImmutableArray(),
+				[],
+				false,
+				function.OriginAt(source.Offset, source)!)));
+
+	private static M68kMemoryObject FrameMemory(int index, int size) =>
+		new(
+			M68kMemoryObjectKind.FrameSlot,
+			index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+			Offset: 0,
+			Size: size);
+
+	private static M68kMachineInstruction FrameStore(
+		M68kMachineFunction function,
+		M68kMemoryObject memory,
+		int value,
+		int offset,
+		M68kMachineMemoryEffect memoryEffect = M68kMachineMemoryEffect.Write,
+		int localIndex = 0) =>
+		function.CreateInstruction(
+			M68kMachineOperation.LocalStore,
+			offset,
+			uses: [value],
+			memoryEffect: memoryEffect,
+			argumentIndex: localIndex,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Write,
+					value)
+			]);
+
+	private static M68kMachineInstruction FrameLoad(
+		M68kMachineFunction function,
+		M68kMemoryObject memory,
+		int value,
+		int offset,
+		CilInstruction? sourceInstruction = null,
+		M68kMachineMemoryEffect memoryEffect = M68kMachineMemoryEffect.Read,
+		int localIndex = 0) =>
+		function.CreateInstruction(
+			M68kMachineOperation.LocalLoad,
+			offset,
+			definitions: [value],
+			memoryEffect: memoryEffect,
+			sourceInstruction: sourceInstruction,
+			argumentIndex: localIndex,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Read,
+					value)
+			]);
+
+	private static M68kMemoryPromotionStatistics RunPromotion(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, M68kHeapOwnerFacts>? owners = null) =>
+		M68kMemoryPromotionPass.Run(
+			function,
+			new M68kMemoryPromotionContext(
+				null!,
+				null!,
+				new Dictionary<CilMethodIdentity, M68kMethodMemorySummary>(),
+				new HashSet<M68kMemoryObject>(),
+				owners ?? new Dictionary<int, M68kHeapOwnerFacts>(),
+				function));
 
 	private static M68kMachineBlock AddBlock(
 		M68kMachineFunction function,

@@ -1530,9 +1530,50 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int HelloAmigaPromotesDosLibraryBase()
+	{
+		var dosBase = global::Amiga.Exec.OpenLibrary("dos.library", 0);
+		if (dosBase is null)
+		{
+			return global::Amiga.DOS.RETURN_FAIL;
+		}
+
+		global::Amiga.DOS.DOSLibraryBase = dosBase.Value;
+		global::Amiga.DOS.PutStr("Hello from CopperSharp.\n");
+		global::Amiga.Exec.CloseLibrary(global::Amiga.DOS.DOSLibraryBase);
+		global::Amiga.DOS.DOSLibraryBase = global::Amiga.APTR.Null;
+		return global::Amiga.DOS.RETURN_OK;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint ReadDosLibraryBaseAfterSet()
 	{
 		global::Amiga.DOS.DOSLibraryBase = 0x0000_3C00;
+		return global::Amiga.DOS.DOSLibraryBase.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ResidentDosLibraryBaseFromStartupArgs(
+		int argLength,
+		global::Amiga.CONST_STRPTR argText)
+	{
+		global::Amiga.DOS.DOSLibraryBase = unchecked((uint)argLength);
+		return global::Amiga.DOS.DOSLibraryBase.Raw;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ResidentDosLibraryBaseAcrossVectorCall(
+		int libraryBase,
+		global::Amiga.CONST_STRPTR argText)
+	{
+		global::Amiga.DOS.DOSLibraryBase = unchecked((uint)libraryBase);
+		return ResidentDosLibraryBasePutStr();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ResidentDosLibraryBasePutStr()
+	{
+		global::Amiga.DOS.PutStr("resident invocation state\n");
 		return global::Amiga.DOS.DOSLibraryBase.Raw;
 	}
 
@@ -1563,6 +1604,13 @@ public static class CompilerFixtures
 	{
 		global::Amiga.DOS.DOSLibraryBase = APTR.Null;
 		return global::Amiga.DOS.DOSLibraryBase.IsNull ? 42u : 0u;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint TerminalClearDosLibraryBaseEntry()
+	{
+		global::Amiga.DOS.DOSLibraryBase = APTR.Null;
+		return 42;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

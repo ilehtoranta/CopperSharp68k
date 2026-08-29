@@ -31,6 +31,7 @@ public sealed class BoopsiAbiTests
 	[Fact]
 	public void ClassAndObjectLayoutsMatchTheM68kAbi()
 	{
+		Assert.Null(typeof(BOOPSI).Assembly.GetType("Amiga.BOOPSILayout"));
 		Assert.Equal(52, Marshal.SizeOf<IClass>());
 		Assert.Equal(12, Marshal.SizeOf<_Object>());
 		Assert.Equal(32, Marshal.OffsetOf<IClass>(nameof(IClass.cl_InstOffset)).ToInt32());
@@ -38,8 +39,6 @@ public sealed class BoopsiAbiTests
 		Assert.Equal(40, Marshal.OffsetOf<IClass>(nameof(IClass.cl_SubclassCount)).ToInt32());
 		Assert.Equal(44, Marshal.OffsetOf<IClass>(nameof(IClass.cl_ObjectCount)).ToInt32());
 		Assert.Equal(8, Marshal.OffsetOf<_Object>(nameof(_Object.o_Class)).ToInt32());
-		Assert.Equal(BOOPSILayout.Class.InstanceOffset,
-			Marshal.OffsetOf<IClass>(nameof(IClass.cl_InstOffset)).ToInt32());
 	}
 
 	[Fact]
@@ -95,10 +94,8 @@ public sealed class BoopsiAbiTests
 		Assert.Equal(value.cl_SubclassCount, actual.cl_SubclassCount);
 		Assert.Equal(value.cl_ObjectCount, actual.cl_ObjectCount);
 		Assert.Equal(value.cl_Flags, actual.cl_Flags);
-		Assert.Equal(0x12, memory.ReadUInt8(address,
-			BOOPSILayout.Class.InstanceOffset));
-		Assert.Equal(0x34, memory.ReadUInt8(address,
-			BOOPSILayout.Class.InstanceOffset + 1));
+		Assert.Equal(0x12, memory.ReadUInt8(address, 32));
+		Assert.Equal(0x34, memory.ReadUInt8(address, 33));
 	}
 
 	[Fact]
@@ -130,6 +127,40 @@ public sealed class BoopsiAbiTests
 		Assert.Equal(get.MethodID, actual.MethodID);
 		Assert.Equal(get.opg_AttrID, actual.opg_AttrID);
 		Assert.Equal(get.opg_Storage, actual.opg_Storage);
+
+		var update = new opUpdate
+		{
+			MethodID = BOOPSI.OM_NOTIFY,
+			opu_AttrList = APTR.FromPointer(0x0102_0304),
+			opu_GInfo = APTR.FromPointer(0x0506_0708),
+			opu_Flags = BOOPSI.OPUF_INTERIM,
+		};
+		BOOPSIGuestCodec.WriteOpUpdate(ref memory, address, update);
+		var actualUpdate = BOOPSIGuestCodec.ReadOpUpdate(ref memory, address);
+		Assert.Equal(update.MethodID, actualUpdate.MethodID);
+		Assert.Equal(update.opu_AttrList, actualUpdate.opu_AttrList);
+		Assert.Equal(update.opu_GInfo, actualUpdate.opu_GInfo);
+		Assert.Equal(update.opu_Flags, actualUpdate.opu_Flags);
+
+		var addTail = new opAddTail
+		{
+			MethodID = BOOPSI.OM_ADDTAIL,
+			opat_List = APTR.FromPointer(0x1112_1314),
+		};
+		BOOPSIGuestCodec.WriteOpAddTail(ref memory, address, addTail);
+		var actualAddTail = BOOPSIGuestCodec.ReadOpAddTail(ref memory, address);
+		Assert.Equal(addTail.MethodID, actualAddTail.MethodID);
+		Assert.Equal(addTail.opat_List, actualAddTail.opat_List);
+
+		var member = new opMember
+		{
+			MethodID = BOOPSI.OM_ADDMEMBER,
+			opam_Object = APTR.FromPointer(0x2122_2324),
+		};
+		BOOPSIGuestCodec.WriteOpMember(ref memory, address, member);
+		var actualMember = BOOPSIGuestCodec.ReadOpMember(ref memory, address);
+		Assert.Equal(member.MethodID, actualMember.MethodID);
+		Assert.Equal(member.opam_Object, actualMember.opam_Object);
 		Assert.Equal(BOOPSI.OM_DISPOSE,
 			WriteAndReadMethodId(ref memory, address, BOOPSI.OM_DISPOSE));
 		Assert.Equal(4u, BOOPSIGuestCodec.MethodMessageSize);

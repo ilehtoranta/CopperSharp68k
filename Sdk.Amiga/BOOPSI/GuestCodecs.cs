@@ -32,15 +32,15 @@ public static class BOOPSIGuestCodec
 			SubEntry = APTR.FromPointer(memory.ReadUInt32(address, 12)),
 			Data = APTR.FromPointer(memory.ReadUInt32(address, 16)),
 		},
-		cl_Reserved = memory.ReadUInt32(address, BOOPSILayout.Class.Reserved),
-		cl_Super = APTR.FromPointer(memory.ReadUInt32(address, BOOPSILayout.Class.Super)),
-		cl_ID = APTR.FromPointer(memory.ReadUInt32(address, BOOPSILayout.Class.Id)),
-		cl_InstOffset = memory.ReadUInt16(address, BOOPSILayout.Class.InstanceOffset),
-		cl_InstSize = memory.ReadUInt16(address, BOOPSILayout.Class.InstanceSize),
-		cl_UserData = memory.ReadUInt32(address, BOOPSILayout.Class.UserData),
-		cl_SubclassCount = memory.ReadUInt32(address, BOOPSILayout.Class.SubclassCount),
-		cl_ObjectCount = memory.ReadUInt32(address, BOOPSILayout.Class.ObjectCount),
-		cl_Flags = memory.ReadUInt32(address, BOOPSILayout.Class.Flags),
+		cl_Reserved = memory.ReadUInt32(address, 20),
+		cl_Super = APTR.FromPointer(memory.ReadUInt32(address, 24)),
+		cl_ID = APTR.FromPointer(memory.ReadUInt32(address, 28)),
+		cl_InstOffset = memory.ReadUInt16(address, 32),
+		cl_InstSize = memory.ReadUInt16(address, 34),
+		cl_UserData = memory.ReadUInt32(address, 36),
+		cl_SubclassCount = memory.ReadUInt32(address, 40),
+		cl_ObjectCount = memory.ReadUInt32(address, 44),
+		cl_Flags = memory.ReadUInt32(address, 48),
 	};
 
 	public static void WriteClass<TMemory>(ref TMemory memory, APTR address,
@@ -51,19 +51,15 @@ public static class BOOPSIGuestCodec
 		memory.WriteUInt32(address, 8, value.cl_Dispatcher.Entry.Raw);
 		memory.WriteUInt32(address, 12, value.cl_Dispatcher.SubEntry.Raw);
 		memory.WriteUInt32(address, 16, value.cl_Dispatcher.Data.Raw);
-		memory.WriteUInt32(address, BOOPSILayout.Class.Reserved, value.cl_Reserved);
-		memory.WriteUInt32(address, BOOPSILayout.Class.Super, value.cl_Super.Raw);
-		memory.WriteUInt32(address, BOOPSILayout.Class.Id, value.cl_ID.Raw);
-		memory.WriteUInt16(address, BOOPSILayout.Class.InstanceOffset,
-			value.cl_InstOffset);
-		memory.WriteUInt16(address, BOOPSILayout.Class.InstanceSize,
-			value.cl_InstSize);
-		memory.WriteUInt32(address, BOOPSILayout.Class.UserData, value.cl_UserData);
-		memory.WriteUInt32(address, BOOPSILayout.Class.SubclassCount,
-			value.cl_SubclassCount);
-		memory.WriteUInt32(address, BOOPSILayout.Class.ObjectCount,
-			value.cl_ObjectCount);
-		memory.WriteUInt32(address, BOOPSILayout.Class.Flags, value.cl_Flags);
+		memory.WriteUInt32(address, 20, value.cl_Reserved);
+		memory.WriteUInt32(address, 24, value.cl_Super.Raw);
+		memory.WriteUInt32(address, 28, value.cl_ID.Raw);
+		memory.WriteUInt16(address, 32, value.cl_InstOffset);
+		memory.WriteUInt16(address, 34, value.cl_InstSize);
+		memory.WriteUInt32(address, 36, value.cl_UserData);
+		memory.WriteUInt32(address, 40, value.cl_SubclassCount);
+		memory.WriteUInt32(address, 44, value.cl_ObjectCount);
+		memory.WriteUInt32(address, 48, value.cl_Flags);
 	}
 
 	public static _Object ReadObjectHeader<TMemory>(ref TMemory memory,
@@ -111,6 +107,15 @@ public static class BOOPSIGuestCodec
 		opu_Flags = memory.ReadUInt32(address, 12),
 	};
 
+	public static void WriteOpUpdate<TMemory>(ref TMemory memory, APTR address,
+		opUpdate value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, 0, value.MethodID);
+		memory.WriteUInt32(address, 4, value.opu_AttrList.Raw);
+		memory.WriteUInt32(address, 8, value.opu_GInfo.Raw);
+		memory.WriteUInt32(address, 12, value.opu_Flags);
+	}
+
 	public static opGet ReadOpGet<TMemory>(ref TMemory memory, APTR address)
 		where TMemory : struct, IAmigaGuestMemory => new()
 	{
@@ -125,5 +130,33 @@ public static class BOOPSIGuestCodec
 		memory.WriteUInt32(address, 0, value.MethodID);
 		memory.WriteUInt32(address, 4, value.opg_AttrID);
 		memory.WriteUInt32(address, 8, value.opg_Storage.Raw);
+	}
+
+	public static opAddTail ReadOpAddTail<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		MethodID = memory.ReadUInt32(address, 0),
+		opat_List = APTR.FromPointer(memory.ReadUInt32(address, 4)),
+	};
+
+	public static void WriteOpAddTail<TMemory>(ref TMemory memory, APTR address,
+		opAddTail value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, 0, value.MethodID);
+		memory.WriteUInt32(address, 4, value.opat_List.Raw);
+	}
+
+	public static opMember ReadOpMember<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		MethodID = memory.ReadUInt32(address, 0),
+		opam_Object = APTR.FromPointer(memory.ReadUInt32(address, 4)),
+	};
+
+	public static void WriteOpMember<TMemory>(ref TMemory memory, APTR address,
+		opMember value) where TMemory : struct, IAmigaGuestMemory
+	{
+		memory.WriteUInt32(address, 0, value.MethodID);
+		memory.WriteUInt32(address, 4, value.opam_Object.Raw);
 	}
 }

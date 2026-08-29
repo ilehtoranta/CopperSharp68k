@@ -98,28 +98,3 @@ public struct opMember
 	public uint MethodID;
 	public APTR opam_Object;
 }
-
-public static class BOOPSILayout
-{
-	public static class Class
-	{
-		public const int Size = 52;
-		public const int Dispatcher = 0;
-		public const int Reserved = 20;
-		public const int Super = 24;
-		public const int Id = 28;
-		public const int InstanceOffset = 32;
-		public const int InstanceSize = 34;
-		public const int UserData = 36;
-		public const int SubclassCount = 40;
-		public const int ObjectCount = 44;
-		public const int Flags = 48;
-	}
-
-	public static class ObjectHeader
-	{
-		public const int Size = 12;
-		public const int Node = 0;
-		public const int Class = 8;
-	}
-}

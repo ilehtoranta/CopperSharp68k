@@ -246,8 +246,10 @@ public static class ExecLayout
 		public const int IntVector0 = 84;
 		public const int IntVector15 = 264;
 		public const int ThisTask = 276;
+		public const int SysFlags = 292;
 		public const int IDNestCount = 294;
 		public const int TaskDisableNestCount = 295;
+		public const int AttentionReschedule = 298;
 		public const int ResModules = 300;
 		public const int MemList = 322;
 		public const int ResourceList = 336;

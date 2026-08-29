@@ -695,8 +695,8 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(1, probe.Opens);
 		Assert.Equal(1, probe.Reads);
 		Assert.Equal(1, probe.Closes);
-		Assert.Equal(2_484, cycles);
-		Assert.Equal(221, instructions);
+		Assert.Equal(2_464, cycles);
+		Assert.Equal(213, instructions);
 	}
 
 	[Fact]
@@ -2208,16 +2208,12 @@ public sealed class CompilerExecutionTests
 	[Fact]
 	public void FullExceptionModeOmitsHandlerHelpersWhenNoHandlerCanUseThem()
 	{
-		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
-			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ExternalSuccessEntry",
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::UnhandledExceptionEntry",
 			Cpu = M68kCpuTarget.M68000,
-			OutputFormat = M68kOutputFormat.Assembly,
-			ExternalCallResolvers =
-			[
-				new ExceptionStatusResolver(0x0000_3000)
-			]
+			OutputFormat = M68kOutputFormat.Assembly
 		});
 
 		Assert.DoesNotContain(
@@ -3188,18 +3184,288 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void CompilerOwnedLibrarySlotsUseClrOnM68000()
+	public void LocallyProvenLibraryBaseDoesNotMaterializeACompilerSlot()
 	{
 		var result = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::ClearDosLibraryBaseWithNull");
 
+		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name == "_DOSLibraryBase");
+	}
+
+	[Fact]
+	public void TerminalApplicationEntryRemovesUnobservableLibraryBaseClear()
+	{
+		var result = Compile(
+			M68kCpuTarget.M68000,
+			M68kOutputFormat.Assembly,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::TerminalClearDosLibraryBaseEntry");
+
+		Assert.DoesNotContain("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		var statistics = Assert.Single(
+			result.TerminalDeadStoreStatistics,
+			statistics => statistics.Candidates != 0);
+		var candidate = Assert.Single(statistics.Details);
+		Assert.Equal("_DOSLibraryBase", candidate.Identity);
+		Assert.True(candidate.Removed);
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void FreestandingLibraryBaseClearDoesNotMaterializeAptrNull()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::TerminalClearDosLibraryBaseEntry",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Assembly,
+			RuntimeProfile = M68kRuntimeProfile.Freestanding
+		});
+
 		Assert.Contains("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain(
-			"\tmove.l\t#$00000000,_DOSLibraryBase",
-			result.Text,
-			StringComparison.Ordinal);
+		Assert.DoesNotContain("\tsuba.l\ta0,a0", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmove.l\ta0,d0", result.Text, StringComparison.Ordinal);
+		Assert.Equal(42u, ExecuteHunk(result, M68kCpuModel.M68000));
+	}
+
+	[Fact]
+	public void ResidentProfileUsesInvocationLocalLibraryBaseSlots()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ResidentDosLibraryBaseAcrossVectorCall",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Resident
+		});
+		var bus = CreateHunkBus(result);
+		var entry = HunkLoadAddress + result.EntryPoint;
+		bus.RegisterGateway(0x0000_3C00 - 948, _ => { });
+		bus.RegisterGateway(0x0000_3E00 - 948, _ => { });
+
+		Assert.DoesNotContain(result.Relocations, relocation =>
+			relocation.Target == "_DOSLibraryBase");
+		Assert.DoesNotContain(result.Symbols, symbol =>
+			symbol.Name == "_DOSLibraryBase");
+		Assert.DoesNotContain(result.Relocations, relocation =>
+			relocation.Target.Contains("resident-entry", StringComparison.Ordinal));
+		Assert.Contains(
+			result.Code.Zip(result.Code.Skip(1)),
+			pair => pair.First == 0x2A && pair.Second == 0x4F); // MOVEA.L A7,A5
+		Assert.Equal(
+			0x0000_3C00u,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				entry,
+				initialize: state => state.D[0] = 0x0000_3C00));
+		const uint firstStack = StackPointer - 0x1000;
+		const uint secondStack = StackPointer - 0x2000;
+		bus.WriteLong(firstStack, ReturnSentinel);
+		bus.WriteLong(secondStack, ReturnSentinel);
+		using var first = M68kCoreFactory.Default.Create(M68kCpuModel.M68000, bus);
+		using var second = M68kCoreFactory.Default.Create(M68kCpuModel.M68000, bus);
+		first.Reset(entry, firstStack);
+		second.Reset(entry, secondStack);
+		first.State.D[0] = 0x0000_3C00;
+		second.State.D[0] = 0x0000_3E00;
+		for (var instruction = 0;
+			instruction < 20_000 &&
+			(first.State.ProgramCounter != ReturnSentinel ||
+			 second.State.ProgramCounter != ReturnSentinel);
+			instruction++)
+		{
+			if (first.State.ProgramCounter != ReturnSentinel)
+			{
+				first.ExecuteInstruction();
+			}
+			if (second.State.ProgramCounter != ReturnSentinel)
+			{
+				second.ExecuteInstruction();
+			}
+		}
+		Assert.Equal(ReturnSentinel, first.State.ProgramCounter);
+		Assert.Equal(ReturnSentinel, second.State.ProgramCounter);
+		Assert.Equal(0x0000_3C00u, first.State.D[0]);
+		Assert.Equal(0x0000_3E00u, second.State.D[0]);
+	}
+
+	[Fact]
+	public void ResidentProfileAllocatesInvocationContextFromExecAboveStackThreshold()
+	{
+		const uint execBase = 0x0000_3000;
+		const uint context = 0x0000_6000;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ResidentDosLibraryBaseAcrossVectorCall",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Resident,
+			ResidentStackContextThresholdBytes = 0,
+			IncludedExportNames = Array.Empty<string>()
+		});
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		var allocationCount = 0;
+		var freeCount = 0;
+		bus.RegisterGateway(execBase - 198, state =>
+		{
+			allocationCount++;
+			Assert.Equal(4u, state.D[0]);
+			Assert.Equal(0u, state.D[1]);
+			state.D[0] = context;
+		});
+		bus.RegisterGateway(execBase - 210, state =>
+		{
+			freeCount++;
+			Assert.Equal(context, state.A[1]);
+			Assert.Equal(4u, state.D[0]);
+		});
+		bus.RegisterGateway(0x0000_3C00 - 948, _ => { });
+
+		Assert.Equal(
+			0x0000_3C00u,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				HunkLoadAddress + result.EntryPoint,
+				initialize: state => state.D[0] = 0x0000_3C00));
+		Assert.Equal(1, allocationCount);
+		Assert.Equal(1, freeCount);
+	}
+
+	[Fact]
+	public void ResidentProfileReturnsZeroWhenInvocationContextAllocationFails()
+	{
+		const uint execBase = 0x0000_3000;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ResidentDosLibraryBaseAcrossVectorCall",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Resident,
+			ResidentStackContextThresholdBytes = 0,
+			IncludedExportNames = Array.Empty<string>()
+		});
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		var freeCount = 0;
+		bus.RegisterGateway(execBase - 198, state => state.D[0] = 0);
+		bus.RegisterGateway(execBase - 210, _ => freeCount++);
+
+		Assert.Equal(
+			0u,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				HunkLoadAddress + result.EntryPoint,
+				initialize: state => state.D[0] = 0x0000_3C00));
+		Assert.Equal(0, freeCount);
+	}
+
+	[Fact]
+	public void ResidentProfileHeapBackedExportAdapterPreservesArgumentsAndCalleeRegisters()
+	{
+		const uint execBase = 0x0000_3000;
+		const uint context = 0x0000_6000;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ResidentDosLibraryBaseAcrossVectorCall",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Resident,
+			ResidentStackContextThresholdBytes = 0,
+			IncludedExportNames = ["fixture.add"]
+		});
+		var export = result.Symbols.Single(symbol => symbol.Name == "fixture.add");
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		var allocationCount = 0;
+		var freeCount = 0;
+		bus.RegisterGateway(execBase - 198, state =>
+		{
+			allocationCount++;
+			Assert.Equal(4u, state.D[0]);
+			Assert.Equal(0u, state.D[1]);
+			state.D[0] = context;
+		});
+		bus.RegisterGateway(execBase - 210, state =>
+		{
+			freeCount++;
+			Assert.Equal(context, state.A[1]);
+			Assert.Equal(4u, state.D[0]);
+		});
+
+		Assert.Equal(
+			42u,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				HunkLoadAddress + export.Address,
+				initialize: state =>
+				{
+					state.D[0] = 17;
+					state.D[1] = 25;
+					state.D[2] = 0x2233_4455;
+					state.A[2] = 0x0066_7788;
+				},
+				afterReturn: state =>
+				{
+					Assert.Equal(0x2233_4455u, state.D[2]);
+					Assert.Equal(0x0066_7788u, state.A[2]);
+				}));
+		Assert.Equal(1, allocationCount);
+		Assert.Equal(1, freeCount);
+	}
+
+	[Fact]
+	public void ResidentProfileRejectsStaticFieldState()
+	{
+		var exception = Assert.Throws<M68kCompilationException>(() =>
+			AmigaM68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::TerminalPrivateDefaultStoresEntry",
+				Cpu = M68kCpuTarget.M68000,
+				OutputFormat = M68kOutputFormat.Hunk,
+				RuntimeProfile = M68kRuntimeProfile.Resident
+			}));
+
+		Assert.Equal(M68kDiagnosticIds.StaticAnalysis, exception.DiagnosticId);
+		Assert.Contains("static field", exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void ResidentProfilePreservesAmigaStartupArguments()
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::AmigaStartupArgsEntry",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Resident
+		});
+		var bus = CreateHunkBus(result);
+		Assert.Equal(
+			42u,
+			Execute(
+				bus,
+				M68kCpuModel.M68000,
+				HunkLoadAddress + result.EntryPoint,
+				initialize: state =>
+				{
+					state.D[0] = 10;
+					state.A[0] = 32;
+				}));
 	}
 
 	[Fact]
@@ -3482,17 +3748,16 @@ public sealed class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void LibraryVectorBaseReadKeepsTerminalClear()
+	public void LibraryVectorConsumesPromotedNullBaseWithoutACompilerSlot()
 	{
 		var result = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::ClearDosLibraryBaseBeforeVectorCall");
 
-		Assert.Matches(
-			@"\t(?:clr\.l\t_DOSLibraryBase|move\.l\t[^\r\n]+,_DOSLibraryBase)",
-			result.Text);
-		Assert.Contains("\tmovea.l\t_DOSLibraryBase,a6", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tsuba.l\ta6,a6", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tjmp\t-948(a6)", result.Text, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -3914,7 +4179,7 @@ public sealed class CompilerExecutionTests
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
-	public void StoresNullableValueToLibraryBaseSlotWithoutStackRoundTrip(
+	public void PromotesNullableValueAcrossLibraryBaseProperty(
 		M68kCpuTarget target,
 		M68kCpuModel model)
 	{
@@ -3927,13 +4192,9 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(0x0000_3C00u, ExecuteHunk(result, model));
-		Assert.Matches(@"\tmove\.l\t(?:#\$[0-9A-F]{8}|\d+\(a7\)|[da]\d),_DOSLibraryBase", result.Text);
-		Assert.DoesNotMatch(@"\tmove\.l\t\d+\(a7\),d0\r?\n\tmove\.l\td0,_DOSLibraryBase", result.Text);
-		Assert.DoesNotContain("\tmove.l\t(a7)+,_DOSLibraryBase", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain(
-			"\tmove.l\td0,-(a7)\r\n\tmove.l\t(a7)+,_DOSLibraryBase",
-			result.Text,
-			StringComparison.Ordinal);
+		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name == "_DOSLibraryBase");
 	}
 
 	[Theory]
@@ -3945,7 +4206,7 @@ public sealed class CompilerExecutionTests
 		"CopperSharp.Compiler.Tests.CompilerFixtures::ReadIffParseLibraryBaseAfterSet",
 		0x0000_4000u,
 		"_IFFParseLibraryBase")]
-	public void LowersAllLibraryBasePropertiesToManualBaseSlots(
+	public void PromotesAllLocallyProvenLibraryBaseProperties(
 		string entryPoint,
 		uint expected,
 		string slotSymbol)
@@ -3958,7 +4219,7 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(expected, ExecuteHunk(result, M68kCpuModel.M68000));
-		Assert.Contains(result.Symbols, symbol => symbol.Name == slotSymbol);
+		Assert.DoesNotContain(result.Symbols, symbol => symbol.Name == slotSymbol);
 	}
 
 	[Theory]
@@ -3976,8 +4237,50 @@ public sealed class CompilerExecutionTests
 		});
 
 		Assert.Equal(42u, ExecuteHunk(result, model));
-		Assert.Contains("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tmove.l\t(a7)+,_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name == "_DOSLibraryBase");
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void HelloAmigaKeepsOpenedDosBaseInSsaWithoutMaterializingItsSlot(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		const uint execBase = 0x0000_3600;
+		const uint dosBase = 0x0000_3C00;
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint =
+				"CopperSharp.Compiler.Tests.CompilerFixtures::HelloAmigaPromotesDosLibraryBase",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Assembly
+		});
+		var bus = CreateHunkBus(result);
+		bus.WriteLong(4, execBase);
+		bus.RegisterGateway(execBase - 552, state =>
+		{
+			Assert.Equal(0u, state.D[0]);
+			state.D[0] = dosBase;
+		});
+		bus.RegisterGateway(dosBase - 948, state =>
+		{
+			Assert.Equal(dosBase, state.A[6]);
+			Assert.Equal("Hello from CopperSharp.\n", ReadCString(bus, state.D[1]));
+		});
+		bus.RegisterGateway(execBase - 414, state =>
+			Assert.Equal(dosBase, state.A[1]));
+
+		Assert.Equal(0u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name == "_DOSLibraryBase");
+		Assert.Contains("_ExecBase", result.Text, StringComparison.Ordinal);
+		Assert.Matches(
+			@"(?s)move\.l\td0,(?<base>d[2-7]).*?movea\.l\t\k<base>,a6.*?movea\.l\t\k<base>,a1",
+			result.Text);
 	}
 
 	[Theory]
@@ -5640,10 +5943,10 @@ public sealed class CompilerExecutionTests
 		Assert.Equal(
 			"Console input/output example\nType text: ",
 			System.Text.Encoding.Latin1.GetString(eofOutput));
-		Assert.Equal(40_686, input.Cycles);
-		Assert.Equal(4_435, input.Instructions);
-		Assert.Equal(23_520, eof.Cycles);
-		Assert.Equal(2_660, eof.Instructions);
+		Assert.Equal(36_808, input.Cycles);
+		Assert.Equal(3_559, input.Instructions);
+		Assert.Equal(20_982, eof.Cycles);
+		Assert.Equal(2_074, eof.Instructions);
 	}
 
 	[Fact]
@@ -6809,6 +7112,44 @@ public sealed class CompilerExecutionTests
 
 		Assert.Equal(M68kDiagnosticIds.StaticAnalysis, exception.DiagnosticId);
 		Assert.Contains("managed heap", exception.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void ResidentRuntimeProfileRejectsUnsupportedRuntimeOptions()
+	{
+		var romException = Assert.Throws<M68kCompilationException>(() =>
+			M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::DefaultEntry",
+				OutputFormat = M68kOutputFormat.KickstartRom,
+				RuntimeProfile = M68kRuntimeProfile.Resident,
+				TargetContract = new M68kTargetContract("amiga-m68k", "test", "0.0.0")
+			}));
+		Assert.Equal(M68kDiagnosticIds.InvalidOutputOptions, romException.DiagnosticId);
+		Assert.Contains("HUNK or assembly", romException.Message, StringComparison.Ordinal);
+
+		var heapException = Assert.Throws<M68kCompilationException>(() =>
+			M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::DefaultEntry",
+				RuntimeProfile = M68kRuntimeProfile.Resident,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				TargetContract = new M68kTargetContract("amiga-m68k", "test", "0.0.0")
+			}));
+		Assert.Equal(M68kDiagnosticIds.InvalidOutputOptions, heapException.DiagnosticId);
+		Assert.Contains("managed heap", heapException.Message, StringComparison.Ordinal);
+
+		var targetException = Assert.Throws<M68kCompilationException>(() =>
+			M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::DefaultEntry",
+				RuntimeProfile = M68kRuntimeProfile.Resident
+			}));
+		Assert.Equal(M68kDiagnosticIds.InvalidOutputOptions, targetException.DiagnosticId);
+		Assert.Contains("Amiga target", targetException.Message, StringComparison.Ordinal);
 	}
 
 	[Theory]

@@ -12,8 +12,32 @@ public static class ExecBaseCodec
 		where TMemory : struct, IAmigaGuestMemory => APTR.FromPointer(
 		memory.ReadUInt32(execBase, ExecLayout.ExecBase.ThisTask));
 
+	public static ushort ReadSysFlags<TMemory>(ref TMemory memory, APTR execBase)
+		where TMemory : struct, IAmigaGuestMemory =>
+		memory.ReadUInt16(execBase, ExecLayout.ExecBase.SysFlags);
+
+	public static void WriteSysFlags<TMemory>(ref TMemory memory, APTR execBase,
+		ushort value) where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt16(execBase, ExecLayout.ExecBase.SysFlags, value);
+
+	public static ushort ReadAttentionReschedule<TMemory>(ref TMemory memory,
+		APTR execBase) where TMemory : struct, IAmigaGuestMemory =>
+		memory.ReadUInt16(execBase, ExecLayout.ExecBase.AttentionReschedule);
+
+	public static void WriteAttentionReschedule<TMemory>(ref TMemory memory,
+		APTR execBase, ushort value)
+		where TMemory : struct, IAmigaGuestMemory =>
+		memory.WriteUInt16(execBase, ExecLayout.ExecBase.AttentionReschedule,
+			value);
+
 	public static APTR LibraryListAddress(APTR execBase) => APTR.FromPointer(
 		execBase.Raw + ExecLayout.ExecBase.LibraryList);
+
+	public static APTR TaskReadyAddress(APTR execBase) => APTR.FromPointer(
+		execBase.Raw + ExecLayout.ExecBase.TaskReady);
+
+	public static APTR TaskWaitAddress(APTR execBase) => APTR.FromPointer(
+		execBase.Raw + ExecLayout.ExecBase.TaskWait);
 }
 
 /// <summary>
@@ -505,6 +529,113 @@ public static class ExecMessageCodec
 		memory.WriteUInt32(address, ExecLayout.Message.ReplyPort,
 			value.ReplyPort.Raw);
 		memory.WriteUInt16(address, ExecLayout.Message.Length, value.Length);
+	}
+}
+
+/// <summary>Big-endian guest-memory access for Exec's public Interrupt ABI.</summary>
+public static class ExecInterruptCodec
+{
+	public static bool IsMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		address.Raw <= uint.MaxValue - Interrupt.Size &&
+		memory.IsMapped(address, Interrupt.Size);
+
+	public static Interrupt Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Node = ExecNodeCodec.Read(ref memory, address),
+		Data = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.Interrupt.Data)),
+		Code = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.Interrupt.Code)),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		Interrupt value) where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecNodeCodec.Write(ref memory, address, value.Node);
+		memory.WriteUInt32(address, ExecLayout.Interrupt.Data, value.Data.Raw);
+		memory.WriteUInt32(address, ExecLayout.Interrupt.Code, value.Code.Raw);
+	}
+}
+
+/// <summary>Big-endian guest-memory access for Exec IORequest envelopes.</summary>
+public static class ExecIORequestCodec
+{
+	public static bool IsRequestMapped<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => address.IsNotNull &&
+		address.Raw <= uint.MaxValue - IORequest.Size &&
+		memory.IsMapped(address, IORequest.Size);
+
+	public static bool IsStandardRequestMapped<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory =>
+		address.IsNotNull && address.Raw <= uint.MaxValue - IOStdReq.Size &&
+		memory.IsMapped(address, IOStdReq.Size);
+
+	public static IORequest ReadRequest<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Message = ExecMessageCodec.Read(ref memory, address),
+		Device = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.IORequest.Device)),
+		Unit = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.IORequest.Unit)),
+		Command = (DeviceCommand)memory.ReadUInt16(address,
+			ExecLayout.IORequest.Command),
+		Flags = (IOFlags)memory.ReadUInt8(address, ExecLayout.IORequest.Flags),
+		Error = unchecked((sbyte)memory.ReadUInt8(address,
+			ExecLayout.IORequest.Error)),
+	};
+
+	public static void WriteRequest<TMemory>(ref TMemory memory, APTR address,
+		IORequest value) where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecMessageCodec.Write(ref memory, address, value.Message);
+		memory.WriteUInt32(address, ExecLayout.IORequest.Device, value.Device.Raw);
+		memory.WriteUInt32(address, ExecLayout.IORequest.Unit, value.Unit.Raw);
+		memory.WriteUInt16(address, ExecLayout.IORequest.Command,
+			(ushort)value.Command);
+		memory.WriteUInt8(address, ExecLayout.IORequest.Flags, (byte)value.Flags);
+		memory.WriteUInt8(address, ExecLayout.IORequest.Error,
+			unchecked((byte)value.Error));
+	}
+
+	public static IOStdReq ReadStandardRequest<TMemory>(ref TMemory memory,
+		APTR address) where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Message = ExecMessageCodec.Read(ref memory, address),
+		Device = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.IOStdReq.Device)),
+		Unit = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.IOStdReq.Unit)),
+		Command = (DeviceCommand)memory.ReadUInt16(address,
+			ExecLayout.IOStdReq.Command),
+		Flags = (IOFlags)memory.ReadUInt8(address, ExecLayout.IOStdReq.Flags),
+		Error = unchecked((sbyte)memory.ReadUInt8(address,
+			ExecLayout.IOStdReq.Error)),
+		Actual = memory.ReadUInt32(address, ExecLayout.IOStdReq.Actual),
+		Length = memory.ReadUInt32(address, ExecLayout.IOStdReq.Length),
+		Data = APTR.FromPointer(memory.ReadUInt32(address,
+			ExecLayout.IOStdReq.Data)),
+		Offset = memory.ReadUInt32(address, ExecLayout.IOStdReq.Offset),
+	};
+
+	public static void WriteStandardRequest<TMemory>(ref TMemory memory,
+		APTR address, IOStdReq value)
+		where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecMessageCodec.Write(ref memory, address, value.Message);
+		memory.WriteUInt32(address, ExecLayout.IOStdReq.Device, value.Device.Raw);
+		memory.WriteUInt32(address, ExecLayout.IOStdReq.Unit, value.Unit.Raw);
+		memory.WriteUInt16(address, ExecLayout.IOStdReq.Command,
+			(ushort)value.Command);
+		memory.WriteUInt8(address, ExecLayout.IOStdReq.Flags, (byte)value.Flags);
+		memory.WriteUInt8(address, ExecLayout.IOStdReq.Error,
+			unchecked((byte)value.Error));
+		memory.WriteUInt32(address, ExecLayout.IOStdReq.Actual, value.Actual);
+		memory.WriteUInt32(address, ExecLayout.IOStdReq.Length, value.Length);
+		memory.WriteUInt32(address, ExecLayout.IOStdReq.Data, value.Data.Raw);
+		memory.WriteUInt32(address, ExecLayout.IOStdReq.Offset, value.Offset);
 	}
 }
 

@@ -5,6 +5,24 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class ExecGuestCodecTests
 {
 	[Fact]
+	public void ExecBaseSchedulerFieldsUsePackedBigEndianLayout()
+	{
+		var memory = new Memory((int)ExecBase.Size);
+		var execBase = APTR.Null;
+		ExecBaseCodec.WriteSysFlags(ref memory, execBase, 0x8123);
+		ExecBaseCodec.WriteAttentionReschedule(ref memory, execBase, 0x4567);
+
+		Assert.Equal((ushort)0x8123,
+			ExecBaseCodec.ReadSysFlags(ref memory, execBase));
+		Assert.Equal((ushort)0x4567,
+			ExecBaseCodec.ReadAttentionReschedule(ref memory, execBase));
+		Assert.Equal((ushort)0x8123,
+			memory.ReadUInt16(execBase, ExecLayout.ExecBase.SysFlags));
+		Assert.Equal((ushort)0x4567, memory.ReadUInt16(execBase,
+			ExecLayout.ExecBase.AttentionReschedule));
+	}
+
+	[Fact]
 	public void NodeAndListCodecsUsePackedBigEndianLayout()
 	{
 		var memory = new Memory(128);
@@ -88,6 +106,29 @@ public sealed class ExecGuestCodecTests
 		Assert.Equal(expected.MessageList.Head, actual.MessageList.Head);
 		Assert.Equal(expected.MessageList.TailPred, actual.MessageList.TailPred);
 		Assert.Equal(expected.MessageList.Type, actual.MessageList.Type);
+	}
+
+	[Fact]
+	public void TimeValCodecRoundTripsTheNamedPackedRecord()
+	{
+		var memory = new Memory(32);
+		var address = APTR.FromPointer(8);
+		var expected = new TimeVal
+		{
+			Seconds = 0x0102_0304,
+			Microseconds = 0x0506_0708,
+		};
+
+		TimeValCodec.Write(ref memory, address, expected);
+		var actual = TimeValCodec.Read(ref memory, address);
+
+		Assert.True(TimeValCodec.IsMapped(ref memory, address));
+		Assert.Equal(expected.Seconds, actual.Seconds);
+		Assert.Equal(expected.Microseconds, actual.Microseconds);
+		Assert.Equal(expected.Seconds, memory.ReadUInt32(address,
+			TimerDeviceLayout.TimeVal.Seconds));
+		Assert.Equal(expected.Microseconds, memory.ReadUInt32(address,
+			TimerDeviceLayout.TimeVal.Microseconds));
 	}
 
 	[Fact]
@@ -284,6 +325,124 @@ public sealed class ExecGuestCodecTests
 		Assert.Equal(expectedTask.MemoryEntries.TailPred,
 			actualTask.MemoryEntries.TailPred);
 		Assert.Equal(expectedTask.UserData, actualTask.UserData);
+	}
+
+	[Fact]
+	public void IoStdReqCodecUsesTheAuthoritativePackedEnvelope()
+	{
+		var memory = new Memory(128);
+		var address = APTR.FromPointer(16);
+		var expected = new IOStdReq
+		{
+			Message = new Message
+			{
+				Node = new Node { Type = (byte)NodeType.Message },
+				ReplyPort = APTR.FromPointer(0x1122_3344),
+				Length = (ushort)IOStdReq.Size,
+			},
+			Device = APTR.FromPointer(0x2233_4455),
+			Unit = APTR.FromPointer(0x3344_5566),
+			Command = (DeviceCommand)InputDeviceCommand.WriteEvent,
+			Flags = IOFlags.Quick,
+			Error = (sbyte)IoError.BadAddress,
+			Actual = 0x4455_6677,
+			Length = InputEvent.Size,
+			Data = APTR.FromPointer(0x5566_7788),
+			Offset = 0x6677_8899,
+		};
+
+		ExecIORequestCodec.WriteStandardRequest(ref memory, address, expected);
+		var actual = ExecIORequestCodec.ReadStandardRequest(ref memory, address);
+
+		Assert.True(ExecIORequestCodec.IsStandardRequestMapped(
+			ref memory, address));
+		Assert.Equal(expected.Message.ReplyPort, actual.Message.ReplyPort);
+		Assert.Equal(expected.Message.Length, actual.Message.Length);
+		Assert.Equal(expected.Device, actual.Device);
+		Assert.Equal(expected.Unit, actual.Unit);
+		Assert.Equal(expected.Command, actual.Command);
+		Assert.Equal(expected.Flags, actual.Flags);
+		Assert.Equal(expected.Error, actual.Error);
+		Assert.Equal(expected.Actual, actual.Actual);
+		Assert.Equal(expected.Length, actual.Length);
+		Assert.Equal(expected.Data, actual.Data);
+		Assert.Equal(expected.Offset, actual.Offset);
+		Assert.Equal((ushort)InputDeviceCommand.WriteEvent,
+			memory.ReadUInt16(address, ExecLayout.IOStdReq.Command));
+		Assert.Equal(InputEvent.Size,
+			memory.ReadUInt32(address, ExecLayout.IOStdReq.Length));
+	}
+
+	[Fact]
+	public void InterruptCodecUsesTheAuthoritativePackedEnvelope()
+	{
+		var memory = new Memory(96);
+		var address = APTR.FromPointer(12);
+		var expected = new Interrupt
+		{
+			Node = new Node
+			{
+				Type = (byte)NodeType.Interrupt,
+				Priority = 73,
+				Name = APTR.FromPointer(0x1122_3344),
+			},
+			Data = APTR.FromPointer(0x2233_4455),
+			Code = APTR.FromPointer(0x3344_5566),
+		};
+
+		ExecInterruptCodec.Write(ref memory, address, expected);
+		var actual = ExecInterruptCodec.Read(ref memory, address);
+
+		Assert.True(ExecInterruptCodec.IsMapped(ref memory, address));
+		Assert.Equal(expected.Node.Type, actual.Node.Type);
+		Assert.Equal(expected.Node.Priority, actual.Node.Priority);
+		Assert.Equal(expected.Node.Name, actual.Node.Name);
+		Assert.Equal(expected.Data, actual.Data);
+		Assert.Equal(expected.Code, actual.Code);
+		Assert.Equal(expected.Data.Raw,
+			memory.ReadUInt32(address, ExecLayout.Interrupt.Data));
+		Assert.Equal(expected.Code.Raw,
+			memory.ReadUInt32(address, ExecLayout.Interrupt.Code));
+	}
+
+	[Fact]
+	public void InputEventCodecUsesPackedTimeValAndIntegerPosition()
+	{
+		var memory = new Memory(128);
+		var address = APTR.FromPointer(24);
+		var expected = new InputEvent
+		{
+			NextEvent = APTR.FromPointer(0x1020_3040),
+			Class = InputEventClass.RawKey,
+			SubClass = InputEventSubClass.Compatible,
+			Code = 0x20,
+			Qualifier = InputEventQualifier.LeftShift |
+				InputEventQualifier.Interrupt,
+			Position = unchecked((int)0x89AB_CDEF),
+			TimeStamp = new TimeVal
+			{
+				Seconds = 0x1122_3344,
+				Microseconds = 999_999,
+			},
+		};
+
+		InputEventCodec.Write(ref memory, address, expected);
+		var actual = InputEventCodec.Read(ref memory, address);
+
+		Assert.True(InputEventCodec.IsMapped(ref memory, address));
+		Assert.Equal(expected.NextEvent, actual.NextEvent);
+		Assert.Equal(expected.Class, actual.Class);
+		Assert.Equal(expected.SubClass, actual.SubClass);
+		Assert.Equal(expected.Code, actual.Code);
+		Assert.Equal(expected.Qualifier, actual.Qualifier);
+		Assert.Equal(expected.Position, actual.Position);
+		Assert.Equal(expected.TimeStamp.Seconds, actual.TimeStamp.Seconds);
+		Assert.Equal(expected.TimeStamp.Microseconds,
+			actual.TimeStamp.Microseconds);
+		Assert.Equal(0x89AB_CDEFu,
+			memory.ReadUInt32(address, InputEventLayout.Position));
+		Assert.Equal(999_999u,
+			memory.ReadUInt32(address, InputEventLayout.Microseconds));
 	}
 
 	private struct Memory : IAmigaGuestMemory

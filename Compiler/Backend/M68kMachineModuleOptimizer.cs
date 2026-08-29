@@ -260,6 +260,23 @@ internal static class M68kMachineModuleOptimizer
 				{
 					Console.Error.WriteLine(
 						$"PROMOTION {iteration} {function.DisplayName}");
+					foreach (var call in function.Blocks
+						.SelectMany(static block => block.Instructions)
+						.Where(static instruction =>
+							instruction.Operation == M68kMachineOperation.Call))
+					{
+						Console.Error.WriteLine(
+							$"CALL I{call.Id} uses=[{string.Join(',', call.Uses)}] " +
+							$"defs=[{string.Join(',', call.Definitions)}] " +
+							$"logicalArgs=[{string.Join(',', call.LogicalCall?.ArgumentValueIds ?? [])}]");
+						foreach (var target in call.LogicalCall?.ResolvedTargets ?? [])
+						{
+							var targetSummary = summaries.GetValueOrDefault(target);
+							Console.Error.WriteLine(
+								$"  TARGET {target} parameters=" +
+								string.Join(',', targetSummary?.ParameterEffects ?? []));
+						}
+					}
 					foreach (var facts in annotations[identity].HeapOwners.Values)
 					{
 						Console.Error.WriteLine(
