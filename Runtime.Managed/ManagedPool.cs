@@ -23,6 +23,10 @@ public static class ManagedPool
 	private const uint FinalizerPendingFlag = 8;
 	private const uint FinalizerRunningFlag = 16;
 	private const uint FinalizerSuppressedFlag = 32;
+	// Marks a registration that has completed at least once.  Shutdown
+	// preparation must not resurrect one-shot registrations, while an explicit
+	// ReRegisterForFinalize call clears this marker and adds a fresh count.
+	private const uint FinalizerCompletedFlag = 64;
 	private const int FinalizerCountShift = 8;
 	private const uint FinalizerCountIncrement = 1u << FinalizerCountShift;
 	private const uint FinalizerCountMask = 0xFFFF_FF00;
@@ -207,10 +211,13 @@ public static class ManagedPool
 		{
 			return 0;
 		}
-		M68kAddress.WriteUInt32(
-			block,
-			FlagsOffset,
-			flags + FinalizerCountIncrement);
+		var updatedFlags = (flags & ~(FinalizerCompletedFlag | FinalizerSuppressedFlag)) +
+			FinalizerCountIncrement;
+		if ((flags & FinalizerRunningFlag) != 0 && ActiveFinalizerRemaining == 0)
+		{
+			updatedFlags |= FinalizerPendingFlag;
+		}
+		M68kAddress.WriteUInt32(block, FlagsOffset, updatedFlags);
 		return 1;
 	}
 
@@ -355,7 +362,8 @@ public static class ManagedPool
 				flags = ApplyFinalizerSuppression(flags);
 				if ((flags & FinalizerCountMask) != 0)
 				{
-					flags |= MarkFlag | FinalizerPendingFlag;
+					flags = (flags & ~FinalizerCompletedFlag) |
+						MarkFlag | FinalizerPendingFlag;
 				}
 				M68kAddress.WriteUInt32(block, FlagsOffset, flags);
 			}
@@ -598,6 +606,8 @@ public static class ManagedPool
 				}
 				catch
 				{
+					// Consume a guest finalizer exception and continue draining the
+					// remaining queued finalizers.
 				}
 				CompleteFinalizer();
 			}
@@ -619,7 +629,7 @@ public static class ManagedPool
 		{
 			var block = M68kAddress.FromUInt32(current);
 			var flags = M68kAddress.ReadUInt32(block, FlagsOffset);
-			if ((flags & (FinalizerPendingFlag | FinalizerRunningFlag)) == 0 &&
+			if ((flags & (FinalizerPendingFlag | FinalizerRunningFlag | FinalizerCompletedFlag)) == 0 &&
 				HasFinalizer(current + BlockHeaderSize))
 			{
 				flags = ApplyFinalizerSuppression(flags);
@@ -676,7 +686,8 @@ public static class ManagedPool
 		M68kAddress.WriteUInt32(
 			block,
 			FlagsOffset,
-			flags & ~FinalizerRunningFlag);
+			(flags & ~FinalizerRunningFlag) |
+			FinalizerCompletedFlag);
 		ActiveFinalizerObject = 0;
 	}
 
