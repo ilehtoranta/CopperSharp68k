@@ -23,7 +23,7 @@ public static class TimeValCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		TimeVal value) where TMemory : struct, IAmigaGuestMemory
+		in TimeVal value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, TimerDeviceLayout.TimeVal.Seconds,
 			value.Seconds);
@@ -81,7 +81,7 @@ public static class TimerRequestCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		TimerRequest value) where TMemory : struct, IAmigaGuestMemory
+		in TimerRequest value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.Node.Successor,
 			value.Request.Message.Node.Successor.Raw);

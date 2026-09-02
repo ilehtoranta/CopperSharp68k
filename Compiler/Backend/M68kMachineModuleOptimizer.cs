@@ -21,6 +21,11 @@ internal sealed record M68kMachineModuleOptimizationStatistics(
 	long EstimatedPreOptimizationCost,
 	long EstimatedPostOptimizationCost)
 {
+	public M68kAggregateReturnForwardingStatistics AggregateReturnForwarding { get; init; } =
+		M68kAggregateReturnForwardingStatistics.Empty;
+	public M68kBulkCopyStatistics BulkCopies { get; init; } = M68kBulkCopyStatistics.Empty;
+	public int SingleUseInlinedCalls { get; init; }
+
 	public static M68kMachineModuleOptimizationStatistics Empty { get; } = new(
 		new Dictionary<CilMethodIdentity, M68kMachineOptimizationStatistics>(),
 		0,
@@ -67,7 +72,11 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
 		CompilationModule module,
 		M68kCpuTarget cpu,
-		IReadOnlySet<CilMethodIdentity>? roots = null)
+		IReadOnlySet<CilMethodIdentity>? roots = null,
+		IReadOnlySet<CilMethodIdentity>? noInlineMethods = null,
+		Action? beforeRetention = null,
+		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases = null,
+		bool inlineSingleUseMethods = false)
 	{
 		ArgumentNullException.ThrowIfNull(methods);
 		ArgumentNullException.ThrowIfNull(functions);
@@ -128,14 +137,22 @@ internal static class M68kMachineModuleOptimizer
 			M68kMachineIrVerifier.Verify(function);
 		}
 
-		var graph = BuildCallGraph(functions, module);
+		var graph = BuildCallGraph(functions, module, foldedMethodAliases);
 		var components = FindStronglyConnectedComponents(graph);
+		var singleUseCandidates = inlineSingleUseMethods
+			? FindSingleUseInlineCandidates(
+				functions,
+				module,
+				roots ?? functions.Keys.ToHashSet(),
+				foldedMethodAliases)
+			: new HashSet<CilMethodIdentity>();
 		// Keep the ordering stable and explicitly bottom-up for the summary and
 		// inlining stages that follow this closed-world discovery pass.
 		var componentByMethod = components
 			.SelectMany((component, index) => component.Select(method => (method, index)))
 			.ToDictionary(static item => item.method, static item => item.index);
 		var inlined = 0;
+		var singleUseInlined = 0;
 		foreach (var component in components)
 		{
 			foreach (var methodIdentity in component.OrderBy(id =>
@@ -156,7 +173,11 @@ internal static class M68kMachineModuleOptimizer
 					functions,
 					componentByMethod,
 					module,
-					cpu);
+					cpu,
+					noInlineMethods,
+					foldedMethodAliases,
+					singleUseCandidates,
+					ref singleUseInlined);
 			}
 		}
 
@@ -167,6 +188,7 @@ internal static class M68kMachineModuleOptimizer
 			module,
 			cpu);
 
+		beforeRetention?.Invoke();
 		var perMethod = functions
 			.Where(static item => item.Value.OptimizationStatistics is not null)
 			.ToDictionary(
@@ -174,7 +196,7 @@ internal static class M68kMachineModuleOptimizer
 				static item => item.Value.OptimizationStatistics!);
 		var retainedMethods = ComputeRetainedMethods(
 			functions,
-			BuildCallGraph(functions, module),
+			BuildCallGraph(functions, module, foldedMethodAliases),
 			module,
 			roots ?? functions.Keys.ToHashSet());
 		return new M68kMachineModuleOptimizationStatistics(
@@ -186,7 +208,10 @@ internal static class M68kMachineModuleOptimizer
 			retainedMethods,
 			estimatedBefore,
 			functions.Values.Sum(function =>
-				M68kTargetCostModel.Score(EstimateCost(function, cpu), cpu)));
+				M68kTargetCostModel.Score(EstimateCost(function, cpu), cpu)))
+		{
+			SingleUseInlinedCalls = singleUseInlined
+		};
 	}
 
 	private static void RunEarlyFramePromotion(
@@ -253,48 +278,6 @@ internal static class M68kMachineModuleOptimizer
 					method,
 					module,
 					summaries);
-				var trace = Environment.GetEnvironmentVariable(
-					"COPPERSHARP_DIAGNOSTIC_TRACE_MEMORY_PROMOTION");
-				if (!string.IsNullOrEmpty(trace) &&
-					function.DisplayName.Contains(trace, StringComparison.Ordinal))
-				{
-					Console.Error.WriteLine(
-						$"PROMOTION {iteration} {function.DisplayName}");
-					foreach (var call in function.Blocks
-						.SelectMany(static block => block.Instructions)
-						.Where(static instruction =>
-							instruction.Operation == M68kMachineOperation.Call))
-					{
-						Console.Error.WriteLine(
-							$"CALL I{call.Id} uses=[{string.Join(',', call.Uses)}] " +
-							$"defs=[{string.Join(',', call.Definitions)}] " +
-							$"logicalArgs=[{string.Join(',', call.LogicalCall?.ArgumentValueIds ?? [])}]");
-						foreach (var target in call.LogicalCall?.ResolvedTargets ?? [])
-						{
-							var targetSummary = summaries.GetValueOrDefault(target);
-							Console.Error.WriteLine(
-								$"  TARGET {target} parameters=" +
-								string.Join(',', targetSummary?.ParameterEffects ?? []));
-						}
-					}
-					foreach (var facts in annotations[identity].HeapOwners.Values)
-					{
-						Console.Error.WriteLine(
-							$"OWNER v{facts.OwnerValueId} array={facts.IsArray} " +
-							$"promotable={facts.IsPromotable} length={facts.ConstantLength} " +
-							$"ctor={facts.ConstructorMayWrite} finalizer={facts.HasFinalizer}");
-					}
-					foreach (var block in function.Blocks)
-					{
-						foreach (var instruction in block.Instructions.Where(static item =>
-							!item.ExactMemoryAccesses.IsDefaultOrEmpty))
-						{
-							Console.Error.WriteLine(
-								$"  B{block.Id} I{instruction.Id} {instruction.Operation} " +
-								$"{string.Join(';', instruction.ExactMemoryAccesses)}");
-						}
-					}
-				}
 			}
 			summaries = M68kMethodMemorySummaryAnalyzer.Compute(
 				methods,
@@ -328,7 +311,8 @@ internal static class M68kMachineModuleOptimizer
 						summaries,
 						localGlobals,
 						annotation.HeapOwners,
-						function));
+						function,
+						CanonicalOwners: annotation.CanonicalOwners));
 				if (!promotion.Changed)
 				{
 					continue;
@@ -358,8 +342,12 @@ internal static class M68kMachineModuleOptimizer
 		foreach (var group in accesses)
 		{
 			var materialized = group.ToArray();
+			var owningMethods = materialized
+				.Select(static item => item.Method)
+				.Distinct()
+				.ToArray();
 			if (group.Key.IsManagedRoot ||
-				materialized.Select(static item => item.Method).Distinct().Count() != 1 ||
+				owningMethods.Length != 1 ||
 				!materialized.Any(static item => item.Access.Kind ==
 					M68kExactMemoryAccessKind.Read) ||
 				!materialized.Any(static item => item.Access.Kind ==
@@ -370,9 +358,72 @@ internal static class M68kMachineModuleOptimizer
 			{
 				continue;
 			}
+			if (!HasDominatingWriteForEveryRead(
+					functions[owningMethods[0]],
+					group.Key))
+			{
+				continue;
+			}
 			result.Add(group.Key);
 		}
 		return result;
+	}
+
+	private static bool HasDominatingWriteForEveryRead(
+		M68kMachineFunction function,
+		M68kMemoryObject memoryObject)
+	{
+		function.SynchronizeNormalEdges();
+		var incoming = function.Blocks.ToDictionary(
+			static block => block.Id,
+			block => block.Id != function.EntryBlockId);
+		var outgoing = function.Blocks.ToDictionary(
+			static block => block.Id,
+			block => block.Id != function.EntryBlockId);
+		bool changed;
+		do
+		{
+			changed = false;
+			foreach (var block in function.Blocks.OrderBy(static block => block.Id))
+			{
+				var nextIn = block.Id != function.EntryBlockId &&
+					block.Predecessors.Count != 0 &&
+					block.Predecessors.All(predecessor => outgoing[predecessor]);
+				var nextOut = nextIn || block.Instructions.Any(instruction =>
+					instruction.ExactMemoryAccesses.Any(access =>
+						access.Object == memoryObject &&
+						access.Kind == M68kExactMemoryAccessKind.Write));
+				if (incoming[block.Id] == nextIn && outgoing[block.Id] == nextOut)
+				{
+					continue;
+				}
+				incoming[block.Id] = nextIn;
+				outgoing[block.Id] = nextOut;
+				changed = true;
+			}
+		}
+		while (changed);
+
+		foreach (var block in function.Blocks)
+		{
+			var available = incoming[block.Id];
+			foreach (var instruction in block.Instructions)
+			{
+				foreach (var access in instruction.ExactMemoryAccesses.Where(
+					access => access.Object == memoryObject))
+				{
+					if (access.Kind == M68kExactMemoryAccessKind.Read && !available)
+					{
+						return false;
+					}
+					if (access.Kind == M68kExactMemoryAccessKind.Write)
+					{
+						available = true;
+					}
+				}
+			}
+		}
+		return true;
 	}
 
 	private static IReadOnlySet<CilMethodIdentity> ComputeRetainedMethods(
@@ -436,7 +487,11 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
 		IReadOnlyDictionary<CilMethodIdentity, int> componentByMethod,
 		CompilationModule module,
-		M68kCpuTarget cpu)
+		M68kCpuTarget cpu,
+		IReadOnlySet<CilMethodIdentity>? noInlineMethods,
+		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases,
+		IReadOnlySet<CilMethodIdentity> singleUseCandidates,
+		ref int singleUseInlined)
 	{
 		var count = 0;
 		foreach (var block in caller.Blocks.OrderBy(static block => block.Id))
@@ -451,8 +506,15 @@ internal static class M68kMachineModuleOptimizer
 							M68kMachineCallDispatchKind.Constrained,
 						ResolvedTargets: [var targetIdentity]
 					} logicalCall ||
-					!methods.TryGetValue(targetIdentity, out var targetMethod) ||
-					!functions.TryGetValue(targetIdentity, out var target))
+					!methods.TryGetValue(targetIdentity, out var targetMethod))
+				{
+					continue;
+				}
+				// Folding has already removed alias bodies from the raw functions.
+				// Its body/signature/ABI proof permits using the canonical body here;
+				// the requested callee still supplies the call's NoInlining policy.
+				var bodyIdentity = PhysicalMethodIdentity(targetIdentity, foldedMethodAliases);
+				if (!functions.TryGetValue(bodyIdentity, out var target))
 				{
 					continue;
 				}
@@ -460,8 +522,9 @@ internal static class M68kMachineModuleOptimizer
 					logicalCall.DispatchKind == M68kMachineCallDispatchKind.Constrained &&
 					module.GetMethodDeclaringType(targetMethod).Kind ==
 						CilTypeKind.ValueType;
-				if (logicalCall.RequiresNullCheck && !constrainedValueTypeCall ||
-					componentByMethod[callerMethod.Identity] == componentByMethod[targetIdentity] ||
+				if (noInlineMethods?.Contains(targetIdentity) == true ||
+					logicalCall.RequiresNullCheck && !constrainedValueTypeCall ||
+					componentByMethod[callerMethod.Identity] == componentByMethod[bodyIdentity] ||
 					(targetMethod.ImplAttributes & MethodImplAttributes.NoInlining) != 0)
 				{
 					continue;
@@ -558,9 +621,17 @@ internal static class M68kMachineModuleOptimizer
 				// pair for a strictly smaller, faster local store.
 				var forceInline = guestMemoryIntrinsicWrapper ||
 					trivialValueTypeConstructor;
-				if (!forceInline &&
-					(delta > 0 ||
-					 !M68kTargetCostModel.Accept(beforeCost, afterCost, cpu)))
+				var acceptedNormally = delta <= 0 &&
+					M68kTargetCostModel.Accept(beforeCost, afterCost, cpu);
+				var pressurePenalty = checked(4L * Math.Max(
+					0,
+					afterCost.AddedLiveValuePressure -
+						beforeCost.AddedLiveValuePressure));
+				var acceptedAsSingleUse = !acceptedNormally &&
+					singleUseCandidates.Contains(bodyIdentity) &&
+					afterCost.Bytes + pressurePenalty <
+						beforeCost.Bytes + EstimateCost(target, cpu).Bytes;
+				if (!forceInline && !acceptedNormally && !acceptedAsSingleUse)
 				{
 					continue;
 				}
@@ -594,6 +665,7 @@ internal static class M68kMachineModuleOptimizer
 				}
 				index = first + replacements.Count - 1;
 				count++;
+				if (acceptedAsSingleUse) singleUseInlined++;
 			}
 		}
 		if (count != 0)
@@ -1253,6 +1325,27 @@ internal static class M68kMachineModuleOptimizer
 				values.Add(definition, clone.Id);
 			}
 		}
+		// Logical call operands outlive their physical materialization. For
+		// example, a guest-memory displacement is embedded in Immediate and its
+		// constant instruction can die, while the logical argument still has an
+		// identity in Values until ABI finalization. Clone those metadata-only
+		// identities too; they need no emitted definition or register move.
+		foreach (var value in body.SelectMany(static instruction =>
+			(instruction.LogicalCall?.ArgumentValueIds ?? [])
+				.Concat(instruction.LogicalCall?.ResultValueIds ?? [])).Distinct())
+		{
+			if (values.ContainsKey(value))
+				continue;
+			var source = target.Values[value];
+			var clone = caller.CreateValue(
+				source.Kind,
+				source.Width,
+				source.AllowedRegisters,
+				isGcReference: source.IsGcReference,
+				isRematerializable: source.IsRematerializable,
+				spillWeight: source.SpillWeight);
+			values.Add(value, clone.Id);
+		}
 		foreach (var instruction in body)
 		{
 			var origin = (instruction.Origin ??
@@ -1377,24 +1470,99 @@ internal static class M68kMachineModuleOptimizer
 			.ToImmutableArray();
 	}
 
+	private static HashSet<CilMethodIdentity> FindSingleUseInlineCandidates(
+		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
+		CompilationModule module,
+		IReadOnlySet<CilMethodIdentity> roots,
+		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases)
+	{
+		var references = functions.Keys.ToDictionary(
+			static identity => identity,
+			static _ => 0);
+		foreach (var function in functions.Values)
+		{
+			foreach (var instruction in function.Blocks.SelectMany(
+				static block => block.Instructions))
+			{
+				if (instruction.BulkCopy?.Target.ManagedMethod is { } provider)
+				{
+					AddReference(provider.Identity);
+				}
+				foreach (var target in (instruction.LogicalCall?.ResolvedTargets ?? [])
+					.Select(target => PhysicalMethodIdentity(
+						target,
+						foldedMethodAliases))
+					.Distinct())
+				{
+					AddReference(target);
+				}
+				if (instruction.Operation == M68kMachineOperation.TypeInitialize &&
+					instruction.Origin?.SourceInstruction is { Operand: int } source)
+				{
+					var initializer = module.GetTriggeredTypeInitializer(
+						instruction.Origin.SourceMethod,
+						source);
+					if (initializer is not null) AddReference(initializer.Identity);
+				}
+				if (instruction.Operation == M68kMachineOperation.FunctionAddress &&
+					instruction.Origin is { } origin &&
+					origin.SourceInstruction.Operand is int token)
+				{
+					var target = module.ResolveMethodToken(
+						token,
+						origin.SourceMethod,
+						origin.SourceInstruction.Offset).Definition;
+					if (target is not null) AddReference(target.Identity);
+				}
+			}
+		}
+
+		var physicalRoots = roots.Select(root =>
+			PhysicalMethodIdentity(root, foldedMethodAliases)).ToHashSet();
+		return references
+			.Where(item => item.Value == 1 && !physicalRoots.Contains(item.Key))
+			.Select(static item => item.Key)
+			.ToHashSet();
+
+		void AddReference(CilMethodIdentity identity)
+		{
+			var physical = PhysicalMethodIdentity(identity, foldedMethodAliases);
+			if (references.ContainsKey(physical))
+			{
+				references[physical] = checked(references[physical] + 1);
+			}
+		}
+	}
+
 	private static Dictionary<CilMethodIdentity, HashSet<CilMethodIdentity>>
 		BuildCallGraph(
 			IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions,
-			CompilationModule module)
+			CompilationModule module,
+			IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases)
 	{
 		var graph = functions.Keys.ToDictionary(
 			static identity => identity,
 			static _ => new HashSet<CilMethodIdentity>());
 		foreach (var (caller, function) in functions)
 		{
+			foreach (var copyTarget in function.Blocks.SelectMany(static block => block.Instructions)
+				.Select(static instruction => instruction.BulkCopy?.Target.ManagedMethod)
+				.Where(static target => target is not null))
+			{
+				if (functions.ContainsKey(copyTarget!.Identity))
+				{
+					graph[caller].Add(copyTarget.Identity);
+				}
+			}
 			foreach (var target in function.Blocks
 				.SelectMany(static block => block.Instructions)
 				.SelectMany(static instruction =>
 					instruction.LogicalCall?.ResolvedTargets ?? []))
 			{
-				if (functions.ContainsKey(target))
+				var physicalTarget = PhysicalMethodIdentity(target, foldedMethodAliases);
+				if (functions.ContainsKey(physicalTarget))
 				{
-					graph[caller].Add(target);
+					graph[caller].Add(physicalTarget);
 				}
 			}
 			foreach (var instruction in function.Blocks
@@ -1415,6 +1583,14 @@ internal static class M68kMachineModuleOptimizer
 		}
 		return graph;
 	}
+
+	private static CilMethodIdentity PhysicalMethodIdentity(
+		CilMethodIdentity identity,
+		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases) =>
+		foldedMethodAliases is not null &&
+		foldedMethodAliases.TryGetValue(identity, out var canonical)
+			? canonical.Identity
+			: identity;
 
 	private static List<List<CilMethodIdentity>> FindStronglyConnectedComponents(
 		IReadOnlyDictionary<CilMethodIdentity, HashSet<CilMethodIdentity>> graph)

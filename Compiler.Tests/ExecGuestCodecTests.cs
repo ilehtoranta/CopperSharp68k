@@ -4,6 +4,22 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class ExecGuestCodecTests
 {
+	[Theory]
+	[InlineData(-128, 127)]
+	[InlineData(-1, -1)]
+	[InlineData(0, 1)]
+	[InlineData(127, -128)]
+	public void ExecBaseNestingReadsAreSignedAndUseAuthoritativeStructFields(int interrupt, int task)
+	{
+		var memory = new Memory((int)ExecBase.Size);
+		var interruptOffset = System.Runtime.InteropServices.Marshal.OffsetOf<ExecBase>(nameof(ExecBase.IDNestCount)).ToInt32();
+		var taskOffset = System.Runtime.InteropServices.Marshal.OffsetOf<ExecBase>(nameof(ExecBase.TaskDisableNestCount)).ToInt32();
+		memory.WriteUInt8(APTR.Null, interruptOffset, unchecked((byte)interrupt));
+		memory.WriteUInt8(APTR.Null, taskOffset, unchecked((byte)task));
+		Assert.Equal((sbyte)interrupt, ExecBaseCodec.ReadInterruptDisableNesting(ref memory, APTR.Null));
+		Assert.Equal((sbyte)task, ExecBaseCodec.ReadTaskDisableNesting(ref memory, APTR.Null));
+	}
+
 	[Fact]
 	public void ExecBaseSchedulerFieldsUsePackedBigEndianLayout()
 	{

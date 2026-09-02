@@ -15,7 +15,8 @@ internal sealed record M68kMemoryPromotionContext(
 	IReadOnlySet<M68kMemoryObject> LocallyOwnedGlobalObjects,
 	IReadOnlyDictionary<int, M68kHeapOwnerFacts> HeapOwners,
 	M68kMachineFunction Function,
-	bool FrameAndArgumentOnly = false);
+	bool FrameAndArgumentOnly = false,
+	IReadOnlyDictionary<int, int>? CanonicalOwners = null);
 
 internal sealed record M68kMemoryPromotionStatistics(
 	int Candidates,
@@ -94,6 +95,14 @@ internal static class M68kMemoryPromotionPass
 		}
 
 		function.SynchronizeNormalEdges();
+		if (context.CanonicalOwners is null)
+		{
+			context = context with
+			{
+				CanonicalOwners =
+					M68kByrefProvenanceAnalyzer.BuildCanonicalGcOwners(function)
+			};
+		}
 		var statistics = new MutableStatistics();
 		var objects = function.Blocks
 			.SelectMany(static block => block.Instructions)
@@ -106,6 +115,7 @@ internal static class M68kMemoryPromotionPass
 			.ThenBy(static item => item.Offset)
 			.ToArray();
 		statistics.Candidates = objects.Length;
+		var candidates = new List<Candidate>();
 		foreach (var memoryObject in objects)
 		{
 			if (!TryCreateCandidate(
@@ -117,7 +127,23 @@ internal static class M68kMemoryPromotionPass
 			{
 				continue;
 			}
-			if (PromoteCandidate(function, context, candidate, statistics))
+			candidates.Add(candidate);
+		}
+		var originalLiveness = candidates.Any(static candidate =>
+			candidate.NeedsGcKeepAlive &&
+			candidate.Object.OwnerValueId is not null)
+				? M68kLivenessAnalysis.AnalyzeInstructions(
+					function,
+					M68kLivenessAnalysis.Analyze(function))
+				: null;
+		foreach (var candidate in candidates)
+		{
+			if (PromoteCandidate(
+					function,
+					context,
+					candidate,
+					statistics,
+					originalLiveness))
 			{
 				statistics.PromotedLocations++;
 			}
@@ -137,22 +163,6 @@ internal static class M68kMemoryPromotionPass
 		out Candidate candidate)
 	{
 		candidate = null!;
-		if (Environment.GetEnvironmentVariable(
-				"COPPERSHARP_DIAGNOSTIC_DISABLE_HEAP_MEMORY_PROMOTION") == "1" &&
-			memoryObject.Kind is not (
-				M68kMemoryObjectKind.FrameSlot or
-				M68kMemoryObjectKind.ArgumentHome))
-		{
-			return false;
-		}
-		if (Environment.GetEnvironmentVariable(
-				"COPPERSHARP_DIAGNOSTIC_DISABLE_FRAME_MEMORY_PROMOTION") == "1" &&
-			memoryObject.Kind is
-				M68kMemoryObjectKind.FrameSlot or
-				M68kMemoryObjectKind.ArgumentHome)
-		{
-			return false;
-		}
 		if (context.FrameAndArgumentOnly &&
 			memoryObject.Kind is not (
 				M68kMemoryObjectKind.FrameSlot or
@@ -346,7 +356,8 @@ internal static class M68kMemoryPromotionPass
 		M68kMachineFunction function,
 		M68kMemoryPromotionContext context,
 		Candidate candidate,
-		MutableStatistics statistics)
+		MutableStatistics statistics,
+		M68kInstructionLiveness? originalLiveness)
 	{
 		var blocks = function.Blocks.ToDictionary(static block => block.Id);
 		var availability = ComputeAvailability(function, context, candidate);
@@ -428,6 +439,14 @@ internal static class M68kMemoryPromotionPass
 		{
 			var depth = stack.Count;
 			var block = blocks[blockId];
+			if (!availability.In[blockId])
+			{
+				// The dominator path alone is insufficient at a join: another
+				// predecessor may have crossed a call or unknown-memory barrier.
+				// Retain the first concrete load until memory becomes available
+				// again on every incoming path.
+				stack.Push(-1);
+			}
 			if (phiDefinitions.TryGetValue(blockId, out var phiDefinition))
 			{
 				stack.Push(phiDefinition);
@@ -518,18 +537,17 @@ internal static class M68kMemoryPromotionPass
 					function.Values[root].IsGcReference)
 				{
 					var roots = new List<int> { root };
-					if (candidate.Object.OwnerValueId is { } owner &&
-						owner != root &&
-						function.Values.TryGetValue(owner, out var ownerValue) &&
-						ownerValue.IsGcReference &&
-						ValueDominatesInstruction(
+					if (FindOwnerKeepAliveAlias(
 							function,
-							owner,
+							context,
+							candidate.Object,
 							block,
 							instruction,
-							dominators))
+							dominators,
+							originalLiveness) is { } ownerAlias &&
+						ownerAlias != root)
 					{
-						roots.Add(owner);
+						roots.Add(ownerAlias);
 					}
 					block.Instructions.Insert(index++, function.CreateInstruction(
 						M68kMachineOperation.GcKeepAlive,
@@ -570,6 +588,66 @@ internal static class M68kMemoryPromotionPass
 			}
 		}
 		return changed;
+	}
+
+	private static int? FindOwnerKeepAliveAlias(
+		M68kMachineFunction function,
+		M68kMemoryPromotionContext context,
+		M68kMemoryObject memoryObject,
+		M68kMachineBlock block,
+		M68kMachineInstruction instruction,
+		IReadOnlyDictionary<int, HashSet<int>> dominators,
+		M68kInstructionLiveness? originalLiveness)
+	{
+		if (memoryObject.OwnerValueId is not { } owner ||
+			context.CanonicalOwners is not { } canonicalOwners ||
+			originalLiveness is null ||
+			!originalLiveness.LiveBefore.TryGetValue(
+				instruction.Id,
+				out var liveBefore) ||
+			!originalLiveness.LiveAfter.TryGetValue(
+				instruction.Id,
+				out var liveAfter))
+		{
+			return null;
+		}
+
+		var ownerAliases = canonicalOwners
+			.Where(item => ResolveOwner(canonicalOwners, item.Value) == owner)
+			.Select(static item => item.Key)
+			.Append(owner)
+			.Distinct()
+			.Where(value => liveBefore.Contains(value) || liveAfter.Contains(value) ||
+				instruction.Uses.Contains(value) ||
+				(instruction.LogicalCall?.ArgumentValueIds.Contains(value) ?? false))
+			.Where(value =>
+				function.Values.TryGetValue(value, out var machineValue) &&
+				machineValue.IsGcReference &&
+				ValueDominatesInstruction(
+					function,
+					value,
+					block,
+					instruction,
+					dominators))
+			.OrderBy(value => function.Values[value].PrecoloredRegister is not null)
+			.ThenBy(value => value == owner)
+			.ThenBy(static value => value)
+			.ToArray();
+		return ownerAliases.Length == 0 ? null : ownerAliases[0];
+	}
+
+	private static int ResolveOwner(
+		IReadOnlyDictionary<int, int> canonicalOwners,
+		int value)
+	{
+		var visited = new HashSet<int>();
+		while (visited.Add(value) &&
+			canonicalOwners.TryGetValue(value, out var owner) &&
+			owner != value)
+		{
+			value = owner;
+		}
+		return value;
 	}
 
 	private static (
@@ -786,7 +864,9 @@ internal static class M68kMemoryPromotionPass
 			LogicalCall = null,
 			ExactMemoryAccesses = [],
 			PlatformBaseConvention = null,
-			HasExplicitPlatformBase = false
+			HasExplicitPlatformBase = false,
+			MemoryOffset = 0,
+			MemorySize = 0
 		};
 
 	private static M68kMachineInstruction AsForwardedRead(
@@ -825,7 +905,9 @@ internal static class M68kMemoryPromotionPass
 			LogicalCall = null,
 			ExactMemoryAccesses = [],
 			PlatformBaseConvention = null,
-			HasExplicitPlatformBase = false
+			HasExplicitPlatformBase = false,
+			MemoryOffset = 0,
+			MemorySize = 0
 		};
 	}
 

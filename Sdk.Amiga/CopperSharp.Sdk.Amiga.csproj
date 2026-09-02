@@ -27,5 +27,7 @@
     <None Include="Examples\MUISunflower\MUISunflower.csproj" />
 	<None Include="Hardware\README.md" Pack="true" PackagePath="Hardware\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Update="buildTransitive\CopperSharp.Sdk.Amiga.props"
+          Pack="true" PackagePath="buildTransitive\CopperSharp.Sdk.Amiga.props" />
   </ItemGroup>
 </Project>

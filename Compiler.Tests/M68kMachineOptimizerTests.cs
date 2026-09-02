@@ -16,6 +16,91 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kMachineOptimizerTests
 {
 	[Fact]
+	public void CallAbiLoadsPlatformBaseDirectlyIntoFixedRegister()
+	{
+		var function = new M68kMachineFunction("direct-platform-base", 0);
+		var block = AddBlock(function, 0, 0);
+		var convention = new M68kExternalCallConvention(
+			"Exec",
+			M68kExternalBaseSource.WritableSlot,
+			M68kRegister.A6,
+			-552,
+			SourceAddress: 4,
+			SlotSymbol: "_ExecBase");
+		var memoryObject = M68kMemoryModel.LibraryBaseObject("_ExecBase");
+		var flexible = function.CreateValue(
+			CilStackValueKind.Int32,
+			M68kMachineValueWidth.Long,
+			M68kRegisterSet.DataOrAddress);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.PlatformBaseLoad,
+			0,
+			definitions: [flexible.Id],
+			memoryEffect: M68kMachineMemoryEffect.Read,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memoryObject,
+					M68kExactMemoryAccessKind.Read,
+					flexible.Id)
+			],
+			platformBaseConvention: convention));
+		int? copiedAlias = null;
+		for (var index = 0; index < 2; index++)
+		{
+			var copySource = flexible.Id;
+			if (index == 1)
+			{
+				var alias = function.CreateValue(
+					CilStackValueKind.Int32,
+					M68kMachineValueWidth.Long,
+					M68kRegisterSet.DataOrAddress);
+				copiedAlias = alias.Id;
+				block.Instructions.Add(function.CreateInstruction(
+					M68kMachineOperation.Copy,
+					index + 1,
+					uses: [flexible.Id],
+					definitions: [alias.Id]));
+				copySource = alias.Id;
+			}
+			var fixedBase = function.CreateValue(
+				CilStackValueKind.Int32,
+				M68kMachineValueWidth.Long,
+				M68kRegisterSet.From(M68kRegister.A6),
+				precoloredRegister: M68kRegister.A6);
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Copy,
+				index + 1,
+				uses: [copySource],
+				definitions: [fixedBase.Id]));
+		}
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			3));
+
+		M68kCallAbiLowering.FinalizeLogicalCalls(function);
+
+		var loads = block.Instructions.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.PlatformBaseLoad).ToArray();
+		Assert.Equal(2, loads.Length);
+		Assert.DoesNotContain(flexible.Id, function.Values.Keys);
+		Assert.NotNull(copiedAlias);
+		Assert.DoesNotContain(copiedAlias.Value, function.Values.Keys);
+		Assert.DoesNotContain(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.Copy);
+		Assert.All(loads, load =>
+		{
+			var definition = Assert.Single(load.Definitions);
+			Assert.Equal(
+				M68kRegister.A6,
+				function.Values[definition].PrecoloredRegister);
+			Assert.Equal(
+				definition,
+				Assert.Single(load.ExactMemoryAccesses).ValueId);
+		});
+	}
+
+	[Fact]
 	public void FrameFieldByrefCallRequiresLiveCallerFrame()
 	{
 		using var module = new CompilationModule(
@@ -260,6 +345,124 @@ public sealed class M68kMachineOptimizerTests
 		Assert.Single(folded.Origin.InlineSites);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void RomPolicyCreditsRemovableSingleUseScalarBody(bool enabled)
+	{
+		var callSource = new CilInstruction(0, OpCodes.Call, 0x06000002, 5);
+		var callerMethod = CreateMethod(
+			"Inline.SingleUse",
+			"Inline.SingleUse::Caller",
+			[callSource],
+			methodRow: 1);
+		var targetInstructions = new[]
+		{
+			new CilInstruction(0, OpCodes.Ldc_I4_1, null, 1),
+			new CilInstruction(1, OpCodes.Ldc_I4_2, null, 2),
+			new CilInstruction(2, OpCodes.Add, null, 3),
+			new CilInstruction(3, OpCodes.Ldc_I4_3, null, 4),
+			new CilInstruction(4, OpCodes.Add, null, 5),
+			new CilInstruction(5, OpCodes.Ret, null, 6)
+		};
+		var targetMethod = CreateMethod(
+			"Inline.SingleUse",
+			"Inline.SingleUse::Target",
+			targetInstructions,
+			methodRow: 2);
+
+		var caller = new M68kMachineFunction(
+			callerMethod.DisplayName,
+			0,
+			callerMethod);
+		var callerBlock = AddBlock(caller, 0, 0);
+		var fixedResult = CreateLong(caller);
+		var logicalResult = CreateLong(caller);
+		var origin = caller.OriginAt(0, callSource)!;
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Call,
+			0,
+			definitions: [fixedResult.Id],
+			clobbers: M68kRegisterSet.Data,
+			memoryEffect: M68kMachineMemoryEffect.Read |
+				M68kMachineMemoryEffect.Write,
+			isSafepoint: true,
+			mayThrow: true,
+			sourceInstruction: callSource,
+			logicalCall: new M68kMachineLogicalCall(
+				M68kMachineCallDispatchKind.Direct,
+				[targetMethod.Identity],
+				[],
+				[logicalResult.Id],
+				false,
+				origin)));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Copy,
+			0,
+			uses: [fixedResult.Id],
+			definitions: [logicalResult.Id]));
+		callerBlock.Instructions.Add(caller.CreateInstruction(
+			M68kMachineOperation.Return,
+			5,
+			uses: [logicalResult.Id]));
+
+		var target = new M68kMachineFunction(
+			targetMethod.DisplayName,
+			0,
+			targetMethod);
+		var targetBlock = AddBlock(target, 0, 0);
+		var one = CreateLong(target);
+		var two = CreateLong(target);
+		var firstSum = CreateLong(target);
+		var three = CreateLong(target);
+		var result = CreateLong(target);
+		AddConstant(target, targetBlock, one.Id, 1, 0);
+		AddConstant(target, targetBlock, two.Id, 2, 1);
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Add,
+			2,
+			uses: [one.Id, two.Id],
+			definitions: [firstSum.Id],
+			sourceInstruction: targetInstructions[2]));
+		AddConstant(target, targetBlock, three.Id, 3, 3);
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Add,
+			4,
+			uses: [firstSum.Id, three.Id],
+			definitions: [result.Id],
+			sourceInstruction: targetInstructions[4]));
+		targetBlock.Instructions.Add(target.CreateInstruction(
+			M68kMachineOperation.Return,
+			5,
+			uses: [result.Id],
+			sourceInstruction: targetInstructions[5]));
+
+		using var module = new CompilationModule(
+			typeof(M68kMachineOptimizerTests).Assembly.Location);
+		var statistics = M68kMachineModuleOptimizer.Run(
+			[callerMethod, targetMethod],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction>
+			{
+				[callerMethod.Identity] = caller,
+				[targetMethod.Identity] = target
+			},
+			module,
+			M68kCpuTarget.M68000,
+			roots: new HashSet<CilMethodIdentity> { callerMethod.Identity },
+			inlineSingleUseMethods: enabled);
+
+		Assert.Equal(enabled ? 1 : 0, statistics.SingleUseInlinedCalls);
+		Assert.Equal(enabled ? 1 : 2, statistics.RetainedMethods);
+		Assert.Equal(
+			enabled,
+			!callerBlock.Instructions.Any(static instruction =>
+				instruction.Operation == M68kMachineOperation.Call));
+		Assert.Equal(
+			!enabled,
+			statistics.RetainedMethodIdentities.Contains(targetMethod.Identity));
+		M68kMachineIrVerifier.Verify(caller);
+	}
+
 	[Fact]
 	public void ScalarInliningPreservesAbiPrefixCopyUsedAfterCall()
 	{
@@ -387,6 +590,143 @@ public sealed class M68kMachineOptimizerTests
 		Assert.Contains(callerBlock.Instructions, static instruction =>
 			instruction.Operation == M68kMachineOperation.Call);
 		M68kMachineIrVerifier.Verify(caller);
+	}
+
+	[Fact]
+	public void ZeroComparisonDoesNotEvictLiveIncomingD0ToD4()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = typeof(ZeroComparisonFixtures).Assembly.Location,
+			EntryPoint = "CopperSharp.Compiler.Tests.ZeroComparisonFixtures::Entry",
+			IncludedExportNames = [],
+			Cpu = M68kCpuTarget.M68000,
+			PeepholeOptimization = M68kPeepholeOptimizationMode.FixedPoint,
+			OutputFormat = M68kOutputFormat.Assembly,
+			ExceptionMode = M68kExceptionMode.Yolo,
+			MemoryManagement = M68kMemoryManagement.None
+		});
+		var assembly = result.Text!;
+		var wrapper = Assert.Single(result.Symbols.Where(static symbol =>
+			symbol.Name.EndsWith(
+				"ZeroComparisonFixtures::SignedWordAndZeroCompareForwarder",
+				StringComparison.Ordinal)));
+		var methodSymbols = result.Symbols
+			.Where(static symbol => symbol.Name.Contains("::", StringComparison.Ordinal))
+			.OrderBy(static symbol => symbol.Address)
+			.ToArray();
+		var methodLabels = System.Text.RegularExpressions.Regex.Matches(
+			assembly,
+			@"(?m)^C68K_method_003A[0-9A-F]+:\r?$");
+		Assert.Equal(methodSymbols.Length, methodLabels.Count);
+		var wrapperIndex = Array.FindIndex(
+			methodSymbols,
+			symbol => symbol.Name == wrapper.Name);
+		Assert.True(wrapperIndex >= 0);
+		var wrapperEnd = wrapperIndex + 1 < methodLabels.Count
+			? methodLabels[wrapperIndex + 1].Index
+			: assembly.Length;
+		var wrapperAssembly = assembly[
+			methodLabels[wrapperIndex].Index..wrapperEnd];
+
+		Assert.Equal(26, wrapper.Size);
+		Assert.Contains(
+			"\tmove.l\ta0,d3\r\n\tshi\td3",
+			wrapperAssembly,
+			StringComparison.Ordinal);
+		Assert.Contains("\text.l\td0", wrapperAssembly, StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmove.l\td0,d4",
+			wrapperAssembly,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmove.w\td4,d0",
+			wrapperAssembly,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain(
+			"\tmove.l\td4,-(a7)",
+			wrapperAssembly,
+			StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void CanonicalizesScalarRightZeroComparisonBeforeRegisterAllocation()
+	{
+		var function = new M68kMachineFunction("zero-compare", 0);
+		var block = AddBlock(function, 0, 0);
+		var input = CreateLong(function);
+		var zero = CreateLong(function);
+		var result = CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			0,
+			definitions: [input.Id],
+			argumentIndex: 0));
+		AddConstant(function, block, zero.Id, 0, 1);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Compare,
+			2,
+			uses: [input.Id, zero.Id],
+			definitions: [result.Id],
+			sourceInstruction: new CilInstruction(
+				2,
+				OpCodes.Cgt_Un,
+				null,
+				4)));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			4,
+			uses: [result.Id]));
+
+		M68kMachineOptimizer.Run(function, M68kCpuTarget.M68000);
+
+		var comparison = Assert.Single(block.Instructions.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.Compare));
+		Assert.Equal([input.Id], comparison.Uses);
+		Assert.Equal(0, comparison.Immediate);
+		Assert.DoesNotContain(zero.Id, function.Values.Keys);
+		Assert.DoesNotContain(block.Instructions, instruction =>
+			instruction.Definitions.Contains(zero.Id));
+		M68kMachineIrVerifier.Verify(function);
+	}
+
+	[Fact]
+	public void KeepsScalarLeftZeroComparisonBinary()
+	{
+		var function = new M68kMachineFunction("left-zero-compare", 0);
+		var block = AddBlock(function, 0, 0);
+		var zero = CreateLong(function);
+		var input = CreateLong(function);
+		var result = CreateLong(function);
+		AddConstant(function, block, zero.Id, 0, 0);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument,
+			1,
+			definitions: [input.Id],
+			argumentIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Compare,
+			2,
+			uses: [zero.Id, input.Id],
+			definitions: [result.Id],
+			sourceInstruction: new CilInstruction(
+				2,
+				OpCodes.Cgt_Un,
+				null,
+				4)));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			4,
+			uses: [result.Id]));
+
+		M68kMachineOptimizer.Run(function, M68kCpuTarget.M68000);
+
+		var comparison = Assert.Single(block.Instructions.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.Compare));
+		Assert.Equal([zero.Id, input.Id], comparison.Uses);
+		Assert.Null(comparison.Immediate);
+		Assert.Contains(zero.Id, function.Values.Keys);
+		M68kMachineIrVerifier.Verify(function);
 	}
 
 	[Fact]
@@ -912,6 +1252,108 @@ public sealed class M68kMachineOptimizerTests
 	}
 
 	[Fact]
+	public void MemoryPromotionRetainsJoinLoadWhenOnePathCallsWriter()
+	{
+		var writerMethod = CreateMethod(
+			"Memory.Barrier",
+			"Memory.Barrier::Write",
+			[new CilInstruction(0, OpCodes.Ret, null, 1)],
+			methodRow: 1);
+		var callSource = new CilInstruction(1, OpCodes.Call, 0x06000001, 2);
+		var callerMethod = CreateMethod(
+			"Memory.Barrier",
+			"Memory.Barrier::Caller",
+			[callSource],
+			methodRow: 2);
+		var function = new M68kMachineFunction(
+			callerMethod.DisplayName,
+			0,
+			callerMethod);
+		var entry = AddBlock(function, 0, 0);
+		var transparent = AddBlock(function, 1, 10);
+		var writing = AddBlock(function, 2, 20);
+		var join = AddBlock(function, 3, 30);
+		Connect(entry, transparent);
+		Connect(entry, writing);
+		Connect(transparent, join);
+		Connect(writing, join);
+
+		var memory = new M68kMemoryObject(
+			M68kMemoryObjectKind.StaticField,
+			"Memory.Barrier:0x04000001",
+			Offset: 0,
+			Size: 4);
+		var condition = CreateLong(function);
+		var initial = CreateLong(function);
+		var loaded = CreateLong(function);
+		AddArgument(function, entry, condition.Id, 0);
+		AddConstant(function, entry, initial.Id, 7, 1);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Store,
+			2,
+			uses: [initial.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Write,
+					initial.Id)
+			]));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.ConditionalBranch,
+			3,
+			uses: [condition.Id]));
+		transparent.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			10));
+		AddSummaryCall(function, writing, callSource, writerMethod, []);
+		writing.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch,
+			21));
+		join.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Load,
+			30,
+			definitions: [loaded.Id],
+			memoryEffect: M68kMachineMemoryEffect.Read,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Read,
+					loaded.Id)
+			]));
+		join.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			31,
+			uses: [loaded.Id]));
+
+		var summaries = new Dictionary<CilMethodIdentity, M68kMethodMemorySummary>
+		{
+			[writerMethod.Identity] = M68kMethodMemorySummary.Empty with
+			{
+				ExactGlobalWrites = ImmutableHashSet.Create(memory)
+			}
+		};
+		var statistics = M68kMemoryPromotionPass.Run(
+			function,
+			new M68kMemoryPromotionContext(
+				callerMethod,
+				null!,
+				summaries,
+				new HashSet<M68kMemoryObject> { memory },
+				new Dictionary<int, M68kHeapOwnerFacts>(),
+				function));
+
+		Assert.Contains(join.Instructions, instruction =>
+			instruction.Operation == M68kMachineOperation.Load &&
+			instruction.Definitions.Contains(loaded.Id));
+		Assert.DoesNotContain(join.Phis, static _ => true);
+		Assert.Equal(0, statistics.LoadsForwarded);
+		Assert.Equal(0, statistics.StoresRemoved);
+	}
+
+	[Fact]
 	public void MemoryPromotionBuildsLoopCarriedPhi()
 	{
 		var function = new M68kMachineFunction("memory-loop", 0);
@@ -1206,6 +1648,73 @@ public sealed class M68kMachineOptimizerTests
 		Assert.DoesNotContain(block.Instructions, static instruction =>
 			instruction.Operation is M68kMachineOperation.Load or
 				M68kMachineOperation.Store);
+	}
+
+	[Fact]
+	public void MemoryPromotionRejectsFieldsOnFinalizableOwners()
+	{
+		var function = new M68kMachineFunction("memory-finalizable-owner", 0);
+		var block = AddBlock(function, 0, 0);
+		var owner = CreateReference(function);
+		var stored = CreateLong(function);
+		var loaded = CreateLong(function);
+		var memory = new M68kMemoryObject(
+			M68kMemoryObjectKind.ObjectField,
+			"object:finalizable",
+			OwnerValueId: owner.Id,
+			Offset: 8,
+			Size: 4);
+		AddArgument(function, block, owner.Id, 0);
+		AddConstant(function, block, stored.Id, 42, 1);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Store,
+			2,
+			uses: [owner.Id, stored.Id],
+			memoryEffect: M68kMachineMemoryEffect.Write,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Write,
+					stored.Id)
+			]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Load,
+			3,
+			uses: [owner.Id],
+			definitions: [loaded.Id],
+			memoryEffect: M68kMachineMemoryEffect.Read,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					memory,
+					M68kExactMemoryAccessKind.Read,
+					loaded.Id)
+			]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			4,
+			uses: [loaded.Id]));
+		var owners = new Dictionary<int, M68kHeapOwnerFacts>
+		{
+			[owner.Id] = new(
+				owner.Id,
+				IsArray: false,
+				IsPromotable: false,
+				HasFinalizer: true,
+				ConstructorMayWrite: false,
+				ConstantLength: null,
+				ElementSize: 0,
+				StorageIdentity: "object:finalizable")
+		};
+
+		var statistics = RunPromotion(function, owners);
+
+		Assert.False(statistics.Changed);
+		Assert.Contains(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.Store);
+		Assert.Contains(block.Instructions, static instruction =>
+			instruction.Operation == M68kMachineOperation.Load);
 	}
 
 	[Fact]

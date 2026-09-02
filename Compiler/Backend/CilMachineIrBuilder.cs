@@ -1576,6 +1576,16 @@ internal static class CilMachineIrBuilder
 					operation = M68kMachineOperation.ArgumentAddress;
 					frameIndex = loadedArgument;
 				}
+				else if (function.ArgumentHomes.ContainsKey(loadedArgument) &&
+					function.Values[definitions[0]].Width == M68kMachineValueWidth.Long)
+				{
+					// Taking a 32-bit parameter's address makes its home authoritative:
+					// a callee may change it through that address. A copy of the
+					// incoming SSA value would keep observing the original value.
+					uses = [];
+					operation = M68kMachineOperation.ArgumentLoad;
+					frameIndex = loadedArgument;
+				}
 				else
 				{
 					var argumentValue = GetOrCreateArgumentValue(
@@ -4309,21 +4319,27 @@ internal static class CilMachineIrBuilder
 			caller,
 			layout.Size,
 			GcReferenceOffsets(module, valueType, definition.ModuleName));
+		var isTransparentScalar = module.IsTransparentScalarType(valueType);
 		var result = function.Values[definitions[0]];
 		function.Values[definitions[0]] = result with
 		{
-			Kind = CilStackValueKind.AggregateAddress,
+			Kind = isTransparentScalar ? result.Kind : CilStackValueKind.AggregateAddress,
 			Width = M68kMachineValueWidth.Long,
-			AllowedRegisters = M68kRegisterSet.Address,
+			AllowedRegisters = isTransparentScalar
+				? M68kRegisterSet.DataOrAddress
+				: M68kRegisterSet.Address,
 			PrecoloredRegister = null,
 			IsGcReference = false,
 			IsRematerializable = false
 		};
-		block.Instructions.Add(function.CreateInstruction(
-			M68kMachineOperation.LocalAddress,
-			instruction.Offset,
-			definitions: definitions,
-			argumentIndex: home));
+		if (!isTransparentScalar)
+		{
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.LocalAddress,
+				instruction.Offset,
+				definitions: definitions,
+				argumentIndex: home));
+		}
 		var callAddress = function.CreateValue(
 			CilStackValueKind.ManagedPointer,
 			M68kMachineValueWidth.Long,
@@ -4343,6 +4359,20 @@ internal static class CilMachineIrBuilder
 			[callAddress.Id, .. uses],
 			[],
 			hasInstanceArgumentOverride: true);
+		if (isTransparentScalar)
+		{
+			// A one-word value is passed by its payload, not by the temporary's
+			// address. Execute the constructor first: it may transform its input
+			// or accept several arguments even when the resulting layout is scalar.
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.LocalLoad,
+				instruction.Offset,
+				definitions: definitions,
+				memoryEffect: M68kMachineMemoryEffect.Read,
+				sourceInstruction: instruction,
+				argumentIndex: home,
+				memorySize: 4));
+		}
 	}
 
 	private static void AddConstrainedCall(
@@ -4378,6 +4408,22 @@ internal static class CilMachineIrBuilder
 				definitions: definitions,
 				sourceInstruction: instruction,
 				constantValue: M68kMachineConstant.Int32(0)));
+			return;
+		}
+		if (target.ImportName == "intrinsic:aptr-raw" &&
+			uses.Count == 1 && definitions.Count == 1 &&
+			TryFoldDirectFrameAddress(block, uses[0], caller, module, instruction,
+				out var frameLoadOperation, out var frameLoadIndex))
+		{
+			// Raw projections of transparent pointer wrappers are ordinary long
+			// reads. A private ldarga/ldloca source already proves the address is
+			// valid, just as for a direct ldind/ldfld read of the same home. Expose
+			// that access so read-only argument homes can later become SSA values.
+			block.Instructions.Add(function.CreateInstruction(frameLoadOperation,
+				instruction.Offset, definitions: definitions,
+				memoryEffect: M68kMachineMemoryEffect.Read,
+				sourceInstruction: instruction, argumentIndex: frameLoadIndex,
+				memorySize: 4));
 			return;
 		}
 		if (target.ImportName?.StartsWith(
@@ -4427,6 +4473,13 @@ internal static class CilMachineIrBuilder
 				abiTarget = target;
 			}
 		}
+		if (M68kEmptyCallAnalysis.IsEmptyConstrainedValueImplementation(constrainedImplementation))
+		{
+			// Argument evaluation and any triggered type initializer have already
+			// been emitted. A resolved value-type receiver needs no callvirt null
+			// check; dropping its empty body here also drops unused ABI shuffles.
+			return;
+		}
 		if (IsLiteralAddressIntrinsic(target.ImportName))
 		{
 			AddLiteralAddressIntrinsic(
@@ -4437,13 +4490,17 @@ internal static class CilMachineIrBuilder
 				definitions);
 			return;
 		}
-		if (target.ImportName == "intrinsic:amiga-vararg-from-value" &&
+		if (target.ImportName is
+				"intrinsic:amiga-vararg-from-value" or
+				"intrinsic:aptr-from-pointer" or
+				"intrinsic:aptr-to-uint32" &&
 			uses.Count == 1 &&
 			definitions.Count == 1)
 		{
-			// The wrapper is represented by the same four raw bytes as its input.
-			// Keep it as an SSA copy so forwarding varargs can trace the value back
-			// to an incoming stack slot instead of allocating an artificial call ABI.
+			// These wrappers preserve all four input bytes without dereferencing
+			// them. Expose that identity before inlining and ABI lowering, so an
+			// ordinary pointer-conversion helper can disappear into its caller and
+			// forwarding varargs can retain their incoming stack slot.
 			block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.Copy,
 				instruction.Offset,
@@ -6453,6 +6510,13 @@ internal static class CilMachineIrBuilder
 		M68kCpuTarget cpu)
 	{
 		var op = instruction.OpCode;
+		if (op == OpCodes.Initobj)
+		{
+			// Scalar/single-slot initialization falls through to the allocated
+			// initobj emitter, which materializes zero in D0. Multiword aggregate
+			// initialization has a separate lowering with its own scratch set.
+			return M68kRegisterSet.From(M68kRegister.D0);
+		}
 		if (op == OpCodes.Localloc)
 		{
 			return M68kRegisterSet.From(
@@ -6498,6 +6562,18 @@ internal static class CilMachineIrBuilder
 				(int)instruction.Operand!,
 				method,
 				instruction.Offset);
+			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken &&
+				target.Definition is { } declaration &&
+				declaration.DeclaringTypeIsInterface &&
+				module.TryResolveConstrainedValueInterfaceImplementation(
+					method, constrainedTypeToken, instruction.Offset, declaration,
+					out var implementation))
+			{
+				// A closed value-type receiver calls its implementation directly.
+				// Interface-dispatch scratch registers are not touched by that call;
+				// use the concrete target's ABI (including external clobbers) instead.
+				target = MethodReference.ForDefinition(implementation);
+			}
 			if (target.Definition is null &&
 				target.ImportName == "intrinsic:runtime-nullable-integral-hash:32")
 			{
@@ -6573,6 +6649,10 @@ internal static class CilMachineIrBuilder
 				var result = RegistersUsedByAbi(
 					externalCall.Abi,
 					target.Signature);
+				foreach (var register in externalCall.Convention.ClobberedRegisters ?? [])
+				{
+					result = result.Add(register);
+				}
 				result = result.Add(externalCall.Convention.BaseRegister);
 				if (externalCall.Convention.CacheRegister is { } cache)
 				{

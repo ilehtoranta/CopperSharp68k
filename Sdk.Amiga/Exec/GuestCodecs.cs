@@ -8,6 +8,14 @@ namespace Amiga;
 /// <summary>Named guest-memory accessors for published ExecBase fields.</summary>
 public static class ExecBaseCodec
 {
+	public static sbyte ReadInterruptDisableNesting<TMemory>(ref TMemory memory,
+		APTR execBase) where TMemory : struct, IAmigaGuestMemory =>
+		unchecked((sbyte)memory.ReadUInt8(execBase, ExecLayout.ExecBase.IDNestCount));
+
+	public static sbyte ReadTaskDisableNesting<TMemory>(ref TMemory memory,
+		APTR execBase) where TMemory : struct, IAmigaGuestMemory =>
+		unchecked((sbyte)memory.ReadUInt8(execBase, ExecLayout.ExecBase.TaskDisableNestCount));
+
 	public static APTR ReadThisTask<TMemory>(ref TMemory memory, APTR execBase)
 		where TMemory : struct, IAmigaGuestMemory => APTR.FromPointer(
 		memory.ReadUInt32(execBase, ExecLayout.ExecBase.ThisTask));
@@ -68,7 +76,7 @@ public static class ExecLibraryCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Library value) where TMemory : struct, IAmigaGuestMemory
+		in Library value) where TMemory : struct, IAmigaGuestMemory
 	{
 		ExecNodeCodec.Write(ref memory, address, value.Node);
 		WriteFlags(ref memory, address, value.Flags);
@@ -157,7 +165,7 @@ public static class ExecResidentCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Resident value) where TMemory : struct, IAmigaGuestMemory
+		in Resident value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt16(address, ExecLayout.Resident.MatchWord,
 			value.MatchWord);
@@ -201,7 +209,7 @@ public static class ExecResidentAutoInitCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		ResidentAutoInit value) where TMemory : struct, IAmigaGuestMemory
+		in ResidentAutoInit value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.ResidentAutoInit.DataSize,
 			value.DataSize);
@@ -270,7 +278,7 @@ public static class ExecNodeCodec
 		memory.WriteUInt32(address, ExecLayout.Node.Predecessor, value.Raw);
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Node value) where TMemory : struct, IAmigaGuestMemory
+		in Node value) where TMemory : struct, IAmigaGuestMemory
 	{
 		WriteSuccessor(ref memory, address, value.Successor);
 		WritePredecessor(ref memory, address, value.Predecessor);
@@ -325,7 +333,7 @@ public static class ExecListCodec
 		memory.WriteUInt32(address, ExecLayout.List.TailPred, value.Raw);
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		List value) where TMemory : struct, IAmigaGuestMemory
+		in List value) where TMemory : struct, IAmigaGuestMemory
 	{
 		WriteHead(ref memory, address, value.Head);
 		WriteTail(ref memory, address, value.Tail);
@@ -398,7 +406,7 @@ public static class ExecTaskCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Task value) where TMemory : struct, IAmigaGuestMemory
+		in Task value) where TMemory : struct, IAmigaGuestMemory
 	{
 		ExecNodeCodec.Write(ref memory, address, value.Node);
 		memory.WriteUInt8(address, ExecLayout.Task.Flags, (byte)value.Flags);
@@ -455,7 +463,7 @@ public static class ExecMemEntryCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		MemEntry value) where TMemory : struct, IAmigaGuestMemory
+		in MemEntry value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.MemEntry.AddressOrRequirements,
 			value.AddressOrRequirements.Raw);
@@ -498,7 +506,7 @@ public static class ExecMemListCodec
 		ExecMemEntryCodec.Read(ref memory, EntryAddress(address, index));
 
 	public static void WriteEntry<TMemory>(ref TMemory memory, APTR address,
-		ushort index, MemEntry value) where TMemory : struct, IAmigaGuestMemory =>
+		ushort index, in MemEntry value) where TMemory : struct, IAmigaGuestMemory =>
 		ExecMemEntryCodec.Write(ref memory, EntryAddress(address, index), value);
 }
 
@@ -523,7 +531,7 @@ public static class ExecMessageCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Message value) where TMemory : struct, IAmigaGuestMemory
+		in Message value) where TMemory : struct, IAmigaGuestMemory
 	{
 		ExecNodeCodec.Write(ref memory, address, value.Node);
 		memory.WriteUInt32(address, ExecLayout.Message.ReplyPort,
@@ -551,7 +559,7 @@ public static class ExecInterruptCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Interrupt value) where TMemory : struct, IAmigaGuestMemory
+		in Interrupt value) where TMemory : struct, IAmigaGuestMemory
 	{
 		ExecNodeCodec.Write(ref memory, address, value.Node);
 		memory.WriteUInt32(address, ExecLayout.Interrupt.Data, value.Data.Raw);
@@ -685,7 +693,7 @@ public static class ExecMsgPortCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		MsgPort value) where TMemory : struct, IAmigaGuestMemory
+		in MsgPort value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.Node.Successor,
 			value.Node.Successor.Raw);
@@ -726,7 +734,7 @@ public static class ExecStackSwapCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		StackSwapStruct value) where TMemory : struct, IAmigaGuestMemory
+		in StackSwapStruct value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.StackSwapStruct.Lower,
 			value.Lower.Raw);

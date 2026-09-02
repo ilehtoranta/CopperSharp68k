@@ -56,8 +56,11 @@ internal enum M68kMachineOperation
 	ByrefOwnerKeepAlive,
 	GcKeepAlive,
 	OutgoingArgumentPush,
+	OutgoingArgumentReserve,
 	IncomingArgumentPush,
 	OutgoingArgumentCleanup,
+	ReturnBufferAddress,
+	BulkCopy,
 	Address,
 	Add,
 	Subtract,
@@ -433,8 +436,15 @@ internal sealed record M68kMachineInstruction(
 	M68kMachineLogicalCall? LogicalCall = null,
 	ImmutableArray<M68kExactMemoryAccess> ExactMemoryAccesses = default,
 	M68kExternalCallConvention? PlatformBaseConvention = null,
-	bool HasExplicitPlatformBase = false)
+	bool HasExplicitPlatformBase = false,
+	int MemoryOffset = 0,
+	int MemorySize = 0)
 {
+	public M68kMachineBulkCopy? BulkCopy { get; init; }
+
+	// A preceding, explicit copy has filled the hidden aggregate return buffer.
+	public bool ReturnBufferWritten { get; init; }
+
 	public static M68kMachineInstruction Create(
 		int id,
 		M68kMachineOperation operation,
@@ -461,7 +471,9 @@ internal sealed record M68kMachineInstruction(
 		M68kMachineLogicalCall? logicalCall = null,
 		IEnumerable<M68kExactMemoryAccess>? exactMemoryAccesses = null,
 		M68kExternalCallConvention? platformBaseConvention = null,
-		bool hasExplicitPlatformBase = false) =>
+		bool hasExplicitPlatformBase = false,
+		int memoryOffset = 0,
+		int memorySize = 0) =>
 		new(
 			id,
 			operation,
@@ -489,7 +501,9 @@ internal sealed record M68kMachineInstruction(
 			exactMemoryAccesses?.ToImmutableArray() ??
 				ImmutableArray<M68kExactMemoryAccess>.Empty,
 			platformBaseConvention,
-			hasExplicitPlatformBase);
+			hasExplicitPlatformBase,
+			memoryOffset,
+			memorySize);
 }
 
 internal sealed class M68kMachineBlock
@@ -632,7 +646,9 @@ internal sealed class M68kMachineFunction
 		M68kMachineLogicalCall? logicalCall = null,
 		IEnumerable<M68kExactMemoryAccess>? exactMemoryAccesses = null,
 		M68kExternalCallConvention? platformBaseConvention = null,
-		bool hasExplicitPlatformBase = false) =>
+		bool hasExplicitPlatformBase = false,
+		int memoryOffset = 0,
+		int memorySize = 0) =>
 		M68kMachineInstruction.Create(
 			_nextInstructionId++,
 			operation,
@@ -659,7 +675,9 @@ internal sealed class M68kMachineFunction
 			logicalCall,
 			exactMemoryAccesses,
 			platformBaseConvention,
-			hasExplicitPlatformBase);
+			hasExplicitPlatformBase,
+			memoryOffset,
+			memorySize);
 
 	public M68kMachineInstructionOrigin? OriginAt(
 		int ilOffset,
@@ -1280,7 +1298,7 @@ internal static class M68kMachineIrVerifier
 				{
 					throw Invalid(
 						function,
-						$"Byref owner keepalive {instruction.Id} has an invalid shape.");
+						$"Keepalive {instruction.Id} has an invalid shape.");
 				}
 				break;
 
@@ -1300,6 +1318,37 @@ internal static class M68kMachineIrVerifier
 					throw Invalid(
 						function,
 						$"Outgoing argument push {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.OutgoingArgumentReserve:
+				if (instruction.ArgumentIndex is null or <= 0 ||
+					(instruction.ArgumentIndex.Value & 3) != 0 ||
+					instruction.Uses.Length != 0 || instruction.Definitions.Length != 1 ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Write)
+				{
+					throw Invalid(function, $"Outgoing argument reservation {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.ReturnBufferAddress:
+				if (instruction.Uses.Length != 0 || instruction.Definitions.Length != 1 ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Read)
+				{
+					throw Invalid(function, $"Return buffer address {instruction.Id} has an invalid shape.");
+				}
+				break;
+
+			case M68kMachineOperation.BulkCopy:
+				if (instruction.BulkCopy is not { ByteCount: > 0 } copy ||
+					instruction.Uses.Length != (copy.Target.ExternalCall is null ? 3 : 4) ||
+					instruction.Definitions.Length != 0 ||
+					instruction.MemoryEffect != (M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write) ||
+					instruction.IsSafepoint || instruction.MayThrow ||
+					copy.SourceAlignment < 1 || copy.DestinationAlignment < 1 ||
+					instruction.Uses.Any(value => function.Values[value].IsGcReference))
+				{
+					throw Invalid(function, $"Bulk copy {instruction.Id} has an invalid shape.");
 				}
 				break;
 

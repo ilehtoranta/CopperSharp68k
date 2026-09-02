@@ -313,8 +313,11 @@ public static class CompilerFixtures
 	public static uint TerminalConditionalReadEntry()
 	{
 		_terminalScalar = 0;
-		return _terminalReadFlag != 0 ? _terminalScalar : 42;
+		return _terminalReadFlag != 0 ? ReadTerminalScalar() : 42;
 	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ReadTerminalScalar() => _terminalScalar;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint TerminalEscapedStaticAddressEntry()
@@ -2036,6 +2039,20 @@ public static class CompilerFixtures
 		var box = new ManagedBox();
 		box.Value = 7 + _counter;
 		return box.Value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PromotedReferenceFieldAcrossCollectionEntry()
+	{
+		var owner = new ManagedNode();
+		var child = new ManagedBox { Value = 35 };
+		owner.Child = child;
+		M68kRuntime.Collect();
+		var tail = new int[4];
+		tail[0] = 7;
+		return ReferenceEquals(owner.Child, child)
+			? owner.Child!.Value + tail[0]
+			: 0;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -5850,6 +5867,29 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DynamicSignedByteArrayEntry()
+	{
+		var values = new sbyte[3];
+		values[0] = 12;
+		values[1] = -5;
+		values[2] = 35;
+		return values[DynamicArrayIndex()];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DynamicShortArrayEntry()
+	{
+		var values = new short[3];
+		values[0] = 300;
+		values[1] = -20;
+		values[2] = 7;
+		return values[DynamicArrayIndex()];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int DynamicArrayIndex() => 1;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int UnsignedShortArrayEntry()
 	{
 		var values = new ushort[3];
@@ -6822,6 +6862,20 @@ public static class CompilerFixtures
 		{
 			return values[0].GetValue() == 42 ? 42 : 0;
 		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PromotedReferenceArrayAcrossCollectionEntry()
+	{
+		var values = new object[1];
+		var child = new ManagedBox { Value = 35 };
+		values[0] = child;
+		M68kRuntime.Collect();
+		var tail = new int[4];
+		tail[0] = 7;
+		return ReferenceEquals(values[0], child)
+			? ((ManagedBox)values[0]).Value + tail[0]
+			: 0;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

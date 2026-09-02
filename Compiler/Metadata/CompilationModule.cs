@@ -627,6 +627,14 @@ internal sealed class CompilationModule : IDisposable
 				"External exception status must use a data register.",
 				displayName);
 		}
+		if (binding.ClobberedRegisters?.Any(static register =>
+			register < M68kRegister.D0 || register > M68kRegister.A6) == true)
+		{
+			throw new M68kCompilationException(
+				M68kDiagnosticIds.InvalidMetadata,
+				"External clobbered registers must use D0-D7 or A0-A6.",
+				displayName);
+		}
 
 		var abi = binding.ParameterRegisters is null
 			? GetRequiredRegisterAbi(
@@ -903,6 +911,18 @@ internal sealed class CompilationModule : IDisposable
 			Reader.GetFieldDefinition(field.Handle).GetDeclaringType(),
 			caller,
 			field.ConstructedDeclaringType);
+
+	public bool HasTypeInitializer(CilMethod method)
+	{
+		if (!string.IsNullOrEmpty(method.ModuleName) &&
+			!string.Equals(method.ModuleName, _assemblyName, StringComparison.Ordinal))
+		{
+			return GetCallerModule(method, 0).HasTypeInitializer(method);
+		}
+		if (method.DeclaringType.IsNil) return false;
+		return Reader.GetTypeDefinition(method.DeclaringType).GetMethods().Any(handle =>
+			Reader.StringComparer.Equals(Reader.GetMethodDefinition(handle).Name, ".cctor"));
+	}
 
 	private CilMethod? GetTypeInitializerForMethod(CilMethod method, CilMethod caller) =>
 		GetTypeInitializer(

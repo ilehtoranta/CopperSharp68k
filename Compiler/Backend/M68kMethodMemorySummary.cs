@@ -301,7 +301,10 @@ internal static class M68kMethodMemorySummaryAnalyzer
 				M68kMachineOperation.Call))
 		{
 			var targets = call.LogicalCall?.ResolvedTargets ?? [];
-			var allKnown = targets.Length != 0 &&
+			var allKnown = call.LogicalCall?.DispatchKind ==
+					M68kMachineCallDispatchKind.Direct &&
+				call.LogicalCall.RequiresNullCheck == false &&
+				targets.Length != 0 &&
 				targets.All(summaries.ContainsKey);
 			if (!allKnown)
 			{

@@ -196,9 +196,12 @@ internal static class M68kStaticAnalyzer
 			target = module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
 		}
 
+		// Value-type construction uses frame storage. Still traverse its body below
+		// so any real heap allocations performed by that constructor are checked.
 		if ((op == OpCodes.Newobj &&
 			(target is null || target.Definition is not { } constructor ||
-				!module.IsTransparentScalarConstructor(constructor))) ||
+				(!module.IsTransparentScalarConstructor(constructor) &&
+				 !module.IsValueTypeConstructor(constructor)))) ||
 			op == OpCodes.Newarr)
 		{
 			// Prefer the actionable finalizer-profile diagnostic over the generic

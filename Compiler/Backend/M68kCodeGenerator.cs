@@ -182,7 +182,8 @@ internal sealed partial class M68kCodeGenerator
 		M68kCompilationRequest request,
 		IReadOnlyList<CilExport> exports,
 		ManagedPoolRuntimeModule? managedPoolRuntime = null,
-		IReadOnlyList<ManagedLifecycleModule>? managedLifecycles = null)
+		IReadOnlyList<ManagedLifecycleModule>? managedLifecycles = null,
+		CilMethod? bulkCopyMethod = null)
 	{
 		_module = module;
 		_request = request;
@@ -190,6 +191,7 @@ internal sealed partial class M68kCodeGenerator
 		_memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
 		_managedPoolRuntime = managedPoolRuntime;
 		_managedLifecycles = managedLifecycles ?? Array.Empty<ManagedLifecycleModule>();
+		_bulkCopyMethod = bulkCopyMethod;
 	}
 
 	public GeneratedProgram Generate(CilMethod entry)
@@ -266,6 +268,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		AnalyzePlatformBaseMethodEntries(methods, entry, exports);
 		var rawFunctions = BuildRawMachineFunctions(methods);
+		var bulkCopyTarget = PrepareBulkCopyTarget(rawFunctions);
 		ValidateResidentMachineState(rawFunctions.Values);
 		var optimizerRoots = exports
 			.Select(static export => export.Method.Identity)
@@ -284,13 +287,28 @@ internal sealed partial class M68kCodeGenerator
 			rawFunctions,
 			_module,
 			_request.Cpu,
-			optimizerRoots);
+			optimizerRoots,
+			_bulkCopyMethod is null ? null : new HashSet<CilMethodIdentity> { _bulkCopyMethod.Identity },
+			() => LowerAggregateCopies(methods, rawFunctions, bulkCopyTarget),
+			foldedMethodAliases: _foldedMethodAliases,
+			inlineSingleUseMethods:
+				_request.RomSizeOptimizations?.InlineSingleUseMethods == true &&
+				_request.Cpu == M68kCpuTarget.M68000 &&
+				_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+				_request.ExceptionMode == M68kExceptionMode.Yolo &&
+				_memoryManagement == M68kMemoryManagement.None &&
+				_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
+				!_usesExceptionRuntime);
+		_machineOptimizationStatistics = WithAggregateCopyStatistics(
+			_machineOptimizationStatistics, rawFunctions, _aggregateReturnForwardingStatistics);
 		methods = methods.Where(method =>
 			!rawFunctions.ContainsKey(method.Identity) ||
 			_machineOptimizationStatistics.RetainedMethodIdentities.Contains(
 				method.Identity)).ToArray();
 		RunTerminalDeadStoreElimination(methods, rawFunctions);
 		MaterializeSurvivingPlatformBases(methods, rawFunctions);
+		ElideUnusedRegisterArguments(methods, rawFunctions);
+		methods = OrderMethodsForRomSize(methods, rawFunctions);
 		PlanResidentInvocationContext();
 		if (UsesResidentInvocationContext)
 		{
@@ -380,6 +398,41 @@ internal sealed partial class M68kCodeGenerator
 			: Array.Empty<M68kLoopLayout>();
 		_assembler.MarkDataStart();
 		EmitSwitchAddressTables();
+		var enableWholeImageRomSizeOptimizations =
+			_request.RomSizeOptimizations is not null &&
+			_request.Cpu == M68kCpuTarget.M68000 &&
+			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+			_request.ExceptionMode == M68kExceptionMode.Yolo &&
+			_memoryManagement == M68kMemoryManagement.None &&
+			_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
+			!_usesExceptionRuntime;
+		_assembler.EnableRepeatedCallResultTestOptimization =
+			enableWholeImageRomSizeOptimizations;
+		// Shared tails use only exact, self-contained terminal blocks. Managed
+		// memory, exception-runtime and dynamic-stack methods retain their exits.
+		_assembler.EnableMethodLocalTerminalReuse =
+			enableWholeImageRomSizeOptimizations &&
+			_request.RomSizeOptimizations!.ShareReturnSequences;
+		_assembler.EnableMethodLocalTerminalSuffixReuse = _assembler.EnableMethodLocalTerminalReuse;
+		_assembler.EnableRegionalTerminalReuse = _assembler.EnableMethodLocalTerminalReuse;
+		_assembler.EnableIdenticalMethodThunks =
+			enableWholeImageRomSizeOptimizations &&
+			_request.RomSizeOptimizations!.ShareIdenticalMethods;
+		if (_assembler.EnableMethodLocalTerminalReuse ||
+			_assembler.EnableIdenticalMethodThunks)
+		{
+			var reusableMethodRanges = methods
+				.Where(method => rawFunctions.TryGetValue(method.Identity, out var function) &&
+					!function.HasExceptionHandlers && !function.HasDynamicStackAllocation &&
+					!function.Values.Values.Any(value => value.IsGcReference) &&
+					!function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+					!function.ArgumentHomes.Values.Any(home => home.HasGcReferences))
+				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
+			if (_assembler.EnableMethodLocalTerminalReuse)
+				_assembler.MethodLocalTerminalRanges = reusableMethodRanges;
+			if (_assembler.EnableIdenticalMethodThunks)
+				_assembler.IdenticalMethodRanges = reusableMethodRanges;
+		}
 		_assembler.OptimizeForCpu(
 			_request.Cpu,
 			_request.ClrPolicy,
@@ -468,6 +521,10 @@ internal sealed partial class M68kCodeGenerator
 		var usedVirtualDeclarations =
 			new Dictionary<CilMethodIdentity, CilMethod>();
 		queue.Enqueue(entry);
+		if (_bulkCopyMethod is not null)
+		{
+			queue.Enqueue(_bulkCopyMethod);
+		}
 		foreach (var export in exports)
 		{
 			queue.Enqueue(export.Method);
@@ -848,6 +905,10 @@ internal sealed partial class M68kCodeGenerator
 		{
 			entry.Identity
 		};
+		if (_bulkCopyMethod is not null)
+		{
+			roots.Add(_bulkCopyMethod.Identity);
+		}
 		if (_managedPoolRuntime is not null)
 		{
 			roots.UnionWith(ReachableManagedPoolMethods.Select(method => method.Identity));
@@ -913,6 +974,10 @@ internal sealed partial class M68kCodeGenerator
 			.Select(static export => export.Method.Identity)
 			.ToHashSet();
 		protectedMethods.Add(entry.Identity);
+		if (_bulkCopyMethod is not null)
+		{
+			protectedMethods.Add(_bulkCopyMethod.Identity);
+		}
 		if (_managedPoolRuntime is not null)
 		{
 			protectedMethods.UnionWith(
@@ -1157,6 +1222,11 @@ internal sealed partial class M68kCodeGenerator
 				rightInstruction.Offset).Definition;
 			if (leftTarget is not null && rightTarget is not null)
 			{
+				// Referenced imports/platform calls can have synthetic definitions
+				// with empty managed identities. Only the same declaration token is
+				// proven equal here; the callers already share module/construction.
+				if (leftTarget.IsImport || rightTarget.IsImport)
+					return leftToken == rightToken;
 				if (leftTarget.Identity == leftMethod.Identity &&
 					rightTarget.Identity == rightMethod.Identity)
 					return true;
@@ -1482,6 +1552,7 @@ internal sealed partial class M68kCodeGenerator
 		var ilOptimizations = CilOptimizer.Optimize(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
 		M68kCallAbiLowering.FinalizeLogicalCalls(machineFunction);
+		_integerArithmeticPlans = M68kMachineArithmeticOptimizer.Run(machineFunction, _request.Cpu, _module);
 		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(
 			machineFunction,
 			!M68kCompiler.IsManagedRuntime(_request) ||
@@ -1490,7 +1561,9 @@ internal sealed partial class M68kCodeGenerator
 			 method.DeclaringType == runtimeEntry.DeclaringType),
 			_callerBorrowedByrefMethods.Contains(method.Identity),
 			method.Signature.ReturnType.Kind == CilTypeKind.ManagedPointer &&
-			!CilManagedByrefSummary.TryGetBorrowedParameterReturn(method, out _));
+			!CilManagedByrefSummary.TryGetBorrowedParameterReturn(method, out _),
+			argumentRegisters: internalAbi.Arguments
+				.Select(static argument => argument.Register).ToArray());
 		var reachableStackStates = CilStackAnalyzer.AnalyzeTypes(
 			method,
 			_module,
@@ -1522,7 +1595,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(MethodLabel(method));
 		try
 		{
-			EmitAllocatedMethod(
+			allocatedFunction = EmitAllocatedMethod(
 				method,
 				internalAbi,
 				allocatedFunction,
@@ -2230,7 +2303,8 @@ internal sealed partial class M68kCodeGenerator
 				 "intrinsic:copperstart-disable-interrupts" or
 				 "intrinsic:copperstart-restore-interrupts" or
 				 "intrinsic:copperstart-stop" or
-				 "intrinsic:copperstart-bootstrap-stack"))
+				 "intrinsic:copperstart-bootstrap-stack" or
+				 AmigaRunCommandOnStackImport))
 		{
 			if (Is64BitScalar(definition.Signature.ReturnType) ||
 				definition.Signature.ParameterTypes.Any(Is64BitScalar))
@@ -3116,7 +3190,8 @@ internal sealed partial class M68kCodeGenerator
 				 "intrinsic:copperstart-disable-interrupts" or
 				 "intrinsic:copperstart-restore-interrupts" or
 				 "intrinsic:copperstart-stop" or
-				 "intrinsic:copperstart-bootstrap-stack"))
+				 "intrinsic:copperstart-bootstrap-stack" or
+				 AmigaRunCommandOnStackImport))
 		{
 			if (definition.ImportAbi is not { } importAbi ||
 				importAbi.ParameterRegisters.Count != values.Count)
@@ -6647,6 +6722,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 		else if (target.Definition.IsImport)
 		{
+			if (target.Definition.ImportName == AmigaRunCommandOnStackImport)
+			{
+				ValidateAmigaRunCommandOnStack(target.Definition);
+			}
 			if (target.Definition.ImportAbi is { } importAbi)
 			{
 				var stackOffset = 0;
@@ -6669,7 +6748,14 @@ internal sealed partial class M68kCodeGenerator
 				}
 			}
 
-			_assembler.EmitJsr(target.Definition.ImportName!, external: true);
+			if (target.Definition.ImportName == AmigaRunCommandOnStackImport)
+			{
+				EmitAmigaRunCommandOnStack();
+			}
+			else
+			{
+				_assembler.EmitJsr(target.Definition.ImportName!, external: true);
+			}
 			_loadedPlatformBase = null;
 			if (target.Definition.ImportAbi is { } registerAbi &&
 				!target.Signature.ReturnType.IsVoid &&
@@ -9403,9 +9489,9 @@ internal sealed partial class M68kCodeGenerator
 
 			if (op == OpCodes.Stfld)
 			{
-				EmitPopD0();
+				EmitPopStackValue(M68kRegister.D0, CurrentStackKind());
 				EmitPopRegister(M68kRegister.A0);
-				_assembler.EmitWord(0x2080); // MOVE.L D0,(A0)
+				EmitStoreD0ToA0Displacement((int)InstanceFieldAccessWidth(field), 0);
 				return;
 			}
 
@@ -9462,15 +9548,14 @@ internal sealed partial class M68kCodeGenerator
 
 		if (op == OpCodes.Stfld)
 		{
-			EmitPopD0();
+			EmitPopStackValue(M68kRegister.D0, CurrentStackKind());
 			_assembler.EmitWord(0x205F); // MOVEA.L (A7)+,A0
 			var valid = UniqueLabel("field_object_valid");
 			_assembler.EmitWord(0x2208); // MOVE.L A0,D1 (and set condition codes)
 			_assembler.EmitBranch(M68kCondition.NotEqual, valid);
 			EmitExceptionRaise(reason: 1, hasException: false);
 			_assembler.Mark(valid);
-			_assembler.EmitWord(0x2140); // MOVE.L D0,d16(A0)
-			_assembler.EmitWord((ushort)displacement);
+			EmitStoreD0ToA0Displacement((int)InstanceFieldAccessWidth(field), displacement);
 			return;
 		}
 
@@ -9485,15 +9570,16 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (_module.IsTransparentScalarField(field))
 		{
-			_assembler.EmitWord(0x2010); // MOVE.L (A0),D0
+			EmitLoadD0FromA0Displacement((int)InstanceFieldAccessWidth(field),
+				field.Type.Kind == CilTypeKind.SignedInteger, 0);
 		}
 		else
 		{
 			_assembler.EmitWord(0x2008); // MOVE.L A0,D0
 			EmitRequireNonNull();
 			var displacement = FieldDisplacement(field);
-			_assembler.EmitWord(0x2028); // MOVE.L d16(A0),D0
-			_assembler.EmitWord((ushort)displacement);
+			EmitLoadD0FromA0Displacement((int)InstanceFieldAccessWidth(field),
+				field.Type.Kind == CilTypeKind.SignedInteger, displacement);
 		}
 
 		if (!pushResult)
@@ -9505,8 +9591,17 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		EmitPushD0();
+		EmitPushStackValue(M68kRegister.D0, CilStackAnalyzer.StackKindForType(field.Type));
 	}
+
+	private static M68kMachineValueWidth InstanceFieldAccessWidth(
+		CilField field, int memorySize = 0) =>
+		(memorySize != 0 ? memorySize : field.Type.Size) switch
+		{
+			1 => M68kMachineValueWidth.Byte,
+			2 => M68kMachineValueWidth.Word,
+			_ => M68kMachineValueWidth.Long
+		};
 
 	private short FieldDisplacement(CilField field)
 	{

@@ -532,7 +532,10 @@ public static class Intuition
 		[M68kRegister(M68kRegister.A2)] uint arg2);
 
 	[AmigaLvo(IntuitionLvo.GetDefaultPubScreen)]
-	public static extern void GetDefaultPubScreen(
+	// The legacy NDK C prototype says VOID, but its autodoc documents the
+	// actual default Screen pointer returned in D0. MorphOS exposes that result.
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern uint GetDefaultPubScreen(
 		[M68kRegister(M68kRegister.A0)] uint arg0);
 
 	[AmigaLvo(IntuitionLvo.EasyRequestArgs)]

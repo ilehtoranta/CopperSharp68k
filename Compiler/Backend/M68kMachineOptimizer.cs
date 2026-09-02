@@ -72,6 +72,7 @@ internal static class M68kMachineOptimizer
 		{
 			rounds++;
 			changed = SeedExplicitConstants(function);
+			changed |= CanonicalizeScalarZeroComparisons(function);
 			if (function.Blocks.All(static block => block.LoopDepth == 0))
 			{
 				changed |= SimplifyCopiesAndPhis(function, statistics);
@@ -114,6 +115,47 @@ internal static class M68kMachineOptimizer
 			statistics.StoresRemoved,
 			statistics.LoopInstructionsHoisted,
 			changed && rounds == MaximumRounds);
+	}
+
+	private static bool CanonicalizeScalarZeroComparisons(
+		M68kMachineFunction function)
+	{
+		var definitions = function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.Where(static instruction => instruction.Definitions.Length == 1)
+			.ToDictionary(static instruction => instruction.Definitions[0]);
+		var changed = false;
+		foreach (var block in function.Blocks)
+		{
+			for (var index = 0; index < block.Instructions.Count; index++)
+			{
+				var instruction = block.Instructions[index];
+				if (instruction.Operation != M68kMachineOperation.Compare ||
+					instruction.Uses is not [var left, var right] ||
+					instruction.Immediate is not null ||
+					function.Values[left].Width == M68kMachineValueWidth.LongPair ||
+					!definitions.TryGetValue(right, out var definition) ||
+					definition.Operation != M68kMachineOperation.Constant ||
+					definition.ConstantValue is not { } constant ||
+					!constant.TryGetIntegral(out var value) ||
+					value != 0)
+				{
+					continue;
+				}
+
+				// CMP #0 and TST establish the same N/Z/V/C state for every
+				// scalar comparison condition.  Record the implicit zero in the
+				// machine instruction so a comparison-only constant can die before
+				// allocation instead of evicting a live incoming register value.
+				block.Instructions[index] = instruction with
+				{
+					Uses = ImmutableArray.Create(left),
+					Immediate = 0
+				};
+				changed = true;
+			}
+		}
+		return changed;
 	}
 
 	private static bool SeedExplicitConstants(M68kMachineFunction function)
@@ -367,48 +409,9 @@ internal static class M68kMachineOptimizer
 		M68kMachineFunction function,
 		MutableStatistics statistics)
 	{
-		var blocks = function.Blocks.ToDictionary(static block => block.Id);
-		var reachable = new HashSet<int>();
-		var pending = new Stack<int>(function.Blocks
-			.Where(block => block.Id == function.EntryBlockId || block.IsExceptionEntry)
-			.Select(static block => block.Id));
-		while (pending.TryPop(out var blockId))
-		{
-			if (!reachable.Add(blockId))
-			{
-				continue;
-			}
-			foreach (var successor in blocks[blockId].ControlFlowSuccessors)
-			{
-				pending.Push(successor);
-			}
-		}
-		var removed = function.Blocks
-			.Where(block => !reachable.Contains(block.Id))
-			.Select(static block => block.Id)
-			.ToHashSet();
-		if (removed.Count == 0)
-		{
-			return false;
-		}
-		foreach (var block in function.Blocks.Where(block => reachable.Contains(block.Id)))
-		{
-			block.Predecessors.RemoveAll(removed.Contains);
-			block.Successors.RemoveAll(removed.Contains);
-			for (var index = 0; index < block.Phis.Count; index++)
-			{
-				var phi = block.Phis[index];
-				block.Phis[index] = phi with
-				{
-					Inputs = phi.Inputs
-						.Where(input => !removed.Contains(input.Key))
-						.ToDictionary(static input => input.Key, static input => input.Value)
-				};
-			}
-		}
-		function.RemoveBlocks(removed);
-		statistics.BlocksRemoved += removed.Count;
-		return true;
+		var removed = M68kControlFlowCleanup.RemoveUnreachableBlocks(function);
+		statistics.BlocksRemoved += removed;
+		return removed != 0;
 	}
 
 	private static bool EliminateCommonExpressions(
@@ -1138,7 +1141,9 @@ internal static class M68kMachineOptimizer
 			StackVarargsRegister = null,
 			Immediate = null,
 			BranchCondition = null,
-			ConstantValue = constant
+			ConstantValue = constant,
+			MemoryOffset = 0,
+			MemorySize = 0
 		};
 
 	private static M68kMachineInstruction AsCopy(
@@ -1160,7 +1165,9 @@ internal static class M68kMachineOptimizer
 			StackVarargsRegister = null,
 			Immediate = null,
 			BranchCondition = null,
-			ConstantValue = null
+			ConstantValue = null,
+			MemoryOffset = 0,
+			MemorySize = 0
 		};
 
 	private static CilInstruction ConstantInstruction(
@@ -1246,7 +1253,8 @@ internal static class M68kMachineOptimizer
 			for (var index = 0; index < block.Instructions.Count; index++)
 			{
 				var instruction = block.Instructions[index];
-				if (instruction.Uses.Length == 0 && instruction.LogicalCall is null)
+				if (instruction.Uses.Length == 0 && instruction.LogicalCall is null &&
+					instruction.ExactMemoryAccesses.IsDefaultOrEmpty)
 				{
 					continue;
 				}
@@ -1255,6 +1263,23 @@ internal static class M68kMachineOptimizer
 					Uses = instruction.Uses
 						.Select(use => Resolve(substitutions, use))
 						.ToImmutableArray(),
+					// Exact accesses carry SSA identities too. Keeping a removed copy
+					// here can prevent promotion, or associate a heap access with the
+					// wrong owner after ordinary operands have been canonicalized.
+					ExactMemoryAccesses = instruction.ExactMemoryAccesses.IsDefaultOrEmpty
+						? instruction.ExactMemoryAccesses
+						: instruction.ExactMemoryAccesses.Select(access => access with
+						{
+							ValueId = access.ValueId is { } value
+								? Resolve(substitutions, value)
+								: null,
+							Object = access.Object with
+							{
+								OwnerValueId = access.Object.OwnerValueId is { } owner
+									? Resolve(substitutions, owner)
+									: null
+							}
+						}).ToImmutableArray(),
 					LogicalCall = instruction.LogicalCall is { } logicalCall
 						? logicalCall with
 						{

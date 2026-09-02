@@ -14,6 +14,14 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class CoreDeviceBindingTests
 {
+	[Fact]
+	public void InputDeviceLifecycleUsesTheStandardDeviceVectorSlots()
+	{
+		Assert.Equal(-6, InputDevice.Open);
+		Assert.Equal(-12, InputDevice.Close);
+		Assert.Equal(-30, InputDevice.BeginIO);
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CallCmpTime() =>
 		TimerDevice.CmpTime(0x0000_4200u, 0x0000_4300u, 0x0000_4400u);

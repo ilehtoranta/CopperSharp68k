@@ -13,6 +13,8 @@ namespace Amiga;
 public static class InputDevice
 {
 	public const string Name = "input.device";
+	public const short Open = -6;
+	public const short Close = -12;
 	public const short BeginIO = -30;
 	public const short PeekQualifierLvo = -42;
 

@@ -21,6 +21,7 @@ internal sealed record M68kHeapOwnerFacts(
 
 internal sealed record M68kExactMemoryAnnotation(
 	IReadOnlyDictionary<int, M68kHeapOwnerFacts> HeapOwners,
+	IReadOnlyDictionary<int, int> CanonicalOwners,
 	bool Changed);
 
 /// <summary>
@@ -35,6 +36,7 @@ internal static class M68kExactMemoryAnnotator
 		M68kMachineInstruction Instruction,
 		bool IsArray,
 		CilTypeLayout? Layout,
+		CilType? ArrayElementType,
 		int? ConstantLength,
 		int ElementSize,
 		string Identity,
@@ -76,8 +78,34 @@ internal static class M68kExactMemoryAnnotator
 			definitions,
 			allocations,
 			methodSummaries);
+		var changed = DecomposeAggregateHeapAccesses(
+			function,
+			method,
+			module,
+			canonicalOwners,
+			allocations);
+		if (changed)
+		{
+			definitions = BuildDefinitions(function);
+			canonicalOwners = BuildCanonicalOwners(
+				function,
+				methodSummaries);
+			allocations = DiscoverAllocations(
+				function,
+				method,
+				module,
+				canonicalOwners,
+				definitions);
+			DiscoverEscapesAndInvalidArrays(
+				function,
+				method,
+				module,
+				canonicalOwners,
+				definitions,
+				allocations,
+				methodSummaries);
+		}
 
-		var changed = false;
 		foreach (var block in function.Blocks)
 		{
 			for (var index = 0; index < block.Instructions.Count; index++)
@@ -126,6 +154,7 @@ internal static class M68kExactMemoryAnnotator
 					candidate.ConstantLength,
 					candidate.ElementSize,
 					candidate.Identity)),
+			canonicalOwners,
 			changed);
 	}
 
@@ -152,6 +181,230 @@ internal static class M68kExactMemoryAnnotator
 				{
 					ExactMemoryAccesses = accesses
 				};
+				changed = true;
+			}
+		}
+		return changed;
+	}
+
+	/// <summary>
+	/// Turns supported reference-free aggregate field and array copies into
+	/// independent longword lanes. The compiler-owned aggregate homes remain as
+	/// snapshots for the existing value-type representation, while heap traffic
+	/// becomes ordinary scalar memory SSA that can be promoted independently.
+	/// </summary>
+	private static bool DecomposeAggregateHeapAccesses(
+		M68kMachineFunction function,
+		CilMethod method,
+		CompilationModule module,
+		IReadOnlyDictionary<int, int> canonicalOwners,
+		IReadOnlyDictionary<int, AllocationCandidate> allocations)
+	{
+		var changed = false;
+		foreach (var block in function.Blocks)
+		{
+			for (var index = 0; index < block.Instructions.Count; index++)
+			{
+				var instruction = block.Instructions[index];
+				if (instruction.Uses.Length == 0 ||
+					!canonicalOwners.TryGetValue(instruction.Uses[0], out var owner) ||
+					!allocations.TryGetValue(owner, out var allocation) ||
+					allocation.Escapes || allocation.HasInvalidArrayAccess ||
+					allocation.HasFinalizer)
+				{
+					continue;
+				}
+				var sourceMethod = instruction.Origin?.SourceMethod ?? method;
+				var source = instruction.SourceInstruction;
+				if (source is null)
+				{
+					continue;
+				}
+
+				CilTypeLayout? layout = null;
+				var isFieldLoad = instruction.Operation ==
+						M68kMachineOperation.AggregateFieldLoad &&
+					source.OpCode == OpCodes.Ldfld;
+				var isFieldStore = instruction.Operation ==
+						M68kMachineOperation.Store &&
+					source.OpCode == OpCodes.Stfld;
+				if (isFieldLoad || isFieldStore)
+				{
+					var field = module.ResolveFieldToken(
+						(int)source.Operand!,
+						sourceMethod,
+						source.Offset);
+					if (!field.IsStatic &&
+						module.TryGetReferenceFreeStructLayout(
+							field.Type,
+							field.ModuleName,
+							out var fieldLayout))
+					{
+						layout = fieldLayout;
+					}
+				}
+				var isArrayLoad = instruction.Operation ==
+					M68kMachineOperation.AggregateArrayLoad;
+				var isArrayStore = instruction.Operation ==
+					M68kMachineOperation.AggregateArrayStore;
+				if (isArrayLoad || isArrayStore)
+				{
+					var elementType = module.ResolveTypeToken(
+						(int)source.Operand!,
+						sourceMethod,
+						source.Offset);
+					if (module.TryGetReferenceFreeStructLayout(
+							elementType,
+							sourceMethod.ModuleName,
+							out var elementLayout))
+					{
+						layout = elementLayout;
+					}
+				}
+
+				if (layout is null || layout.Size <= 4 ||
+					(layout.Size & 3) != 0 || layout.ReferenceBitmap != 0)
+				{
+					continue;
+				}
+				if ((isFieldLoad || isArrayLoad) &&
+					instruction.ArgumentIndex is null)
+				{
+					continue;
+				}
+				if (isFieldLoad && instruction.Uses.Length != 1 ||
+					isFieldStore && instruction.Uses.Length != 2 ||
+					isArrayLoad && instruction.Uses.Length != 2 ||
+					isArrayStore && instruction.Uses.Length != 3)
+				{
+					continue;
+				}
+
+				var replacement = new List<M68kMachineInstruction>();
+				for (var laneOffset = 0;
+					laneOffset < layout.Size;
+					laneOffset += sizeof(uint))
+				{
+					var lane = function.CreateValue(
+						CilStackValueKind.Int32,
+						M68kMachineValueWidth.Long,
+						isArrayStore
+							? M68kRegisterSet.Data.Remove(M68kRegister.D1)
+							: M68kRegisterSet.Data);
+					if (isFieldStore || isArrayStore)
+					{
+						var aggregateAddress = instruction.Uses[^1];
+						replacement.Add(function.CreateInstruction(
+							M68kMachineOperation.Load,
+							instruction.IlOffset,
+							uses: [aggregateAddress],
+							definitions: [lane.Id],
+							// AggregateAddress values always name compiler-owned
+							// snapshots. This read cannot trap or be externally
+							// observed, so an unused superseded lane may die.
+							memoryEffect: M68kMachineMemoryEffect.None,
+							sourceInstruction: new CilInstruction(
+								instruction.IlOffset,
+								OpCodes.Ldind_I4,
+								null,
+								instruction.IlOffset),
+							origin: instruction.Origin,
+							memoryOffset: laneOffset,
+							memorySize: sizeof(uint)));
+					}
+
+					if (isFieldLoad)
+					{
+						replacement.Add(function.CreateInstruction(
+							M68kMachineOperation.Load,
+							instruction.IlOffset,
+							uses: instruction.Uses,
+							definitions: [lane.Id],
+							memoryEffect: M68kMachineMemoryEffect.Read,
+							mayThrow: instruction.MayThrow,
+							sourceInstruction: source,
+							origin: instruction.Origin,
+							memoryOffset: laneOffset,
+							memorySize: sizeof(uint)));
+					}
+					else if (isFieldStore)
+					{
+						replacement.Add(function.CreateInstruction(
+							M68kMachineOperation.Store,
+							instruction.IlOffset,
+							uses: [instruction.Uses[0], lane.Id],
+							memoryEffect: M68kMachineMemoryEffect.Write,
+							mayThrow: instruction.MayThrow,
+							sourceInstruction: source,
+							origin: instruction.Origin,
+							memoryOffset: laneOffset,
+							memorySize: sizeof(uint)));
+					}
+					else if (isArrayLoad)
+					{
+						replacement.Add(function.CreateInstruction(
+							M68kMachineOperation.ArrayLoad,
+							instruction.IlOffset,
+							uses: instruction.Uses,
+							definitions: [lane.Id],
+							clobbers: M68kRegisterSet.From(M68kRegister.D1),
+							memoryEffect: M68kMachineMemoryEffect.Read,
+							mayThrow: instruction.MayThrow,
+							sourceInstruction: source,
+							origin: instruction.Origin,
+							memoryOffset: laneOffset,
+							memorySize: sizeof(uint)));
+					}
+					else
+					{
+						replacement.Add(function.CreateInstruction(
+							M68kMachineOperation.ArrayStore,
+							instruction.IlOffset,
+							uses:
+							[
+								instruction.Uses[0],
+								instruction.Uses[1],
+								lane.Id
+							],
+							clobbers: M68kRegisterSet.From(M68kRegister.D1),
+							memoryEffect: M68kMachineMemoryEffect.Write,
+							mayThrow: instruction.MayThrow,
+							sourceInstruction: source,
+							origin: instruction.Origin,
+							memoryOffset: laneOffset,
+							memorySize: sizeof(uint)));
+					}
+
+					if (isFieldLoad || isArrayLoad)
+					{
+						replacement.Add(function.CreateInstruction(
+							M68kMachineOperation.LocalStore,
+							instruction.IlOffset,
+							uses: [lane.Id],
+							memoryEffect: M68kMachineMemoryEffect.Write,
+							argumentIndex: instruction.ArgumentIndex,
+							sourceInstruction: source,
+							origin: instruction.Origin,
+							memoryOffset: laneOffset,
+							memorySize: sizeof(uint)));
+					}
+				}
+
+				if ((isFieldLoad || isArrayLoad) &&
+					instruction.Definitions is [var aggregateAddressDefinition])
+				{
+					replacement.Add(function.CreateInstruction(
+						M68kMachineOperation.LocalAddress,
+						instruction.IlOffset,
+						definitions: [aggregateAddressDefinition],
+						argumentIndex: instruction.ArgumentIndex,
+						sourceInstruction: source,
+						origin: instruction.Origin));
+				}
+
+				block.Instructions.RemoveAt(index);
+				block.Instructions.InsertRange(index, replacement);
+				index += replacement.Count - 1;
 				changed = true;
 			}
 		}
@@ -197,15 +450,25 @@ internal static class M68kExactMemoryAnnotator
 					changed = true;
 				}
 				if (instruction.Operation == M68kMachineOperation.Call &&
-					instruction.Definitions is [var callDefinition] &&
 					TryGetReturnedOwner(
 						instruction,
 						result,
 						methodSummaries,
-						out var returnedOwner) &&
-					AssignCanonicalOwner(result, callDefinition, returnedOwner))
+						out var returnedOwner))
 				{
-					changed = true;
+					// Logical call results and their ABI-fixed definitions initially form
+					// a provisional GC-owner class. Rebind the logical result first so
+					// the physical result and following transport copies can resolve the
+					// class to the returned parameter's allocation identity.
+					foreach (var resultValue in
+						(instruction.LogicalCall?.ResultValueIds ?? [])
+						.Concat(instruction.Definitions))
+					{
+						changed |= AssignCanonicalOwner(
+							result,
+							resultValue,
+							returnedOwner);
+					}
 				}
 			}
 			foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
@@ -235,11 +498,18 @@ internal static class M68kExactMemoryAnnotator
 		int value,
 		int owner)
 	{
+		owner = ResolveCanonicalOwner(owners, owner);
 		if (owners.TryGetValue(value, out var existing))
 		{
-			if (existing == owner)
+			var resolvedExisting = ResolveCanonicalOwner(owners, existing);
+			if (resolvedExisting == owner)
 			{
-				return false;
+				if (existing == owner)
+				{
+					return false;
+				}
+				owners[value] = owner;
+				return true;
 			}
 			// BuildCanonicalGcOwners initially gives unresolved call/phi
 			// definitions their own identity. Replace only that provisional
@@ -251,6 +521,20 @@ internal static class M68kExactMemoryAnnotator
 		}
 		owners[value] = owner;
 		return true;
+	}
+
+	private static int ResolveCanonicalOwner(
+		IDictionary<int, int> owners,
+		int value)
+	{
+		var visited = new HashSet<int>();
+		while (visited.Add(value) &&
+			owners.TryGetValue(value, out var owner) &&
+			owner != value)
+		{
+			value = owner;
+		}
+		return value;
 	}
 
 	private static bool TryGetReturnedOwner(
@@ -353,6 +637,7 @@ internal static class M68kExactMemoryAnnotator
 					instruction,
 					IsArray: true,
 					Layout: null,
+					ArrayElementType: elementType,
 					length,
 					elementSize,
 					$"array:{elementType.DisplayName}",
@@ -378,6 +663,7 @@ internal static class M68kExactMemoryAnnotator
 				instruction,
 				IsArray: false,
 				layout,
+				ArrayElementType: null,
 				ConstantLength: null,
 				ElementSize: 0,
 				$"object:{layout.ModuleName}:{layout.Handle}:" +
@@ -397,59 +683,36 @@ internal static class M68kExactMemoryAnnotator
 		IReadOnlyDictionary<CilMethodIdentity, M68kMethodMemorySummary>?
 			methodSummaries)
 	{
-		var trace = Environment.GetEnvironmentVariable(
-			"COPPERSHARP_DIAGNOSTIC_TRACE_MEMORY_PROMOTION");
-		var tracing = !string.IsNullOrEmpty(trace) &&
-			function.DisplayName.Contains(trace, StringComparison.Ordinal);
-		if (tracing)
+		foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
 		{
-			Console.Error.WriteLine("GC OWNER MAP " + string.Join(", ",
-				canonicalOwners
-					.Where(item => function.Values.TryGetValue(item.Key, out var value) &&
-						value.IsGcReference)
-					.OrderBy(static item => item.Key)
-					.Select(static item => $"v{item.Key}->v{item.Value}")));
-			foreach (var block in function.Blocks)
+			var inputs = phi.Inputs.Values.Distinct().ToArray();
+			var allocationOwners = inputs
+				.Where(canonicalOwners.ContainsKey)
+				.Select(value => canonicalOwners[value])
+				.Where(allocations.ContainsKey)
+				.Distinct()
+				.ToArray();
+			if (allocationOwners.Length == 0)
 			{
-				foreach (var phi in block.Phis.Where(phi =>
-					function.Values[phi.Definition].IsGcReference))
-				{
-					Console.Error.WriteLine(
-						$"GC PHI B{block.Id} v{phi.Definition} " +
-						$"[{string.Join(',', phi.Inputs.Select(static item =>
-							$"B{item.Key}:v{item.Value}"))}]");
-				}
-				foreach (var instruction in block.Instructions.Where(item =>
-					item.Definitions.Any(definition =>
-						function.Values[definition].IsGcReference)))
-				{
-					Console.Error.WriteLine(
-						$"GC DEF B{block.Id} I{instruction.Id} {instruction.Operation} " +
-						$"uses=[{string.Join(',', instruction.Uses)}] " +
-						$"defs=[{string.Join(',', instruction.Definitions)}]");
-				}
+				continue;
+			}
+			var preservesOneOwner = allocationOwners is [var exactOwner] &&
+				inputs.All(value =>
+					canonicalOwners.TryGetValue(value, out var inputOwner) &&
+					inputOwner == exactOwner);
+			if (preservesOneOwner)
+			{
+				continue;
+			}
+			foreach (var owner in allocationOwners)
+			{
+				allocations[owner].Escapes = true;
 			}
 		}
 		foreach (var block in function.Blocks)
 		{
 			foreach (var instruction in block.Instructions)
 			{
-				if (tracing && instruction.Operation is
-					M68kMachineOperation.ArrayLoad or
-					M68kMachineOperation.ArrayStore or
-					M68kMachineOperation.ArrayAddress or
-					M68kMachineOperation.AggregateArrayLoad or
-					M68kMachineOperation.AggregateArrayStore)
-				{
-					Console.Error.WriteLine(
-						$"ARRAY B{block.Id} I{instruction.Id} {instruction.Operation} " +
-						$"uses=[{string.Join(',', instruction.Uses)}] " +
-						$"owners=[{string.Join(',', instruction.Uses.Select(value =>
-							canonicalOwners.TryGetValue(value, out var owner)
-								? $"v{value}->v{owner}"
-								: $"v{value}->?"))}] " +
-						$"source={SourceInstructionFor(instruction)?.OpCode.Name}");
-				}
 				for (var useIndex = 0; useIndex < instruction.Uses.Length; useIndex++)
 				{
 					var use = instruction.Uses[useIndex];
@@ -498,10 +761,13 @@ internal static class M68kExactMemoryAnnotator
 				{
 					continue;
 				}
-				if (instruction.Operation is
-						M68kMachineOperation.ArrayAddress or
-						M68kMachineOperation.AggregateArrayLoad or
-						M68kMachineOperation.AggregateArrayStore ||
+				var isAggregateArrayAccess = instruction.Operation is
+					M68kMachineOperation.AggregateArrayLoad or
+					M68kMachineOperation.AggregateArrayStore;
+				var unsupportedAggregateAccess = isAggregateArrayAccess &&
+					!IsSupportedAggregateArrayAccess(instruction, method, module);
+				if (instruction.Operation == M68kMachineOperation.ArrayAddress ||
+					unsupportedAggregateAccess ||
 					array.ConstantLength is null ||
 					array.ElementSize <= 0 ||
 					instruction.Uses.Length < 2 ||
@@ -512,12 +778,54 @@ internal static class M68kExactMemoryAnnotator
 					elementIndex < 0 ||
 					elementIndex >= array.ConstantLength ||
 					SourceInstructionFor(instruction)?.OpCode == OpCodes.Stelem_Ref &&
-					!IsKnownNullStore(instruction, definitions))
+					!IsStaticallySafeReferenceStore(
+						function,
+						instruction,
+						array,
+						canonicalOwners,
+						allocations,
+						definitions))
 				{
 					array.HasInvalidArrayAccess = true;
 				}
 			}
 		}
+	}
+
+	private static bool IsSupportedAggregateArrayAccess(
+		M68kMachineInstruction instruction,
+		CilMethod method,
+		CompilationModule module)
+	{
+		var isLoad = instruction.Operation ==
+			M68kMachineOperation.AggregateArrayLoad;
+		var isStore = instruction.Operation ==
+			M68kMachineOperation.AggregateArrayStore;
+		if (!isLoad && !isStore ||
+			isLoad && (instruction.Uses.Length != 2 ||
+				instruction.ArgumentIndex is null) ||
+			isStore && instruction.Uses.Length != 3)
+		{
+			return false;
+		}
+
+		var sourceMethod = instruction.Origin?.SourceMethod ?? method;
+		var source = instruction.SourceInstruction;
+		if (source?.Operand is not int typeToken)
+		{
+			return false;
+		}
+		var elementType = module.ResolveTypeToken(
+			typeToken,
+			sourceMethod,
+			source.Offset);
+		return module.TryGetReferenceFreeStructLayout(
+				elementType,
+				sourceMethod.ModuleName,
+				out var layout) &&
+			layout.Size > 4 &&
+			(layout.Size & 3) == 0 &&
+			layout.ReferenceBitmap == 0;
 	}
 
 	private static bool TryFoldArrayLength(
@@ -571,9 +879,7 @@ internal static class M68kExactMemoryAnnotator
 			return true;
 		}
 		if (useIndex == 0 && SourceInstructionFor(instruction) is { } source &&
-			(source.OpCode == OpCodes.Ldfld ||
-			 source.OpCode == OpCodes.Ldflda ||
-			 source.OpCode == OpCodes.Stfld))
+			(source.OpCode == OpCodes.Ldfld || source.OpCode == OpCodes.Stfld))
 		{
 			return !allocation.IsArray;
 		}
@@ -611,6 +917,8 @@ internal static class M68kExactMemoryAnnotator
 		if (methodSummaries is null ||
 			call.LogicalCall is not
 			{
+				DispatchKind: M68kMachineCallDispatchKind.Direct,
+				RequiresNullCheck: false,
 				ResolvedTargets.Length: > 0,
 				ArgumentValueIds: var arguments
 			} logicalCall)
@@ -738,23 +1046,45 @@ internal static class M68kExactMemoryAnnotator
 				instanceToken,
 				sourceMethod,
 				source.Offset);
+			var isAggregateField = module.TryGetReferenceFreeStructLayout(
+					field.Type,
+					field.ModuleName,
+					out var aggregateLayout) &&
+				aggregateLayout.Size > 4;
+			var isAggregateLane = isAggregateField &&
+				instruction.MemorySize == sizeof(uint);
+			if (isAggregateField && !isAggregateLane)
+			{
+				return ImmutableArray<M68kExactMemoryAccess>.Empty;
+			}
+			if (isAggregateLane &&
+				(instruction.MemoryOffset < 0 ||
+				 instruction.MemoryOffset > aggregateLayout!.Size - sizeof(uint) ||
+				 (instruction.MemoryOffset & 3) != 0))
+			{
+				return ImmutableArray<M68kExactMemoryAccess>.Empty;
+			}
 			if (!layout.FieldOffsets.TryGetValue(field.Handle, out var fieldOffset))
 			{
 				return ImmutableArray<M68kExactMemoryAccess>.Empty;
 			}
-			var size = TryGetElementSize(
-				module,
-				field.Type,
-				field.ModuleName,
-				out var fieldSize)
-					? fieldSize
-					: 0;
+			var size = isAggregateLane
+				? sizeof(uint)
+				: TryGetElementSize(
+					module,
+					field.Type,
+					field.ModuleName,
+					out var fieldSize)
+						? fieldSize
+						: 0;
 			var memoryObject = new M68kMemoryObject(
-				M68kMemoryObjectKind.ObjectField,
+				isAggregateLane
+					? M68kMemoryObjectKind.AggregateLane
+					: M68kMemoryObjectKind.ObjectField,
 				objectAllocation.Identity,
 				field.Type.IsReference,
 				fieldOwner,
-				fieldOffset,
+				checked(fieldOffset + instruction.MemoryOffset),
 				size);
 			return [new M68kExactMemoryAccess(
 				memoryObject,
@@ -790,13 +1120,38 @@ internal static class M68kExactMemoryAnnotator
 				: instruction.Definitions.SingleOrDefault();
 			var isRoot = function.Values.TryGetValue(valueId, out var value) &&
 				value.IsGcReference;
+			var isAggregateLane = instruction.MemorySize == sizeof(uint) &&
+				source.OpCode is var aggregateArrayOp &&
+				(aggregateArrayOp == OpCodes.Ldelem ||
+				 aggregateArrayOp == OpCodes.Stelem) &&
+				source.Operand is int aggregateElementToken &&
+				module.TryGetReferenceFreeStructLayout(
+					module.ResolveTypeToken(
+						aggregateElementToken,
+						sourceMethod,
+						source.Offset),
+					sourceMethod.ModuleName,
+					out var aggregateElementLayout) &&
+				aggregateElementLayout.Size > 4;
+			if (isAggregateLane &&
+				(instruction.MemoryOffset < 0 ||
+				 instruction.MemoryOffset > array.ElementSize - sizeof(uint) ||
+				 (instruction.MemoryOffset & 3) != 0))
+			{
+				return ImmutableArray<M68kExactMemoryAccess>.Empty;
+			}
+			var accessSize = isAggregateLane
+				? sizeof(uint)
+				: array.ElementSize;
 			var memoryObject = new M68kMemoryObject(
-				M68kMemoryObjectKind.ArrayElement,
+				isAggregateLane
+					? M68kMemoryObjectKind.AggregateLane
+					: M68kMemoryObjectKind.ArrayElement,
 				array.Identity,
 				isRoot,
 				arrayOwner,
-				checked((int)index * array.ElementSize),
-				array.ElementSize);
+				checked((int)index * array.ElementSize + instruction.MemoryOffset),
+				accessSize);
 			return [new M68kExactMemoryAccess(
 				memoryObject,
 				instruction.Operation == M68kMachineOperation.ArrayStore
@@ -853,8 +1208,21 @@ internal static class M68kExactMemoryAnnotator
 				M68kMachineOperation.ArgumentStore => M68kExactMemoryAccessKind.Write,
 			_ => M68kExactMemoryAccessKind.Address
 		};
+		var memoryOffset = accessKind == M68kExactMemoryAccessKind.Address
+			? 0
+			: instruction.MemoryOffset;
+		var accessSize = accessKind == M68kExactMemoryAccessKind.Address
+			? home?.Size ?? 0
+			: instruction.MemorySize > 0
+				? instruction.MemorySize
+				: home?.Size ?? 0;
 		access = new M68kExactMemoryAccess(
-			M68kMemoryModel.FrameObject(objectKind.Value, index, home),
+			M68kMemoryModel.FrameObject(
+				objectKind.Value,
+				index,
+				home,
+				memoryOffset,
+				accessSize),
 			accessKind,
 			accessKind == M68kExactMemoryAccessKind.Read
 				? instruction.Definitions.SingleOrDefault()
@@ -900,6 +1268,51 @@ internal static class M68kExactMemoryAnnotator
 		instruction.Uses.Length >= 3 &&
 		TryGetConstant(instruction.Uses[^1], definitions, out var constant) &&
 		constant.Kind == M68kMachineConstantKind.Null;
+
+	private static bool IsStaticallySafeReferenceStore(
+		M68kMachineFunction function,
+		M68kMachineInstruction instruction,
+		AllocationCandidate array,
+		IReadOnlyDictionary<int, int> canonicalOwners,
+		IReadOnlyDictionary<int, AllocationCandidate> allocations,
+		IReadOnlyDictionary<int, M68kMachineInstruction> definitions)
+	{
+		if (IsKnownNullStore(instruction, definitions))
+		{
+			return true;
+		}
+		if (instruction.Uses.Length < 3 ||
+			array.ArrayElementType is not { } elementType)
+		{
+			return false;
+		}
+		var storedValue = instruction.Uses[^1];
+		if (!function.Values.TryGetValue(storedValue, out var value) ||
+			!value.IsGcReference)
+		{
+			return false;
+		}
+		// A freshly allocated object[] has no narrower runtime element type.
+		if (elementType.DisplayName == "object")
+		{
+			return true;
+		}
+		if (!canonicalOwners.TryGetValue(storedValue, out var storedOwner) ||
+			!allocations.TryGetValue(storedOwner, out var storedAllocation))
+		{
+			return false;
+		}
+		var exactType = storedAllocation.IsArray
+			? storedAllocation.ArrayElementType is { } storedElement
+				? $"{storedElement.DisplayName}[]"
+				: string.Empty
+			: storedAllocation.Layout?.ConstructedType?.DisplayName ??
+				storedAllocation.Layout?.DisplayName ?? string.Empty;
+		return string.Equals(
+			elementType.DisplayName,
+			exactType,
+			StringComparison.Ordinal);
+	}
 
 	private static bool TryGetIntegralConstant(
 		int value,

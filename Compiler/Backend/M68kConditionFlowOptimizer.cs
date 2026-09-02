@@ -37,13 +37,21 @@ internal static class M68kConditionFlowOptimizer
 		CilMethod method,
 		CompilationModule module)
 	{
-		bool changed;
-		do
+		while (true)
 		{
-			changed = TryThreadBooleanPhi(function, method, module) ||
-				TryFuseDirectBooleanBranch(function, method, module);
+			if (TryThreadBooleanPhi(function, method, module))
+			{
+				// Threading a constant phi can make the untaken successor of the
+				// removed routing block unreachable. Repair that transformation
+				// immediately, before another CFG analysis observes the orphan.
+				M68kControlFlowCleanup.RemoveUnreachableBlocks(function);
+				continue;
+			}
+			if (!TryFuseDirectBooleanBranch(function, method, module))
+			{
+				break;
+			}
 		}
-		while (changed);
 		RemoveUnreferencedValues(function);
 		M68kControlFlowAnalysis.ComputeLoopDepths(function);
 		M68kMachineIrVerifier.Verify(function);

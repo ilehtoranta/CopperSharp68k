@@ -211,7 +211,16 @@ public sealed record M68kExternalCallConvention(
 	IReadOnlyList<M68kRegister>? ParameterRegisters = null,
 	M68kRegister ReturnRegister = M68kRegister.D0,
 	M68kExternalExceptionPolicy ExceptionPolicy = M68kExternalExceptionPolicy.None,
-	M68kRegister? ExceptionStatusRegister = null);
+	M68kRegister? ExceptionStatusRegister = null)
+{
+	/// <summary>
+	/// Additional D0-D7/A0-A6 registers that the target ABI allows the callee to
+	/// overwrite, including registers absent from its signature. Parameter,
+	/// return, base, cache, and exception-status effects remain implicit.
+	/// Null preserves the existing convention with no additional clobbers.
+	/// </summary>
+	public IReadOnlyList<M68kRegister>? ClobberedRegisters { get; init; }
+}
 
 /// <summary>Optional target-platform metadata and call-convention resolver.</summary>
 public interface IM68kExternalCallResolver
@@ -457,6 +466,103 @@ public sealed record M68kFrameworkImplementationPackOptions(string ManifestPath)
 	internal bool EnableUnlistedManagedBodies { get; init; }
 }
 
+/// <summary>
+/// Optional target-supplied implementation for large, nonoverlapping block
+/// copies. The provider takes source address, destination address, and byte
+/// count in that order, returns void, and must support arbitrary byte alignment
+/// and byte counts without allocating, collecting, or throwing.
+/// </summary>
+public sealed record M68kBulkCopyOptions
+{
+	/// <summary>
+	/// Minimum copy size eligible for a provider call. Smaller or otherwise
+	/// ineligible copies retain the compiler's existing lowering.
+	/// </summary>
+	public int MinimumBytes { get; init; } = 64;
+
+	/// <summary>
+	/// Assembly name containing a managed provider. Supply this together with
+	/// <see cref="ManagedMethod"/>, or supply <see cref="ExternalCall"/> instead.
+	/// The assembly must be available to the closed-world compilation.
+	/// </summary>
+	public string? ManagedAssemblyName { get; init; }
+
+	/// <summary>
+	/// Static, nongeneric managed method in <c>Namespace.Type::Method</c> form.
+	/// Its three parameters must be 32-bit integer or pointer values, including
+	/// transparent scalar wrappers, using the compiler's register-only ABI.
+	/// The method and its dependencies must be usable before runtime or platform
+	/// library initialization and must not require type initializers. Provider
+	/// dependencies do not use this lowering.
+	/// </summary>
+	public string? ManagedMethod { get; init; }
+
+	/// <summary>
+	/// External provider with three explicit parameter registers in source,
+	/// destination, and count order. A dynamic base argument and exception-status
+	/// reporting are not supported. The target must guarantee that the base is
+	/// available whenever generated copies can run, including startup.
+	/// A cached base uses an A2-A6 register preserved by the provider.
+	/// </summary>
+	public M68kExternalCallConvention? ExternalCall { get; init; }
+}
+
+/// <summary>
+/// Optional code-size reductions for MC68000 ROMs using YOLO exceptions and no
+/// managed memory. Other profiles and methods with GC/EH or dynamic stack state
+/// retain their existing lowering. Large-copy provider selection is independent.
+/// </summary>
+public sealed record M68kRomSizeOptions
+{
+	/// <summary>
+	/// Stop staging provably unused register arguments at direct managed calls.
+	/// Formal ABI positions, argument evaluation, and stack arguments are unchanged.
+	/// </summary>
+	public bool ElideUnusedRegisterArguments { get; init; } = true;
+
+	/// <summary>
+	/// Share identical terminal blocks and stack-restore suffixes within a method.
+	/// An affected exit can gain one branch. Disabled peepholes disable this pass.
+	/// </summary>
+	public bool ShareReturnSequences { get; init; } = true;
+
+	/// <summary>
+	/// Replace structurally identical closed-world method bodies with distinct
+	/// six-byte absolute-jump entries to one retained body. Function addresses
+	/// remain distinct, while an affected invocation can gain one jump.
+	/// </summary>
+	public bool ShareIdenticalMethods { get; init; } = true;
+
+	/// <summary>
+	/// Reuse the callee-owned incoming copy of a by-value stack aggregate instead
+	/// of copying it into a second local home. Formal ABI and frame size are unchanged.
+	/// </summary>
+	public bool ReuseIncomingArgumentHomes { get; init; } = true;
+
+	/// <summary>
+	/// Place methods with frequent direct calls into bounded affinity clusters so
+	/// the assembler can select PC-relative calls when their final range permits.
+	/// Method identity, function addresses, and the call ABI are unchanged.
+	/// </summary>
+	public bool ClusterInternalCalls { get; init; } = true;
+
+	/// <summary>
+	/// Inline a private scalar helper referenced from exactly one call site when
+	/// removing its now-unreachable body is estimated to reduce total ROM bytes.
+	/// Roots, function-address targets, recursive calls, and NoInlining methods
+	/// retain separate bodies.
+	/// </summary>
+	public bool InlineSingleUseMethods { get; init; } = true;
+
+	/// <summary>
+	/// Forward an aggregate return directly into a private local that is later
+	/// exposed only to direct, closed-world read-only-reference callees. Metadata
+	/// readonly markers and computed no-write/no-capture effects must both agree.
+	/// </summary>
+	public bool ForwardReadOnlyAggregateLocals { get; init; } = true;
+
+}
+
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
@@ -538,6 +644,19 @@ public sealed record M68kCompilationRequest
 	/// </summary>
 	public M68kPeepholeOptimizationMode PeepholeOptimization { get; init; } =
 		M68kPeepholeOptimizationMode.FixedPoint;
+
+	/// <summary>
+	/// Explicit ROM code-size policy. Null preserves the default lowering.
+	/// Measure execution and stack budgets before enabling shared return paths.
+	/// </summary>
+	public M68kRomSizeOptions? RomSizeOptimizations { get; init; }
+
+	/// <summary>
+	/// Optional large-copy provider. Null preserves the existing inline copy
+	/// lowering; volatile, potentially overlapping, and GC-reference copies are
+	/// not eligible for provider calls.
+	/// </summary>
+	public M68kBulkCopyOptions? BulkCopy { get; init; }
 
 	public M68kOutputFormat OutputFormat { get; init; } = M68kOutputFormat.Hunk;
 

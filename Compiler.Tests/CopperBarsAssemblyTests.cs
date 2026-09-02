@@ -56,11 +56,12 @@ public sealed partial class CopperBarsAssemblyTests
 	{
 		var result = Compile(M68kOutputFormat.Hunk);
 
-		// Writable library bases now live outside ROM/code. Absolute references
-		// preserve that section boundary and account for the additional fixups.
+		// Compiler-owned library bases are promoted to SSA values. The remaining
+		// relocations are direct call-base reads, externally observable slots, and
+		// actual code/data links.
 		Assert.True(result.Code.Length <= 1_322, $"Code budget exceeded: {result.Code.Length} bytes.");
 		Assert.True(result.Image.Length <= 1_476, $"Stripped HUNK budget exceeded: {result.Image.Length} bytes.");
-		Assert.Equal(25, result.Relocations.Count);
+		Assert.Equal(14, result.Relocations.Count);
 	}
 
 	[Fact]
@@ -71,9 +72,9 @@ public sealed partial class CopperBarsAssemblyTests
 		Assert.True(Instruction().Matches(assembly).Count <= 447);
 		Assert.True(CallInstruction().Matches(assembly).Count <= 44);
 		Assert.Empty(LongMaskConstant().Matches(assembly).Cast<Match>());
-		// CopperWait normalizes its ushort ABI return, and WriteCopperWait
-		// independently canonicalizes that call result before widening/store.
-		Assert.True(WordZeroExtension().Matches(assembly).Count <= 2);
+		// The five unsigned-word boundaries are the CopperWait ABI, its caller,
+		// custom-register addressing, pointer writing, and word multiplication.
+		Assert.Equal(5, WordZeroExtension().Matches(assembly).Count);
 	}
 
 	[Fact]
@@ -128,10 +129,10 @@ public sealed partial class CopperBarsAssemblyTests
 		var waits = MethodBody(result, "CopperBarsExample.Program::UpdateBarWaits");
 
 		Assert.Matches(@"\tmoveq\t#8,d[0-7]", bars);
-		Assert.Matches(@"\tmoveq\t#4,d[0-7]\r?\n\tcmp\.l", bars);
+		Assert.Matches(@"\tcmpi\.l\t#\$00000004,d[0-7]", bars);
 		Assert.Matches(@"\tmoveq\t#72,d[0-7]", bars);
 		Assert.Matches(@"\tmoveq\t#24,d[0-7]", bars);
-		Assert.Matches(@"\tmoveq\t#8,d[0-7]\r?\n\tcmp\.l", waits);
+		Assert.Matches(@"\tcmpi\.l\t#\$00000008,d[0-7]", waits);
 		Assert.Matches(@"\tlsl\.l\t#3,d[0-7]", waits);
 		Assert.Single(CallInstruction().Matches(bars).Cast<Match>());
 		Assert.Single(CallInstruction().Matches(waits).Cast<Match>());

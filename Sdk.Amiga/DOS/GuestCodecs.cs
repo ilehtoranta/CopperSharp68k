@@ -40,7 +40,7 @@ public static class DosNotifyRequestCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		NotifyRequest value) where TMemory : struct, IAmigaGuestMemory
+		in NotifyRequest value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.NotifyRequest.Name, value.Name.Raw);
 		memory.WriteUInt32(address, DosLayout.NotifyRequest.FullName,
@@ -104,7 +104,7 @@ public static class DosNotifyMessageCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		NotifyMessage value) where TMemory : struct, IAmigaGuestMemory
+		in NotifyMessage value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.Node.Successor,
 			value.ExecMessage.Node.Successor.Raw);
@@ -157,7 +157,7 @@ public static class DosAnchorPathCodec
 			DosLayout.AnchorPath.StringLength)),
 	};
 	public static void WriteControl<TMemory>(ref TMemory memory, APTR address,
-		DosAnchorPathControl value) where TMemory : struct, IAmigaGuestMemory
+		in DosAnchorPathControl value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.AnchorPath.Base, value.Base.Raw);
 		memory.WriteUInt32(address, DosLayout.AnchorPath.Current, value.Current.Raw);
@@ -192,7 +192,7 @@ public static class DosAChainCodec
 		Flags = (AChainFlags)memory.ReadUInt8(address, DosLayout.AChain.Flags),
 	};
 	public static void WriteControl<TMemory>(ref TMemory memory, APTR address,
-		DosAChainControl value) where TMemory : struct, IAmigaGuestMemory
+		in DosAChainControl value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.AChain.Child, value.Child.Raw);
 		memory.WriteUInt32(address, DosLayout.AChain.Parent, value.Parent.Raw);
@@ -256,7 +256,7 @@ public static class DosLibraryCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosLibrary value) where TMemory : struct, IAmigaGuestMemory
+		in DosLibrary value) where TMemory : struct, IAmigaGuestMemory
 	{
 		ExecLibraryCodec.Write(ref memory, address, value.Library);
 		WriteRoot(ref memory, address, value.Root);
@@ -322,7 +322,7 @@ public static class DosRootNodeCodec
 		ReadMinList(ref memory, CliListAddress(address));
 
 	public static void WriteCliList<TMemory>(ref TMemory memory, APTR address,
-		MinList value) where TMemory : struct, IAmigaGuestMemory =>
+		in MinList value) where TMemory : struct, IAmigaGuestMemory =>
 		WriteMinList(ref memory, CliListAddress(address), value);
 
 	public static BPTR ReadInfo<TMemory>(ref TMemory memory, APTR address)
@@ -352,7 +352,7 @@ public static class DosRootNodeCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		RootNode value) where TMemory : struct, IAmigaGuestMemory
+		in RootNode value) where TMemory : struct, IAmigaGuestMemory
 	{
 		WriteTaskArray(ref memory, address, value.TaskArray);
 		memory.WriteUInt32(address, DosLayout.RootNode.ConsoleSegment,
@@ -394,7 +394,7 @@ public static class DosRootNodeCodec
 	};
 
 	internal static void WriteMinList<TMemory>(ref TMemory memory, APTR address,
-		MinList value) where TMemory : struct, IAmigaGuestMemory
+		in MinList value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, ExecLayout.MinList.Head, value.Head.Raw);
 		memory.WriteUInt32(address, ExecLayout.MinList.Tail, value.Tail.Raw);
@@ -437,7 +437,7 @@ public static class DosCliProcListCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		CliProcList value) where TMemory : struct, IAmigaGuestMemory
+		in CliProcList value) where TMemory : struct, IAmigaGuestMemory
 	{
 		ExecNodeCodec.WriteSuccessor(ref memory, address, value.Node.Successor);
 		ExecNodeCodec.WritePredecessor(ref memory, address,
@@ -536,7 +536,7 @@ public static class DosInfoCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosInfo value) where TMemory : struct, IAmigaGuestMemory
+		in DosInfo value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DosInfo.ResidentList,
 			value.ResidentList.Raw);
@@ -661,7 +661,7 @@ public static class DosDateStampCodec
 			Ticks = Signed(memory.ReadUInt32(address, DosLayout.DateStamp.Ticks)),
 		};
 
-	public static void Write<TMemory>(ref TMemory memory, APTR address, DateStamp value)
+	public static void Write<TMemory>(ref TMemory memory, APTR address, in DateStamp value)
 		where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DateStamp.Days, Unsigned(value.Days));
@@ -703,7 +703,7 @@ public static class DosDateTimeCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosDateTime value) where TMemory : struct, IAmigaGuestMemory
+		in DosDateTime value) where TMemory : struct, IAmigaGuestMemory
 	{
 		DosDateStampCodec.Write(ref memory, address, value.Stamp);
 		memory.WriteUInt8(address, DosLayout.DateTime.Format, (byte)value.Format);
@@ -752,7 +752,7 @@ public static class DosEnvecCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosEnvec value) where TMemory : struct, IAmigaGuestMemory
+		in DosEnvec value) where TMemory : struct, IAmigaGuestMemory
 	{
 		W(ref memory, address, DosLayout.DosEnvec.TableSize, value.TableSize);
 		W(ref memory, address, DosLayout.DosEnvec.SizeBlock, value.SizeBlock);
@@ -810,7 +810,7 @@ public static class DosFileSysStartupMsgCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		FileSysStartupMsg value) where TMemory : struct, IAmigaGuestMemory
+		in FileSysStartupMsg value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.FileSysStartupMsg.Unit, value.Unit);
 		memory.WriteUInt32(address, DosLayout.FileSysStartupMsg.Device,
@@ -840,7 +840,7 @@ public static class DosPosixDateStampCodec
 		};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		PosixDateStamp value) where TMemory : struct, IAmigaGuestMemory
+		in PosixDateStamp value) where TMemory : struct, IAmigaGuestMemory
 	{
 		WriteUInt64(ref memory, address, DosLayout.PosixDateStamp.Seconds,
 			unchecked((ulong)value.Seconds));
@@ -886,7 +886,7 @@ public static class DosCSourceCodec
 		};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		CSource value) where TMemory : struct, IAmigaGuestMemory
+		in CSource value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.CSource.Buffer, value.Buffer.Raw);
 		memory.WriteUInt32(address, DosLayout.CSource.Length,
@@ -925,7 +925,7 @@ public static class DosRdArgsCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		RDArgs value) where TMemory : struct, IAmigaGuestMemory
+		in RDArgs value) where TMemory : struct, IAmigaGuestMemory
 	{
 		DosCSourceCodec.Write(ref memory, address, value.Source);
 		memory.WriteUInt32(address, DosLayout.RDArgs.AllocationList,
@@ -958,7 +958,7 @@ public static class DosRecordLockCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		RecordLock value) where TMemory : struct, IAmigaGuestMemory
+		in RecordLock value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.RecordLock.File, value.File.Raw);
 		memory.WriteUInt32(address, DosLayout.RecordLock.Offset, value.Offset);
@@ -988,7 +988,7 @@ public static class DosRecordLock64Codec
 		};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		RecordLock64 value) where TMemory : struct, IAmigaGuestMemory
+		in RecordLock64 value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.RecordLock64.File, value.File.Raw);
 		DosPosixDateStampCodec.WriteUInt64(ref memory, address,
@@ -1025,7 +1025,7 @@ public static class DosPacketCodec
 			Argument7 = S(ref memory, address, DosLayout.DosPacket.Argument7),
 		};
 
-	public static void Write<TMemory>(ref TMemory memory, APTR address, DosPacket value)
+	public static void Write<TMemory>(ref TMemory memory, APTR address, in DosPacket value)
 		where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DosPacket.Link, value.Link.Raw);
@@ -1092,7 +1092,7 @@ public static class DosExAllControlCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		ExAllControl value) where TMemory : struct, IAmigaGuestMemory
+		in ExAllControl value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.ExAllControl.Entries, value.Entries);
 		memory.WriteUInt32(address, DosLayout.ExAllControl.LastKey, value.LastKey);
@@ -1258,7 +1258,7 @@ public static class DosInfoDataCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		InfoData value) where TMemory : struct, IAmigaGuestMemory
+		in InfoData value) where TMemory : struct, IAmigaGuestMemory
 	{
 		W(ref memory, address, DosLayout.InfoData.NumberOfSoftErrors,
 			value.NumberOfSoftErrors);
@@ -1302,7 +1302,7 @@ public static class DosFileLockCodec
 			Volume = BPTR.FromRaw(memory.ReadUInt32(address, DosLayout.FileLock.Volume)),
 		};
 
-	public static void Write<TMemory>(ref TMemory memory, APTR address, FileLock value)
+	public static void Write<TMemory>(ref TMemory memory, APTR address, in FileLock value)
 		where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.FileLock.Link, value.Link.Raw);
@@ -1445,7 +1445,7 @@ public static class DosAttrBufferCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosAttrBuffer value) where TMemory : struct, IAmigaGuestMemory
+		in DosAttrBuffer value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DosAttrBuffer.Pointer,
 			value.Pointer.Raw);
@@ -1482,7 +1482,7 @@ public static class DosFileHandleCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		FileHandle value) where TMemory : struct, IAmigaGuestMemory
+		in FileHandle value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.FileHandle.Link, value.Link.Raw);
 		memory.WriteUInt32(address, DosLayout.FileHandle.Port, value.Port.Raw);
@@ -1545,7 +1545,7 @@ public static class DosDeviceNodeCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DeviceNode value) where TMemory : struct, IAmigaGuestMemory
+		in DeviceNode value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DeviceNode.Next, value.Next.Raw);
 		memory.WriteUInt32(address, DosLayout.DeviceNode.Type, value.Type);
@@ -1594,7 +1594,7 @@ public static class DosDeviceListCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DeviceList value) where TMemory : struct, IAmigaGuestMemory
+		in DeviceList value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DeviceList.Next, value.Next.Raw);
 		memory.WriteUInt32(address, DosLayout.DeviceList.Type,
@@ -1633,7 +1633,7 @@ public static class DosPathLockCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		PathLock value) where TMemory : struct, IAmigaGuestMemory
+		in PathLock value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.PathLock.Next, value.Next.Raw);
 		memory.WriteUInt32(address, DosLayout.PathLock.Lock, value.Lock.Raw);
@@ -1681,7 +1681,7 @@ public static class DosCommandLineInterfaceCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		CommandLineInterface value) where TMemory : struct, IAmigaGuestMemory
+		in CommandLineInterface value) where TMemory : struct, IAmigaGuestMemory
 	{
 		W(ref memory, address, DosLayout.CommandLineInterface.Result2, value.Result2);
 		WB(ref memory, address, DosLayout.CommandLineInterface.CurrentDirectoryName,
@@ -1795,7 +1795,7 @@ public static class DosAssignListCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		AssignList value) where TMemory : struct, IAmigaGuestMemory
+		in AssignList value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.AssignList.Next, value.Next.Raw);
 		memory.WriteUInt32(address, DosLayout.AssignList.Lock, value.Lock.Raw);
@@ -1828,7 +1828,7 @@ public static class DosListAssignDataCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosListAssignData value) where TMemory : struct, IAmigaGuestMemory
+		in DosListAssignData value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DosListAssignData.AssignName,
 			value.AssignName.Raw);
@@ -1864,7 +1864,7 @@ public static class DosDevProcCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DevProc value) where TMemory : struct, IAmigaGuestMemory
+		in DevProc value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DevProc.Port, value.Port.Raw);
 		memory.WriteUInt32(address, DosLayout.DevProc.Lock, value.Lock.Raw);
@@ -1918,7 +1918,7 @@ public static class DosListCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		DosList value) where TMemory : struct, IAmigaGuestMemory
+		in DosList value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.DosList.Next, value.Next.Raw);
 		memory.WriteUInt32(address, DosLayout.DosList.Type,
@@ -2152,7 +2152,7 @@ public static class DosLocalVarCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		LocalVar value) where TMemory : struct, IAmigaGuestMemory
+		in LocalVar value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address,
 			DosLayout.LocalVar.Node + ExecLayout.Node.Successor,
@@ -2241,7 +2241,7 @@ public static class DosSegmentCodec
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Segment value) where TMemory : struct, IAmigaGuestMemory
+		in Segment value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(address, DosLayout.Segment.Next, value.Next.Raw);
 		memory.WriteUInt32(address, DosLayout.Segment.UseCount,
@@ -2296,7 +2296,7 @@ public static class DosHunkSegmentHeaderCodec
 		where TMemory : struct, IAmigaGuestMemory => BPTR.FromRaw(memory.ReadUInt32(
 		HeaderAddress(segment), DosLayout.HunkSegmentHeader.Next));
 	public static void Write<TMemory>(ref TMemory memory, APTR header,
-		DosHunkSegmentHeader value) where TMemory : struct, IAmigaGuestMemory
+		in DosHunkSegmentHeader value) where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt32(header, DosLayout.HunkSegmentHeader.AllocationSize,
 			value.AllocationSize);

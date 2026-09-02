@@ -985,6 +985,7 @@ internal static class M68kByrefOwnerRooting
 		M68kMachineFunction function,
 		IReadOnlyDictionary<int, M68kByrefProvenance> provenance)
 	{
+		var frameAddresses = M68kFrameAddressLifetime.FindDependentValues(function);
 		foreach (var block in function.Blocks)
 		{
 			for (var index = 0; index < block.Instructions.Count; index++)
@@ -992,6 +993,7 @@ internal static class M68kByrefOwnerRooting
 				var instruction = block.Instructions[index];
 				if (instruction.Operation != M68kMachineOperation.Call ||
 					!instruction.Uses.Any(value =>
+						frameAddresses.Contains(value) ||
 						provenance.TryGetValue(value, out var byref) &&
 						byref.Kind == M68kByrefProvenanceKind.Frame))
 				{

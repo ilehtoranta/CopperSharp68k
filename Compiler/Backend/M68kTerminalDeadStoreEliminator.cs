@@ -185,6 +185,8 @@ internal static class M68kTerminalDeadStoreEliminator
 			static block => block.Instructions))
 		{
 			var effect = effects[instruction.Id];
+			var sourceMethod = instruction.Origin?.SourceMethod ?? method;
+			var sourceInstruction = SourceInstructionFor(instruction);
 			var isKnownZeroLibraryBaseSet =
 				effect.WritesExact.Count == 1 &&
 				effect.WritesExact.Single().Kind == M68kMemoryObjectKind.LibraryBase &&
@@ -192,7 +194,9 @@ internal static class M68kTerminalDeadStoreEliminator
 				instruction.Immediate == 0;
 			if (effect.WritesExact.Count != 1 ||
 				effect.IsVolatile ||
-				effect.MayTrap ||
+				(effect.MayTrap && !IsConcreteStaticStore(
+					instruction,
+					sourceInstruction)) ||
 				(!isKnownZeroLibraryBaseSet &&
 					(instruction.Uses.Length != 1 ||
 					 !IsDefaultValue(
@@ -214,14 +218,14 @@ internal static class M68kTerminalDeadStoreEliminator
 				continue;
 			}
 			if (memoryObject.Kind != M68kMemoryObjectKind.StaticField ||
-				instruction.SourceInstruction is not { Operand: int token } source)
+				sourceInstruction is not { Operand: int token } source)
 			{
 				continue;
 			}
 
-			var field = module.ResolveFieldToken(token, method, source.Offset);
+			var field = module.ResolveFieldToken(token, sourceMethod, source.Offset);
 			if (escapedStaticFields.Contains(field.Identity) ||
-				!IsPrivateNonVolatileField(method, module, field))
+				!IsPrivateNonVolatileField(sourceMethod, module, field))
 			{
 				continue;
 			}
@@ -231,6 +235,12 @@ internal static class M68kTerminalDeadStoreEliminator
 		}
 		return result;
 	}
+
+	private static bool IsConcreteStaticStore(
+		M68kMachineInstruction instruction,
+		CilInstruction? sourceInstruction) =>
+		instruction.Operation == M68kMachineOperation.Store &&
+		sourceInstruction?.OpCode == OpCodes.Stsfld;
 
 	private static bool IsPrivateNonVolatileField(
 		CilMethod method,
@@ -289,13 +299,17 @@ internal static class M68kTerminalDeadStoreEliminator
 			{
 				return integral == 0;
 			}
-			return definition.SourceInstruction is { } constant &&
+			return SourceInstructionFor(definition) is { } constant &&
 				IsZeroConstant(constant);
 		}
 		if (definition.Operation == M68kMachineOperation.Call &&
-			definition.SourceInstruction is { Operand: int token } call)
+			SourceInstructionFor(definition) is { Operand: int token } call)
 		{
-			var name = module.ResolveMethodToken(token, method, call.Offset).ImportName;
+			var sourceMethod = definition.Origin?.SourceMethod ?? method;
+			var name = module.ResolveMethodToken(
+				token,
+				sourceMethod,
+				call.Offset).ImportName;
 			if (name == "intrinsic:aptr-null")
 			{
 				return true;
@@ -321,6 +335,10 @@ internal static class M68kTerminalDeadStoreEliminator
 		return false;
 	}
 
+	private static CilInstruction? SourceInstructionFor(
+		M68kMachineInstruction? instruction) =>
+		instruction?.Origin?.SourceInstruction ?? instruction?.SourceInstruction;
+
 	private static bool IsZeroConstant(CilInstruction instruction)
 	{
 		var op = instruction.OpCode;
@@ -345,8 +363,8 @@ internal static class M68kTerminalDeadStoreEliminator
 		var blocksByOffset = function.Blocks.ToDictionary(
 			static block => block.StartIlOffset);
 		var endFinallyBlocks = function.Blocks
-			.Where(static block => block.Instructions.LastOrDefault()?.SourceInstruction?.OpCode ==
-				OpCodes.Endfinally)
+			.Where(static block => SourceInstructionFor(
+				block.Instructions.LastOrDefault())?.OpCode == OpCodes.Endfinally)
 			.ToArray();
 
 		// The machine CFG intentionally contains normal IL control flow only.
@@ -423,7 +441,7 @@ internal static class M68kTerminalDeadStoreEliminator
 		{
 			return true;
 		}
-		if (last?.SourceInstruction?.OpCode != OpCodes.Endfinally)
+		if (last is null || SourceInstructionFor(last)?.OpCode != OpCodes.Endfinally)
 		{
 			return false;
 		}

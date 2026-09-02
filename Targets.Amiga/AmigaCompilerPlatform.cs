@@ -107,6 +107,16 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 	private static readonly string RegisterAttributeName = typeof(M68kRegisterAttribute).FullName!;
 	private static readonly string IndirectCallAttributeName =
 		typeof(AmigaIndirectCallAttribute).FullName!;
+	// The Amiga library ABI permits these scratch registers to change even
+	// when the function's argument and return signature does not mention them.
+	private static readonly IReadOnlyList<M68kRegister> VolatileRegisters =
+		Array.AsReadOnly<M68kRegister>(
+		[
+			M68kRegister.D0,
+			M68kRegister.D1,
+			M68kRegister.A0,
+			M68kRegister.A1
+		]);
 	private readonly AmigaCompilationOptions _options;
 
 	public AmigaExternalCallResolver(AmigaCompilationOptions? options = null)
@@ -138,7 +148,10 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 				targetRegister,
 				0,
 				ParameterRegisters: DecodeParameterRegisters(method),
-				ReturnRegister: DecodeReturnRegister(method));
+				ReturnRegister: DecodeReturnRegister(method))
+			{
+				ClobberedRegisters = VolatileRegisters
+			};
 			return true;
 		}
 		if (Find(method.MethodAttributes, ImportAttributeName) is not null)
@@ -176,7 +189,10 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 			ResolvePolicy(name, policy),
 			offset,
 			parameterRegisters,
-			returnRegister);
+			returnRegister) with
+		{
+			ClobberedRegisters = VolatileRegisters
+		};
 		return true;
 	}
 

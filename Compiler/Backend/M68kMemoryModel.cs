@@ -4,6 +4,7 @@
  */
 
 using System.Collections.Immutable;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.Emit;
 using CopperSharp.Compiler.Metadata;
 
@@ -141,7 +142,7 @@ internal static class M68kMemoryModel
 			: 0;
 		return new M68kMemoryObject(
 			M68kMemoryObjectKind.StaticField,
-			$"{field.ModuleName}:{field.Handle}",
+			$"{field.ModuleName}:0x{MetadataTokens.GetToken(field.Handle):X8}",
 			field.Type.IsReference,
 			Offset: 0,
 			Size: size);
@@ -159,19 +160,35 @@ internal static class M68kMemoryModel
 	public static M68kMemoryObject FrameObject(
 		M68kMemoryObjectKind kind,
 		int index,
-		M68kFrameHome? home = null) =>
+		M68kFrameHome? home = null,
+		int offset = 0,
+		int? size = null) =>
 		new(
 			kind,
 			index.ToString(System.Globalization.CultureInfo.InvariantCulture),
 			home?.IsGcReference == true,
-			Offset: 0,
-			Size: home?.Size ?? 0);
+			Offset: offset,
+			Size: size ?? home?.Size ?? 0);
 
 	public static M68kObjectMemoryEffect Summarize(
 		CilMethod method,
 		CompilationModule module,
 		M68kMachineInstruction instruction)
 	{
+		if (instruction.BulkCopy is { } copy)
+		{
+			// Exact accesses are complete only when both ranges are known. In
+			// particular, a known frame read must not hide an unknown ABI write.
+			return M68kObjectMemoryEffect.None with
+			{
+				ReadsExact = copy.Source is { } copySource
+					? ImmutableHashSet.Create(copySource) : ImmutableHashSet<M68kMemoryObject>.Empty,
+				WritesExact = copy.Destination is { } destination
+					? ImmutableHashSet.Create(destination) : ImmutableHashSet<M68kMemoryObject>.Empty,
+				ReadsUnknown = copy.Source is null,
+				WritesUnknown = copy.Destination is null
+			};
+		}
 		if (!instruction.ExactMemoryAccesses.IsDefaultOrEmpty)
 		{
 			return FromExactAccesses(instruction);
@@ -355,7 +372,17 @@ internal static class M68kMemoryModel
 				M68kMachineOperation.ArgumentStore => M68kExactMemoryAccessKind.Write,
 			_ => M68kExactMemoryAccessKind.Address
 		};
-		memoryObject = FrameObject(kind.Value, index);
+		memoryObject = FrameObject(
+			kind.Value,
+			index,
+			offset: accessKind == M68kExactMemoryAccessKind.Address
+				? 0
+				: instruction.MemoryOffset,
+			size: accessKind == M68kExactMemoryAccessKind.Address
+				? null
+				: instruction.MemorySize > 0
+					? instruction.MemorySize
+					: null);
 		return true;
 	}
 

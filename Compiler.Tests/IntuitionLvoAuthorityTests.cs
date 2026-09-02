@@ -15,8 +15,9 @@ public sealed class IntuitionLvoAuthorityTests
 		Assert.Equal((ushort)40, IntuitionAbiConstants.ClassicV40);
 		Assert.Equal((ushort)50, IntuitionAbiConstants.MorphOsV50);
 		Assert.Equal((ushort)51, IntuitionAbiConstants.MorphOsV51);
+		Assert.Equal((ushort)60, IntuitionAbiConstants.MorphOsV60);
 		Assert.Equal((ushort)0, IntuitionAbiConstants.UnverifiedVersion);
-		Assert.False(IntuitionAbiConstants.EnhancedVectorVersionsVerified);
+		Assert.True(IntuitionAbiConstants.EnhancedVectorVersionsVerified);
 		Assert.Equal((short)-30, IntuitionAbiConstants.MorphOsFdFirstLvo);
 		Assert.Equal((short)-1008, IntuitionAbiConstants.MorphOsFdLastLvo);
 		Assert.Equal(164, IntuitionAbiConstants.MorphOsFdSlotCount);
@@ -177,7 +178,7 @@ public sealed class IntuitionLvoAuthorityTests
 	}
 
 	[Fact]
-	public void EnhancedVersionFactsArePresentAndExplicitlyUnverified()
+	public void EnhancedVersionFactsMatchOfficialMorphOsSourceHistory()
 	{
 		var enhancedNames = VectorConstants()
 			.Where(pair => IsInRange(pair.Value,
@@ -194,9 +195,12 @@ public sealed class IntuitionLvoAuthorityTests
 
 		Assert.Equal(IntuitionAbiConstants.EnhancedVectorCount, versions.Length);
 		Assert.Equal(enhancedNames, versions.Select(field => field.Name));
-		Assert.All(versions, field => Assert.Equal(
-			IntuitionAbiConstants.UnverifiedVersion,
-			(ushort)field.GetRawConstantValue()!));
+		Assert.Equal(8, versions.Count(field =>
+			(ushort)field.GetRawConstantValue()! == IntuitionAbiConstants.MorphOsV50));
+		Assert.Equal(3, versions.Count(field =>
+			(ushort)field.GetRawConstantValue()! == IntuitionAbiConstants.MorphOsV60));
+		Assert.DoesNotContain(versions, field =>
+			(ushort)field.GetRawConstantValue()! == IntuitionAbiConstants.UnverifiedVersion);
 	}
 
 	[Fact]
@@ -218,6 +222,18 @@ public sealed class IntuitionLvoAuthorityTests
 			M68kRegister.D1,
 			M68kRegister.D2,
 		}, registers);
+	}
+
+	[Fact]
+	public void GetDefaultPubScreenUsesDocumentedD0ScreenPointer()
+	{
+		var method = typeof(Intuition).GetMethod(
+			nameof(Intuition.GetDefaultPubScreen))!;
+		Assert.Equal(typeof(uint), method.ReturnType);
+		Assert.Equal(
+			M68kRegister.D0,
+			method.ReturnParameter
+				.GetCustomAttribute<M68kRegisterAttribute>()?.Register);
 	}
 
 	private static (string Name, short Value)[] VectorConstants() =>

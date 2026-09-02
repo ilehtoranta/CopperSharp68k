@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- SDK-owned MUI_MinMax, MUI_LayoutDimensions, and MUI_LayoutMsg. -->
+    <CopperSharpSdkHasMuiLayoutPackets>true</CopperSharpSdkHasMuiLayoutPackets>
+  </PropertyGroup>
+</Project>

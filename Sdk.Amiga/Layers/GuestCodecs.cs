@@ -47,7 +47,7 @@ public static class LayersRectangleCodec
 		};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
-		Rectangle value)
+		in Rectangle value)
 		where TMemory : struct, IAmigaGuestMemory
 	{
 		memory.WriteUInt16(address, GraphicsLayout.Rectangle.MinX,
@@ -99,7 +99,7 @@ public static class LayersRegionCodec
 			(uint)GraphicsLayout.Region.Bounds));
 
 	public static void WriteBounds<TMemory>(ref TMemory memory, APTR address,
-		Rectangle value)
+		in Rectangle value)
 		where TMemory : struct, IAmigaGuestMemory => LayersRectangleCodec.Write(
 		ref memory, LayersRectangleCodec.At(address,
 			(uint)GraphicsLayout.Region.Bounds), value);
@@ -149,7 +149,7 @@ public static class LayersRegionRectangleCodec
 			(uint)GraphicsLayout.RegionRectangle.Bounds));
 
 	public static void WriteBounds<TMemory>(ref TMemory memory, APTR address,
-		Rectangle value)
+		in Rectangle value)
 		where TMemory : struct, IAmigaGuestMemory => LayersRectangleCodec.Write(
 		ref memory, LayersRectangleCodec.At(address,
 			(uint)GraphicsLayout.RegionRectangle.Bounds), value);
@@ -856,7 +856,7 @@ public static class LayersClipRectCodec
 			Add(address, (uint)LayersLayout.ClipRect.Bounds));
 
 	public static void WriteBounds<TMemory>(ref TMemory memory, APTR address,
-		Rectangle bounds)
+		in Rectangle bounds)
 		where TMemory : struct, IAmigaGuestMemory
 		=> LayersRectangleCodec.Write(ref memory,
 			Add(address, (uint)LayersLayout.ClipRect.Bounds), bounds);
@@ -1048,7 +1048,7 @@ public static class LayersLayerCodec
 			(uint)LayersLayout.Layer.Bounds));
 
 	public static void WriteBounds<TMemory>(ref TMemory memory, APTR address,
-		Rectangle bounds)
+		in Rectangle bounds)
 		where TMemory : struct, IAmigaGuestMemory
 		=> LayersRectangleCodec.Write(ref memory, APTR.FromPointer(address.Raw +
 			(uint)LayersLayout.Layer.Bounds), bounds);

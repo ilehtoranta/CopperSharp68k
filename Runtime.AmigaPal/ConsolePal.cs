@@ -715,25 +715,15 @@ public static class ConsolePal
 		{
 			var remaining = value.Length - characterIndex;
 			var chunkLength = remaining < 20 ? remaining : 20;
-			var chunkIndex = 0;
-			for (var offset = 0; offset < chunkLength; offset += 4)
+			for (var chunkIndex = 0; chunkIndex < chunkLength; chunkIndex++)
 			{
-				uint packed = 0;
-				for (var shift = 24; shift >= 0; shift -= 8)
+				var character = (uint)value[characterIndex++];
+				var encoded = character & 0xffu;
+				if ((character & 0xff00u) != 0)
 				{
-					if (chunkIndex < chunkLength)
-					{
-						var character = (uint)value[characterIndex++] & 0xffffu;
-						chunkIndex++;
-						var encoded = character & 0xffu;
-						if ((character & 0xff00u) != 0)
-						{
-							encoded = '?';
-						}
-						packed |= encoded << shift;
-					}
+					encoded = '?';
 				}
-				APTR.WriteUInt32(APTR.FromPointer(pointer), offset, packed);
+				APTR.WriteUInt8(APTR.FromPointer(pointer), chunkIndex, (byte)encoded);
 			}
 			var actual = DOS.Write(BPTR.FromRaw(output), pointer, chunkLength);
 			if (actual != chunkLength)

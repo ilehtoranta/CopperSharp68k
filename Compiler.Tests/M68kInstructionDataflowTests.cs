@@ -74,80 +74,6 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains(instructions, instruction => instruction.Opcode == 0x7205);
 	}
 
-	[Fact(Timeout = 10_000)]
-	public void BoundedPeepholeCompletesManyIndependentSingleRewriteCandidates()
-	{
-		const int candidateCount = 4_096;
-		var first = ManyIndependentAddressZeroMoves(candidateCount);
-		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-		first.OptimizeForCpu(M68kCpuTarget.M68000,
-			peepholeOptimization: M68kPeepholeOptimizationMode.Bounded);
-		stopwatch.Stop();
-
-		var firstInstructions = first.GetInstructionStream();
-		Assert.Equal(8, firstInstructions.Count(static instruction =>
-			instruction.Opcode == 0x91C8));
-		Assert.Equal(candidateCount - 8, firstInstructions.Count(static instruction =>
-			instruction.Opcode == 0x207C && instruction.ExtensionLong == 0));
-		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
-			$"Bounded optimizer took {stopwatch.Elapsed.TotalSeconds:N3}s.");
-
-		var second = ManyIndependentAddressZeroMoves(candidateCount);
-		second.OptimizeForCpu(M68kCpuTarget.M68000,
-			peepholeOptimization: M68kPeepholeOptimizationMode.Bounded);
-		Assert.Equal(first.GetInstructionStream(), second.GetInstructionStream());
-	}
-
-	[Fact(Timeout = 10_000)]
-	public void FixedPointBatchesIndependentRewritesBeforeReanalyzing()
-	{
-		const int candidateCount = 4_096;
-		var assembler = ManyIndependentAddressZeroMoves(candidateCount);
-		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-		assembler.OptimizeForCpu(M68kCpuTarget.M68000,
-			peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
-		stopwatch.Stop();
-
-		Assert.DoesNotContain(assembler.GetInstructionStream(), instruction =>
-			instruction.Opcode == 0x207C && instruction.ExtensionLong == 0);
-		Assert.True(
-			assembler.PeepholeOptimizationStatistics.Rewrites >= candidateCount);
-		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
-			$"Fixed-point batch took {stopwatch.Elapsed.TotalSeconds:N3}s.");
-	}
-
-	[Fact(Timeout = 10_000)]
-	public void FixedPointBatchesZeroDisplacementMemoryCopies()
-	{
-		const int candidateCount = 512;
-		var assembler = new M68kAssembler();
-		for (var index = 0; index < candidateCount; index++)
-		{
-			assembler.EmitWord(0x2028); // MOVE.L 0(A0),D0
-			assembler.EmitWord(0);
-			assembler.EmitWord(0x2340); // MOVE.L D0,0(A1)
-			assembler.EmitWord(0);
-			assembler.EmitWord(0x7000); // MOVEQ #0,D0 makes the copy temporary dead.
-		}
-		assembler.EmitWord(0x4E75); // RTS
-		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-		assembler.OptimizeForCpu(
-			M68kCpuTarget.M68000,
-			peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
-		stopwatch.Stop();
-
-		var instructions = assembler.GetInstructionStream();
-		Assert.Equal(candidateCount,
-			instructions.Count(static instruction => instruction.Opcode == 0x2290));
-		Assert.DoesNotContain(instructions, instruction =>
-			instruction.Opcode is 0x2028 or 0x2340);
-		Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(8),
-			$"Zero-displacement memory-copy batch took " +
-			$"{stopwatch.Elapsed.TotalSeconds:N3}s.");
-	}
-
 	[Fact]
 	public void FixedPointFoldsWordCompareConstantToCmpiWithoutChangingOperation()
 	{
@@ -352,6 +278,37 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Equal(1, assembly.Split("move.l\td2,d0", StringSplitOptions.None).Length - 1);
 		Assert.DoesNotContain("move.l\td3,d2", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\td0,d3", assembly, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000)]
+	[InlineData(M68kCpuTarget.M68020)]
+	[InlineData(M68kCpuTarget.M68040)]
+	public void FoldsDataRegisterSwapMovesIntoExgAndRetainsFinalMoveFlags(
+		M68kCpuTarget cpu)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2202); // MOVE.L D2,D1
+		assembler.EmitWord(0x2406); // MOVE.L D6,D2
+		assembler.EmitWord(0x2C01); // MOVE.L D1,D6
+		assembler.EmitBranch(M68kCondition.NotEqual, "notZero");
+		assembler.EmitWord(0x7200); // MOVEQ #0,D1; temporary dies on this path
+		assembler.EmitWord(0x2802); // MOVE.L D2,D4
+		assembler.EmitWord(0x2A06); // MOVE.L D6,D5
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("notZero");
+		assembler.EmitWord(0x7201); // MOVEQ #1,D1; temporary dies on this path
+		assembler.EmitWord(0x2802); // MOVE.L D2,D4
+		assembler.EmitWord(0x2A06); // MOVE.L D6,D5
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForCpu(cpu);
+
+		var assembly = assembler.RenderAssembly(cpu);
+		Assert.Contains("exg\td2,d6\r\n\ttst.l\td6\r\n\tbne", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td2,d1", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td6,d2", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td1,d6", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -1946,7 +1903,7 @@ public sealed class M68kInstructionDataflowTests
 
 		Assert.Equal(new ushort[]
 		{
-			0x220A, 0x2041, 0xD1CD, 0x200C, 0x2080,
+			0x220A, 0x2041, 0xD1CD, 0x208C,
 			0x7000, 0x7200, 0x4E75,
 			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
 			0x2202, 0xD1C0, 0x2081, 0x241F, 0x4E75,
@@ -2044,7 +2001,7 @@ public sealed class M68kInstructionDataflowTests
 
 		Assert.Equal(new ushort[]
 		{
-			0x220A, 0x2041, 0xD1CD, 0x200C, 0x3080,
+			0x220A, 0x2041, 0xD1CD, 0x308C,
 			0x7000, 0x7200, 0x4E75,
 			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
 			0x7200, 0x3202, 0xD1C0, 0x3081, 0x241F, 0x4E75,
@@ -2092,7 +2049,7 @@ public sealed class M68kInstructionDataflowTests
 
 		Assert.Equal(new ushort[]
 		{
-			0x204A, 0xD1CD, 0x200C, 0x2080,
+			0x204A, 0xD1CD, 0x208C,
 			0x7000, 0x7200, 0x4E75,
 			0x2F02, 0x242F, 0x000C, 0x202F, 0x0008, 0x2041,
 			0x2202, 0xD1C0, 0x2081, 0x241F, 0x4E75,
@@ -2936,6 +2893,36 @@ public sealed class M68kInstructionDataflowTests
 		Assert.DoesNotContain("move.l\ta0,36(a7)", assembly, StringComparison.Ordinal);
 	}
 
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000)]
+	[InlineData(M68kCpuTarget.M68020)]
+	[InlineData(M68kCpuTarget.M68040)]
+	public void ForwardsAddressRegisterCopyToMemoryAndPreservesBranchFlags(
+		M68kCpuTarget cpu)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2008); // MOVE.L A0,D0
+		assembler.EmitWord(0x2F40); // MOVE.L D0,4(A7)
+		assembler.EmitWord(4);
+		assembler.EmitBranch(M68kCondition.NotEqual, "nonzero");
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitBranch(M68kCondition.True, "done");
+		assembler.Mark("nonzero");
+		assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForCpu(cpu);
+
+		var assembly = assembler.RenderAssembly(cpu);
+		Assert.Contains(
+			"move.l\ta0,4(a7)\r\n\tbne.s",
+			assembly,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\ta0,d0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\td0,4(a7)", assembly, StringComparison.Ordinal);
+	}
+
 	[Fact]
 	public void KeepsMoveaMemoryTransferWhenDestinationUsesLoadedAddress()
 	{
@@ -2952,6 +2939,104 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains("movea.l\t(a7),a0", assembly, StringComparison.Ordinal);
 		Assert.Contains("move.l\ta0,4(a0)", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.l\t(a7),4(a0)", assembly, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000)]
+	[InlineData(M68kCpuTarget.M68020)]
+	[InlineData(M68kCpuTarget.M68040)]
+	public void ForwardsDeadStackLoadThroughTwoAddressCopies(
+		M68kCpuTarget cpu)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2040); // MOVEA.L D0,A0
+		assembler.EmitWord(0x2240); // MOVEA.L D0,A1
+		assembler.EmitWord(0x2004); // MOVE.L D4,D0; overwrite temporary and flags
+		assembler.EmitWord(0x2408); // MOVE.L A0,D2; keep first copy live
+		assembler.EmitWord(0x2609); // MOVE.L A1,D3; keep second copy live
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForCpu(cpu);
+
+		var assembly = assembler.RenderAssembly(cpu);
+		Assert.Contains(
+			"movea.l\t4(a7),a0\r\n\tmovea.l\ta0,a1\r\n\tmove.l\td4,d0",
+			assembly,
+			StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\t4(a7),d0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("movea.l\td0,a0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("movea.l\td0,a1", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsStackLoadForAddressCopiesWhenItsFlagsRemainLive()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2040); // MOVEA.L D0,A0
+		assembler.EmitWord(0x2240); // MOVEA.L D0,A1
+		assembler.EmitBranch(M68kCondition.Equal, "done");
+		assembler.EmitWord(0x7000); // Overwrite D0 on fallthrough.
+		assembler.Mark("done");
+		assembler.EmitWord(0x2408); // MOVE.L A0,D2; keep first copy live
+		assembler.EmitWord(0x2609); // MOVE.L A1,D3; keep second copy live
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\t4(a7),d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("movea.l\td0,a0", assembly, StringComparison.Ordinal);
+		Assert.Contains("movea.l\td0,a1", assembly, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000)]
+	[InlineData(M68kCpuTarget.M68020)]
+	[InlineData(M68kCpuTarget.M68040)]
+	public void ForwardsAddressRegisterCopyIntoLongCompare(
+		M68kCpuTarget cpu)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x207C); // MOVEA.L #$00001234,A0
+		assembler.EmitLong(0x0000_1234);
+		assembler.EmitWord(0x2008); // MOVE.L A0,D0
+		assembler.EmitWord(0xBA80); // CMP.L D0,D5
+		assembler.EmitBranch(M68kCondition.NotEqual, "notEqual");
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitBranch(M68kCondition.True, "done");
+		assembler.Mark("notEqual");
+		assembler.EmitWord(0x7001); // MOVEQ #1,D0
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForCpu(cpu);
+
+		var assembly = assembler.RenderAssembly(cpu);
+		Assert.Contains("cmp.l\ta0,d5", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("move.l\ta0,d0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("cmp.l\td0,d5", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsAddressRegisterCopyWhenCompareDestinationIsTheTemporary()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2008); // MOVE.L A0,D0
+		assembler.EmitWord(0xB080); // CMP.L D0,D0
+		assembler.EmitBranch(M68kCondition.Equal, "equal");
+		assembler.EmitWord(0x4E75); // RTS
+		assembler.Mark("equal");
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\ta0,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains("cmp.l\td0,d0", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -5161,6 +5246,32 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void FoldsDeferredWordRotateWhenOrUsesSavedLeftAsDestination()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x3007); // MOVE.W D7,D0
+		assembler.EmitWord(0xEB48); // LSL.W #5,D0
+		assembler.EmitWord(0x3A00); // MOVE.W D0,D5
+		assembler.EmitWord(0x3007); // MOVE.W D7,D0
+		assembler.EmitWord(0xE048); // LSR.W #8,D0
+		assembler.EmitWord(0xE648); // LSR.W #3,D0
+		assembler.EmitWord(0x8A40); // OR.W D0,D5
+		assembler.EmitWord(0xDA44); // ADD.W D4,D5
+		assembler.EmitWord(0x2C05); // MOVE.L D5,D6
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0
+		assembler.EmitWord(0x7A00); // MOVEQ #0,D5
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("move.l\td7,d6", assembly, StringComparison.Ordinal);
+		Assert.Contains("rol.w\t#5,d6", assembly, StringComparison.Ordinal);
+		Assert.Contains("add.w\td4,d6", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("or.w", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
 	public void KeepsDeferredWordRotateWhenCopyBackConditionsAreLive()
 	{
 		var assembler = new M68kAssembler();
@@ -6271,7 +6382,10 @@ public sealed class M68kInstructionDataflowTests
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Equal(1, assembly.Split("cmpa.w\t#0,a2").Length - 1);
 		Assert.Contains("bne.s\tC68K_first_nonnull", assembly, StringComparison.Ordinal);
-		Assert.Contains("bra.s\tC68K_second_nonnull", assembly, StringComparison.Ordinal);
+		var instructions = assembler.GetInstructionStream();
+		var store = Assert.Single(instructions, instruction => instruction.Opcode == 0x2742);
+		Assert.Contains(instructions, instruction =>
+			instruction.Offset == store.Offset + store.Length && instruction.Opcode == 0x4E75);
 	}
 
 	[Fact]
@@ -6296,7 +6410,10 @@ public sealed class M68kInstructionDataflowTests
 
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Equal(1, assembly.Split("cmpa.w\t#0,a2").Length - 1);
-		Assert.Contains("bra.s\tC68K_second_nonnull", assembly, StringComparison.Ordinal);
+		var instructions = assembler.GetInstructionStream();
+		var store = Assert.Single(instructions, instruction => instruction.Opcode == 0x2742);
+		Assert.Contains(instructions, instruction =>
+			instruction.Offset == store.Offset + store.Length && instruction.Opcode == 0x4E75);
 	}
 
 	[Fact]

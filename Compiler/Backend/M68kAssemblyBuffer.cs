@@ -47,7 +47,14 @@ internal sealed class M68kAssemblyBuffer
 		Bytes[offset + 1] = (byte)value;
 	}
 
-	internal void InsertBytes(int offset, int count)
+	internal void InsertBytes(int offset, int count) =>
+		InsertBytes(offset, count, shiftBoundaryLabels: false, shiftBoundaryAnchors: false);
+
+	internal void InsertBytes(
+		int offset,
+		int count,
+		bool shiftBoundaryLabels,
+		bool shiftBoundaryAnchors)
 	{
 		Bytes.InsertRange(offset, Enumerable.Repeat((byte)0, count));
 		if (DataStartOffset is { } dataStartOffset && dataStartOffset >= offset)
@@ -66,14 +73,15 @@ internal sealed class M68kAssemblyBuffer
 
 		foreach (var label in Labels.Keys.ToArray())
 		{
-			if (Labels[label] > offset)
+			if (Labels[label] > offset || shiftBoundaryLabels && Labels[label] == offset)
 			{
 				Labels[label] += count;
 			}
 		}
 		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
 		{
-			if (AnalysisAnchors[anchor] > offset)
+			if (AnalysisAnchors[anchor] > offset ||
+				shiftBoundaryAnchors && AnalysisAnchors[anchor] == offset)
 			{
 				AnalysisAnchors[anchor] += count;
 			}
@@ -150,17 +158,17 @@ internal sealed class M68kAssemblyBuffer
 			InstructionEffectOverrides.Remove(instructionOffset);
 		}
 
-		foreach (var label in Labels.Keys.ToArray())
+		// .NET 10 permits existing-value updates during Dictionary enumeration.
+		// Avoid copying all keys and looking up every value for each small rewrite.
+		foreach (var (label, value) in Labels)
 		{
-			var value = Labels[label];
 			if (value >= end)
 			{
 				Labels[label] = value - count;
 			}
 		}
-		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
+		foreach (var (anchor, value) in AnalysisAnchors)
 		{
-			var value = AnalysisAnchors[anchor];
 			if (value >= end)
 			{
 				AnalysisAnchors[anchor] = value - count;
@@ -393,6 +401,7 @@ internal readonly record struct AddressFixup(
 	int Offset,
 	string Target,
 	bool External,
-	int Addend = 0);
+	int Addend = 0,
+	bool CanRelaxToPcRelative = true);
 
 internal readonly record struct PcRelativeFixup(int DisplacementOffset, string Target);

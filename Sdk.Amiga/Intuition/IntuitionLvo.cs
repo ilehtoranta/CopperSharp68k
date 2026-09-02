@@ -190,7 +190,8 @@ public static class IntuitionAbiConstants
 	public const ushort ClassicV40 = 40;
 	public const ushort MorphOsV50 = 50;
 	public const ushort MorphOsV51 = 51;
-	public const bool EnhancedVectorVersionsVerified = false;
+	public const ushort MorphOsV60 = 60;
+	public const bool EnhancedVectorVersionsVerified = true;
 	public const short MorphOsFdFirstLvo = IntuitionLvo.OpenIntuition;
 	public const short MorphOsFdLastLvo = IntuitionLvo.GetMonitorMode;
 	public const int MorphOsFdSlotCount = 164;
@@ -219,21 +220,21 @@ public static class IntuitionAbiConstants
 }
 
 /// <summary>
-/// Minimum library version for each admitted MorphOS extension vector.
-/// Values remain zero until checked against a primary ABI source; the V50/V51
-/// profile facts above must not be used to guess an individual introduction.
+/// Minimum library major version for each selected MorphOS extension vector.
+/// Values are derived from the official intuition.library source history and
+/// generated autodoc distributed for MorphOS 3.20.
 /// </summary>
 public static class IntuitionVectorVersion
 {
-	public const ushort GetSkinInfoAttrA = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort GetDrawInfoAttr = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort WindowAction = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort TransparencyControl = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort ScrollWindowRasterNoFill = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort GetMonitorList = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort FreeMonitorList = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort ScreenbarControlA = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort GetMonitorModesList = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort FreeMonitorModesList = IntuitionAbiConstants.UnverifiedVersion;
-	public const ushort GetMonitorMode = IntuitionAbiConstants.UnverifiedVersion;
+	public const ushort GetSkinInfoAttrA = IntuitionAbiConstants.MorphOsV50;
+	public const ushort GetDrawInfoAttr = IntuitionAbiConstants.MorphOsV50;
+	public const ushort WindowAction = IntuitionAbiConstants.MorphOsV50;
+	public const ushort TransparencyControl = IntuitionAbiConstants.MorphOsV50;
+	public const ushort ScrollWindowRasterNoFill = IntuitionAbiConstants.MorphOsV50;
+	public const ushort GetMonitorList = IntuitionAbiConstants.MorphOsV50;
+	public const ushort FreeMonitorList = IntuitionAbiConstants.MorphOsV50;
+	public const ushort ScreenbarControlA = IntuitionAbiConstants.MorphOsV50;
+	public const ushort GetMonitorModesList = IntuitionAbiConstants.MorphOsV60;
+	public const ushort FreeMonitorModesList = IntuitionAbiConstants.MorphOsV60;
+	public const ushort GetMonitorMode = IntuitionAbiConstants.MorphOsV60;
 }

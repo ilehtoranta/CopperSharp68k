@@ -40,6 +40,11 @@ static int Run(string[] args)
 		var clrPolicy = ParseClrPolicy(GetOptional(args, "--clr") ?? "auto");
 		var peepholeOptimization = ParsePeepholeOptimization(
 			GetOptional(args, "--peephole") ?? "fixed-point");
+		var romSizeOptimizations = ParseRomSizeOptimizations(
+			GetOptional(args, "--rom-size-optimizations") ?? "off");
+		var bulkCopy = ParseBulkCopyOptions(
+			GetOptional(args, "--bulk-copy-provider"),
+			GetOptional(args, "--bulk-copy-min-bytes"));
 		var exceptionMode = ParseExceptionMode(GetOptional(args, "--exceptions") ?? "full");
 		var format = ParseFormat(GetOptional(args, "--format") ?? "hunk");
 		var includeHunkSymbols = ParseSymbolMode(GetOptional(args, "--symbols") ?? "on");
@@ -84,6 +89,8 @@ static int Run(string[] args)
 			FloatingPoint = floatingPoint,
 			ClrPolicy = clrPolicy,
 			PeepholeOptimization = peepholeOptimization,
+			RomSizeOptimizations = romSizeOptimizations,
+			BulkCopy = bulkCopy,
 			ExceptionMode = exceptionMode,
 			OutputFormat = format,
 			RuntimeProfile = runtimeProfile,
@@ -239,6 +246,9 @@ static string[] ExpandResponseManifest(string[] args)
 			"fpu" => "--fpu",
 			"clr" => "--clr",
 			"peephole" => "--peephole",
+			"rom-size-optimizations" => "--rom-size-optimizations",
+			"bulk-copy-provider" => "--bulk-copy-provider",
+			"bulk-copy-min-bytes" => "--bulk-copy-min-bytes",
 			"exceptions" => "--exceptions",
 			"format" => "--format",
 			"symbols" => "--symbols",
@@ -444,6 +454,46 @@ static M68kPeepholeOptimizationMode ParsePeepholeOptimization(string value) =>
 			$"Unknown peephole optimization mode '{value}'.")
 	};
 
+static M68kRomSizeOptions? ParseRomSizeOptimizations(string value) =>
+	value switch
+	{
+		"off" => null,
+		"on" => new M68kRomSizeOptions(),
+		_ => throw new ArgumentException(
+			$"Unknown ROM size optimization mode '{value}'; expected on or off.")
+	};
+
+static M68kBulkCopyOptions? ParseBulkCopyOptions(string? provider, string? minimumBytes)
+{
+	if (provider is null)
+	{
+		if (minimumBytes is not null)
+		{
+			throw new ArgumentException(
+				"--bulk-copy-min-bytes requires --bulk-copy-provider.");
+		}
+		return null;
+	}
+
+	var parts = provider.Split("::", StringSplitOptions.TrimEntries);
+	if (parts.Length != 3 || parts.Any(string.IsNullOrWhiteSpace))
+	{
+		throw new ArgumentException(
+			"--bulk-copy-provider expects Assembly::Namespace.Type::Method.");
+	}
+	var minimum = minimumBytes is null ? 64 : ParseInt(minimumBytes);
+	if (minimum <= 0)
+	{
+		throw new ArgumentException("--bulk-copy-min-bytes must be positive.");
+	}
+	return new M68kBulkCopyOptions
+	{
+		MinimumBytes = minimum,
+		ManagedAssemblyName = parts[0],
+		ManagedMethod = $"{parts[1]}::{parts[2]}"
+	};
+}
+
 static M68kExceptionMode ParseExceptionMode(string value) =>
 	value.ToLowerInvariant() switch
 	{
@@ -600,6 +650,9 @@ static void PrintUsage()
 		  [--platform generic|amiga]
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
 		  [--clr auto|always] [--peephole fixed-point|bounded|disabled]
+		  [--rom-size-optimizations on|off; default off]
+		  [--bulk-copy-provider <Assembly::Namespace.Type::Method>]
+		  [--bulk-copy-min-bytes <positive bytes; default 64 with provider>]
 		  [--exceptions full|yolo] [--format hunk|rom|asm] [--symbols on|off]
 		  [--exports all|none] [--include-export <symbol> ...]
 		  [--runtime freestanding|application|resident|rom]

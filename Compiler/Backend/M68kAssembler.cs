@@ -230,6 +230,24 @@ internal sealed class M68kAssembler
 	public void RequestLongAlignment(string label) =>
 		_longAlignmentLabels.Add(label);
 
+	internal bool EnableRepeatedCallResultTestOptimization { get; set; }
+
+	internal bool EnableMethodLocalTerminalReuse { get; set; }
+
+	internal bool EnableMethodLocalTerminalSuffixReuse { get; set; }
+
+	internal bool EnableRegionalTerminalReuse { get; set; }
+
+	internal IReadOnlyList<(string StartLabel, string EndLabel)> MethodLocalTerminalRanges { get; set; } = [];
+
+	internal bool EnableIdenticalMethodThunks { get; set; }
+
+	internal IReadOnlyList<(string StartLabel, string EndLabel)> IdenticalMethodRanges { get; set; } = [];
+
+	internal bool HasRequestedAlignmentInRange(int start, int end) =>
+		_longAlignmentLabels.Any(label => _labels.TryGetValue(label, out var offset) &&
+			offset >= start && offset < end);
+
 	public void ApplyRequestedAlignments()
 	{
 		foreach (var requestedLabel in _longAlignmentLabels
@@ -512,6 +530,14 @@ internal sealed class M68kAssembler
 		var end = _analysisEndLabel is { } endLabel &&
 			_labels.TryGetValue(endLabel, out var endOffset)
 			? endOffset : _bytes.Count;
+		// Optimization rounds may run without a method scope, especially in
+		// bounded mode. Bytes in the data section can decode as valid opcodes,
+		// but must never become rewrite candidates. Outside an analysis round,
+		// retain the full stream for rendering and explicit image inspection.
+		if (_cacheInstructionStream && _buffer.DataStartOffset is { } dataStart)
+		{
+			end = Math.Min(end, dataStart);
+		}
 		return (start, end);
 	}
 
@@ -622,6 +648,7 @@ internal sealed class M68kAssembler
 			var address = _addresses[index];
 			var opcodeOffset = address.Offset - 2;
 			if (address.External ||
+				!address.CanRelaxToPcRelative ||
 				opcodeOffset < 0 ||
 				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
 				!_labels.TryGetValue(address.Target, out var targetOffset) ||
@@ -823,6 +850,7 @@ internal sealed class M68kAssembler
 				? (ushort)0
 				: _buffer.ReadWord(opcodeOffset);
 			if (address.External ||
+				!address.CanRelaxToPcRelative ||
 				opcodeOffset < 0 ||
 				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
 				opcode is not 0x4EF9 and not 0x4EB9 ||
@@ -1898,9 +1926,19 @@ internal sealed class M68kAssembler
 			instruction = new($"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
 			return true;
 		}
-		if (binary is 0xC0C0 or 0xC1C0)
+		var wordArithmetic = opcode & 0xF1C0;
+		if (wordArithmetic is 0xC0C0 or 0xC1C0 or 0x80C0 or 0x81C0 &&
+			((opcode >> 3) & 7) != 1 &&
+			TryDecodeEffectiveAddress(context.Offset + 2, (opcode >> 3) & 7, opcode & 7, 2, out var wordSource))
 		{
-			instruction = new($"{(binary == 0xC1C0 ? "muls" : "mulu")}.w\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
+			var mnemonic = wordArithmetic switch
+			{
+				0xC0C0 => "mulu.w",
+				0xC1C0 => "muls.w",
+				0x80C0 => "divu.w",
+				_ => "divs.w"
+			};
+			instruction = new($"{mnemonic}\t{wordSource.Text},d{(opcode >> 9) & 7}", 2 + wordSource.ExtensionBytes);
 			return true;
 		}
 

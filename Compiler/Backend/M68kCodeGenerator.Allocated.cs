@@ -80,7 +80,7 @@ internal sealed partial class M68kCodeGenerator
 			source.Offset);
 	}
 
-	private void EmitAllocatedMethod(
+	private M68kAllocatedFunction EmitAllocatedMethod(
 		CilMethod method,
 		InternalCallAbi abi,
 		M68kAllocatedFunction allocated,
@@ -114,13 +114,6 @@ internal sealed partial class M68kCodeGenerator
 
 		_emittingUnwindMethod = method;
 		_emittingAllocatedFunction = allocated;
-		RecordUnwindLayout(method, abi, allocated);
-		EmitAllocatedCalleeSaves(allocated.Frame.CalleeSavedRegisters);
-		EmitAllocateFrame(allocated.Frame.FrameBytes);
-		if (allocated.Function.HasDynamicStackAllocation)
-		{
-			_assembler.EmitWord(0x2A4F); // MOVEA.L A7,A5 fixed-frame anchor
-		}
 		_allocatedSuppressedInstructions.Clear();
 		_allocatedFoldedCopyConstants.Clear();
 		_allocatedFoldedCopyAddresses.Clear();
@@ -136,10 +129,23 @@ internal sealed partial class M68kCodeGenerator
 		PrepareAllocatedLiteralAddressCopies(method, allocated);
 		PrepareAllocatedQuickArithmetic(allocated);
 		PrepareAllocatedConstantMultiplies(allocated);
+		PrepareAllocatedIntegerArithmetic(allocated);
 		PrepareAllocatedDeferredNormalizations(allocated);
 		PrepareAllocatedFrameAddressFolds(method, allocated);
 		PrepareAllocatedExceptionFrameStores(allocated);
 		PrepareAllocatedFunctionAddressSwitches(method, allocated);
+		allocated = RefineAllocatedPreservation(allocated);
+		allocated = ReuseIncomingArgumentHomes(abi, allocated);
+		_emittingAllocatedFunction = allocated;
+		// Finalize preservation before recording either unwind layouts or
+		// incoming stack displacements. No already-emitted frame is resized.
+		RecordUnwindLayout(method, abi, allocated);
+		EmitAllocatedCalleeSaves(allocated.Frame.CalleeSavedRegisters);
+		EmitAllocateFrame(allocated.Frame.FrameBytes);
+		if (allocated.Function.HasDynamicStackAllocation)
+		{
+			_assembler.EmitWord(0x2A4F); // MOVEA.L A7,A5 fixed-frame anchor
+		}
 		_allocatedOutgoingStackBytes = 0;
 		var savedBytes = checked(
 			(allocated.Frame.CalleeSavedRegisters.Count * 4) +
@@ -310,6 +316,7 @@ internal sealed partial class M68kCodeGenerator
 		_emittingMachineInstruction = null;
 		_emittingAllocatedFunction = null;
 		_emittingUnwindMethod = null;
+		return allocated;
 	}
 
 	private void RecordAllocatedLoopLayouts(
@@ -779,6 +786,7 @@ internal sealed partial class M68kCodeGenerator
 
 		bool MultiplyIsEligible(M68kMachineInstruction instruction) =>
 			instruction.Operation == M68kMachineOperation.Multiply &&
+			!_integerArithmeticPlans.ContainsKey(instruction.Id) &&
 			instruction.SourceInstruction?.OpCode != OpCodes.Mul_Ovf_Un &&
 			instruction.Uses.Length == 2 &&
 			instruction.Definitions.Length == 1 &&
@@ -1286,6 +1294,9 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.GcKeepAlive or
 			M68kMachineOperation.OutgoingArgumentPush or
 			M68kMachineOperation.IncomingArgumentPush or
+			M68kMachineOperation.OutgoingArgumentReserve or
+			M68kMachineOperation.ReturnBufferAddress or
+			M68kMachineOperation.BulkCopy or
 			M68kMachineOperation.OutgoingArgumentCleanup or
 			M68kMachineOperation.Add or
 			M68kMachineOperation.Subtract or
@@ -1582,12 +1593,12 @@ internal sealed partial class M68kCodeGenerator
 								address,
 								destination.Register,
 								M68kMachineValueWidth.Long,
-								0);
+								checked((short)instruction.MemoryOffset));
 							EmitAllocatedBaseLoad(
 								address,
 								(M68kRegister)((int)destination.Register + 1),
 								M68kMachineValueWidth.Long,
-								4);
+								checked((short)(instruction.MemoryOffset + 4)));
 						}
 						else
 						{
@@ -1599,7 +1610,7 @@ internal sealed partial class M68kCodeGenerator
 										instruction.Definitions[0]].Width
 									: AllocatedIndirectWidth(
 										instruction.SourceInstruction.OpCode),
-								0);
+								checked((short)instruction.MemoryOffset));
 							EmitAllocatedDefinitionNormalization(
 								allocated,
 								instruction,
@@ -1637,14 +1648,14 @@ internal sealed partial class M68kCodeGenerator
 								: instruction.SourceInstruction.OpCode == OpCodes.Stobj
 									? allocated.Function.Values[instruction.Uses[1]].Width
 									: AllocatedIndirectWidth(instruction.SourceInstruction.OpCode),
-						0);
+						checked((short)instruction.MemoryOffset));
 					if (source.IsPair)
 					{
 						EmitAllocatedBaseStore(
 							(M68kRegister)((int)source.Register + 1),
 							address,
 							M68kMachineValueWidth.Long,
-							4);
+							checked((short)(instruction.MemoryOffset + 4)));
 					}
 				}
 				else
@@ -1669,13 +1680,14 @@ internal sealed partial class M68kCodeGenerator
 				EmitAllocatedFrameLoad(
 					Location(instruction.Definitions[0]).Register,
 					allocated.Function.Values[instruction.Definitions[0]].Width,
-					AllocatedFrameOffset(
-						allocated,
-						instruction.Operation == M68kMachineOperation.ArgumentLoad
-							? allocated.Frame.ArgumentHomeOffsets[
-								instruction.ArgumentIndex!.Value]
-							: allocated.Frame.LocalOffsets[
-								instruction.ArgumentIndex!.Value]));
+						checked((short)(AllocatedFrameOffset(
+							allocated,
+							instruction.Operation == M68kMachineOperation.ArgumentLoad
+								? allocated.Frame.ArgumentHomeOffsets[
+									instruction.ArgumentIndex!.Value]
+								: allocated.Frame.LocalOffsets[
+									instruction.ArgumentIndex!.Value]) +
+							instruction.MemoryOffset)));
 				EmitAllocatedDefinitionNormalization(
 					allocated,
 					instruction,
@@ -1686,10 +1698,12 @@ internal sealed partial class M68kCodeGenerator
 				var storedValue = allocated.Function.Values[instruction.Uses[0]];
 				var localHome = allocated.Function.LocalHomes[
 					instruction.ArgumentIndex!.Value];
-				var storesAggregate = _module.TryGetReferenceFreeStructLayout(
-					method.Locals[localHome.Index],
-					method.ModuleName,
-					out var storedLayout) &&
+				CilTypeLayout? storedLayout = null;
+				var storesAggregate = localHome.Index < method.Locals.Length &&
+					_module.TryGetReferenceFreeStructLayout(
+						method.Locals[localHome.Index],
+						method.ModuleName,
+						out storedLayout) &&
 					storedLayout.Size > 4;
 				if (storedValue.Kind == CilStackValueKind.AggregateAddress &&
 					storesAggregate)
@@ -1703,7 +1717,7 @@ internal sealed partial class M68kCodeGenerator
 					var destination = AllocatedFrameOffset(
 						allocated,
 						allocated.Frame.LocalOffsets[localHome.Index]);
-					for (var offset = 0; offset < storedLayout.Size; offset += 4)
+					for (var offset = 0; offset < storedLayout!.Size; offset += 4)
 					{
 						EmitAllocatedBaseLoad(
 							source,
@@ -1738,10 +1752,11 @@ internal sealed partial class M68kCodeGenerator
 							method.Locals[localHome.Index],
 							storedValue.Width)
 						: storedValue.Width,
-					AllocatedFrameOffset(
+					checked((short)(AllocatedFrameOffset(
 						allocated,
 						allocated.Frame.LocalOffsets[
-							instruction.ArgumentIndex!.Value]));
+							instruction.ArgumentIndex!.Value]) +
+						instruction.MemoryOffset)));
 				return;
 
 			case M68kMachineOperation.ArgumentStore:
@@ -1926,6 +1941,31 @@ internal sealed partial class M68kCodeGenerator
 
 			case M68kMachineOperation.ByrefOwnerKeepAlive:
 			case M68kMachineOperation.GcKeepAlive:
+				return;
+
+			case M68kMachineOperation.OutgoingArgumentReserve:
+				var reservedBytes = instruction.ArgumentIndex!.Value;
+				if (reservedBytes <= short.MaxValue)
+				{
+					EmitAllocateFrame(reservedBytes);
+				}
+				else
+				{
+					_assembler.EmitWord(0x9FFC); // SUBA.L #bytes,A7
+					_assembler.EmitLong((uint)reservedBytes);
+				}
+				_allocatedOutgoingStackBytes = checked(_allocatedOutgoingStackBytes + reservedBytes);
+				EmitAllocatedStackPointerToAddressRegister(Location(instruction.Definitions[0]).Register);
+				return;
+
+			case M68kMachineOperation.ReturnBufferAddress:
+				EmitAllocatedStackLoad(Location(instruction.Definitions[0]).Register,
+					checked(savedBytes + 4 + _allocatedOutgoingStackBytes +
+						(abi.ReturnBufferStackOffset ?? throw new InvalidOperationException("Method has no hidden return buffer."))));
+				return;
+
+			case M68kMachineOperation.BulkCopy:
+				EmitAllocatedBulkCopy(instruction);
 				return;
 
 			case M68kMachineOperation.OutgoingArgumentPush:
@@ -2116,6 +2156,9 @@ internal sealed partial class M68kCodeGenerator
 				{
 					EmitAllocatedCheckedUnsignedMultiply();
 				}
+				else if (TryEmitAllocatedIntegerMultiply(allocated, instruction))
+				{
+				}
 				else if (_allocatedConstantMultiplies.TryGetValue(
 					instruction.Id,
 					out var constantMultiply))
@@ -2175,10 +2218,9 @@ internal sealed partial class M68kCodeGenerator
 						allocated.Function.Values[instruction.Definitions[0]].Kind);
 					return;
 				}
-				EmitDivide(
-					instruction.SourceInstruction!.OpCode != OpCodes.Div_Un &&
-						instruction.SourceInstruction.OpCode != OpCodes.Rem_Un,
-					instruction.Operation == M68kMachineOperation.Remainder,
+				if (TryEmitAllocatedIntegerDivide(instruction)) return;
+				EmitAllocatedGeneralDivide(
+					instruction,
 					_allocatedKnownNonNullValues.Contains(instruction.Uses[1]) ||
 					TryGetAllocatedConstant(
 						allocated.Function,
@@ -2232,25 +2274,41 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Compare:
-				if (allocated.Function.Values[instruction.Uses[0]].Kind ==
-					CilStackValueKind.Int64)
+				var comparisonWidth =
+					allocated.Function.Values[instruction.Uses[0]].Width;
+				if (comparisonWidth == M68kMachineValueWidth.LongPair)
 				{
-					if (instruction.Definitions.Length != 1)
+					if (instruction.Uses.Length != 2 ||
+						instruction.Definitions.Length != 1)
 					{
 						throw new InvalidOperationException(
 							"Int64 comparison must materialize one Boolean result.");
 					}
 					EmitAllocatedInt64Comparison(
 						instruction.SourceInstruction!.OpCode,
-						Location(instruction.Uses[1]).Register,
 						Location(instruction.Uses[0]).Register,
+						Location(instruction.Uses[1]).Register,
 						Location(instruction.Definitions[0]).Register);
 					return;
 				}
-				EmitAllocatedCompare(
-					Location(instruction.Uses[0]).Register,
-					Location(instruction.Uses[1]).Register,
-					allocated.Function.Values[instruction.Uses[0]].Width);
+				if (instruction.Uses.Length == 1 && instruction.Immediate == 0)
+				{
+					EmitAllocatedTest(
+						Location(instruction.Uses[0]).Register,
+						comparisonWidth);
+				}
+				else if (instruction.Uses.Length == 2 && instruction.Immediate is null)
+				{
+					EmitAllocatedCompare(
+						Location(instruction.Uses[0]).Register,
+						Location(instruction.Uses[1]).Register,
+						comparisonWidth);
+				}
+				else
+				{
+					throw new InvalidOperationException(
+						"Scalar comparison must have two operands or an implicit zero.");
+				}
 				if (instruction.Definitions.Length != 0)
 				{
 					var destination = Location(instruction.Definitions[0]).Register;
@@ -2333,7 +2391,12 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Return:
-				if (abi.ReturnBufferStackOffset is { } returnBufferOffset)
+				if (instruction.ReturnBufferWritten)
+				{
+					if (abi.ReturnBufferStackOffset is null || instruction.Uses.Length != 0)
+						throw new InvalidOperationException("Explicit aggregate return copy has an invalid ABI shape.");
+				}
+				else if (abi.ReturnBufferStackOffset is { } returnBufferOffset)
 				{
 					if (!_module.TryGetReferenceFreeStructLayout(
 							method.Signature.ReturnType,
@@ -2387,7 +2450,7 @@ internal sealed partial class M68kCodeGenerator
 						allocated.Function.Values[instruction.Uses[0]].Kind);
 				}
 				EmitAllocatedFrameTeardown(method, allocated);
-				_assembler.EmitWord(0x4E75); // RTS
+				EmitAllocatedReturn(method);
 				return;
 
 			case M68kMachineOperation.Throw:
@@ -2434,6 +2497,7 @@ internal sealed partial class M68kCodeGenerator
 		var displacement = _module.IsTransparentScalarField(field)
 			? (short)0
 			: FieldDisplacement(field);
+		displacement = checked((short)(displacement + instruction.MemoryOffset));
 		if (!_module.IsTransparentScalarField(field))
 		{
 			EmitAllocatedRequireNonNull(instruction.Uses[0], objectRegister);
@@ -2448,10 +2512,11 @@ internal sealed partial class M68kCodeGenerator
 				displacement);
 			return;
 		}
+		var width = InstanceFieldAccessWidth(field, instruction.MemorySize);
 		EmitAllocatedBaseLoad(
 			objectRegister,
 			destination.Register,
-			M68kMachineValueWidth.Long,
+			width,
 			displacement);
 		if (destination.IsPair)
 		{
@@ -2460,6 +2525,13 @@ internal sealed partial class M68kCodeGenerator
 				(M68kRegister)((int)destination.Register + 1),
 				M68kMachineValueWidth.Long,
 				checked((short)(displacement + 4)));
+		}
+		else if (width is M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word)
+		{
+			// A field address and ldfld refer to the same leading byte/word,
+			// even when the containing managed layout reserves a four-byte slot.
+			EmitAllocatedNormalize(destination.Register,
+				CilStackAnalyzer.StackKindForType(field.Type));
 		}
 	}
 
@@ -3051,6 +3123,28 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineInstruction instruction)
 	{
 		var source = instruction.SourceInstruction!;
+		if (instruction.MemorySize == sizeof(uint) &&
+			source.OpCode is var laneOp &&
+			(laneOp == OpCodes.Ldelem || laneOp == OpCodes.Stelem) &&
+			source.Operand is int laneTypeToken)
+		{
+			var laneType = _module.ResolveTypeToken(
+				laneTypeToken,
+				method,
+				instruction.IlOffset);
+			if (_module.TryGetReferenceFreeStructLayout(
+					laneType,
+					method.ModuleName,
+					out var laneLayout) &&
+				laneLayout.Size > 4)
+			{
+				EmitAllocatedAggregateArrayLaneAccess(
+					allocated,
+					instruction,
+					laneLayout);
+				return;
+			}
+		}
 		var access = source.OpCode is var genericOp &&
 			(genericOp == OpCodes.Ldelem || genericOp == OpCodes.Stelem)
 			? GetGenericArrayAccess(
@@ -3192,6 +3286,46 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.EmitLong(0xFFFF);
 			}
 		}
+	}
+
+	private void EmitAllocatedAggregateArrayLaneAccess(
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction,
+		CilTypeLayout layout)
+	{
+		if (instruction.MemoryOffset < 0 ||
+			instruction.MemoryOffset > layout.Size - sizeof(uint) ||
+			(instruction.MemoryOffset & 3) != 0)
+		{
+			throw new InvalidOperationException(
+				"Aggregate array lane has an invalid byte range.");
+		}
+		var array = allocated.Allocation.Registers[instruction.Uses[0]].Register;
+		var index = allocated.Allocation.Registers[instruction.Uses[1]].Register;
+		EmitAllocatedArrayBoundsCheck(instruction.Uses[0], array, index);
+		EmitAllocatedMultiplyByConstant(index, M68kRegister.D1, layout.Size);
+		EmitAllocatedAddImmediate(
+			M68kRegister.D1,
+			checked(M68kRuntimeAbi.ArrayDataOffset + instruction.MemoryOffset));
+		if (instruction.Operation == M68kMachineOperation.ArrayStore)
+		{
+			EmitAllocatedIndexedStore(
+				allocated.Allocation.Registers[instruction.Uses[2]].Register,
+				array,
+				M68kRegister.D1,
+				M68kMachineValueWidth.Long,
+				elementSize: 1,
+				displacement: 0);
+			return;
+		}
+		EmitAllocatedIndexedLoad(
+			array,
+			M68kRegister.D1,
+			allocated.Allocation.Registers[
+				instruction.Definitions.Single()].Register,
+			M68kMachineValueWidth.Long,
+			elementSize: 1,
+			displacement: 0);
 	}
 
 	private void EmitAllocatedAggregateArrayAccess(
@@ -3884,6 +4018,7 @@ internal sealed partial class M68kCodeGenerator
 		var displacement = _module.IsTransparentScalarField(field)
 			? (short)0
 			: FieldDisplacement(field);
+		displacement = checked((short)(displacement + instruction.MemoryOffset));
 		if (!_module.IsTransparentScalarField(field) &&
 			!IsConstructorReceiver(method, allocated.Function, instruction.Uses[0]))
 		{
@@ -3893,7 +4028,8 @@ internal sealed partial class M68kCodeGenerator
 				field.Type,
 				field.ModuleName,
 				out var aggregateLayout);
-		if (hasAggregateLayout &&
+		if (instruction.MemorySize == 0 &&
+			hasAggregateLayout &&
 			aggregateLayout.Size > 4)
 		{
 			var aggregateSource = allocated.Allocation.Registers[
@@ -3920,7 +4056,8 @@ internal sealed partial class M68kCodeGenerator
 		}
 		var valueLocation =
 			allocated.Allocation.Registers[instruction.Uses[1]];
-		if (hasAggregateLayout &&
+		if (instruction.MemorySize == 0 &&
+			hasAggregateLayout &&
 			aggregateLayout.Size == 4 &&
 			allocated.Function.Values[instruction.Uses[1]].Kind ==
 				CilStackValueKind.AggregateAddress)
@@ -3961,11 +4098,13 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		var valueRegister = valueLocation.Register;
+		var width = InstanceFieldAccessWidth(field, instruction.MemorySize);
 		if (TryGetAllocatedConstant(
 			allocated.Function,
 			instruction.Uses[1],
 			out var constant) &&
 			constant == 0 &&
+			width == M68kMachineValueWidth.Long &&
 			UseClr)
 		{
 			// On MC68020+ CLR writes without the MC68000 read cycle.  On MC68000
@@ -3977,7 +4116,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitAllocatedBaseStore(
 			valueRegister,
 			objectRegister,
-			M68kMachineValueWidth.Long,
+			width,
 			displacement);
 	}
 
@@ -4514,14 +4653,6 @@ internal sealed partial class M68kCodeGenerator
 			throw new InvalidOperationException(
 				"Allocated clear requires an address base.");
 		}
-		if (displacement == 0)
-		{
-			_assembler.EmitWord((ushort)(
-				0x42A8 |
-				((int)baseRegister - (int)M68kRegister.A0)));
-			_assembler.EmitWord(0);
-			return;
-		}
 		_assembler.EmitWord((ushort)(
 			0x42A8 |
 			((int)baseRegister - (int)M68kRegister.A0)));
@@ -4699,10 +4830,14 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (method.InitializeLocals)
 		{
+			var overwrittenLocals = M68kFrameInitializationAnalysis.FindEntryOverwrites(
+				allocated.Function,
+				instruction => AllocatedEntryLocalWriteSize(method, allocated, instruction));
 			var clearDisplacements = allocated.Function.LocalHomes.Values
 				.Where(static home => home.Initialize)
 				.OrderBy(static home => home.Index)
 				.SelectMany(home => Enumerable.Range(0, home.Size / 4)
+					.Where(index => !overwrittenLocals.Contains((home.Index, index * 4)))
 					.Select(index => AllocatedFrameOffset(
 						allocated,
 						checked(allocated.Frame.LocalOffsets[home.Index] + (index * 4)))))
@@ -4710,7 +4845,11 @@ internal sealed partial class M68kCodeGenerator
 			var isContiguousLargeClear = clearDisplacements.Length >= 8 &&
 				clearDisplacements.Select((displacement, index) =>
 					displacement == clearDisplacements[0] + (index * 4)).All(static value => value);
-			if (_request.Cpu == M68kCpuTarget.M68000 &&
+			if (TryEmitAllocatedFrameClearRuns(abi, allocated, clearDisplacements))
+			{
+				// The complete run plan wins before any bytes are emitted.
+			}
+			else if (_request.Cpu == M68kCpuTarget.M68000 &&
 				_request.ClrPolicy != M68kClrPolicy.Always &&
 				isContiguousLargeClear &&
 				TrySelectAllocatedFrameScratchRegister(
@@ -4732,32 +4871,8 @@ internal sealed partial class M68kCodeGenerator
 					excluded: counterRegister,
 					out var zeroRegister))
 			{
-				EmitAllocatedFrameAddress(
-					addressRegister,
-					clearDisplacements[0],
-					trackNonNull: false);
-				_assembler.EmitWord((ushort)(0x7000 | ((int)zeroRegister << 9)));
-				var remainder = clearDisplacements.Length % 4;
-				for (var index = 0; index < remainder; index++)
-				{
-					_assembler.EmitWord((ushort)(
-						0x20C0 |
-						(((int)addressRegister - (int)M68kRegister.A0) << 9) |
-						(int)zeroRegister));
-				}
-				EmitAllocatedImmediate(
-					(clearDisplacements.Length / 4) - 1,
-					counterRegister);
-				var loop = UniqueLabel("allocated-frame-zero-loop");
-				_assembler.Mark(loop);
-				for (var index = 0; index < 4; index++)
-				{
-					_assembler.EmitWord((ushort)(
-						0x20C0 |
-						(((int)addressRegister - (int)M68kRegister.A0) << 9) |
-						(int)zeroRegister));
-				}
-				_assembler.EmitDbra((int)counterRegister, loop);
+				EmitAllocatedScratchFrameClear(
+					clearDisplacements, counterRegister, addressRegister, zeroRegister);
 			}
 			else if (_request.Cpu == M68kCpuTarget.M68000 &&
 				_request.ClrPolicy != M68kClrPolicy.Always &&
@@ -4798,8 +4913,8 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var home in allocated.Function.ArgumentHomes.Values
 			.OrderBy(static home => home.Index))
 		{
+			if (_allocatedIncomingArgumentHomes.Contains(home.Index)) continue;
 			var source = abi.Arguments[home.Index];
-			var pushedFrameDelta = UsesAllocatedFrameAnchor ? 0 : 4;
 			if (home.Size > 4)
 			{
 				if (!source.IsStack || source.SlotLongs * 4 != home.Size)
@@ -4807,21 +4922,15 @@ internal sealed partial class M68kCodeGenerator
 					throw new InvalidOperationException(
 						$"Multiword argument home {home.Index} does not match its incoming stack value.");
 				}
-				EmitAllocatedPush(M68kRegister.D7);
 				for (var offset = 0; offset < home.Size; offset += 4)
 				{
-					EmitAllocatedStackLoad(
-						M68kRegister.D7,
-						checked(savedBytes + 8 + source.StackOffset + offset));
-					EmitAllocatedFrameStore(
-						M68kRegister.D7,
-						M68kMachineValueWidth.Long,
+					EmitAllocatedIncomingStackToFrame(
+						checked(savedBytes + 4 + source.StackOffset + offset),
 						checked(AllocatedFrameOffset(
 							allocated,
 							allocated.Frame.ArgumentHomeOffsets[home.Index]) +
-							pushedFrameDelta + offset));
+							offset));
 				}
-				_assembler.EmitWord(0x2E1F); // MOVE.L (A7)+,D7
 				continue;
 			}
 			if (home.Size != 4)
@@ -4831,22 +4940,13 @@ internal sealed partial class M68kCodeGenerator
 			}
 			if (source.Register is null)
 			{
-				// D7 is callee-saved by the internal ABI. A stack argument home is
-				// emitted after frame allocation and is not represented in machine
-				// IR, so using D7 as an implicit scratch would otherwise escape the
-				// allocated frame's save-mask discovery and corrupt caller-live state.
-				EmitAllocatedPush(M68kRegister.D7);
-				EmitAllocatedStackLoad(
-					M68kRegister.D7,
-					checked(savedBytes + 8 + source.StackOffset));
-				EmitAllocatedFrameStore(
-					M68kRegister.D7,
-					M68kMachineValueWidth.Long,
-					checked(AllocatedFrameOffset(
+				// MC68000 MOVE supports memory-to-memory copies. No implicit D7
+				// scratch (or temporary stack-depth adjustment) is needed here.
+				EmitAllocatedIncomingStackToFrame(
+					checked(savedBytes + 4 + source.StackOffset),
+					AllocatedFrameOffset(
 						allocated,
-						allocated.Frame.ArgumentHomeOffsets[home.Index]) +
-						pushedFrameDelta));
-				_assembler.EmitWord(0x2E1F); // MOVE.L (A7)+,D7
+						allocated.Frame.ArgumentHomeOffsets[home.Index]));
 				continue;
 			}
 			EmitAllocatedFrameStore(
@@ -5875,6 +5975,12 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		ValidateMethodSignature(definition, isEntry: false, isExport: false);
+		if (definition.ImportName == AmigaRunCommandOnStackImport)
+		{
+			ValidateAmigaRunCommandOnStack(definition);
+			EmitAmigaRunCommandOnStack();
+			return;
+		}
 		if (definition.ImportName is
 			"intrinsic:copperstart-probe-cpu" or
 			"intrinsic:copperstart-disable-rom-overlay" or
@@ -5989,6 +6095,10 @@ internal sealed partial class M68kCodeGenerator
 		if (call.Convention.ExceptionStatusRegister is { } status)
 		{
 			AddDefinition(status);
+		}
+		foreach (var register in call.Convention.ClobberedRegisters ?? [])
+		{
+			AddDefinition(register);
 		}
 
 		_assembler.SetInstructionEffects(
@@ -11418,7 +11528,6 @@ internal sealed partial class M68kCodeGenerator
 		var targetsByDestination =
 			new Dictionary<int, AllocatedFunctionAddressTarget>();
 		var instructionsToSuppress = new HashSet<int>();
-		M68kRegister? valueRegister = null;
 		foreach (var destination in resolvedDestinations)
 		{
 			var targetBlock = blocksById[destination];
@@ -11429,14 +11538,12 @@ internal sealed partial class M68kCodeGenerator
 					allocated,
 					targetBlock,
 					out var target,
-					out var targetValueRegister,
-					out var targetInstructions) ||
-				(valueRegister is { } expected && expected != targetValueRegister))
+					out _,
+					out var targetInstructions))
 			{
 				return false;
 			}
 
-			valueRegister ??= targetValueRegister;
 			targetsByDestination.Add(destination, target);
 			instructionsToSuppress.UnionWith(targetInstructions);
 		}
@@ -11449,6 +11556,11 @@ internal sealed partial class M68kCodeGenerator
 
 		var selector = allocated.Allocation.Registers[
 			switchInstruction.Uses[0]].Register;
+		// Every arm is replaced by the table's own return path. Its temporary
+		// need not match the register independently allocated to each old arm
+		// (tagged and untagged pointers can differ after identity-call folding).
+		// The selector is already proven dead after this switch and can hold
+		// the loaded address once indexed addressing has consumed its index.
 		plan = new AllocatedFunctionAddressSwitchPlan(
 			UniqueLabel("allocated-switch-function-address-table"),
 			originalTargets.Select(target =>
@@ -11456,7 +11568,7 @@ internal sealed partial class M68kCodeGenerator
 				.ToArray(),
 			fallthroughTarget.Label,
 			selector,
-			valueRegister!.Value);
+			selector);
 		suppressedInstructions = instructionsToSuppress.ToArray();
 		return true;
 	}
@@ -11671,11 +11783,52 @@ internal sealed partial class M68kCodeGenerator
 			M68kRegister.A0,
 			M68kMachineValueWidth.Long);
 		EmitAllocatedFrameTeardown(method, allocated);
-		_assembler.EmitWord(0x4E75); // RTS
+		EmitAllocatedReturn(method);
 		_switchAddressTables.Add(new SwitchAddressTable(
 			plan.TableLabel,
 			plan.Targets.Select(static target => target.Label).ToArray(),
 			plan.Targets.Select(static target => target.Addend).ToArray()));
+	}
+
+	private void EmitAllocatedReturn(CilMethod method)
+	{
+		const ushort calleeSavedData = 0x00FC; // D2-D7
+		const ushort calleeSavedAddress = 0x00FC; // A2-A7
+		var usesData = calleeSavedData;
+		var usesAddress = calleeSavedAddress;
+		var returnType = method.Signature.ReturnType;
+		if (GetInternalCallAbi(method).ReturnBufferStackOffset is null &&
+			!returnType.IsVoid)
+		{
+			if (IsInternalAddressReturn(returnType))
+			{
+				usesAddress |= 0x0001; // A0
+			}
+			else
+			{
+				usesData |= 1 << (int)M68kRegister.D0;
+				if (returnType.IsSupportedScalar && returnType.Size == 8)
+				{
+					usesData |= 1 << (int)M68kRegister.D1;
+				}
+			}
+		}
+		var offset = _assembler.Offset;
+		_assembler.EmitWord(0x4E75); // RTS
+		_assembler.SetInstructionEffects(
+			offset,
+			new M68kInstructionEffects(
+				usesData,
+				0,
+				usesAddress,
+				0x0080,
+				M68kConditionCodeSet.None,
+				M68kConditionCodeSet.None,
+				M68kMemorySet.Stack,
+				M68kMemorySet.None,
+				4,
+				true,
+				false));
 	}
 
 	private bool TryEmitAllocatedSwitchAddressTable(

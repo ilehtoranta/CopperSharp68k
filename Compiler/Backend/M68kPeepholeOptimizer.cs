@@ -5,7 +5,7 @@
 
 namespace CopperSharp.Compiler.Backend;
 
-internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
+internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 {
 	private static readonly ConstantSynthesisTransform[] M68020ConstantSynthesisTransforms =
 	[
@@ -34,6 +34,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private HashSet<int>? _unrelocatableLabelOffsets;
 	private HashSet<int>? _labelOffsets;
 	private HashSet<int>? _addressFixupOffsets;
+	private AddressEntryBoundaryIndex? _addressEntryBoundaryIndex;
 
 	private readonly record struct TerminalBlockLookup(
 		int[] MethodEndOffsets,
@@ -93,6 +94,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
+				_addressEntryBoundaryIndex = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true);
@@ -114,10 +116,14 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 					}
 				}
 				changed = groupedTransfer || appliedRewrites != 0 ||
-				(!_assembler.HasAnalysisScope &&
-					(TryFoldTailReturn() ||
-					 TryLayoutColdTerminalBranch() ||
-					 TryRemoveBranchToNextLabel())) ||
+					(!_assembler.HasAnalysisScope &&
+						(TryInlineBareReturnBranches() ||
+						 TryBypassEmptySwitchEdges() ||
+						 TryFoldTailReturn() ||
+						 TryLayoutColdTerminalBranch() ||
+						 TryRemoveBranchToNextLabel())) ||
+				TryFoldBooleanComparisonInversion(dataflow) ||
+				TryThreadConstantBooleanEdge(dataflow) ||
 				TryPromoteBranchStackSpillToD0() ||
 				TryRemoveAliasedRuntimeFrameClear() ||
 				TryRemoveRedundantRuntimeFrameClear() ||
@@ -128,13 +134,19 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				// Disabled: this local rewrite corrupts Console.Read/ReadLine state
 				// across shared terminal blocks on every supported CPU.
 				// TryBypassTerminalStackReloadOnFallthrough(dataflow) ||
+				TryCleanupFrameMemoryTransfers(dataflow) ||
 				TryForwardStackStoreReload(dataflow) ||
 				TryReplaceZeroAddressMove() ||
+				TryFoldZeroMoveQuickToAddress(dataflow) ||
+				TryFoldSmallAbsoluteAddressLoad(dataflow) ||
 				TryOptimizeSmallAddressImmediate(dataflow) ||
+				TryFoldConstantAddressDisplacement(dataflow) ||
 				TryNarrowAddressArithmeticImmediate() ||
 				TryRemoveDeadLongImmediateBeforeOverwrite(dataflow) ||
 				TryForwardLongImmediateIntoStackPush(dataflow) ||
+				TryFoldLongImmediateIntoSingleUse(dataflow) ||
 				TryReplaceStackImmediateWithPea(dataflow) ||
+				TryReplaceLeaStackPushWithPea(dataflow) ||
 				TryForwardByteCopyIntoEor(dataflow) ||
 				TryUseByteDestinationImmediateMoveQuick(dataflow) ||
 				TryUseByteImmediateMoveQuick(dataflow) ||
@@ -166,6 +178,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveDeadAddressRegisterCopyBeforeBranch(dataflow) ||
 				TryRemoveRepeatedLea() ||
 				TryFoldZeroDisplacementLeaToDataMove(dataflow) ||
+				TryFoldLeaToAddressRegisterMove(dataflow) ||
 				TryRemoveRedundantAddressRegisterReload(dataflow) ||
 				TryFoldBaseIndexMemoryAccess(dataflow) ||
 				TryForwardAddressRegisterBase(dataflow) ||
@@ -177,13 +190,15 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldDataRegisterExchange(dataflow) ||
 				TryRemoveAddressRegisterRoundTrip(dataflow) ||
 				TryFoldAddressToDataRegisterMove(dataflow) ||
+				TryForwardAddressRegisterMoveIntoCompare(dataflow) ||
+				TryForwardMemoryLoadToAddressPair(dataflow) ||
 				TryFoldAddressRegisterMemoryTransfer(dataflow) ||
 				TryFoldDataToAddressRegisterMove(dataflow) ||
 				TryForwardMoveQuickThroughDataMove(dataflow) ||
 				TryFoldMoveQuickIntoQuickArithmetic(dataflow) ||
 				TryFuseOwnedMemoryReadModifyWrite(dataflow) ||
 				TryForwardLongImmediateThroughRegisterMove(dataflow) ||
-				TryForwardDataRegisterCopyToMemory(dataflow) ||
+				TryForwardRegisterCopyToMemory(dataflow) ||
 				(_rewriteBudget != int.MaxValue &&
 					TryFoldMemoryCopyThroughDeadDataRegister(dataflow)) ||
 				TryRemoveCallToRtsLeaf() ||
@@ -233,6 +248,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldCopyMoveQuickCompare(dataflow) ||
 				TryFoldMoveQuickIntoCompareImmediate(dataflow) ||
 				TryRemoveRedundantRegisterSpill() ||
+				TryRemoveUnusedRegisterStackPreservation() ||
+				TryFoldAdjacentStackReleases() ||
 					TryCanonicalizeZeroDisplacementEffectiveAddress();
 				if (!changed)
 				{
@@ -245,6 +262,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_unrelocatableLabelOffsets = null;
 				_labelOffsets = null;
 				_addressFixupOffsets = null;
+				_addressEntryBoundaryIndex = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -426,6 +444,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
+				_addressEntryBoundaryIndex = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true);
@@ -433,7 +452,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_addressFixupOffsets = _buffer.Addresses
 					.Select(static address => address.Offset)
 					.ToHashSet();
-				changed = TryFoldTailReturn() ||
+				changed = TryInlineBareReturnBranches() ||
+					TryBypassEmptySwitchEdges() ||
+					TryFoldTailReturn() ||
 					TryLayoutColdTerminalBranch() ||
 					TryRemoveBranchToNextLabel();
 			}
@@ -443,6 +464,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_unrelocatableLabelOffsets = null;
 				_labelOffsets = null;
 				_addressFixupOffsets = null;
+				_addressEntryBoundaryIndex = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -457,7 +479,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private bool TryCompactCanonicalBooleanMaterialization(
 		M68kInstructionDataflow dataflow)
 	{
-		var instructions = dataflow.Instructions;
+		var instructions = ExecutableCandidates(dataflow);
 		for (var index = 0; index + 3 < instructions.Count; index++)
 		{
 			var set = instructions[index];
@@ -511,7 +533,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			return false;
 		}
 
-		var instructions = dataflow.Instructions;
+		var instructions = ExecutableCandidates(dataflow);
 		for (var index = 0; index + 1 < instructions.Count; index++)
 		{
 			var first = instructions[index];
@@ -808,6 +830,35 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryFoldSmallAbsoluteAddressLoad(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var address = instructions[index];
+			var load = instructions[index + 1];
+			if ((address.Opcode & 0xF1FF) != 0x207C || address.Length != 6 ||
+				HasAddressFixup(address) || IsReferencedLabelAt(address.Offset) ||
+				(load.Opcode & 0xF1F8) != 0x2010 || load.Length != 2 ||
+				IsReferencedLabelAt(load.Offset) ||
+				((address.Opcode >> 9) & 7) != (load.Opcode & 7) ||
+				!IsSignedWord(address.ExtensionLong) ||
+				!dataflow.TryGetFacts(load.Offset, out var facts) ||
+				(facts.LiveAddressAfter & (1 << (address.Opcode >> 9 & 7))) != 0)
+			{
+				continue;
+			}
+
+			var destination = (load.Opcode >> 9) & 7;
+			_buffer.WriteWord(address.Offset,
+				(ushort)(0x2038 | (destination << 9))); // MOVE.L abs.w,Dn
+			_buffer.WriteWord(address.Offset + 2, unchecked((short)address.ExtensionLong));
+			_buffer.RemoveBytes(address.Offset + 4, 4);
+			return true;
+		}
+		return false;
+	}
+
 	private bool TryOptimizeSmallAddressImmediate(
 		M68kInstructionDataflow dataflow)
 	{
@@ -975,6 +1026,46 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryReplaceLeaStackPushWithPea(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var lea = instructions[index];
+			var push = instructions[index + 1];
+			if ((lea.Opcode & 0xF1C0) != 0x41C0 || // LEA <ea>,An
+				lea.Length is not (2 or 4 or 6) ||
+				(push.Opcode & 0xFFF8) != 0x2F08 || // MOVE.L An,-(A7)
+				push.Length != 2 ||
+				HasLabelAt(push.Offset) ||
+				!dataflow.TryGetFacts(push.Offset, out var pushFacts))
+			{
+				continue;
+			}
+
+			var temporary = (lea.Opcode >> 9) & 7;
+			if (temporary == 7 ||
+				(push.Opcode & 7) != temporary ||
+				(pushFacts.LiveAddressAfter & (1 << temporary)) != 0 ||
+				(pushFacts.Effects.WritesConditions &
+				 pushFacts.LiveConditionsAfter) != M68kConditionCodeSet.None)
+			{
+				continue;
+			}
+
+			// PEA accepts the same control addressing modes as LEA. Reusing the
+			// effective-address bits and extension words keeps stack-relative and
+			// PC-relative address calculation anchored at the original instruction.
+			_buffer.WriteWord(lea.Offset,
+				(ushort)(0x4840 | (lea.Opcode & 0x003F)));
+			_buffer.RemoveBytes(push.Offset, push.Length);
+			return true;
+		}
+
+		return false;
+	}
+
 	private bool TryForwardLongImmediateIntoStackPush(
 		M68kInstructionDataflow dataflow)
 	{
@@ -1068,6 +1159,182 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 
 		return false;
+	}
+
+	private bool TryFoldLongImmediateIntoSingleUse(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var immediate = instructions[index];
+			var use = instructions[index + 1];
+			if ((immediate.Opcode & 0xF1FF) != 0x203C ||
+				immediate.Length != 6 ||
+				HasLabelAt(use.Offset) ||
+				!dataflow.TryGetFacts(use.Offset, out var useFacts))
+			{
+				continue;
+			}
+
+			var temporary = (immediate.Opcode >> 9) & 7;
+			if ((useFacts.LiveDataAfter & (1 << temporary)) != 0)
+			{
+				continue;
+			}
+
+			var value = unchecked((int)immediate.ExtensionLong);
+			if (value is >= sbyte.MinValue and <= sbyte.MaxValue)
+			{
+				// MOVEQ plus a register operation is no larger, and is often smaller.
+				continue;
+			}
+
+			if (TryGetImmediateDataOperation(
+					use.Opcode,
+					temporary,
+					out var replacement,
+					out var operandBytes) &&
+				use.Length == 2)
+			{
+				if (operandBytes != 4 && HasAddressFixup(immediate))
+				{
+					continue;
+				}
+
+				_buffer.WriteWord(immediate.Offset, replacement);
+				if (operandBytes == 4)
+				{
+					_buffer.RemoveBytes(use.Offset, use.Length);
+				}
+				else
+				{
+					_buffer.WriteWord(
+						immediate.Offset + 2,
+						unchecked((ushort)value));
+					_buffer.RemoveBytes(immediate.Offset + 4, 4);
+				}
+				return true;
+			}
+
+			var sizeCode = (use.Opcode >> 12) & 0x0F;
+			var destinationMode = (use.Opcode >> 6) & 7;
+			var destinationRegister = (use.Opcode >> 9) & 7;
+			if (sizeCode is not (1 or 2 or 3) ||
+				((use.Opcode >> 3) & 7) != 0 ||
+				(use.Opcode & 7) != temporary ||
+				!IsAlterableMemoryDestination(
+					destinationMode,
+					destinationRegister) ||
+				DestinationUsesTemporaryAsDataIndex(
+					use,
+					destinationMode,
+					temporary))
+			{
+				continue;
+			}
+
+			var directMove = (ushort)((use.Opcode & 0xFFC0) | 0x003C);
+			if (sizeCode == 2)
+			{
+				// MOVE.L #imm,<ea> keeps the immediate and destination extensions at
+				// their existing offsets after the now-redundant store opcode is removed.
+				_buffer.WriteWord(immediate.Offset, directMove);
+				_buffer.RemoveBytes(use.Offset, 2);
+				return true;
+			}
+
+			if (destinationMode == 7 ||
+				HasAddressFixup(immediate) ||
+				HasRelocationInRange(use.Offset + 2, use.Offset + use.Length))
+			{
+				continue;
+			}
+
+			var extensionWords = new ushort[(use.Length - 2) / 2];
+			for (var extension = 0; extension < extensionWords.Length; extension++)
+			{
+				extensionWords[extension] =
+					_buffer.ReadWord(use.Offset + 2 + extension * 2);
+			}
+			_buffer.WriteWord(immediate.Offset, directMove);
+			_buffer.WriteWord(
+				immediate.Offset + 2,
+				unchecked((ushort)value));
+			var replacementLength = 4;
+			foreach (var extensionWord in extensionWords)
+			{
+				_buffer.WriteWord(immediate.Offset + replacementLength, extensionWord);
+				replacementLength += 2;
+			}
+			_buffer.RemoveBytes(immediate.Offset + replacementLength, 4);
+			return true;
+		}
+
+		return false;
+
+		bool HasRelocationInRange(int startOffset, int endOffset) =>
+			_buffer.Addresses.Any(fixup =>
+				fixup.Offset >= startOffset && fixup.Offset < endOffset) ||
+			_buffer.PcRelative.Any(fixup =>
+				fixup.DisplacementOffset >= startOffset &&
+				fixup.DisplacementOffset < endOffset);
+
+		static bool DestinationUsesTemporaryAsDataIndex(
+			M68kEmittedInstruction instruction,
+			int mode,
+			int register) =>
+			mode == 6 &&
+			(instruction.ExtensionWord & 0x8000) == 0 &&
+			((instruction.ExtensionWord >> 12) & 7) == register;
+
+		static bool TryGetImmediateDataOperation(
+			ushort opcode,
+			int temporary,
+			out ushort replacement,
+			out int operandBytes)
+		{
+			var operation = opcode & 0xF1F8;
+			var eor = operation is 0xB100 or 0xB140 or 0xB180;
+			var source = eor ? (opcode >> 9) & 7 : opcode & 7;
+			var destination = eor ? opcode & 7 : (opcode >> 9) & 7;
+			if (source != temporary || destination == temporary)
+			{
+				replacement = 0;
+				operandBytes = 0;
+				return false;
+			}
+
+			var immediateOpcode = operation switch
+			{
+				0xB040 => 0x0C40, // CMP.W
+				0xB080 => 0x0C80, // CMP.L
+				0xC040 => 0x0240, // AND.W
+				0xC080 => 0x0280, // AND.L
+				0x8040 => 0x0040, // OR.W
+				0x8080 => 0x0080, // OR.L
+				0xB140 => 0x0A40, // EOR.W
+				0xB180 => 0x0A80, // EOR.L
+				0xD040 => 0x0640, // ADD.W
+				0xD080 => 0x0680, // ADD.L
+				_ => -1
+			};
+			if (immediateOpcode < 0)
+			{
+				replacement = 0;
+				operandBytes = 0;
+				return false;
+			}
+
+			replacement = (ushort)(immediateOpcode | destination);
+			operandBytes = (operation & 0x00C0) switch
+			{
+				0x0000 => 1,
+				0x0040 => 2,
+				_ => 4
+			};
+			return true;
+		}
 	}
 
 	private static bool IsDeadStackTransportAfterPush(
@@ -1714,88 +1981,53 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				continue;
 			}
 
-			var originalEndOffset = _buffer.Bytes.Count;
 			var tailLength = tailEnd - tailOffset;
-			var failureLength = tailOffset - failureOffset;
 			var tail = _buffer.Bytes.GetRange(tailOffset, tailLength);
-			var failure = _buffer.Bytes.GetRange(failureOffset, failureLength);
-			var suffix = _buffer.Bytes.GetRange(tailEnd, originalEndOffset - tailEnd);
 			var newFailureOffset = unconditional.Offset + tailLength;
-			var newSuffixOffset = newFailureOffset + failureLength + tailLength;
-			_buffer.Bytes.RemoveRange(unconditional.Offset, _buffer.Bytes.Count - unconditional.Offset);
-			_buffer.Bytes.AddRange(tail);
-			_buffer.Bytes.AddRange(failure);
-			_buffer.Bytes.AddRange(tail);
-			_buffer.Bytes.AddRange(suffix);
+			var movedEntryLabels = _buffer.Labels
+				.Where(label => label.Value == failureOffset ||
+					label.Value >= tailOffset && label.Value < tailEnd)
+				.ToArray();
+			var movedEndAnchors = _buffer.AnalysisAnchors
+				.Where(anchor => anchor.Value > unconditional.Offset &&
+					anchor.Value <= tailEnd)
+				.ToArray();
+			var tailEffects = _buffer.InstructionEffectOverrides
+				.Where(effect => effect.Key >= tailOffset && effect.Key < tailEnd)
+				.ToArray();
 
-			foreach (var label in _buffer.Labels.Keys.ToArray())
+			// Replace only the branch. Buffer mutations keep every section boundary
+			// and retained instruction/fixup offset in sync, including the suffix.
+			_buffer.RemoveBytes(unconditional.Offset, unconditional.Length);
+			_buffer.InsertBytes(unconditional.Offset, tailLength);
+			for (var index = 0; index < tailLength; index++)
 			{
-				var offset = _buffer.Labels[label];
-				if (offset == failureOffset)
-				{
-					_buffer.Labels[label] = newFailureOffset;
-				}
-				else if (offset == unconditional.Offset)
-				{
-					_buffer.Labels[label] = unconditional.Offset;
-				}
-				else if (offset == tailOffset)
-				{
-					_buffer.Labels[label] = unconditional.Offset;
-				}
-				else if (offset > failureOffset && offset < tailOffset)
-				{
-					_buffer.Labels[label] = newFailureOffset + offset - failureOffset;
-				}
-				else if (offset > tailOffset && offset < tailEnd)
-				{
-					_buffer.Labels[label] = unconditional.Offset + offset - tailOffset;
-				}
-				else if (offset == originalEndOffset)
-				{
-					_buffer.Labels[label] = newSuffixOffset + (offset - tailEnd);
-				}
-				else if (offset >= tailEnd)
-				{
-					_buffer.Labels[label] = newSuffixOffset + (offset - tailEnd);
-				}
+				_buffer.Bytes[unconditional.Offset + index] = tail[index];
 			}
 
-			_buffer.Branches.RemoveAll(branch => branch.OpcodeOffset == unconditional.Offset);
-			for (var index = 0; index < _buffer.Branches.Count; index++)
+			foreach (var (label, offset) in movedEntryLabels)
 			{
-				var branch = _buffer.Branches[index];
-				if (branch.OpcodeOffset >= tailEnd)
-				{
-					_buffer.Branches[index] = branch with
-					{
-						OpcodeOffset = newSuffixOffset + branch.OpcodeOffset - tailEnd
-					};
-				}
+				_buffer.Labels[label] = offset == failureOffset
+					? newFailureOffset
+					: unconditional.Offset + offset - tailOffset;
 			}
-
-			for (var index = 0; index < _buffer.Addresses.Count; index++)
+			foreach (var (anchor, offset) in movedEndAnchors)
 			{
-				var address = _buffer.Addresses[index];
-				if (address.Offset >= tailEnd)
-				{
-					_buffer.Addresses[index] = address with
-					{
-						Offset = newSuffixOffset + address.Offset - tailEnd
-					};
-				}
+				// Analysis anchors mark block ends: a shared boundary follows the
+				// preceding block. The failure end stays after the failure bytes,
+				// while tail ends follow the first copy, like the tail entry labels.
+				_buffer.AnalysisAnchors[anchor] = offset <= failureOffset
+					? newFailureOffset
+					: offset <= tailOffset
+						? newFailureOffset + offset - failureOffset
+						: unconditional.Offset + offset - tailOffset;
 			}
-
-			for (var index = 0; index < _buffer.PcRelative.Count; index++)
+			foreach (var (offset, effects) in tailEffects)
 			{
-				var reference = _buffer.PcRelative[index];
-				if (reference.DisplacementOffset >= tailEnd)
-				{
-					_buffer.PcRelative[index] = reference with
-					{
-						DisplacementOffset = newSuffixOffset + reference.DisplacementOffset - tailEnd
-					};
-				}
+				// The original tail retains its effects after the failure block;
+				// the newly inserted success-path copy needs the same overrides.
+				_buffer.InstructionEffectOverrides.Add(
+					unconditional.Offset + offset - tailOffset, effects);
 			}
 			return true;
 		}
@@ -2013,7 +2245,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			// also publish exception/finally state. Preserve it and insert a
 			// fallthrough-only branch around the common reload. Existing labeled
 			// cleanup/leave predecessors continue to enter at the shifted reload.
-			_buffer.InsertBytes(reload.Offset, 4);
+			_buffer.InsertBytes(reload.Offset, 4, shiftBoundaryLabels: true, shiftBoundaryAnchors: true);
 			_buffer.WriteWord(reload.Offset, 0x6000); // BRA.W
 			_buffer.WriteWord(reload.Offset + 2, 0);
 			_buffer.Branches.Add(new BranchFixup(reload.Offset, target));
@@ -2700,6 +2932,41 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	private bool TryFoldLeaToAddressRegisterMove(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var lea = instructions[index];
+			var moveAddress = instructions[index + 1];
+			if ((lea.Opcode & 0xF1C0) != 0x41C0 ||
+				(moveAddress.Opcode & 0xF1F8) != 0x2048 ||
+				moveAddress.Length != 2 ||
+				HasLabelAt(moveAddress.Offset) ||
+				!dataflow.TryGetFacts(moveAddress.Offset, out var moveFacts))
+			{
+				continue;
+			}
+
+			var temporary = (lea.Opcode >> 9) & 7;
+			if ((moveAddress.Opcode & 7) != temporary ||
+				(moveFacts.LiveAddressAfter & (1 << temporary)) != 0)
+			{
+				continue;
+			}
+
+			var destination = (moveAddress.Opcode >> 9) & 7;
+			_buffer.WriteWord(
+				lea.Offset,
+				(ushort)((lea.Opcode & 0xF1FF) | (destination << 9)));
+			_buffer.RemoveBytes(moveAddress.Offset, moveAddress.Length);
+			return true;
+		}
+
+		return false;
+	}
+
 	private bool TryForwardAddressToDataCopyChain(
 		M68kInstructionDataflow dataflow)
 	{
@@ -2787,8 +3054,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				third.Length != 2 ||
 				HasLabelAt(second.Offset) ||
 				HasLabelAt(third.Offset) ||
-				!dataflow.TryGetFacts(third.Offset, out var facts) ||
-				facts.LiveConditionsAfter != M68kConditionCodeSet.None)
+				!dataflow.TryGetFacts(third.Offset, out var facts))
 			{
 				continue;
 			}
@@ -2813,8 +3079,18 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			_buffer.WriteWord(
 				first.Offset,
 				(ushort)(0xC140 | (firstSource << 9) | secondSource)); // EXG Dn,Dm
-			_buffer.RemoveBytes(second.Offset, second.Length);
-			_buffer.RemoveBytes(third.Offset - second.Length, third.Length);
+			if (facts.LiveConditionsAfter != M68kConditionCodeSet.None)
+			{
+				// EXG does not affect CCR, whereas the final MOVE.L did. TST.L on the
+				// final destination recreates its exact N/Z/V/C state and preserves X.
+				_buffer.WriteWord(second.Offset, (ushort)(0x4A80 | secondSource));
+				_buffer.RemoveBytes(third.Offset, third.Length);
+			}
+			else
+			{
+				_buffer.RemoveBytes(second.Offset, second.Length);
+				_buffer.RemoveBytes(third.Offset - second.Length, third.Length);
+			}
 			return true;
 		}
 
@@ -3115,7 +3391,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 						(baseRegister << 9) | (6 << 6));
 				var sourceExtensionBytes = stackStore && sourceMode == 5 ? 2 : 0;
 				var extensionOffset = access.Offset + 2 + sourceExtensionBytes;
-				_buffer.InsertBytes(extensionOffset, 2);
+				// Grow the access instruction before the following instruction. Its
+				// entry labels and the access's end anchors must skip the new extension.
+				_buffer.InsertBytes(extensionOffset, 2,
+					shiftBoundaryLabels: true, shiftBoundaryAnchors: true);
 				_buffer.WriteWord(access.Offset, replacement);
 				_buffer.WriteWord(
 					extensionOffset,
@@ -3594,7 +3873,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private bool TryFoldDataToAddressRegisterMove(
 		M68kInstructionDataflow dataflow)
 	{
-		var instructions = _assembler.GetInstructionStream();
+		var instructions = ExecutableCandidates(dataflow);
+		IReadOnlyList<M68kEmittedInstruction>? wholeImageInstructions = null;
+		var callTargetProofs = new Dictionary<(int TargetOffset, int Register), bool>();
 		for (var index = 0; index + 1 < instructions.Count; index++)
 		{
 			var moveData = instructions[index];
@@ -3612,9 +3893,14 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 			var temporary = (moveData.Opcode >> 9) & 7;
 			if ((moveAddress.Opcode & 7) != temporary ||
-				(moveFacts.LiveConditionsAfter != M68kConditionCodeSet.None) ||
+				(moveFacts.LiveConditionsAfter & moveFacts.Effects.WritesConditions) !=
+					M68kConditionCodeSet.None ||
 				!dataflow.TryGetFacts(moveAddress.Offset, out var addressFacts) ||
-				(addressFacts.LiveDataAfter & (1 << temporary)) != 0)
+				(addressFacts.LiveDataAfter & (1 << temporary)) != 0 &&
+					IsDataRegisterReadBeforeOverwriteWithKnownCalls(
+						instructions, index + 2, temporary, dataflow,
+						ref wholeImageInstructions, callTargetProofs,
+						moveFacts.Effects.WritesConditions))
 			{
 				continue;
 			}
@@ -3666,6 +3952,104 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 
 		return false;
+	}
+
+	private bool TryForwardAddressRegisterMoveIntoCompare(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var move = instructions[index];
+			var compare = instructions[index + 1];
+			if ((move.Opcode & 0xF1F8) != 0x2008 || // MOVE.L An,Dtemporary
+				move.Length != 2 ||
+				(compare.Opcode & 0xF1C0) != 0xB080 || // CMP.L Dtemporary,Ddestination
+				((compare.Opcode >> 3) & 7) != 0 ||
+				compare.Length != 2 ||
+				HasLabelAt(move.Offset) ||
+				!dataflow.TryGetFacts(compare.Offset, out var compareFacts))
+			{
+				continue;
+			}
+
+			var addressRegister = move.Opcode & 7;
+			var temporary = (move.Opcode >> 9) & 7;
+			if ((compare.Opcode & 7) != temporary ||
+				((compare.Opcode >> 9) & 7) == temporary ||
+				(compareFacts.LiveDataAfter & (1 << temporary)) != 0)
+			{
+				continue;
+			}
+
+			// CMP.L accepts an address register as its source effective address. This
+			// preserves the original subtraction and condition codes while removing a
+			// dead data-register transport. Do not fold when the temporary is also the
+			// comparison destination: that destination was defined by the MOVE.
+			_buffer.WriteWord(
+				compare.Offset,
+				(ushort)((compare.Opcode & 0xFFC0) | 0x0008 | addressRegister));
+			_buffer.RemoveBytes(move.Offset, move.Length);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryForwardMemoryLoadToAddressPair(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 2 < instructions.Count; index++)
+		{
+			var load = instructions[index];
+			var firstCopy = instructions[index + 1];
+			var secondCopy = instructions[index + 2];
+			var sourceMode = (load.Opcode >> 3) & 7;
+			var sourceRegister = load.Opcode & 7;
+			if ((load.Opcode & 0xF000) != 0x2000 || // MOVE.L <ea>,Dtemp
+				((load.Opcode >> 6) & 7) != 0 ||
+				!IsReadableMemoryEffectiveAddress(sourceMode, sourceRegister) ||
+				(firstCopy.Opcode & 0xF1F8) != 0x2040 || // MOVEA.L Dtemp,Afirst
+				firstCopy.Length != 2 ||
+				(secondCopy.Opcode & 0xF1F8) != 0x2040 || // MOVEA.L Dtemp,Asecond
+				secondCopy.Length != 2 ||
+				HasLabelAt(firstCopy.Offset) ||
+				HasLabelAt(secondCopy.Offset) ||
+				!dataflow.TryGetFacts(load.Offset, out var loadFacts) ||
+				!dataflow.TryGetFacts(secondCopy.Offset, out var secondFacts))
+			{
+				continue;
+			}
+
+			var temporary = (load.Opcode >> 9) & 7;
+			var firstAddress = (firstCopy.Opcode >> 9) & 7;
+			if ((firstCopy.Opcode & 7) != temporary ||
+				(secondCopy.Opcode & 7) != temporary ||
+				loadFacts.LiveConditionsAfter != M68kConditionCodeSet.None ||
+				(secondFacts.LiveDataAfter & (1 << temporary)) != 0)
+			{
+				continue;
+			}
+
+			// The data temporary is copied only into address registers. Retarget the
+			// memory read to the first address register, then copy that address to the
+			// second. MOVEA has no condition-code effect, so this is valid only when
+			// the original MOVE.L flags are dead.
+			_buffer.WriteWord(
+				load.Offset,
+				(ushort)((load.Opcode & 0xF03F) | (firstAddress << 9) | 0x0040));
+			_buffer.WriteWord(
+				secondCopy.Offset,
+				(ushort)((secondCopy.Opcode & 0xFFF8) | 0x0008 | firstAddress));
+			_buffer.RemoveBytes(firstCopy.Offset, firstCopy.Length);
+			return true;
+		}
+
+		return false;
+
+		static bool IsReadableMemoryEffectiveAddress(int mode, int register) =>
+			mode is >= 2 and <= 6 || mode == 7 && register <= 3;
 	}
 
 	private bool TryFoldAddressRegisterMemoryTransfer(
@@ -4347,7 +4731,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 	}
 
-	private bool TryForwardDataRegisterCopyToMemory(
+	private bool TryForwardRegisterCopyToMemory(
 		M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
@@ -4358,8 +4742,11 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var storeSize = (store.Opcode >> 12) & 0x0F;
 			var destinationMode = (store.Opcode >> 6) & 7;
 			var destinationRegister = (store.Opcode >> 9) & 7;
-			if ((copy.Opcode & 0xF1F8) != 0x2000 || // MOVE.L Ds,Dtemp
+			var sourceMode = (copy.Opcode >> 3) & 7;
+			if ((copy.Opcode & 0xF000) != 0x2000 || // MOVE.L Dn/An,Dtemp
+				((copy.Opcode >> 6) & 7) != 0 ||
 				copy.Length != 2 ||
+				sourceMode is not (0 or 1) ||
 				storeSize is not (1 or 2 or 3) ||
 				((store.Opcode >> 3) & 7) != 0 ||
 				!IsAlterableMemoryDestination(destinationMode, destinationRegister) ||
@@ -4368,10 +4755,15 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			{
 				continue;
 			}
+			if (sourceMode == 1 && storeSize == 1)
+			{
+				// Address-register direct has no byte-sized MOVE encoding.
+				continue;
+			}
 
 			var source = copy.Opcode & 7;
 			var temporary = copy.Opcode >> 9 & 7;
-			if (source == temporary ||
+			if ((sourceMode == 0 && source == temporary) ||
 				(store.Opcode & 7) != temporary ||
 				(storeFacts.LiveDataAfter & (1 << temporary)) != 0 ||
 				DestinationUsesDataRegister(
@@ -4383,11 +4775,11 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			}
 
 			// The store consumes only the selected low byte/word/long of the copied
-			// value and publishes the final flags. Read the same bits from the source
-			// register directly when the temporary dies here.
+			// value and publishes the final flags. Read the same bits directly from
+			// the source data or address register when the temporary dies here.
 			_buffer.WriteWord(
 				store.Offset,
-				(ushort)((store.Opcode & ~7) | source));
+				(ushort)((store.Opcode & ~0x003F) | (copy.Opcode & 0x003F)));
 			_buffer.RemoveBytes(copy.Offset, copy.Length);
 			return true;
 		}
@@ -4468,7 +4860,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		int register,
 		M68kInstructionDataflow dataflow,
 		ref IReadOnlyList<M68kEmittedInstruction>? wholeImageInstructions,
-		Dictionary<(int TargetOffset, int Register), bool> callTargetProofs)
+		Dictionary<(int TargetOffset, int Register), bool> callTargetProofs,
+		M68kConditionCodeSet changedConditions = M68kConditionCodeSet.None)
 	{
 		if (startIndex >= instructions.Count)
 		{
@@ -4478,20 +4871,21 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		var indexByOffset = instructions
 			.Select((instruction, index) => (instruction.Offset, index))
 			.ToDictionary(static item => item.Offset, static item => item.index);
-		var pending = new Stack<int>();
-		var visited = new HashSet<int>();
+		var pending = new Stack<(int Index, M68kConditionCodeSet Conditions)>();
+		var visited = new HashSet<(int Index, M68kConditionCodeSet Conditions)>();
 		var registerMask = (ushort)(1 << register);
-		pending.Push(startIndex);
+		pending.Push((startIndex, changedConditions));
 
-		while (pending.TryPop(out var index))
+		while (pending.TryPop(out var state))
 		{
-			if (!visited.Add(index))
+			if (!visited.Add(state))
 			{
 				continue;
 			}
 
+			var (index, conditions) = state;
 			var instruction = instructions[index];
-			if (instruction.Kind == M68kInstructionKind.Return)
+			if (instruction.Kind == M68kInstructionKind.Return || HasControlTransferAddend(instruction))
 			{
 				return true;
 			}
@@ -4503,7 +4897,10 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 						targetOffset,
 						register,
 						ref wholeImageInstructions,
-						callTargetProofs))
+						callTargetProofs) ||
+					conditions != M68kConditionCodeSet.None &&
+						CallTargetReadsConditionsBeforeOverwrite(
+							targetOffset, conditions, wholeImageInstructions!))
 				{
 					return true;
 				}
@@ -4517,7 +4914,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			{
 				return true;
 			}
-			if ((facts.Effects.UsesData & registerMask) != 0)
+			if ((facts.Effects.UsesData & registerMask) != 0 ||
+				(facts.Effects.ReadsConditions & conditions) != M68kConditionCodeSet.None)
 			{
 				return true;
 			}
@@ -4528,6 +4926,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			{
 				continue;
 			}
+			conditions &= ~facts.Effects.WritesConditions;
 
 			var nextIndex = index + 1;
 			switch (instruction.Kind)
@@ -4561,7 +4960,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				{
 					return false;
 				}
-				pending.Push(targetIndex);
+				pending.Push((targetIndex, conditions));
 				return true;
 			}
 
@@ -4571,7 +4970,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				{
 					return false;
 				}
-				pending.Push(nextIndex);
+				pending.Push((nextIndex, conditions));
 				return true;
 			}
 		}
@@ -4631,6 +5030,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			}
 			var instruction = instructions[index];
 			if (instruction.Offset >= methodEnd ||
+				HasControlTransferAddend(instruction) ||
 				instruction.Kind is M68kInstructionKind.Return or
 					M68kInstructionKind.Call)
 			{
@@ -5789,6 +6189,64 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 		(instruction.Opcode & 0xF1FF) == 0x206F &&
 			instruction.Length == 4 &&
 			instruction.ExtensionWord == 0;
+
+	private bool TryFoldAdjacentStackReleases()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var first = instructions[index];
+			var second = instructions[index + 1];
+			if (first.Opcode != 0x4FEF || first.Length != 4 ||
+				second.Opcode != 0x4FEF || second.Length != 4 ||
+				IsReferencedLabelAt(first.Offset) || IsReferencedLabelAt(second.Offset) ||
+				HasAddressFixupAt(first.Offset + 2) || HasAddressFixupAt(second.Offset + 2))
+			{
+				continue;
+			}
+			var combined = unchecked((short)first.ExtensionWord) + unchecked((short)second.ExtensionWord);
+			if (combined is <= 0 or > short.MaxValue)
+			{
+				continue;
+			}
+			_buffer.WriteWord(first.Offset + 2, combined);
+			_buffer.RemoveBytes(second.Offset, second.Length);
+			return true;
+		}
+		return false;
+	}
+
+	private bool TryRemoveUnusedRegisterStackPreservation()
+	{
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 2 < instructions.Count; index++)
+		{
+			var push = instructions[index];
+			var move = instructions[index + 1];
+			var pop = instructions[index + 2];
+			if ((push.Opcode & 0xFFF8) != 0x2F00 || push.Length != 2 ||
+				(pop.Opcode & 0xF1FF) != 0x201F || pop.Length != 2 ||
+				((push.Opcode & 7) != ((pop.Opcode >> 9) & 7)) ||
+				move.Length != 6 || (move.Opcode & 0x3000) != 0x2000 ||
+				((move.Opcode >> 3) & 7) != 5 ||
+				(move.Opcode & 7) != 7 || ((move.Opcode >> 6) & 7) != 5 ||
+				((move.Opcode >> 9) & 7) != 7 ||
+				IsReferencedLabelAt(push.Offset) || IsReferencedLabelAt(move.Offset) ||
+				IsReferencedLabelAt(pop.Offset) || HasAddressFixupAt(move.Offset + 2) ||
+				HasAddressFixupAt(move.Offset + 4))
+			{
+				continue;
+			}
+			var source = unchecked((short)move.ExtensionWord) - 4;
+			var destination = unchecked((short)_buffer.ReadWord(move.Offset + 4)) - 4;
+			_buffer.WriteWord(move.Offset + 2, source);
+			_buffer.WriteWord(move.Offset + 4, destination);
+			_buffer.RemoveBytes(pop.Offset, pop.Length);
+			_buffer.RemoveBytes(push.Offset, push.Length);
+			return true;
+		}
+		return false;
+	}
 
 	private bool TryRemoveRedundantRegisterSpill()
 	{
@@ -7232,6 +7690,8 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var savedLeft = (save.Opcode >> 9) & 7;
 			var byteValue = add.Opcode & 7;
 			var result = (copyBack.Opcode >> 9) & 7;
+			var combined = (combine.Opcode >> 9) & 7;
+			var combineSource = combine.Opcode & 7;
 			var resultMaskIndex = copyBackIndex + 1;
 			var hasResultMask = resultMaskIndex < instructions.Count &&
 				(instructions[resultMaskIndex].Opcode & 0xFFF8) == 0x0280 &&
@@ -7265,13 +7725,13 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				(rightShiftThree.Opcode & 0xF1F8) != 0xE048 ||
 				(rightShiftThree.Opcode & 7) != temporary ||
 				QuickCount(rightShiftThree.Opcode) != 3 ||
-				(combine.Opcode & 0xF1F8) != 0x8040 || // OR.W Dl,Dt
-				(combine.Opcode & 7) != savedLeft ||
-				((combine.Opcode >> 9) & 7) != temporary ||
+				(combine.Opcode & 0xF1F8) != 0x8040 || // OR.W Dl,Dt or Dt,Dl
+				!((combineSource == savedLeft && combined == temporary) ||
+				  (combineSource == temporary && combined == savedLeft)) ||
 				(add.Opcode & 0xF1F8) != 0xD040 || // ADD.W Db,Dt
-				((add.Opcode >> 9) & 7) != temporary ||
+				((add.Opcode >> 9) & 7) != combined ||
 				(copyBack.Opcode & 0xF1F8) != 0x2000 || // MOVE.L Dt,Ds
-				(copyBack.Opcode & 7) != temporary ||
+				(copyBack.Opcode & 7) != combined ||
 				result == temporary ||
 				result == savedLeft ||
 				result == byteValue ||
@@ -7648,9 +8108,9 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	private void MoveLabelsToOffset(int startOffset, int endOffset, int targetOffset)
 	{
-		foreach (var label in _buffer.Labels.Keys.ToArray())
+		foreach (var (label, offset) in _buffer.Labels)
 		{
-			if (_buffer.Labels[label] >= startOffset && _buffer.Labels[label] < endOffset)
+			if (offset >= startOffset && offset < endOffset)
 			{
 				_buffer.Labels[label] = targetOffset;
 			}
@@ -8066,7 +8526,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				moveQuick.Offset,
 				(ushort)(0x0C80 | immediateDestination)); // CMPI.L #imm,Dn
 			_buffer.RemoveBytes(compare.Offset, compare.Length);
-			_buffer.InsertBytes(moveQuick.Offset + 2, 4);
+			_buffer.InsertBytes(moveQuick.Offset + 2, 4, shiftBoundaryLabels: true, shiftBoundaryAnchors: true);
 			_buffer.WriteWord(moveQuick.Offset + 2, (ushort)(immediate >> 16));
 			_buffer.WriteWord(moveQuick.Offset + 4, (ushort)immediate);
 			return true;
@@ -8190,7 +8650,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			_buffer.WriteWord(
 				copy.Offset,
 				(ushort)(0x0C80 | sourceRegister)); // CMPI.L #imm,Dn
-			_buffer.InsertBytes(copy.Offset + 2, 4);
+			_buffer.InsertBytes(copy.Offset + 2, 4, shiftBoundaryLabels: true, shiftBoundaryAnchors: true);
 			_buffer.WriteWord(copy.Offset + 2, (ushort)(immediate >> 16));
 			_buffer.WriteWord(copy.Offset + 4, (ushort)immediate);
 			return true;
@@ -8284,6 +8744,45 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				instruction.Offset,
 				0x91C8 | (addressRegister << 9) | addressRegister);
 			_buffer.RemoveBytes(instruction.Offset + 2, 4);
+			return true;
+		}
+
+		return false;
+	}
+
+	private bool TryFoldZeroMoveQuickToAddress(
+		M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (var index = 0; index + 1 < instructions.Count; index++)
+		{
+			var zero = instructions[index];
+			var moveAddress = instructions[index + 1];
+			if ((zero.Opcode & 0xF1FF) != 0x7000 ||
+				(zero.Opcode & 0x00FF) != 0 ||
+				zero.Length != 2 ||
+				(moveAddress.Opcode & 0xF1F8) != 0x2040 ||
+				moveAddress.Length != 2 ||
+				HasLabelAt(moveAddress.Offset) ||
+				!dataflow.TryGetFacts(moveAddress.Offset, out var moveFacts))
+			{
+				continue;
+			}
+
+			var temporary = (zero.Opcode >> 9) & 7;
+			if ((moveAddress.Opcode & 7) != temporary ||
+				(moveFacts.LiveDataAfter & (1 << temporary)) != 0 ||
+				(moveFacts.LiveConditionsAfter &
+				 M68kConditionCodeSet.All) != M68kConditionCodeSet.None)
+			{
+				continue;
+			}
+
+			var destination = (moveAddress.Opcode >> 9) & 7;
+			_buffer.WriteWord(
+				zero.Offset,
+				(ushort)(0x91C8 | (destination << 9) | destination));
+			_buffer.RemoveBytes(moveAddress.Offset, moveAddress.Length);
 			return true;
 		}
 
@@ -8890,7 +9389,7 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 			// With a zero upper destination word and a clear mask sign bit, word
 			// and long AND produce the same 32-bit value and N/Z/V/C flags.
-			_buffer.InsertBytes(instruction.Offset + 2, 2);
+			_buffer.InsertBytes(instruction.Offset + 2, 2, shiftBoundaryLabels: true, shiftBoundaryAnchors: true);
 			_buffer.WriteWord(
 				instruction.Offset,
 				0x0240 | destination); // ANDI.W #mask,Dn
@@ -9227,21 +9726,27 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	private bool TryFoldTailReturn()
 	{
+		var codeEnd = _buffer.DataStartOffset ?? _buffer.Bytes.Count;
 		for (var index = _buffer.Branches.Count - 1; index >= 0; index--)
 		{
 			var branch = _buffer.Branches[index];
-			if (branch.OpcodeOffset + 5 >= _buffer.Bytes.Count ||
+			if (branch.OpcodeOffset + 5 >= codeEnd ||
 				_buffer.ReadWord(branch.OpcodeOffset) != 0x6100 ||
 				_buffer.ReadWord(branch.OpcodeOffset + 4) != 0x4E75 ||
-				HasLabelAt(branch.OpcodeOffset + 4))
+				HasLabelAt(branch.OpcodeOffset + 4) &&
+					!CanTailCallWithSharedReturn(branch.Target))
 			{
 				continue;
 			}
 
 			_buffer.WriteWord(branch.OpcodeOffset, 0x6000); // BSR.W -> BRA.W
+			_buffer.InstructionEffectOverrides.Remove(branch.OpcodeOffset);
 			_buffer.Branches.RemoveAt(index);
 			_buffer.Branches.Insert(index, branch);
-			_buffer.RemoveBytes(branch.OpcodeOffset + 4, 2);
+			if (!HasLabelAt(branch.OpcodeOffset + 4))
+			{
+				_buffer.RemoveBytes(branch.OpcodeOffset + 4, 2);
+			}
 			return true;
 		}
 
@@ -9250,21 +9755,28 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var address = _buffer.Addresses[index];
 			var opcodeOffset = address.Offset - 2;
 			if (opcodeOffset < 0 ||
-				opcodeOffset + 7 >= _buffer.Bytes.Count ||
+				opcodeOffset + 7 >= codeEnd ||
 				_buffer.ReadWord(opcodeOffset) != 0x4EB9 ||
 				_buffer.ReadWord(opcodeOffset + 6) != 0x4E75 ||
-				HasLabelAt(opcodeOffset + 6) ||
-				address.External)
+				address.External ||
+				HasLabelAt(opcodeOffset + 6) &&
+					(address.Addend != 0 || !CanTailCallWithSharedReturn(address.Target)))
 			{
 				continue;
 			}
 
 			_buffer.WriteWord(opcodeOffset, 0x4EF9); // JSR -> JMP
-			_buffer.RemoveBytes(opcodeOffset + 6, 2);
+			_buffer.InstructionEffectOverrides.Remove(opcodeOffset);
+			// A conditional caller can share this RTS with a path that skipped
+			// the call. Keep every labeled return entry while tail-folding the call.
+			if (!HasLabelAt(opcodeOffset + 6))
+			{
+				_buffer.RemoveBytes(opcodeOffset + 6, 2);
+			}
 			return true;
 		}
 
-		var instructions = _assembler.GetInstructionStream();
+		var instructions = _assembler.GetExecutableInstructionStream();
 		for (var index = instructions.Count - 2; index >= 0; index--)
 		{
 			var call = instructions[index];
@@ -9337,16 +9849,18 @@ internal sealed class M68kPeepholeOptimizer : IM68kOptimizerPass
 				continue;
 			}
 			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			var length = (opcode & 0x00FF) == 0 ? 4 : 2;
 			if ((opcode & 0xF000) != 0x6000 ||
-				branch.OpcodeOffset + 3 >= _buffer.Bytes.Count ||
+				(opcode & 0xFF00) == 0x6100 ||
+				branch.OpcodeOffset + length > _buffer.Bytes.Count ||
 				!_buffer.Labels.TryGetValue(branch.Target, out var targetOffset) ||
-				targetOffset != branch.OpcodeOffset + 4)
+				targetOffset != branch.OpcodeOffset + length)
 			{
 				continue;
 			}
 
 			_buffer.Branches.RemoveAt(index);
-			_buffer.RemoveBytes(branch.OpcodeOffset, 4);
+			_buffer.RemoveBytes(branch.OpcodeOffset, length);
 			return true;
 		}
 

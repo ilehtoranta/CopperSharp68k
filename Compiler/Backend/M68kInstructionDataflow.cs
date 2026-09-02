@@ -811,6 +811,26 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
+			if ((opcode & 0xF1C0) is 0x80C0 or 0x81C0 or 0xC0C0 or 0xC1C0)
+			{
+				// MUL.W reads a word and writes the full long product; DIV.W reads
+				// the long dividend and writes the packed word quotient/remainder.
+				// Both preserve X. Division remains observable even with dead outputs
+				// because the divisor can be zero; memory-source MUL can also fault.
+				AddEffectiveAddress(opcode, EffectiveAddressAccess.Read);
+				if ((opcode & 0x3F) == 0x3B) // (d8,PC,Xn) also reads its index.
+				{
+					if ((_extensionWord & 0x8000) == 0) UseData((_extensionWord >> 12) & 7);
+					else UseAddress((_extensionWord >> 12) & 7);
+				}
+				UseData((opcode >> 9) & 7);
+				DefineData((opcode >> 9) & 7);
+				WriteMoveConditions();
+				_canRemoveWhenOutputsDead = (opcode & 0xF000) == 0xC000 &&
+					((opcode & 0x38) == 0 || (opcode & 0x3F) == 0x3C);
+				return;
+			}
+
 			if ((opcode & 0xF000) is 0x8000 or 0x9000 or 0xB000 or 0xC000 or 0xD000)
 			{
 				ClassifyArithmetic(opcode);
@@ -1237,6 +1257,7 @@ internal sealed class M68kInstructionDataflow
 			0x2000 => 4,
 			0x3000 => 2,
 			0x4000 => ((opcode >> 6) & 3) == 2 ? 4 : 2,
+			0x8000 or 0xC000 when (opcode & 0xC0) == 0xC0 => 2,
 			_ => 4
 		};
 	}

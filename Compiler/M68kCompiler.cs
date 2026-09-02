@@ -36,6 +36,7 @@ public static class M68kCompiler
 			implementationPack);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
+		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
 				? ResolveManagedPoolRuntime(module)
@@ -46,7 +47,8 @@ public static class M68kCompiler
 			entry,
 			exports,
 			managedPoolRuntime,
-			request);
+			request,
+			bulkCopyMethod);
 		return analysis;
 	}
 
@@ -68,6 +70,7 @@ public static class M68kCompiler
 			implementationPack);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
+		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
 				? ResolveManagedPoolRuntime(module)
@@ -77,25 +80,33 @@ public static class M68kCompiler
 			entry,
 			exports,
 			managedPoolRuntime,
-			request);
+			request,
+			bulkCopyMethod);
 		ThrowIfFrameworkIncompatible(frameworkAnalysis);
 		var frameworkFeatures = frameworkAnalysis.Members
 			.SelectMany(static member => member.RequiredFeatures)
 			.Distinct(StringComparer.Ordinal)
 			.Order(StringComparer.Ordinal)
 			.ToArray();
+		var additionalAnalysisRoots = managedLifecycles
+			.SelectMany(static lifecycle => lifecycle.Methods);
+		if (bulkCopyMethod is not null)
+		{
+			additionalAnalysisRoots = additionalAnalysisRoots.Append(bulkCopyMethod);
+		}
 		M68kStaticAnalyzer.Analyze(
 			module,
 			entry,
 			request,
 			exports,
-			managedLifecycles.SelectMany(static lifecycle => lifecycle.Methods));
+			additionalAnalysisRoots);
 		var generated = new M68kCodeGenerator(
 			module,
 			request,
 			exports,
 			managedPoolRuntime,
-			managedLifecycles).Generate(entry);
+			managedLifecycles,
+			bulkCopyMethod).Generate(entry);
 		var reachableAssemblies = module.GetReachableAssemblyIdentities();
 
 		return request.OutputFormat switch
@@ -157,14 +168,19 @@ public static class M68kCompiler
 			CilMethod entry,
 			IReadOnlyList<CilExport> exports,
 			ManagedPoolRuntimeModule? managedPoolRuntime,
-			M68kCompilationRequest request)
+			M68kCompilationRequest request,
+			CilMethod? bulkCopyMethod)
 	{
+		var bulkCopyRoots = bulkCopyMethod is null
+			? Array.Empty<CilMethod>()
+			: new[] { bulkCopyMethod };
 		var baseline = FrameworkReachabilityAnalyzer.Analyze(
 			module,
 			entry,
 			exports,
 			managedPoolRuntime,
-			request.FloatingPoint);
+			request.FloatingPoint,
+			bulkCopyRoots);
 		if (HasIncompatibleFrameworkMember(baseline))
 		{
 			return (baseline, Array.Empty<ManagedLifecycleModule>());
@@ -189,7 +205,8 @@ public static class M68kCompiler
 			exports,
 			managedPoolRuntime,
 			request.FloatingPoint,
-			lifecycles.SelectMany(static lifecycle => lifecycle.Methods));
+			lifecycles.SelectMany(static lifecycle => lifecycle.Methods)
+				.Concat(bulkCopyRoots));
 		return (augmented, lifecycles);
 	}
 
@@ -364,6 +381,8 @@ public static class M68kCompiler
 
 	private static void ValidateRuntimeOptions(M68kCompilationRequest request)
 	{
+		BulkCopyProviderBinding.ValidateOptions(request.BulkCopy);
+
 		if (request.TargetContract is { } target &&
 			(!IsSingleLineValue(target.RuntimeIdentifier) ||
 			 !IsSingleLineValue(target.PackageId) ||
@@ -840,14 +859,45 @@ public static class M68kCompiler
 			$"rewrites={peepholeStatistics.Rewrites} " +
 			$"rounds={peepholeStatistics.Rounds} " +
 			$"method-ranges={peepholeStatistics.MethodRanges} " +
-			$"converged={(peepholeStatistics.Converged ? "yes" : "no")}");
+			$"converged={(peepholeStatistics.Converged ? "yes" : "no")} " +
+			$"terminal-groups={peepholeStatistics.TerminalGroups} " +
+			$"terminal-merged-copies={peepholeStatistics.TerminalMergedCopies} " +
+			$"terminal-inverted-branches={peepholeStatistics.TerminalInvertedBranches} " +
+			$"terminal-trampolines={peepholeStatistics.TerminalTrampolines} " +
+			$"terminal-gross-bytes-removed={peepholeStatistics.TerminalGrossBytesRemoved} " +
+			$"terminal-branch-bytes-added={peepholeStatistics.TerminalBranchBytesAdded} " +
+			$"terminal-net-bytes-saved={peepholeStatistics.TerminalNetBytesSaved} " +
+			$"return-condition-targets={peepholeStatistics.ReturnConditionTargets} " +
+			$"return-condition-tests-removed={peepholeStatistics.ReturnConditionTestsRemoved} " +
+			$"return-condition-tests-inserted={peepholeStatistics.ReturnConditionTestsInserted} " +
+			$"return-condition-net-bytes-saved={peepholeStatistics.ReturnConditionNetBytesSaved} " +
+			$"identical-method-groups={peepholeStatistics.IdenticalMethodGroups} " +
+			$"identical-method-thunks={peepholeStatistics.IdenticalMethodThunks} " +
+			$"identical-method-gross-bytes-removed={peepholeStatistics.IdenticalMethodGrossBytesRemoved} " +
+			$"identical-method-jump-bytes-added={peepholeStatistics.IdenticalMethodJumpBytesAdded} " +
+			$"identical-method-net-bytes-saved={peepholeStatistics.IdenticalMethodNetBytesSaved}");
 		map.AppendLine(
 			$"MACHINE scc={machineStatistics.StronglyConnectedComponents} " +
 			$"devirtualized-calls={machineStatistics.DevirtualizedCalls} " +
 			$"inlined-calls={machineStatistics.InlinedCalls} " +
+			$"single-use-inlined-calls={machineStatistics.SingleUseInlinedCalls} " +
 			$"retained-methods={machineStatistics.RetainedMethods} " +
 			$"estimated-cost-before={machineStatistics.EstimatedPreOptimizationCost} " +
 			$"estimated-cost-after={machineStatistics.EstimatedPostOptimizationCost}");
+		var forwarding = machineStatistics.AggregateReturnForwarding;
+		map.AppendLine(
+			$"AGGREGATE-FORWARDING return-buffers={forwarding.ReturnBuffersForwarded} " +
+			$"private-locals={forwarding.LocalsForwarded} " +
+			$"temporary-homes-removed={forwarding.TemporaryHomesRemoved} " +
+			$"temporary-frame-bytes-removed={forwarding.TemporaryBytesRemoved}");
+		var copies = machineStatistics.BulkCopies;
+		map.AppendLine(
+			$"BULK-COPY calls={copies.TotalCopies} static-copy-bytes={copies.TotalBytes} " +
+			$"return-calls={copies.ReturnCopies} return-bytes={copies.ReturnBytes} " +
+			$"local-calls={copies.LocalCopies} local-bytes={copies.LocalBytes} " +
+			$"argument-calls={copies.ArgumentCopies} argument-bytes={copies.ArgumentBytes} " +
+			$"unclassified-calls={copies.UnclassifiedCopies} unclassified-bytes={copies.UnclassifiedBytes} " +
+			$"managed-providers={copies.ManagedProviders} external-providers={copies.ExternalProviders}");
 		map.AppendLine("SYMBOLS");
 		foreach (var symbol in symbols)
 		{

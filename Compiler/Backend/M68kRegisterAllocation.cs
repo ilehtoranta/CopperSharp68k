@@ -794,8 +794,10 @@ internal static class M68kRegisterAllocatorPipeline
 		M68kMachineFunction function,
 		bool allowUntrackedManagedByrefs = false,
 		bool allowCallerBorrowedByrefs = false,
-		bool rejectManagedByrefReturn = false)
+		bool rejectManagedByrefReturn = false,
+		IReadOnlyList<M68kRegister?>? argumentRegisters = null)
 	{
+		M68kArgumentHomeOptimizer.Run(function, argumentRegisters);
 		M68kByrefOwnerRooting.Insert(
 			function,
 			allowUntrackedManagedByrefs,
@@ -1406,8 +1408,26 @@ internal static class M68kGraphColoringAllocator
 			if (graph.ForbiddenRegisters.TryGetValue(valueId, out var forbidden) &&
 				location.OccupiedRegisters.Overlaps(forbidden))
 			{
+				var sites = DescribeValueSites(function, valueId);
+				var clobberSites = instructionLiveness is null
+					? string.Empty
+					: string.Join("|", function.Blocks
+						.SelectMany(block => block.Instructions.Select(instruction =>
+							(block.Id, Instruction: instruction)))
+						.Where(item =>
+							item.Instruction.Clobbers.Overlaps(
+								location.OccupiedRegisters) &&
+							instructionLiveness.LiveBefore[item.Instruction.Id]
+								.Contains(valueId) &&
+							instructionLiveness.LiveAfter[item.Instruction.Id]
+								.Contains(valueId))
+						.Select(item =>
+							$"b{item.Id}:i{item.Instruction.Id}:" +
+							$"{item.Instruction.Operation}"));
 				throw new InvalidOperationException(
-					$"Allocator assigned clobbered register {location.Register} to v{valueId}.");
+					$"{function.DisplayName}: allocator assigned clobbered register " +
+					$"{location.Register} to v{valueId}; sites={sites}; " +
+					$"live-across-clobbers={clobberSites}.");
 			}
 			foreach (var neighbor in graph.Neighbors(valueId))
 			{
