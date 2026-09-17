@@ -130,6 +130,8 @@ emulator setting.
 CopperSharp supports a bounded CIL and .NET framework surface. Read the
 [compatibility matrix](https://coppersharp68k.ilkka-lehtoranta.chatgpt.site/compatibility)
 and inspect the generated `.framework.json` report when adding framework APIs.
+Search the generated [SDK reference](https://ilehtoranta.github.io/CopperSharp68k/reference/)
+for package types, members, signatures, LVOs, and register assignments.
 
 The packaged project SDK is the normal workflow. For direct compiler use,
 custom ROM layouts, or standalone reports, see the
@@ -200,7 +202,7 @@ Kickstart 3.1 library folders are present as ABI declaration stubs. Most
 libraries currently expose only their Amiga library name constant until their
 LVO declarations are added.
 
-`Amiga.DOS` includes the non-variadic AmigaOS 3.x and MorphOS m68k ABI vector
+`Amiga.DOS` includes the non-variadic Amiga 3.x and MorphOS m68k ABI vector
 surface. C varargs convenience wrappers, such as `Printf()` and `SystemTags()`,
 are intentionally represented by their underlying vector/tag-list forms.
 DOS 64-bit file-position and record-lock calls use 68k register pairs: a

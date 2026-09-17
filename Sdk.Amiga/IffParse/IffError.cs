@@ -7,7 +7,7 @@ namespace Amiga;
 
 /// <summary>Negative status values returned by <c>iffparse.library</c>.</summary>
 /// <remarks>
-/// The numeric values mirror the AmigaOS ABI. IFFParse methods return these
+/// The numeric values mirror the Amiga ABI. IFFParse methods return these
 /// values as <c>int</c> because several of the same methods also return byte
 /// or record counts on success.
 /// </remarks>

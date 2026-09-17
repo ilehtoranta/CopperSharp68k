@@ -6,12 +6,12 @@
 namespace Amiga;
 
 /// <summary>
-/// Public dos.library vector offsets for the AmigaOS 3.1 V40 and MorphOS M68k ABIs.
+/// Public dos.library vector offsets for the Amiga 3.1 V40 and MorphOS M68k ABIs.
 /// Multiple names may intentionally identify one vector when the ABI publishes aliases.
 /// </summary>
 public static class DosLvo
 {
-	// AmigaOS 3.1 V40 public vectors.
+	// Amiga 3.1 V40 public vectors.
 	public const short Open = -30, Close = -36, Read = -42, Write = -48, Input = -54, Output = -60;
 	public const short Seek = -66, DeleteFile = -72, Rename = -78, Lock = -84, UnLock = -90, DupLock = -96;
 	public const short Examine = -102, ExNext = -108, Info = -114, CreateDir = -120, CurrentDir = -126, IoErr = -132;
