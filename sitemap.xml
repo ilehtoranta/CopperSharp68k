@@ -181,11 +181,6 @@
 <priority>0.7</priority>
 </url>
 <url>
-<loc>https://ilehtoranta.github.io/CopperSharp68k/reference/other</loc>
-<changefreq>weekly</changefreq>
-<priority>0.7</priority>
-</url>
-<url>
 <loc>https://ilehtoranta.github.io/CopperSharp68k/reference/realtime</loc>
 <changefreq>weekly</changefreq>
 <priority>0.7</priority>
@@ -4762,11 +4757,6 @@
 </url>
 <url>
 <loc>https://ilehtoranta.github.io/CopperSharp68k/reference/core/amiga-stack-varargs-attribute</loc>
-<changefreq>weekly</changefreq>
-<priority>0.6</priority>
-</url>
-<url>
-<loc>https://ilehtoranta.github.io/CopperSharp68k/reference/other/program</loc>
 <changefreq>weekly</changefreq>
 <priority>0.6</priority>
 </url>
