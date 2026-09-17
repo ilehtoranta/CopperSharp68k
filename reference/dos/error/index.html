@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>Error | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.Error members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="Error | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.Error members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/dos/error"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/dos/error"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.Error API reference","description":"Amiga.Error members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/dos/error","about":["CopperSharp.Sdk.Amiga","DOS","Amiga.Error"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/dos">DOS</a><span>/</span><span aria-current="page">Error</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">enum</span></div><h1>Error</h1><p class="reference-full-name">Amiga.Error</p><pre class="reference-signature"><code>public enum Error</code></pre><div class="reference-source-row"><span>49<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/DOS/DOS.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#enum-value-none">None</a><a href="#enum-value-no-free-store">NoFreeStore</a><a href="#enum-value-task-table-full">TaskTableFull</a><a href="#enum-value-bad-template">BadTemplate</a><a href="#enum-value-bad-number">BadNumber</a><a href="#enum-value-required-argument-missing">RequiredArgumentMissing</a><a href="#enum-value-key-needs-argument">KeyNeedsArgument</a><a href="#enum-value-too-many-arguments">TooManyArguments</a><a href="#enum-value-unmatched-quotes">UnmatchedQuotes</a><a href="#enum-value-line-too-long">LineTooLong</a><a href="#enum-value-file-not-object">FileNotObject</a><a href="#enum-value-invalid-resident-library">InvalidResidentLibrary</a><a href="#enum-value-no-default-directory">NoDefaultDirectory</a><a href="#enum-value-object-in-use">ObjectInUse</a><a href="#enum-value-object-exists">ObjectExists</a><a href="#enum-value-directory-not-found">DirectoryNotFound</a><a href="#enum-value-object-not-found">ObjectNotFound</a><a href="#enum-value-bad-stream-name">BadStreamName</a><a href="#enum-value-object-too-large">ObjectTooLarge</a><a href="#enum-value-action-not-known">ActionNotKnown</a><a href="#enum-value-invalid-component-name">InvalidComponentName</a><a href="#enum-value-invalid-lock">InvalidLock</a><a href="#enum-value-object-wrong-type">ObjectWrongType</a><a href="#enum-value-disk-not-validated">DiskNotValidated</a><a href="#enum-value-disk-write-protected">DiskWriteProtected</a><a href="#enum-value-rename-across-devices">RenameAcrossDevices</a><a href="#enum-value-directory-not-empty">DirectoryNotEmpty</a><a href="#enum-value-too-many-levels">TooManyLevels</a><a href="#enum-value-device-not-mounted">DeviceNotMounted</a><a href="#enum-value-seek-error">SeekError</a><a href="#enum-value-comment-too-big">CommentTooBig</a><a href="#enum-value-disk-full">DiskFull</a><a href="#enum-value-delete-protected">DeleteProtected</a><a href="#enum-value-write-protected">WriteProtected</a><a href="#enum-value-read-protected">ReadProtected</a><a href="#enum-value-not-ados-disk">NotADosDisk</a><a href="#enum-value-no-disk">NoDisk</a><a href="#enum-value-no-more-entries">NoMoreEntries</a><a href="#enum-value-is-soft-link">IsSoftLink</a><a href="#enum-value-object-linked">ObjectLinked</a><a href="#enum-value-bad-hunk">BadHunk</a><a href="#enum-value-not-implemented">NotImplemented</a><a href="#enum-value-record-not-locked">RecordNotLocked</a><a href="#enum-value-lock-collision">LockCollision</a><a href="#enum-value-lock-timeout">LockTimeout</a><a href="#enum-value-unlock-error">UnlockError</a><a href="#enum-value-buffer-overflow">BufferOverflow</a><a href="#enum-value-break">Break</a><a href="#enum-value-not-executable">NotExecutable</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="enum-value-none"><header><span class="reference-kind">enum value</span><a href="#enum-value-none" aria-label="Link to None">#</a></header><h3>None</h3><pre><code>None = 0</code></pre></article><article class="reference-member" id="enum-value-no-free-store"><header><span class="reference-kind">enum value</span><a href="#enum-value-no-free-store" aria-label="Link to NoFreeStore">#</a></header><h3>NoFreeStore</h3><pre><code>NoFreeStore = 103</code></pre></article><article class="reference-member" id="enum-value-task-table-full"><header><span class="reference-kind">enum value</span><a href="#enum-value-task-table-full" aria-label="Link to TaskTableFull">#</a></header><h3>TaskTableFull</h3><pre><code>TaskTableFull = 105</code></pre></article><article class="reference-member" id="enum-value-bad-template"><header><span class="reference-kind">enum value</span><a href="#enum-value-bad-template" aria-label="Link to BadTemplate">#</a></header><h3>BadTemplate</h3><pre><code>BadTemplate = 114</code></pre></article><article class="reference-member" id="enum-value-bad-number"><header><span class="reference-kind">enum value</span><a href="#enum-value-bad-number" aria-label="Link to BadNumber">#</a></header><h3>BadNumber</h3><pre><code>BadNumber = 115</code></pre></article><article class="reference-member" id="enum-value-required-argument-missing"><header><span class="reference-kind">enum value</span><a href="#enum-value-required-argument-missing" aria-label="Link to RequiredArgumentMissing">#</a></header><h3>RequiredArgumentMissing</h3><pre><code>RequiredArgumentMissing = 116</code></pre></article><article class="reference-member" id="enum-value-key-needs-argument"><header><span class="reference-kind">enum value</span><a href="#enum-value-key-needs-argument" aria-label="Link to KeyNeedsArgument">#</a></header><h3>KeyNeedsArgument</h3><pre><code>KeyNeedsArgument = 117</code></pre></article><article class="reference-member" id="enum-value-too-many-arguments"><header><span class="reference-kind">enum value</span><a href="#enum-value-too-many-arguments" aria-label="Link to TooManyArguments">#</a></header><h3>TooManyArguments</h3><pre><code>TooManyArguments = 118</code></pre></article><article class="reference-member" id="enum-value-unmatched-quotes"><header><span class="reference-kind">enum value</span><a href="#enum-value-unmatched-quotes" aria-label="Link to UnmatchedQuotes">#</a></header><h3>UnmatchedQuotes</h3><pre><code>UnmatchedQuotes = 119</code></pre></article><article class="reference-member" id="enum-value-line-too-long"><header><span class="reference-kind">enum value</span><a href="#enum-value-line-too-long" aria-label="Link to LineTooLong">#</a></header><h3>LineTooLong</h3><pre><code>LineTooLong = 120</code></pre></article><article class="reference-member" id="enum-value-file-not-object"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-not-object" aria-label="Link to FileNotObject">#</a></header><h3>FileNotObject</h3><pre><code>FileNotObject = 121</code></pre></article><article class="reference-member" id="enum-value-invalid-resident-library"><header><span class="reference-kind">enum value</span><a href="#enum-value-invalid-resident-library" aria-label="Link to InvalidResidentLibrary">#</a></header><h3>InvalidResidentLibrary</h3><pre><code>InvalidResidentLibrary = 122</code></pre></article><article class="reference-member" id="enum-value-no-default-directory"><header><span class="reference-kind">enum value</span><a href="#enum-value-no-default-directory" aria-label="Link to NoDefaultDirectory">#</a></header><h3>NoDefaultDirectory</h3><pre><code>NoDefaultDirectory = 201</code></pre></article><article class="reference-member" id="enum-value-object-in-use"><header><span class="reference-kind">enum value</span><a href="#enum-value-object-in-use" aria-label="Link to ObjectInUse">#</a></header><h3>ObjectInUse</h3><pre><code>ObjectInUse = 202</code></pre></article><article class="reference-member" id="enum-value-object-exists"><header><span class="reference-kind">enum value</span><a href="#enum-value-object-exists" aria-label="Link to ObjectExists">#</a></header><h3>ObjectExists</h3><pre><code>ObjectExists = 203</code></pre></article><article class="reference-member" id="enum-value-directory-not-found"><header><span class="reference-kind">enum value</span><a href="#enum-value-directory-not-found" aria-label="Link to DirectoryNotFound">#</a></header><h3>DirectoryNotFound</h3><pre><code>DirectoryNotFound = 204</code></pre></article><article class="reference-member" id="enum-value-object-not-found"><header><span class="reference-kind">enum value</span><a href="#enum-value-object-not-found" aria-label="Link to ObjectNotFound">#</a></header><h3>ObjectNotFound</h3><pre><code>ObjectNotFound = 205</code></pre></article><article class="reference-member" id="enum-value-bad-stream-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-bad-stream-name" aria-label="Link to BadStreamName">#</a></header><h3>BadStreamName</h3><pre><code>BadStreamName = 206</code></pre></article><article class="reference-member" id="enum-value-object-too-large"><header><span class="reference-kind">enum value</span><a href="#enum-value-object-too-large" aria-label="Link to ObjectTooLarge">#</a></header><h3>ObjectTooLarge</h3><pre><code>ObjectTooLarge = 207</code></pre></article><article class="reference-member" id="enum-value-action-not-known"><header><span class="reference-kind">enum value</span><a href="#enum-value-action-not-known" aria-label="Link to ActionNotKnown">#</a></header><h3>ActionNotKnown</h3><pre><code>ActionNotKnown = 209</code></pre></article><article class="reference-member" id="enum-value-invalid-component-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-invalid-component-name" aria-label="Link to InvalidComponentName">#</a></header><h3>InvalidComponentName</h3><pre><code>InvalidComponentName = 210</code></pre></article><article class="reference-member" id="enum-value-invalid-lock"><header><span class="reference-kind">enum value</span><a href="#enum-value-invalid-lock" aria-label="Link to InvalidLock">#</a></header><h3>InvalidLock</h3><pre><code>InvalidLock = 211</code></pre></article><article class="reference-member" id="enum-value-object-wrong-type"><header><span class="reference-kind">enum value</span><a href="#enum-value-object-wrong-type" aria-label="Link to ObjectWrongType">#</a></header><h3>ObjectWrongType</h3><pre><code>ObjectWrongType = 212</code></pre></article><article class="reference-member" id="enum-value-disk-not-validated"><header><span class="reference-kind">enum value</span><a href="#enum-value-disk-not-validated" aria-label="Link to DiskNotValidated">#</a></header><h3>DiskNotValidated</h3><pre><code>DiskNotValidated = 213</code></pre></article><article class="reference-member" id="enum-value-disk-write-protected"><header><span class="reference-kind">enum value</span><a href="#enum-value-disk-write-protected" aria-label="Link to DiskWriteProtected">#</a></header><h3>DiskWriteProtected</h3><pre><code>DiskWriteProtected = 214</code></pre></article><article class="reference-member" id="enum-value-rename-across-devices"><header><span class="reference-kind">enum value</span><a href="#enum-value-rename-across-devices" aria-label="Link to RenameAcrossDevices">#</a></header><h3>RenameAcrossDevices</h3><pre><code>RenameAcrossDevices = 215</code></pre></article><article class="reference-member" id="enum-value-directory-not-empty"><header><span class="reference-kind">enum value</span><a href="#enum-value-directory-not-empty" aria-label="Link to DirectoryNotEmpty">#</a></header><h3>DirectoryNotEmpty</h3><pre><code>DirectoryNotEmpty = 216</code></pre></article><article class="reference-member" id="enum-value-too-many-levels"><header><span class="reference-kind">enum value</span><a href="#enum-value-too-many-levels" aria-label="Link to TooManyLevels">#</a></header><h3>TooManyLevels</h3><pre><code>TooManyLevels = 217</code></pre></article><article class="reference-member" id="enum-value-device-not-mounted"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-not-mounted" aria-label="Link to DeviceNotMounted">#</a></header><h3>DeviceNotMounted</h3><pre><code>DeviceNotMounted = 218</code></pre></article><article class="reference-member" id="enum-value-seek-error"><header><span class="reference-kind">enum value</span><a href="#enum-value-seek-error" aria-label="Link to SeekError">#</a></header><h3>SeekError</h3><pre><code>SeekError = 219</code></pre></article><article class="reference-member" id="enum-value-comment-too-big"><header><span class="reference-kind">enum value</span><a href="#enum-value-comment-too-big" aria-label="Link to CommentTooBig">#</a></header><h3>CommentTooBig</h3><pre><code>CommentTooBig = 220</code></pre></article><article class="reference-member" id="enum-value-disk-full"><header><span class="reference-kind">enum value</span><a href="#enum-value-disk-full" aria-label="Link to DiskFull">#</a></header><h3>DiskFull</h3><pre><code>DiskFull = 221</code></pre></article><article class="reference-member" id="enum-value-delete-protected"><header><span class="reference-kind">enum value</span><a href="#enum-value-delete-protected" aria-label="Link to DeleteProtected">#</a></header><h3>DeleteProtected</h3><pre><code>DeleteProtected = 222</code></pre></article><article class="reference-member" id="enum-value-write-protected"><header><span class="reference-kind">enum value</span><a href="#enum-value-write-protected" aria-label="Link to WriteProtected">#</a></header><h3>WriteProtected</h3><pre><code>WriteProtected = 223</code></pre></article><article class="reference-member" id="enum-value-read-protected"><header><span class="reference-kind">enum value</span><a href="#enum-value-read-protected" aria-label="Link to ReadProtected">#</a></header><h3>ReadProtected</h3><pre><code>ReadProtected = 224</code></pre></article><article class="reference-member" id="enum-value-not-ados-disk"><header><span class="reference-kind">enum value</span><a href="#enum-value-not-ados-disk" aria-label="Link to NotADosDisk">#</a></header><h3>NotADosDisk</h3><pre><code>NotADosDisk = 225</code></pre></article><article class="reference-member" id="enum-value-no-disk"><header><span class="reference-kind">enum value</span><a href="#enum-value-no-disk" aria-label="Link to NoDisk">#</a></header><h3>NoDisk</h3><pre><code>NoDisk = 226</code></pre></article><article class="reference-member" id="enum-value-no-more-entries"><header><span class="reference-kind">enum value</span><a href="#enum-value-no-more-entries" aria-label="Link to NoMoreEntries">#</a></header><h3>NoMoreEntries</h3><pre><code>NoMoreEntries = 232</code></pre></article><article class="reference-member" id="enum-value-is-soft-link"><header><span class="reference-kind">enum value</span><a href="#enum-value-is-soft-link" aria-label="Link to IsSoftLink">#</a></header><h3>IsSoftLink</h3><pre><code>IsSoftLink = 233</code></pre></article><article class="reference-member" id="enum-value-object-linked"><header><span class="reference-kind">enum value</span><a href="#enum-value-object-linked" aria-label="Link to ObjectLinked">#</a></header><h3>ObjectLinked</h3><pre><code>ObjectLinked = 234</code></pre></article><article class="reference-member" id="enum-value-bad-hunk"><header><span class="reference-kind">enum value</span><a href="#enum-value-bad-hunk" aria-label="Link to BadHunk">#</a></header><h3>BadHunk</h3><pre><code>BadHunk = 235</code></pre></article><article class="reference-member" id="enum-value-not-implemented"><header><span class="reference-kind">enum value</span><a href="#enum-value-not-implemented" aria-label="Link to NotImplemented">#</a></header><h3>NotImplemented</h3><pre><code>NotImplemented = 236</code></pre></article><article class="reference-member" id="enum-value-record-not-locked"><header><span class="reference-kind">enum value</span><a href="#enum-value-record-not-locked" aria-label="Link to RecordNotLocked">#</a></header><h3>RecordNotLocked</h3><pre><code>RecordNotLocked = 240</code></pre></article><article class="reference-member" id="enum-value-lock-collision"><header><span class="reference-kind">enum value</span><a href="#enum-value-lock-collision" aria-label="Link to LockCollision">#</a></header><h3>LockCollision</h3><pre><code>LockCollision = 241</code></pre></article><article class="reference-member" id="enum-value-lock-timeout"><header><span class="reference-kind">enum value</span><a href="#enum-value-lock-timeout" aria-label="Link to LockTimeout">#</a></header><h3>LockTimeout</h3><pre><code>LockTimeout = 242</code></pre></article><article class="reference-member" id="enum-value-unlock-error"><header><span class="reference-kind">enum value</span><a href="#enum-value-unlock-error" aria-label="Link to UnlockError">#</a></header><h3>UnlockError</h3><pre><code>UnlockError = 243</code></pre></article><article class="reference-member" id="enum-value-buffer-overflow"><header><span class="reference-kind">enum value</span><a href="#enum-value-buffer-overflow" aria-label="Link to BufferOverflow">#</a></header><h3>BufferOverflow</h3><pre><code>BufferOverflow = 303</code></pre></article><article class="reference-member" id="enum-value-break"><header><span class="reference-kind">enum value</span><a href="#enum-value-break" aria-label="Link to Break">#</a></header><h3>Break</h3><pre><code>Break = 304</code></pre></article><article class="reference-member" id="enum-value-not-executable"><header><span class="reference-kind">enum value</span><a href="#enum-value-not-executable" aria-label="Link to NotExecutable">#</a></header><h3>NotExecutable</h3><pre><code>NotExecutable = 305</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

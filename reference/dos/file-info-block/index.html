@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>FileInfoBlock | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.FileInfoBlock members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="FileInfoBlock | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.FileInfoBlock members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/dos/file-info-block"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/dos/file-info-block"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.FileInfoBlock API reference","description":"Amiga.FileInfoBlock members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/dos/file-info-block","about":["CopperSharp.Sdk.Amiga","DOS","Amiga.FileInfoBlock"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/dos">DOS</a><span>/</span><span aria-current="page">FileInfoBlock</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">struct</span></div><h1>FileInfoBlock</h1><p class="reference-full-name">Amiga.FileInfoBlock</p><pre class="reference-signature"><code>public struct FileInfoBlock</code></pre><div class="reference-source-row"><span>36<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/DOS/FileInfoBlock.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-size-in-bytes">SizeInBytes</a><a href="#constant-file-name-offset">FileNameOffset</a><a href="#constant-comment-offset">CommentOffset</a><a href="#constant-dir-entry-type-offset">DirEntryTypeOffset</a><a href="#constant-size-offset">SizeOffset</a><a href="#constant-date-days-offset">DateDaysOffset</a><a href="#constant-date-minute-offset">DateMinuteOffset</a><a href="#constant-date-tick-offset">DateTickOffset</a><a href="#field-disk-key">DiskKey</a><a href="#field-dir-entry-type">DirEntryType</a><a href="#field-file-name-buffer">FileNameBuffer</a><a href="#field-protection">Protection</a><a href="#field-entry-type">EntryType</a><a href="#field-size">Size</a><a href="#field-num-blocks">NumBlocks</a><a href="#field-date-days">DateDays</a><a href="#field-date-minute">DateMinute</a><a href="#field-date-tick">DateTick</a><a href="#field-comment-buffer">CommentBuffer</a><a href="#field-owner">Owner</a><a href="#field-reserved-long000">ReservedLong000</a><a href="#field-reserved-long001">ReservedLong001</a><a href="#field-reserved-long002">ReservedLong002</a><a href="#field-reserved-long003">ReservedLong003</a><a href="#field-reserved-long004">ReservedLong004</a><a href="#field-reserved-long005">ReservedLong005</a><a href="#field-reserved-long006">ReservedLong006</a><a href="#field-reserved-long007">ReservedLong007</a><a href="#method-address-of">AddressOf</a><a href="#method-file-name">FileName</a><a href="#method-comment">Comment</a><a href="#method-get-dir-entry-type">GetDirEntryType</a><a href="#method-get-size">GetSize</a><a href="#method-get-date-days">GetDateDays</a><a href="#method-get-date-minute">GetDateMinute</a><a href="#method-get-date-tick">GetDateTick</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-size-in-bytes"><header><span class="reference-kind">constant</span><a href="#constant-size-in-bytes" aria-label="Link to SizeInBytes">#</a></header><h3>SizeInBytes</h3><pre><code>public const int SizeInBytes = 260</code></pre></article><article class="reference-member" id="constant-file-name-offset"><header><span class="reference-kind">constant</span><a href="#constant-file-name-offset" aria-label="Link to FileNameOffset">#</a></header><h3>FileNameOffset</h3><pre><code>public const int FileNameOffset = 8</code></pre></article><article class="reference-member" id="constant-comment-offset"><header><span class="reference-kind">constant</span><a href="#constant-comment-offset" aria-label="Link to CommentOffset">#</a></header><h3>CommentOffset</h3><pre><code>public const int CommentOffset = 144</code></pre></article><article class="reference-member" id="constant-dir-entry-type-offset"><header><span class="reference-kind">constant</span><a href="#constant-dir-entry-type-offset" aria-label="Link to DirEntryTypeOffset">#</a></header><h3>DirEntryTypeOffset</h3><pre><code>public const int DirEntryTypeOffset = 4</code></pre></article><article class="reference-member" id="constant-size-offset"><header><span class="reference-kind">constant</span><a href="#constant-size-offset" aria-label="Link to SizeOffset">#</a></header><h3>SizeOffset</h3><pre><code>public const int SizeOffset = 124</code></pre></article><article class="reference-member" id="constant-date-days-offset"><header><span class="reference-kind">constant</span><a href="#constant-date-days-offset" aria-label="Link to DateDaysOffset">#</a></header><h3>DateDaysOffset</h3><pre><code>public const int DateDaysOffset = 132</code></pre></article><article class="reference-member" id="constant-date-minute-offset"><header><span class="reference-kind">constant</span><a href="#constant-date-minute-offset" aria-label="Link to DateMinuteOffset">#</a></header><h3>DateMinuteOffset</h3><pre><code>public const int DateMinuteOffset = 136</code></pre></article><article class="reference-member" id="constant-date-tick-offset"><header><span class="reference-kind">constant</span><a href="#constant-date-tick-offset" aria-label="Link to DateTickOffset">#</a></header><h3>DateTickOffset</h3><pre><code>public const int DateTickOffset = 140</code></pre></article><article class="reference-member" id="field-disk-key"><header><span class="reference-kind">field</span><a href="#field-disk-key" aria-label="Link to DiskKey">#</a></header><h3>DiskKey</h3><pre><code>public int DiskKey</code></pre></article><article class="reference-member" id="field-dir-entry-type"><header><span class="reference-kind">field</span><a href="#field-dir-entry-type" aria-label="Link to DirEntryType">#</a></header><h3>DirEntryType</h3><pre><code>public int DirEntryType</code></pre></article><article class="reference-member" id="field-file-name-buffer"><header><span class="reference-kind">field</span><a href="#field-file-name-buffer" aria-label="Link to FileNameBuffer">#</a></header><h3>FileNameBuffer</h3><pre><code>public &lt;FileNameBuffer&gt;e__FixedBuffer FileNameBuffer</code></pre></article><article class="reference-member" id="field-protection"><header><span class="reference-kind">field</span><a href="#field-protection" aria-label="Link to Protection">#</a></header><h3>Protection</h3><pre><code>public int Protection</code></pre></article><article class="reference-member" id="field-entry-type"><header><span class="reference-kind">field</span><a href="#field-entry-type" aria-label="Link to EntryType">#</a></header><h3>EntryType</h3><pre><code>public int EntryType</code></pre></article><article class="reference-member" id="field-size"><header><span class="reference-kind">field</span><a href="#field-size" aria-label="Link to Size">#</a></header><h3>Size</h3><pre><code>public int Size</code></pre></article><article class="reference-member" id="field-num-blocks"><header><span class="reference-kind">field</span><a href="#field-num-blocks" aria-label="Link to NumBlocks">#</a></header><h3>NumBlocks</h3><pre><code>public int NumBlocks</code></pre></article><article class="reference-member" id="field-date-days"><header><span class="reference-kind">field</span><a href="#field-date-days" aria-label="Link to DateDays">#</a></header><h3>DateDays</h3><pre><code>public int DateDays</code></pre></article><article class="reference-member" id="field-date-minute"><header><span class="reference-kind">field</span><a href="#field-date-minute" aria-label="Link to DateMinute">#</a></header><h3>DateMinute</h3><pre><code>public int DateMinute</code></pre></article><article class="reference-member" id="field-date-tick"><header><span class="reference-kind">field</span><a href="#field-date-tick" aria-label="Link to DateTick">#</a></header><h3>DateTick</h3><pre><code>public int DateTick</code></pre></article><article class="reference-member" id="field-comment-buffer"><header><span class="reference-kind">field</span><a href="#field-comment-buffer" aria-label="Link to CommentBuffer">#</a></header><h3>CommentBuffer</h3><pre><code>public &lt;CommentBuffer&gt;e__FixedBuffer CommentBuffer</code></pre></article><article class="reference-member" id="field-owner"><header><span class="reference-kind">field</span><a href="#field-owner" aria-label="Link to Owner">#</a></header><h3>Owner</h3><pre><code>public uint Owner</code></pre></article><article class="reference-member" id="field-reserved-long000"><header><span class="reference-kind">field</span><a href="#field-reserved-long000" aria-label="Link to ReservedLong000">#</a></header><h3>ReservedLong000</h3><pre><code>public uint ReservedLong000</code></pre></article><article class="reference-member" id="field-reserved-long001"><header><span class="reference-kind">field</span><a href="#field-reserved-long001" aria-label="Link to ReservedLong001">#</a></header><h3>ReservedLong001</h3><pre><code>public uint ReservedLong001</code></pre></article><article class="reference-member" id="field-reserved-long002"><header><span class="reference-kind">field</span><a href="#field-reserved-long002" aria-label="Link to ReservedLong002">#</a></header><h3>ReservedLong002</h3><pre><code>public uint ReservedLong002</code></pre></article><article class="reference-member" id="field-reserved-long003"><header><span class="reference-kind">field</span><a href="#field-reserved-long003" aria-label="Link to ReservedLong003">#</a></header><h3>ReservedLong003</h3><pre><code>public uint ReservedLong003</code></pre></article><article class="reference-member" id="field-reserved-long004"><header><span class="reference-kind">field</span><a href="#field-reserved-long004" aria-label="Link to ReservedLong004">#</a></header><h3>ReservedLong004</h3><pre><code>public uint ReservedLong004</code></pre></article><article class="reference-member" id="field-reserved-long005"><header><span class="reference-kind">field</span><a href="#field-reserved-long005" aria-label="Link to ReservedLong005">#</a></header><h3>ReservedLong005</h3><pre><code>public uint ReservedLong005</code></pre></article><article class="reference-member" id="field-reserved-long006"><header><span class="reference-kind">field</span><a href="#field-reserved-long006" aria-label="Link to ReservedLong006">#</a></header><h3>ReservedLong006</h3><pre><code>public uint ReservedLong006</code></pre></article><article class="reference-member" id="field-reserved-long007"><header><span class="reference-kind">field</span><a href="#field-reserved-long007" aria-label="Link to ReservedLong007">#</a></header><h3>ReservedLong007</h3><pre><code>public uint ReservedLong007</code></pre></article><article class="reference-member" id="method-address-of"><header><span class="reference-kind">method</span><a href="#method-address-of" aria-label="Link to AddressOf">#</a></header><h3>AddressOf</h3><pre><code>public static APTR AddressOf(ref FileInfoBlock fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>FileInfoBlock</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-file-name"><header><span class="reference-kind">method</span><a href="#method-file-name" aria-label="Link to FileName">#</a></header><h3>FileName</h3><pre><code>public static CString FileName(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-comment"><header><span class="reference-kind">method</span><a href="#method-comment" aria-label="Link to Comment">#</a></header><h3>Comment</h3><pre><code>public static CString Comment(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-get-dir-entry-type"><header><span class="reference-kind">method</span><a href="#method-get-dir-entry-type" aria-label="Link to GetDirEntryType">#</a></header><h3>GetDirEntryType</h3><pre><code>public static int GetDirEntryType(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-get-size"><header><span class="reference-kind">method</span><a href="#method-get-size" aria-label="Link to GetSize">#</a></header><h3>GetSize</h3><pre><code>public static int GetSize(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-get-date-days"><header><span class="reference-kind">method</span><a href="#method-get-date-days" aria-label="Link to GetDateDays">#</a></header><h3>GetDateDays</h3><pre><code>public static int GetDateDays(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-get-date-minute"><header><span class="reference-kind">method</span><a href="#method-get-date-minute" aria-label="Link to GetDateMinute">#</a></header><h3>GetDateMinute</h3><pre><code>public static int GetDateMinute(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-get-date-tick"><header><span class="reference-kind">method</span><a href="#method-get-date-tick" aria-label="Link to GetDateTick">#</a></header><h3>GetDateTick</h3><pre><code>public static int GetDateTick(uint fileInfoBlock)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfoBlock</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

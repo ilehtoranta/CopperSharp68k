@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>GadgetType | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.GadgetType members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="GadgetType | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.GadgetType members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/gadget-type"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/gadget-type"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.GadgetType API reference","description":"Amiga.GadgetType members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/gadget-type","about":["CopperSharp.Sdk.Amiga","Intuition","Amiga.GadgetType"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/intuition">Intuition</a><span>/</span><span aria-current="page">GadgetType</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">enum</span></div><h1>GadgetType</h1><p class="reference-full-name">Amiga.GadgetType</p><pre class="reference-signature"><code>public enum GadgetType</code></pre><div class="reference-source-row"><span>25<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/Intuition/Enums.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#enum-value-none">None</a><a href="#enum-value-gadget-type-mask">GadgetTypeMask</a><a href="#enum-value-screen-gadget">ScreenGadget</a><a href="#enum-value-gzz-gadget">GzzGadget</a><a href="#enum-value-requester-gadget">RequesterGadget</a><a href="#enum-value-system-gadget">SystemGadget</a><a href="#enum-value-system-type-mask">SystemTypeMask</a><a href="#enum-value-sizing">Sizing</a><a href="#enum-value-window-dragging">WindowDragging</a><a href="#enum-value-screen-dragging">ScreenDragging</a><a href="#enum-value-window-depth">WindowDepth</a><a href="#enum-value-screen-depth">ScreenDepth</a><a href="#enum-value-window-zoom">WindowZoom</a><a href="#enum-value-screen-unused">ScreenUnused</a><a href="#enum-value-close">Close</a><a href="#enum-value-window-to-front">WindowToFront</a><a href="#enum-value-screen-to-front">ScreenToFront</a><a href="#enum-value-window-to-back">WindowToBack</a><a href="#enum-value-screen-to-back">ScreenToBack</a><a href="#enum-value-gadget-class-mask">GadgetClassMask</a><a href="#enum-value-boolean-gadget">BooleanGadget</a><a href="#enum-value-gadget0002">Gadget0002</a><a href="#enum-value-proportional-gadget">ProportionalGadget</a><a href="#enum-value-string-gadget">StringGadget</a><a href="#enum-value-custom-gadget">CustomGadget</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="enum-value-none"><header><span class="reference-kind">enum value</span><a href="#enum-value-none" aria-label="Link to None">#</a></header><h3>None</h3><pre><code>None = 0</code></pre></article><article class="reference-member" id="enum-value-gadget-type-mask"><header><span class="reference-kind">enum value</span><a href="#enum-value-gadget-type-mask" aria-label="Link to GadgetTypeMask">#</a></header><h3>GadgetTypeMask</h3><pre><code>GadgetTypeMask = 64512</code></pre></article><article class="reference-member" id="enum-value-screen-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen-gadget" aria-label="Link to ScreenGadget">#</a></header><h3>ScreenGadget</h3><pre><code>ScreenGadget = 16384</code></pre></article><article class="reference-member" id="enum-value-gzz-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-gzz-gadget" aria-label="Link to GzzGadget">#</a></header><h3>GzzGadget</h3><pre><code>GzzGadget = 8192</code></pre></article><article class="reference-member" id="enum-value-requester-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-requester-gadget" aria-label="Link to RequesterGadget">#</a></header><h3>RequesterGadget</h3><pre><code>RequesterGadget = 4096</code></pre></article><article class="reference-member" id="enum-value-system-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-system-gadget" aria-label="Link to SystemGadget">#</a></header><h3>SystemGadget</h3><pre><code>SystemGadget = 32768</code></pre></article><article class="reference-member" id="enum-value-system-type-mask"><header><span class="reference-kind">enum value</span><a href="#enum-value-system-type-mask" aria-label="Link to SystemTypeMask">#</a></header><h3>SystemTypeMask</h3><pre><code>SystemTypeMask = 240</code></pre></article><article class="reference-member" id="enum-value-sizing"><header><span class="reference-kind">enum value</span><a href="#enum-value-sizing" aria-label="Link to Sizing">#</a></header><h3>Sizing</h3><pre><code>Sizing = 16</code></pre></article><article class="reference-member" id="enum-value-window-dragging"><header><span class="reference-kind">enum value</span><a href="#enum-value-window-dragging" aria-label="Link to WindowDragging">#</a></header><h3>WindowDragging</h3><pre><code>WindowDragging = 32</code></pre></article><article class="reference-member" id="enum-value-screen-dragging"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen-dragging" aria-label="Link to ScreenDragging">#</a></header><h3>ScreenDragging</h3><pre><code>ScreenDragging = 48</code></pre></article><article class="reference-member" id="enum-value-window-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-window-depth" aria-label="Link to WindowDepth">#</a></header><h3>WindowDepth</h3><pre><code>WindowDepth = 64</code></pre></article><article class="reference-member" id="enum-value-screen-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen-depth" aria-label="Link to ScreenDepth">#</a></header><h3>ScreenDepth</h3><pre><code>ScreenDepth = 80</code></pre></article><article class="reference-member" id="enum-value-window-zoom"><header><span class="reference-kind">enum value</span><a href="#enum-value-window-zoom" aria-label="Link to WindowZoom">#</a></header><h3>WindowZoom</h3><pre><code>WindowZoom = 96</code></pre></article><article class="reference-member" id="enum-value-screen-unused"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen-unused" aria-label="Link to ScreenUnused">#</a></header><h3>ScreenUnused</h3><pre><code>ScreenUnused = 112</code></pre></article><article class="reference-member" id="enum-value-close"><header><span class="reference-kind">enum value</span><a href="#enum-value-close" aria-label="Link to Close">#</a></header><h3>Close</h3><pre><code>Close = 128</code></pre></article><article class="reference-member" id="enum-value-window-to-front"><header><span class="reference-kind">enum value</span><a href="#enum-value-window-to-front" aria-label="Link to WindowToFront">#</a></header><h3>WindowToFront</h3><pre><code>WindowToFront = 64</code></pre></article><article class="reference-member" id="enum-value-screen-to-front"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen-to-front" aria-label="Link to ScreenToFront">#</a></header><h3>ScreenToFront</h3><pre><code>ScreenToFront = 80</code></pre></article><article class="reference-member" id="enum-value-window-to-back"><header><span class="reference-kind">enum value</span><a href="#enum-value-window-to-back" aria-label="Link to WindowToBack">#</a></header><h3>WindowToBack</h3><pre><code>WindowToBack = 96</code></pre></article><article class="reference-member" id="enum-value-screen-to-back"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen-to-back" aria-label="Link to ScreenToBack">#</a></header><h3>ScreenToBack</h3><pre><code>ScreenToBack = 112</code></pre></article><article class="reference-member" id="enum-value-gadget-class-mask"><header><span class="reference-kind">enum value</span><a href="#enum-value-gadget-class-mask" aria-label="Link to GadgetClassMask">#</a></header><h3>GadgetClassMask</h3><pre><code>GadgetClassMask = 7</code></pre></article><article class="reference-member" id="enum-value-boolean-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-boolean-gadget" aria-label="Link to BooleanGadget">#</a></header><h3>BooleanGadget</h3><pre><code>BooleanGadget = 1</code></pre></article><article class="reference-member" id="enum-value-gadget0002"><header><span class="reference-kind">enum value</span><a href="#enum-value-gadget0002" aria-label="Link to Gadget0002">#</a></header><h3>Gadget0002</h3><pre><code>Gadget0002 = 2</code></pre></article><article class="reference-member" id="enum-value-proportional-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-proportional-gadget" aria-label="Link to ProportionalGadget">#</a></header><h3>ProportionalGadget</h3><pre><code>ProportionalGadget = 3</code></pre></article><article class="reference-member" id="enum-value-string-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-string-gadget" aria-label="Link to StringGadget">#</a></header><h3>StringGadget</h3><pre><code>StringGadget = 4</code></pre></article><article class="reference-member" id="enum-value-custom-gadget"><header><span class="reference-kind">enum value</span><a href="#enum-value-custom-gadget" aria-label="Link to CustomGadget">#</a></header><h3>CustomGadget</h3><pre><code>CustomGadget = 5</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

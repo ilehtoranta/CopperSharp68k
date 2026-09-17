@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>ColorMap | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.ColorMap members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="ColorMap | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.ColorMap members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/graphics/color-map"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/graphics/color-map"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.ColorMap API reference","description":"Amiga.ColorMap members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/graphics/color-map","about":["CopperSharp.Sdk.Amiga","Graphics","Amiga.ColorMap"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/graphics">Graphics</a><span>/</span><span aria-current="page">ColorMap</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">struct</span></div><h1>ColorMap</h1><p class="reference-full-name">Amiga.ColorMap</p><pre class="reference-signature"><code>public struct ColorMap</code></pre><div class="reference-source-row"><span>21<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/Graphics/Structures.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-size">Size</a><a href="#field-flags">Flags</a><a href="#field-type">Type</a><a href="#field-count">Count</a><a href="#field-color-table">ColorTable</a><a href="#field-view-port-extra">ViewPortExtra</a><a href="#field-low-color-bits">LowColorBits</a><a href="#field-transparency-plane">TransparencyPlane</a><a href="#field-sprite-resolution">SpriteResolution</a><a href="#field-sprite-resolution-default">SpriteResolutionDefault</a><a href="#field-auxiliary-flags">AuxiliaryFlags</a><a href="#field-view-port">ViewPort</a><a href="#field-normal-display-info">NormalDisplayInfo</a><a href="#field-coerce-display-info">CoerceDisplayInfo</a><a href="#field-batch-items">BatchItems</a><a href="#field-view-port-mode-id">ViewPortModeId</a><a href="#field-palette-extra">PaletteExtra</a><a href="#field-sprite-base-even">SpriteBaseEven</a><a href="#field-sprite-base-odd">SpriteBaseOdd</a><a href="#field-bit-plane0-base">BitPlane0Base</a><a href="#field-bit-plane1-base">BitPlane1Base</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-size"><header><span class="reference-kind">constant</span><a href="#constant-size" aria-label="Link to Size">#</a></header><h3>Size</h3><pre><code>public const uint Size = 52</code></pre></article><article class="reference-member" id="field-flags"><header><span class="reference-kind">field</span><a href="#field-flags" aria-label="Link to Flags">#</a></header><h3>Flags</h3><pre><code>public byte Flags</code></pre></article><article class="reference-member" id="field-type"><header><span class="reference-kind">field</span><a href="#field-type" aria-label="Link to Type">#</a></header><h3>Type</h3><pre><code>public byte Type</code></pre></article><article class="reference-member" id="field-count"><header><span class="reference-kind">field</span><a href="#field-count" aria-label="Link to Count">#</a></header><h3>Count</h3><pre><code>public ushort Count</code></pre></article><article class="reference-member" id="field-color-table"><header><span class="reference-kind">field</span><a href="#field-color-table" aria-label="Link to ColorTable">#</a></header><h3>ColorTable</h3><pre><code>public APTR ColorTable</code></pre></article><article class="reference-member" id="field-view-port-extra"><header><span class="reference-kind">field</span><a href="#field-view-port-extra" aria-label="Link to ViewPortExtra">#</a></header><h3>ViewPortExtra</h3><pre><code>public APTR ViewPortExtra</code></pre></article><article class="reference-member" id="field-low-color-bits"><header><span class="reference-kind">field</span><a href="#field-low-color-bits" aria-label="Link to LowColorBits">#</a></header><h3>LowColorBits</h3><pre><code>public APTR LowColorBits</code></pre></article><article class="reference-member" id="field-transparency-plane"><header><span class="reference-kind">field</span><a href="#field-transparency-plane" aria-label="Link to TransparencyPlane">#</a></header><h3>TransparencyPlane</h3><pre><code>public byte TransparencyPlane</code></pre></article><article class="reference-member" id="field-sprite-resolution"><header><span class="reference-kind">field</span><a href="#field-sprite-resolution" aria-label="Link to SpriteResolution">#</a></header><h3>SpriteResolution</h3><pre><code>public byte SpriteResolution</code></pre></article><article class="reference-member" id="field-sprite-resolution-default"><header><span class="reference-kind">field</span><a href="#field-sprite-resolution-default" aria-label="Link to SpriteResolutionDefault">#</a></header><h3>SpriteResolutionDefault</h3><pre><code>public byte SpriteResolutionDefault</code></pre></article><article class="reference-member" id="field-auxiliary-flags"><header><span class="reference-kind">field</span><a href="#field-auxiliary-flags" aria-label="Link to AuxiliaryFlags">#</a></header><h3>AuxiliaryFlags</h3><pre><code>public byte AuxiliaryFlags</code></pre></article><article class="reference-member" id="field-view-port"><header><span class="reference-kind">field</span><a href="#field-view-port" aria-label="Link to ViewPort">#</a></header><h3>ViewPort</h3><pre><code>public APTR ViewPort</code></pre></article><article class="reference-member" id="field-normal-display-info"><header><span class="reference-kind">field</span><a href="#field-normal-display-info" aria-label="Link to NormalDisplayInfo">#</a></header><h3>NormalDisplayInfo</h3><pre><code>public APTR NormalDisplayInfo</code></pre></article><article class="reference-member" id="field-coerce-display-info"><header><span class="reference-kind">field</span><a href="#field-coerce-display-info" aria-label="Link to CoerceDisplayInfo">#</a></header><h3>CoerceDisplayInfo</h3><pre><code>public APTR CoerceDisplayInfo</code></pre></article><article class="reference-member" id="field-batch-items"><header><span class="reference-kind">field</span><a href="#field-batch-items" aria-label="Link to BatchItems">#</a></header><h3>BatchItems</h3><pre><code>public APTR BatchItems</code></pre></article><article class="reference-member" id="field-view-port-mode-id"><header><span class="reference-kind">field</span><a href="#field-view-port-mode-id" aria-label="Link to ViewPortModeId">#</a></header><h3>ViewPortModeId</h3><pre><code>public uint ViewPortModeId</code></pre></article><article class="reference-member" id="field-palette-extra"><header><span class="reference-kind">field</span><a href="#field-palette-extra" aria-label="Link to PaletteExtra">#</a></header><h3>PaletteExtra</h3><pre><code>public APTR PaletteExtra</code></pre></article><article class="reference-member" id="field-sprite-base-even"><header><span class="reference-kind">field</span><a href="#field-sprite-base-even" aria-label="Link to SpriteBaseEven">#</a></header><h3>SpriteBaseEven</h3><pre><code>public ushort SpriteBaseEven</code></pre></article><article class="reference-member" id="field-sprite-base-odd"><header><span class="reference-kind">field</span><a href="#field-sprite-base-odd" aria-label="Link to SpriteBaseOdd">#</a></header><h3>SpriteBaseOdd</h3><pre><code>public ushort SpriteBaseOdd</code></pre></article><article class="reference-member" id="field-bit-plane0-base"><header><span class="reference-kind">field</span><a href="#field-bit-plane0-base" aria-label="Link to BitPlane0Base">#</a></header><h3>BitPlane0Base</h3><pre><code>public ushort BitPlane0Base</code></pre></article><article class="reference-member" id="field-bit-plane1-base"><header><span class="reference-kind">field</span><a href="#field-bit-plane1-base" aria-label="Link to BitPlane1Base">#</a></header><h3>BitPlane1Base</h3><pre><code>public ushort BitPlane1Base</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

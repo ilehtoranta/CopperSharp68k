@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>LowLevel | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.LowLevel members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="LowLevel | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.LowLevel members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/low-level/low-level"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/low-level/low-level"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.LowLevel API reference","description":"Amiga.LowLevel members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/low-level/low-level","about":["CopperSharp.Sdk.Amiga","LowLevel","Amiga.LowLevel"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/low-level">LowLevel</a><span>/</span><span aria-current="page">LowLevel</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code>lowlevel.library</code></div><h1>LowLevel</h1><p class="reference-full-name">Amiga.LowLevel</p><pre class="reference-signature"><code>public static class LowLevel</code></pre><div class="reference-source-row"><span>19<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/LowLevel/LowLevel.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-name">Name</a><a href="#method-read-joy-port">ReadJoyPort</a><a href="#method-get-language-selection">GetLanguageSelection</a><a href="#method-get-key">GetKey</a><a href="#method-query-keys">QueryKeys</a><a href="#method-add-kbint">AddKBInt</a><a href="#method-rem-kbint">RemKBInt</a><a href="#method-system-control-a">SystemControlA</a><a href="#method-add-timer-int">AddTimerInt</a><a href="#method-rem-timer-int">RemTimerInt</a><a href="#method-stop-timer-int">StopTimerInt</a><a href="#method-start-timer-int">StartTimerInt</a><a href="#method-elapsed-time">ElapsedTime</a><a href="#method-add-vblank-int">AddVBlankInt</a><a href="#method-rem-vblank-int">RemVBlankInt</a><a href="#method-set-joy-port-attrs-a">SetJoyPortAttrsA</a><a href="#method-system-control">SystemControl</a><a href="#method-set-joy-port-attrs">SetJoyPortAttrs</a><a href="#property-low-level-library-base">LowLevelLibraryBase</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-name"><header><span class="reference-kind">constant</span><a href="#constant-name" aria-label="Link to Name">#</a></header><h3>Name</h3><pre><code>public const string Name = &quot;lowlevel.library&quot;</code></pre></article><article class="reference-member" id="method-read-joy-port"><header><span class="reference-kind">method</span><a href="#method-read-joy-port" aria-label="Link to ReadJoyPort">#</a></header><h3>ReadJoyPort</h3><pre><code>public static uint ReadJoyPort(uint port)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-30</dd></div><div><dt>Registers</dt><dd>port: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>port</code><span>uint</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-get-language-selection"><header><span class="reference-kind">method</span><a href="#method-get-language-selection" aria-label="Link to GetLanguageSelection">#</a></header><h3>GetLanguageSelection</h3><pre><code>public static byte GetLanguageSelection()</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-36</dd></div><div><dt>Registers</dt><dd>return: D0</dd></div></dl></article><article class="reference-member" id="method-get-key"><header><span class="reference-kind">method</span><a href="#method-get-key" aria-label="Link to GetKey">#</a></header><h3>GetKey</h3><pre><code>public static uint GetKey()</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-48</dd></div><div><dt>Registers</dt><dd>return: D0</dd></div></dl></article><article class="reference-member" id="method-query-keys"><header><span class="reference-kind">method</span><a href="#method-query-keys" aria-label="Link to QueryKeys">#</a></header><h3>QueryKeys</h3><pre><code>public static void QueryKeys(uint queryArray, uint arraySize)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-54</dd></div><div><dt>Registers</dt><dd>queryArray: A0 · arraySize: D1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>queryArray</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>arraySize</code><span>uint</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-add-kbint"><header><span class="reference-kind">method</span><a href="#method-add-kbint" aria-label="Link to AddKBInt">#</a></header><h3>AddKBInt</h3><pre><code>public static uint AddKBInt(uint intRoutine, uint intData)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-60</dd></div><div><dt>Registers</dt><dd>intRoutine: A0 · intData: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intRoutine</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>intData</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-rem-kbint"><header><span class="reference-kind">method</span><a href="#method-rem-kbint" aria-label="Link to RemKBInt">#</a></header><h3>RemKBInt</h3><pre><code>public static void RemKBInt(uint intHandle)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-66</dd></div><div><dt>Registers</dt><dd>intHandle: A1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intHandle</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-system-control-a"><header><span class="reference-kind">method</span><a href="#method-system-control-a" aria-label="Link to SystemControlA">#</a></header><h3>SystemControlA</h3><pre><code>public static uint SystemControlA(uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-72</dd></div><div><dt>Registers</dt><dd>tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-add-timer-int"><header><span class="reference-kind">method</span><a href="#method-add-timer-int" aria-label="Link to AddTimerInt">#</a></header><h3>AddTimerInt</h3><pre><code>public static uint AddTimerInt(uint intRoutine, uint intData)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-78</dd></div><div><dt>Registers</dt><dd>intRoutine: A0 · intData: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intRoutine</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>intData</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-rem-timer-int"><header><span class="reference-kind">method</span><a href="#method-rem-timer-int" aria-label="Link to RemTimerInt">#</a></header><h3>RemTimerInt</h3><pre><code>public static void RemTimerInt(uint intHandle)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-84</dd></div><div><dt>Registers</dt><dd>intHandle: A1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intHandle</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-stop-timer-int"><header><span class="reference-kind">method</span><a href="#method-stop-timer-int" aria-label="Link to StopTimerInt">#</a></header><h3>StopTimerInt</h3><pre><code>public static void StopTimerInt(uint intHandle)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-90</dd></div><div><dt>Registers</dt><dd>intHandle: A1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intHandle</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-start-timer-int"><header><span class="reference-kind">method</span><a href="#method-start-timer-int" aria-label="Link to StartTimerInt">#</a></header><h3>StartTimerInt</h3><pre><code>public static void StartTimerInt(uint intHandle, uint interval, int continuous)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-96</dd></div><div><dt>Registers</dt><dd>intHandle: A1 · interval: D0 · continuous: D1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intHandle</code><span>uint</span></dt><dd>Register A1</dd></div><div><dt><code>interval</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>continuous</code><span>int</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-elapsed-time"><header><span class="reference-kind">method</span><a href="#method-elapsed-time" aria-label="Link to ElapsedTime">#</a></header><h3>ElapsedTime</h3><pre><code>public static uint ElapsedTime(uint context)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-102</dd></div><div><dt>Registers</dt><dd>context: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>context</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-add-vblank-int"><header><span class="reference-kind">method</span><a href="#method-add-vblank-int" aria-label="Link to AddVBlankInt">#</a></header><h3>AddVBlankInt</h3><pre><code>public static uint AddVBlankInt(uint intRoutine, uint intData)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-108</dd></div><div><dt>Registers</dt><dd>intRoutine: A0 · intData: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intRoutine</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>intData</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-rem-vblank-int"><header><span class="reference-kind">method</span><a href="#method-rem-vblank-int" aria-label="Link to RemVBlankInt">#</a></header><h3>RemVBlankInt</h3><pre><code>public static void RemVBlankInt(uint intHandle)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-114</dd></div><div><dt>Registers</dt><dd>intHandle: A1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>intHandle</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-set-joy-port-attrs-a"><header><span class="reference-kind">method</span><a href="#method-set-joy-port-attrs-a" aria-label="Link to SetJoyPortAttrsA">#</a></header><h3>SetJoyPortAttrsA</h3><pre><code>public static int SetJoyPortAttrsA(uint port, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-132</dd></div><div><dt>Registers</dt><dd>port: D0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>port</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-system-control"><header><span class="reference-kind">method</span><a href="#method-system-control" aria-label="Link to SystemControl">#</a></header><h3>SystemControl</h3><pre><code>public static uint SystemControl(uint tags)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>tags</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-set-joy-port-attrs"><header><span class="reference-kind">method</span><a href="#method-set-joy-port-attrs" aria-label="Link to SetJoyPortAttrs">#</a></header><h3>SetJoyPortAttrs</h3><pre><code>public static int SetJoyPortAttrs(uint port, uint tags)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>port</code><span>uint</span></dt><dd>No description provided.</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="property-low-level-library-base"><header><span class="reference-kind">property</span><a href="#property-low-level-library-base" aria-label="Link to LowLevelLibraryBase">#</a></header><h3>LowLevelLibraryBase</h3><pre><code>public static APTR LowLevelLibraryBase { get; set; }</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

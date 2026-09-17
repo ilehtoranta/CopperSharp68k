@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>LocaleInfo | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.LocaleInfo members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="LocaleInfo | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.LocaleInfo members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/locale/locale-info"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/locale/locale-info"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.LocaleInfo API reference","description":"Amiga.LocaleInfo members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/locale/locale-info","about":["CopperSharp.Sdk.Amiga","Locale","Amiga.LocaleInfo"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/locale">Locale</a><span>/</span><span aria-current="page">LocaleInfo</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">struct</span></div><h1>LocaleInfo</h1><p class="reference-full-name">Amiga.LocaleInfo</p><pre class="reference-signature"><code>public struct LocaleInfo</code></pre><div class="reference-source-row"><span>44<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/Locale/Structures.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-size">Size</a><a href="#field-locale-name">LocaleName</a><a href="#field-language-name">LanguageName</a><a href="#field-preferred-languages">PreferredLanguages</a><a href="#field-flags">Flags</a><a href="#field-code-set">CodeSet</a><a href="#field-country-code">CountryCode</a><a href="#field-telephone-code">TelephoneCode</a><a href="#field-gmt-offset">GmtOffset</a><a href="#field-measuring-system">MeasuringSystem</a><a href="#field-calendar-type">CalendarType</a><a href="#field-reserved0">Reserved0</a><a href="#field-date-time-format">DateTimeFormat</a><a href="#field-date-format">DateFormat</a><a href="#field-time-format">TimeFormat</a><a href="#field-short-date-time-format">ShortDateTimeFormat</a><a href="#field-short-date-format">ShortDateFormat</a><a href="#field-short-time-format">ShortTimeFormat</a><a href="#field-decimal-point">DecimalPoint</a><a href="#field-group-separator">GroupSeparator</a><a href="#field-fraction-group-separator">FractionGroupSeparator</a><a href="#field-grouping">Grouping</a><a href="#field-fraction-grouping">FractionGrouping</a><a href="#field-monetary-decimal-point">MonetaryDecimalPoint</a><a href="#field-monetary-group-separator">MonetaryGroupSeparator</a><a href="#field-monetary-fraction-group-separator">MonetaryFractionGroupSeparator</a><a href="#field-monetary-grouping">MonetaryGrouping</a><a href="#field-monetary-fraction-grouping">MonetaryFractionGrouping</a><a href="#field-monetary-fraction-digits">MonetaryFractionDigits</a><a href="#field-monetary-international-fraction-digits">MonetaryInternationalFractionDigits</a><a href="#field-reserved1">Reserved1</a><a href="#field-monetary-currency-symbol">MonetaryCurrencySymbol</a><a href="#field-monetary-small-currency-symbol">MonetarySmallCurrencySymbol</a><a href="#field-monetary-international-currency-symbol">MonetaryInternationalCurrencySymbol</a><a href="#field-monetary-positive-sign">MonetaryPositiveSign</a><a href="#field-monetary-positive-space-separator">MonetaryPositiveSpaceSeparator</a><a href="#field-monetary-positive-sign-position">MonetaryPositiveSignPosition</a><a href="#field-monetary-positive-currency-position">MonetaryPositiveCurrencyPosition</a><a href="#field-reserved2">Reserved2</a><a href="#field-monetary-negative-sign">MonetaryNegativeSign</a><a href="#field-monetary-negative-space-separator">MonetaryNegativeSpaceSeparator</a><a href="#field-monetary-negative-sign-position">MonetaryNegativeSignPosition</a><a href="#field-monetary-negative-currency-position">MonetaryNegativeCurrencyPosition</a><a href="#field-reserved3">Reserved3</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-size"><header><span class="reference-kind">constant</span><a href="#constant-size" aria-label="Link to Size">#</a></header><h3>Size</h3><pre><code>public const uint Size = 168</code></pre></article><article class="reference-member" id="field-locale-name"><header><span class="reference-kind">field</span><a href="#field-locale-name" aria-label="Link to LocaleName">#</a></header><h3>LocaleName</h3><pre><code>public STRPTR LocaleName</code></pre></article><article class="reference-member" id="field-language-name"><header><span class="reference-kind">field</span><a href="#field-language-name" aria-label="Link to LanguageName">#</a></header><h3>LanguageName</h3><pre><code>public STRPTR LanguageName</code></pre></article><article class="reference-member" id="field-preferred-languages"><header><span class="reference-kind">field</span><a href="#field-preferred-languages" aria-label="Link to PreferredLanguages">#</a></header><h3>PreferredLanguages</h3><pre><code>public &lt;PreferredLanguages&gt;e__FixedBuffer PreferredLanguages</code></pre></article><article class="reference-member" id="field-flags"><header><span class="reference-kind">field</span><a href="#field-flags" aria-label="Link to Flags">#</a></header><h3>Flags</h3><pre><code>public uint Flags</code></pre></article><article class="reference-member" id="field-code-set"><header><span class="reference-kind">field</span><a href="#field-code-set" aria-label="Link to CodeSet">#</a></header><h3>CodeSet</h3><pre><code>public uint CodeSet</code></pre></article><article class="reference-member" id="field-country-code"><header><span class="reference-kind">field</span><a href="#field-country-code" aria-label="Link to CountryCode">#</a></header><h3>CountryCode</h3><pre><code>public uint CountryCode</code></pre></article><article class="reference-member" id="field-telephone-code"><header><span class="reference-kind">field</span><a href="#field-telephone-code" aria-label="Link to TelephoneCode">#</a></header><h3>TelephoneCode</h3><pre><code>public uint TelephoneCode</code></pre></article><article class="reference-member" id="field-gmt-offset"><header><span class="reference-kind">field</span><a href="#field-gmt-offset" aria-label="Link to GmtOffset">#</a></header><h3>GmtOffset</h3><pre><code>public int GmtOffset</code></pre></article><article class="reference-member" id="field-measuring-system"><header><span class="reference-kind">field</span><a href="#field-measuring-system" aria-label="Link to MeasuringSystem">#</a></header><h3>MeasuringSystem</h3><pre><code>public byte MeasuringSystem</code></pre></article><article class="reference-member" id="field-calendar-type"><header><span class="reference-kind">field</span><a href="#field-calendar-type" aria-label="Link to CalendarType">#</a></header><h3>CalendarType</h3><pre><code>public byte CalendarType</code></pre></article><article class="reference-member" id="field-reserved0"><header><span class="reference-kind">field</span><a href="#field-reserved0" aria-label="Link to Reserved0">#</a></header><h3>Reserved0</h3><pre><code>public &lt;Reserved0&gt;e__FixedBuffer Reserved0</code></pre></article><article class="reference-member" id="field-date-time-format"><header><span class="reference-kind">field</span><a href="#field-date-time-format" aria-label="Link to DateTimeFormat">#</a></header><h3>DateTimeFormat</h3><pre><code>public STRPTR DateTimeFormat</code></pre></article><article class="reference-member" id="field-date-format"><header><span class="reference-kind">field</span><a href="#field-date-format" aria-label="Link to DateFormat">#</a></header><h3>DateFormat</h3><pre><code>public STRPTR DateFormat</code></pre></article><article class="reference-member" id="field-time-format"><header><span class="reference-kind">field</span><a href="#field-time-format" aria-label="Link to TimeFormat">#</a></header><h3>TimeFormat</h3><pre><code>public STRPTR TimeFormat</code></pre></article><article class="reference-member" id="field-short-date-time-format"><header><span class="reference-kind">field</span><a href="#field-short-date-time-format" aria-label="Link to ShortDateTimeFormat">#</a></header><h3>ShortDateTimeFormat</h3><pre><code>public STRPTR ShortDateTimeFormat</code></pre></article><article class="reference-member" id="field-short-date-format"><header><span class="reference-kind">field</span><a href="#field-short-date-format" aria-label="Link to ShortDateFormat">#</a></header><h3>ShortDateFormat</h3><pre><code>public STRPTR ShortDateFormat</code></pre></article><article class="reference-member" id="field-short-time-format"><header><span class="reference-kind">field</span><a href="#field-short-time-format" aria-label="Link to ShortTimeFormat">#</a></header><h3>ShortTimeFormat</h3><pre><code>public STRPTR ShortTimeFormat</code></pre></article><article class="reference-member" id="field-decimal-point"><header><span class="reference-kind">field</span><a href="#field-decimal-point" aria-label="Link to DecimalPoint">#</a></header><h3>DecimalPoint</h3><pre><code>public STRPTR DecimalPoint</code></pre></article><article class="reference-member" id="field-group-separator"><header><span class="reference-kind">field</span><a href="#field-group-separator" aria-label="Link to GroupSeparator">#</a></header><h3>GroupSeparator</h3><pre><code>public STRPTR GroupSeparator</code></pre></article><article class="reference-member" id="field-fraction-group-separator"><header><span class="reference-kind">field</span><a href="#field-fraction-group-separator" aria-label="Link to FractionGroupSeparator">#</a></header><h3>FractionGroupSeparator</h3><pre><code>public STRPTR FractionGroupSeparator</code></pre></article><article class="reference-member" id="field-grouping"><header><span class="reference-kind">field</span><a href="#field-grouping" aria-label="Link to Grouping">#</a></header><h3>Grouping</h3><pre><code>public APTR Grouping</code></pre></article><article class="reference-member" id="field-fraction-grouping"><header><span class="reference-kind">field</span><a href="#field-fraction-grouping" aria-label="Link to FractionGrouping">#</a></header><h3>FractionGrouping</h3><pre><code>public APTR FractionGrouping</code></pre></article><article class="reference-member" id="field-monetary-decimal-point"><header><span class="reference-kind">field</span><a href="#field-monetary-decimal-point" aria-label="Link to MonetaryDecimalPoint">#</a></header><h3>MonetaryDecimalPoint</h3><pre><code>public STRPTR MonetaryDecimalPoint</code></pre></article><article class="reference-member" id="field-monetary-group-separator"><header><span class="reference-kind">field</span><a href="#field-monetary-group-separator" aria-label="Link to MonetaryGroupSeparator">#</a></header><h3>MonetaryGroupSeparator</h3><pre><code>public STRPTR MonetaryGroupSeparator</code></pre></article><article class="reference-member" id="field-monetary-fraction-group-separator"><header><span class="reference-kind">field</span><a href="#field-monetary-fraction-group-separator" aria-label="Link to MonetaryFractionGroupSeparator">#</a></header><h3>MonetaryFractionGroupSeparator</h3><pre><code>public STRPTR MonetaryFractionGroupSeparator</code></pre></article><article class="reference-member" id="field-monetary-grouping"><header><span class="reference-kind">field</span><a href="#field-monetary-grouping" aria-label="Link to MonetaryGrouping">#</a></header><h3>MonetaryGrouping</h3><pre><code>public APTR MonetaryGrouping</code></pre></article><article class="reference-member" id="field-monetary-fraction-grouping"><header><span class="reference-kind">field</span><a href="#field-monetary-fraction-grouping" aria-label="Link to MonetaryFractionGrouping">#</a></header><h3>MonetaryFractionGrouping</h3><pre><code>public APTR MonetaryFractionGrouping</code></pre></article><article class="reference-member" id="field-monetary-fraction-digits"><header><span class="reference-kind">field</span><a href="#field-monetary-fraction-digits" aria-label="Link to MonetaryFractionDigits">#</a></header><h3>MonetaryFractionDigits</h3><pre><code>public byte MonetaryFractionDigits</code></pre></article><article class="reference-member" id="field-monetary-international-fraction-digits"><header><span class="reference-kind">field</span><a href="#field-monetary-international-fraction-digits" aria-label="Link to MonetaryInternationalFractionDigits">#</a></header><h3>MonetaryInternationalFractionDigits</h3><pre><code>public byte MonetaryInternationalFractionDigits</code></pre></article><article class="reference-member" id="field-reserved1"><header><span class="reference-kind">field</span><a href="#field-reserved1" aria-label="Link to Reserved1">#</a></header><h3>Reserved1</h3><pre><code>public &lt;Reserved1&gt;e__FixedBuffer Reserved1</code></pre></article><article class="reference-member" id="field-monetary-currency-symbol"><header><span class="reference-kind">field</span><a href="#field-monetary-currency-symbol" aria-label="Link to MonetaryCurrencySymbol">#</a></header><h3>MonetaryCurrencySymbol</h3><pre><code>public STRPTR MonetaryCurrencySymbol</code></pre></article><article class="reference-member" id="field-monetary-small-currency-symbol"><header><span class="reference-kind">field</span><a href="#field-monetary-small-currency-symbol" aria-label="Link to MonetarySmallCurrencySymbol">#</a></header><h3>MonetarySmallCurrencySymbol</h3><pre><code>public STRPTR MonetarySmallCurrencySymbol</code></pre></article><article class="reference-member" id="field-monetary-international-currency-symbol"><header><span class="reference-kind">field</span><a href="#field-monetary-international-currency-symbol" aria-label="Link to MonetaryInternationalCurrencySymbol">#</a></header><h3>MonetaryInternationalCurrencySymbol</h3><pre><code>public STRPTR MonetaryInternationalCurrencySymbol</code></pre></article><article class="reference-member" id="field-monetary-positive-sign"><header><span class="reference-kind">field</span><a href="#field-monetary-positive-sign" aria-label="Link to MonetaryPositiveSign">#</a></header><h3>MonetaryPositiveSign</h3><pre><code>public STRPTR MonetaryPositiveSign</code></pre></article><article class="reference-member" id="field-monetary-positive-space-separator"><header><span class="reference-kind">field</span><a href="#field-monetary-positive-space-separator" aria-label="Link to MonetaryPositiveSpaceSeparator">#</a></header><h3>MonetaryPositiveSpaceSeparator</h3><pre><code>public byte MonetaryPositiveSpaceSeparator</code></pre></article><article class="reference-member" id="field-monetary-positive-sign-position"><header><span class="reference-kind">field</span><a href="#field-monetary-positive-sign-position" aria-label="Link to MonetaryPositiveSignPosition">#</a></header><h3>MonetaryPositiveSignPosition</h3><pre><code>public byte MonetaryPositiveSignPosition</code></pre></article><article class="reference-member" id="field-monetary-positive-currency-position"><header><span class="reference-kind">field</span><a href="#field-monetary-positive-currency-position" aria-label="Link to MonetaryPositiveCurrencyPosition">#</a></header><h3>MonetaryPositiveCurrencyPosition</h3><pre><code>public byte MonetaryPositiveCurrencyPosition</code></pre></article><article class="reference-member" id="field-reserved2"><header><span class="reference-kind">field</span><a href="#field-reserved2" aria-label="Link to Reserved2">#</a></header><h3>Reserved2</h3><pre><code>public byte Reserved2</code></pre></article><article class="reference-member" id="field-monetary-negative-sign"><header><span class="reference-kind">field</span><a href="#field-monetary-negative-sign" aria-label="Link to MonetaryNegativeSign">#</a></header><h3>MonetaryNegativeSign</h3><pre><code>public STRPTR MonetaryNegativeSign</code></pre></article><article class="reference-member" id="field-monetary-negative-space-separator"><header><span class="reference-kind">field</span><a href="#field-monetary-negative-space-separator" aria-label="Link to MonetaryNegativeSpaceSeparator">#</a></header><h3>MonetaryNegativeSpaceSeparator</h3><pre><code>public byte MonetaryNegativeSpaceSeparator</code></pre></article><article class="reference-member" id="field-monetary-negative-sign-position"><header><span class="reference-kind">field</span><a href="#field-monetary-negative-sign-position" aria-label="Link to MonetaryNegativeSignPosition">#</a></header><h3>MonetaryNegativeSignPosition</h3><pre><code>public byte MonetaryNegativeSignPosition</code></pre></article><article class="reference-member" id="field-monetary-negative-currency-position"><header><span class="reference-kind">field</span><a href="#field-monetary-negative-currency-position" aria-label="Link to MonetaryNegativeCurrencyPosition">#</a></header><h3>MonetaryNegativeCurrencyPosition</h3><pre><code>public byte MonetaryNegativeCurrencyPosition</code></pre></article><article class="reference-member" id="field-reserved3"><header><span class="reference-kind">field</span><a href="#field-reserved3" aria-label="Link to Reserved3">#</a></header><h3>Reserved3</h3><pre><code>public byte Reserved3</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

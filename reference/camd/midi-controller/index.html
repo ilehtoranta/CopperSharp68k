@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>MidiController | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.MidiController members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="MidiController | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.MidiController members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/camd/midi-controller"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/camd/midi-controller"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.MidiController API reference","description":"Amiga.MidiController members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/camd/midi-controller","about":["CopperSharp.Sdk.Amiga","CAMD","Amiga.MidiController"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/camd">CAMD</a><span>/</span><span aria-current="page">MidiController</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">enum</span></div><h1>MidiController</h1><p class="reference-full-name">Amiga.MidiController</p><pre class="reference-signature"><code>public enum MidiController</code></pre><div class="reference-source-row"><span>35<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/CAMD/Constants.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#enum-value-bank">Bank</a><a href="#enum-value-mod-wheel">ModWheel</a><a href="#enum-value-breath">Breath</a><a href="#enum-value-foot">Foot</a><a href="#enum-value-portamento-time">PortamentoTime</a><a href="#enum-value-data-entry">DataEntry</a><a href="#enum-value-volume">Volume</a><a href="#enum-value-balance">Balance</a><a href="#enum-value-pan">Pan</a><a href="#enum-value-expression">Expression</a><a href="#enum-value-general1">General1</a><a href="#enum-value-general2">General2</a><a href="#enum-value-general3">General3</a><a href="#enum-value-general4">General4</a><a href="#enum-value-sustain">Sustain</a><a href="#enum-value-portamento">Portamento</a><a href="#enum-value-sustenuto">Sustenuto</a><a href="#enum-value-soft-pedal">SoftPedal</a><a href="#enum-value-hold2">Hold2</a><a href="#enum-value-general5">General5</a><a href="#enum-value-general6">General6</a><a href="#enum-value-general7">General7</a><a href="#enum-value-general8">General8</a><a href="#enum-value-external-effects-depth">ExternalEffectsDepth</a><a href="#enum-value-tremolo-depth">TremoloDepth</a><a href="#enum-value-chorus-depth">ChorusDepth</a><a href="#enum-value-celeste-depth">CelesteDepth</a><a href="#enum-value-phaser-depth">PhaserDepth</a><a href="#enum-value-data-increment">DataIncrement</a><a href="#enum-value-data-decrement">DataDecrement</a><a href="#enum-value-nrpn-lsb">NrpnLsb</a><a href="#enum-value-nrpn-msb">NrpnMsb</a><a href="#enum-value-rpn-lsb">RpnLsb</a><a href="#enum-value-rpn-msb">RpnMsb</a><a href="#enum-value-maximum">Maximum</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="enum-value-bank"><header><span class="reference-kind">enum value</span><a href="#enum-value-bank" aria-label="Link to Bank">#</a></header><h3>Bank</h3><pre><code>Bank = 0</code></pre></article><article class="reference-member" id="enum-value-mod-wheel"><header><span class="reference-kind">enum value</span><a href="#enum-value-mod-wheel" aria-label="Link to ModWheel">#</a></header><h3>ModWheel</h3><pre><code>ModWheel = 1</code></pre></article><article class="reference-member" id="enum-value-breath"><header><span class="reference-kind">enum value</span><a href="#enum-value-breath" aria-label="Link to Breath">#</a></header><h3>Breath</h3><pre><code>Breath = 2</code></pre></article><article class="reference-member" id="enum-value-foot"><header><span class="reference-kind">enum value</span><a href="#enum-value-foot" aria-label="Link to Foot">#</a></header><h3>Foot</h3><pre><code>Foot = 4</code></pre></article><article class="reference-member" id="enum-value-portamento-time"><header><span class="reference-kind">enum value</span><a href="#enum-value-portamento-time" aria-label="Link to PortamentoTime">#</a></header><h3>PortamentoTime</h3><pre><code>PortamentoTime = 5</code></pre></article><article class="reference-member" id="enum-value-data-entry"><header><span class="reference-kind">enum value</span><a href="#enum-value-data-entry" aria-label="Link to DataEntry">#</a></header><h3>DataEntry</h3><pre><code>DataEntry = 6</code></pre></article><article class="reference-member" id="enum-value-volume"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume" aria-label="Link to Volume">#</a></header><h3>Volume</h3><pre><code>Volume = 7</code></pre></article><article class="reference-member" id="enum-value-balance"><header><span class="reference-kind">enum value</span><a href="#enum-value-balance" aria-label="Link to Balance">#</a></header><h3>Balance</h3><pre><code>Balance = 8</code></pre></article><article class="reference-member" id="enum-value-pan"><header><span class="reference-kind">enum value</span><a href="#enum-value-pan" aria-label="Link to Pan">#</a></header><h3>Pan</h3><pre><code>Pan = 10</code></pre></article><article class="reference-member" id="enum-value-expression"><header><span class="reference-kind">enum value</span><a href="#enum-value-expression" aria-label="Link to Expression">#</a></header><h3>Expression</h3><pre><code>Expression = 11</code></pre></article><article class="reference-member" id="enum-value-general1"><header><span class="reference-kind">enum value</span><a href="#enum-value-general1" aria-label="Link to General1">#</a></header><h3>General1</h3><pre><code>General1 = 16</code></pre></article><article class="reference-member" id="enum-value-general2"><header><span class="reference-kind">enum value</span><a href="#enum-value-general2" aria-label="Link to General2">#</a></header><h3>General2</h3><pre><code>General2 = 17</code></pre></article><article class="reference-member" id="enum-value-general3"><header><span class="reference-kind">enum value</span><a href="#enum-value-general3" aria-label="Link to General3">#</a></header><h3>General3</h3><pre><code>General3 = 18</code></pre></article><article class="reference-member" id="enum-value-general4"><header><span class="reference-kind">enum value</span><a href="#enum-value-general4" aria-label="Link to General4">#</a></header><h3>General4</h3><pre><code>General4 = 19</code></pre></article><article class="reference-member" id="enum-value-sustain"><header><span class="reference-kind">enum value</span><a href="#enum-value-sustain" aria-label="Link to Sustain">#</a></header><h3>Sustain</h3><pre><code>Sustain = 64</code></pre></article><article class="reference-member" id="enum-value-portamento"><header><span class="reference-kind">enum value</span><a href="#enum-value-portamento" aria-label="Link to Portamento">#</a></header><h3>Portamento</h3><pre><code>Portamento = 65</code></pre></article><article class="reference-member" id="enum-value-sustenuto"><header><span class="reference-kind">enum value</span><a href="#enum-value-sustenuto" aria-label="Link to Sustenuto">#</a></header><h3>Sustenuto</h3><pre><code>Sustenuto = 66</code></pre></article><article class="reference-member" id="enum-value-soft-pedal"><header><span class="reference-kind">enum value</span><a href="#enum-value-soft-pedal" aria-label="Link to SoftPedal">#</a></header><h3>SoftPedal</h3><pre><code>SoftPedal = 67</code></pre></article><article class="reference-member" id="enum-value-hold2"><header><span class="reference-kind">enum value</span><a href="#enum-value-hold2" aria-label="Link to Hold2">#</a></header><h3>Hold2</h3><pre><code>Hold2 = 69</code></pre></article><article class="reference-member" id="enum-value-general5"><header><span class="reference-kind">enum value</span><a href="#enum-value-general5" aria-label="Link to General5">#</a></header><h3>General5</h3><pre><code>General5 = 80</code></pre></article><article class="reference-member" id="enum-value-general6"><header><span class="reference-kind">enum value</span><a href="#enum-value-general6" aria-label="Link to General6">#</a></header><h3>General6</h3><pre><code>General6 = 81</code></pre></article><article class="reference-member" id="enum-value-general7"><header><span class="reference-kind">enum value</span><a href="#enum-value-general7" aria-label="Link to General7">#</a></header><h3>General7</h3><pre><code>General7 = 82</code></pre></article><article class="reference-member" id="enum-value-general8"><header><span class="reference-kind">enum value</span><a href="#enum-value-general8" aria-label="Link to General8">#</a></header><h3>General8</h3><pre><code>General8 = 83</code></pre></article><article class="reference-member" id="enum-value-external-effects-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-external-effects-depth" aria-label="Link to ExternalEffectsDepth">#</a></header><h3>ExternalEffectsDepth</h3><pre><code>ExternalEffectsDepth = 91</code></pre></article><article class="reference-member" id="enum-value-tremolo-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-tremolo-depth" aria-label="Link to TremoloDepth">#</a></header><h3>TremoloDepth</h3><pre><code>TremoloDepth = 92</code></pre></article><article class="reference-member" id="enum-value-chorus-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-chorus-depth" aria-label="Link to ChorusDepth">#</a></header><h3>ChorusDepth</h3><pre><code>ChorusDepth = 93</code></pre></article><article class="reference-member" id="enum-value-celeste-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-celeste-depth" aria-label="Link to CelesteDepth">#</a></header><h3>CelesteDepth</h3><pre><code>CelesteDepth = 94</code></pre></article><article class="reference-member" id="enum-value-phaser-depth"><header><span class="reference-kind">enum value</span><a href="#enum-value-phaser-depth" aria-label="Link to PhaserDepth">#</a></header><h3>PhaserDepth</h3><pre><code>PhaserDepth = 95</code></pre></article><article class="reference-member" id="enum-value-data-increment"><header><span class="reference-kind">enum value</span><a href="#enum-value-data-increment" aria-label="Link to DataIncrement">#</a></header><h3>DataIncrement</h3><pre><code>DataIncrement = 96</code></pre></article><article class="reference-member" id="enum-value-data-decrement"><header><span class="reference-kind">enum value</span><a href="#enum-value-data-decrement" aria-label="Link to DataDecrement">#</a></header><h3>DataDecrement</h3><pre><code>DataDecrement = 97</code></pre></article><article class="reference-member" id="enum-value-nrpn-lsb"><header><span class="reference-kind">enum value</span><a href="#enum-value-nrpn-lsb" aria-label="Link to NrpnLsb">#</a></header><h3>NrpnLsb</h3><pre><code>NrpnLsb = 98</code></pre></article><article class="reference-member" id="enum-value-nrpn-msb"><header><span class="reference-kind">enum value</span><a href="#enum-value-nrpn-msb" aria-label="Link to NrpnMsb">#</a></header><h3>NrpnMsb</h3><pre><code>NrpnMsb = 99</code></pre></article><article class="reference-member" id="enum-value-rpn-lsb"><header><span class="reference-kind">enum value</span><a href="#enum-value-rpn-lsb" aria-label="Link to RpnLsb">#</a></header><h3>RpnLsb</h3><pre><code>RpnLsb = 100</code></pre></article><article class="reference-member" id="enum-value-rpn-msb"><header><span class="reference-kind">enum value</span><a href="#enum-value-rpn-msb" aria-label="Link to RpnMsb">#</a></header><h3>RpnMsb</h3><pre><code>RpnMsb = 101</code></pre></article><article class="reference-member" id="enum-value-maximum"><header><span class="reference-kind">enum value</span><a href="#enum-value-maximum" aria-label="Link to Maximum">#</a></header><h3>Maximum</h3><pre><code>Maximum = 120</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

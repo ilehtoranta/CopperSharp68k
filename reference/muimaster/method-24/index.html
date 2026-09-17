@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>Method | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.MUI.Method members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="Method | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.MUI.Method members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/muimaster/method-24"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/muimaster/method-24"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.MUI.Method API reference","description":"Amiga.MUI.Method members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/muimaster/method-24","about":["CopperSharp.Sdk.Amiga","MUIMaster","Amiga.MUI.Method"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/muimaster">MUIMaster</a><span>/</span><span aria-current="page">Method</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span></div><h1>Method</h1><p class="reference-full-name">Amiga.MUI.Method</p><pre class="reference-signature"><code>public static class Method</code></pre><div class="reference-source-row"><span>55<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/MUIMaster/MUIConstants.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-ask-min-max">AskMinMax</a><a href="#constant-backfill">Backfill</a><a href="#constant-boopsi-query">BoopsiQuery</a><a href="#constant-call-hook">CallHook</a><a href="#constant-check-short-help">CheckShortHelp</a><a href="#constant-cleanup">Cleanup</a><a href="#constant-close-custom-font">CloseCustomFont</a><a href="#constant-context-menu-add">ContextMenuAdd</a><a href="#constant-context-menu-build">ContextMenuBuild</a><a href="#constant-context-menu-choice">ContextMenuChoice</a><a href="#constant-create-bubble">CreateBubble</a><a href="#constant-create-drag-image">CreateDragImage</a><a href="#constant-create-short-help">CreateShortHelp</a><a href="#constant-delete-bubble">DeleteBubble</a><a href="#constant-delete-drag-image">DeleteDragImage</a><a href="#constant-delete-short-help">DeleteShortHelp</a><a href="#constant-do-drag">DoDrag</a><a href="#constant-drag-begin">DragBegin</a><a href="#constant-drag-drop">DragDrop</a><a href="#constant-drag-event">DragEvent</a><a href="#constant-drag-finish">DragFinish</a><a href="#constant-drag-query">DragQuery</a><a href="#constant-drag-report">DragReport</a><a href="#constant-draw">Draw</a><a href="#constant-draw-background">DrawBackground</a><a href="#constant-exit-resize">ExitResize</a><a href="#constant-export">Export</a><a href="#constant-find-object">FindObject</a><a href="#constant-find-udata">FindUData</a><a href="#constant-get-config-item">GetConfigItem</a><a href="#constant-get-udata">GetUData</a><a href="#constant-go-active">GoActive</a><a href="#constant-go-inactive">GoInactive</a><a href="#constant-handle-event">HandleEvent</a><a href="#constant-handle-input">HandleInput</a><a href="#constant-hide">Hide</a><a href="#constant-import">Import</a><a href="#constant-init-resize">InitResize</a><a href="#constant-kill-notify">KillNotify</a><a href="#constant-kill-notify-obj">KillNotifyObj</a><a href="#constant-layout">Layout</a><a href="#constant-multi-set">MultiSet</a><a href="#constant-no-notify-set">NoNotifySet</a><a href="#constant-open-custom-font">OpenCustomFont</a><a href="#constant-relayout">Relayout</a><a href="#constant-set">Set</a><a href="#constant-set-as-string">SetAsString</a><a href="#constant-set-udata">SetUData</a><a href="#constant-set-udata-once">SetUDataOnce</a><a href="#constant-setup">Setup</a><a href="#constant-show">Show</a><a href="#constant-text-dim">TextDim</a><a href="#constant-update-config">UpdateConfig</a><a href="#constant-write-long">WriteLong</a><a href="#constant-write-string">WriteString</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-ask-min-max"><header><span class="reference-kind">constant</span><a href="#constant-ask-min-max" aria-label="Link to AskMinMax">#</a></header><h3>AskMinMax</h3><pre><code>public const uint AskMinMax = 2151823476</code></pre></article><article class="reference-member" id="constant-backfill"><header><span class="reference-kind">constant</span><a href="#constant-backfill" aria-label="Link to Backfill">#</a></header><h3>Backfill</h3><pre><code>public const uint Backfill = 2151845235</code></pre></article><article class="reference-member" id="constant-boopsi-query"><header><span class="reference-kind">constant</span><a href="#constant-boopsi-query" aria-label="Link to BoopsiQuery">#</a></header><h3>BoopsiQuery</h3><pre><code>public const uint BoopsiQuery = 2151838039</code></pre></article><article class="reference-member" id="constant-call-hook"><header><span class="reference-kind">constant</span><a href="#constant-call-hook" aria-label="Link to CallHook">#</a></header><h3>CallHook</h3><pre><code>public const uint CallHook = 2151856491</code></pre></article><article class="reference-member" id="constant-check-short-help"><header><span class="reference-kind">constant</span><a href="#constant-check-short-help" aria-label="Link to CheckShortHelp">#</a></header><h3>CheckShortHelp</h3><pre><code>public const uint CheckShortHelp = 2151824505</code></pre></article><article class="reference-member" id="constant-cleanup"><header><span class="reference-kind">constant</span><a href="#constant-cleanup" aria-label="Link to Cleanup">#</a></header><h3>Cleanup</h3><pre><code>public const uint Cleanup = 2151864709</code></pre></article><article class="reference-member" id="constant-close-custom-font"><header><span class="reference-kind">constant</span><a href="#constant-close-custom-font" aria-label="Link to CloseCustomFont">#</a></header><h3>CloseCustomFont</h3><pre><code>public const uint CloseCustomFont = 2151854716</code></pre></article><article class="reference-member" id="constant-context-menu-add"><header><span class="reference-kind">constant</span><a href="#constant-context-menu-add" aria-label="Link to ContextMenuAdd">#</a></header><h3>ContextMenuAdd</h3><pre><code>public const uint ContextMenuAdd = 2151866270</code></pre></article><article class="reference-member" id="constant-context-menu-build"><header><span class="reference-kind">constant</span><a href="#constant-context-menu-build" aria-label="Link to ContextMenuBuild">#</a></header><h3>ContextMenuBuild</h3><pre><code>public const uint ContextMenuBuild = 2151849262</code></pre></article><article class="reference-member" id="constant-context-menu-choice"><header><span class="reference-kind">constant</span><a href="#constant-context-menu-choice" aria-label="Link to ContextMenuChoice">#</a></header><h3>ContextMenuChoice</h3><pre><code>public const uint ContextMenuChoice = 2151812878</code></pre></article><article class="reference-member" id="constant-create-bubble"><header><span class="reference-kind">constant</span><a href="#constant-create-bubble" aria-label="Link to CreateBubble">#</a></header><h3>CreateBubble</h3><pre><code>public const uint CreateBubble = 2151816257</code></pre></article><article class="reference-member" id="constant-create-drag-image"><header><span class="reference-kind">constant</span><a href="#constant-create-drag-image" aria-label="Link to CreateDragImage">#</a></header><h3>CreateDragImage</h3><pre><code>public const uint CreateDragImage = 2151869295</code></pre></article><article class="reference-member" id="constant-create-short-help"><header><span class="reference-kind">constant</span><a href="#constant-create-short-help" aria-label="Link to CreateShortHelp">#</a></header><h3>CreateShortHelp</h3><pre><code>public const uint CreateShortHelp = 2151845523</code></pre></article><article class="reference-member" id="constant-delete-bubble"><header><span class="reference-kind">constant</span><a href="#constant-delete-bubble" aria-label="Link to DeleteBubble">#</a></header><h3>DeleteBubble</h3><pre><code>public const uint DeleteBubble = 2151813551</code></pre></article><article class="reference-member" id="constant-delete-drag-image"><header><span class="reference-kind">constant</span><a href="#constant-delete-drag-image" aria-label="Link to DeleteDragImage">#</a></header><h3>DeleteDragImage</h3><pre><code>public const uint DeleteDragImage = 2151821367</code></pre></article><article class="reference-member" id="constant-delete-short-help"><header><span class="reference-kind">constant</span><a href="#constant-delete-short-help" aria-label="Link to DeleteShortHelp">#</a></header><h3>DeleteShortHelp</h3><pre><code>public const uint DeleteShortHelp = 2151863130</code></pre></article><article class="reference-member" id="constant-do-drag"><header><span class="reference-kind">constant</span><a href="#constant-do-drag" aria-label="Link to DoDrag">#</a></header><h3>DoDrag</h3><pre><code>public const uint DoDrag = 2151814843</code></pre></article><article class="reference-member" id="constant-drag-begin"><header><span class="reference-kind">constant</span><a href="#constant-drag-begin" aria-label="Link to DragBegin">#</a></header><h3>DragBegin</h3><pre><code>public const uint DragBegin = 2151858234</code></pre></article><article class="reference-member" id="constant-drag-drop"><header><span class="reference-kind">constant</span><a href="#constant-drag-drop" aria-label="Link to DragDrop">#</a></header><h3>DragDrop</h3><pre><code>public const uint DragDrop = 2151859541</code></pre></article><article class="reference-member" id="constant-drag-event"><header><span class="reference-kind">constant</span><a href="#constant-drag-event" aria-label="Link to DragEvent">#</a></header><h3>DragEvent</h3><pre><code>public const uint DragEvent = 2151855988</code></pre></article><article class="reference-member" id="constant-drag-finish"><header><span class="reference-kind">constant</span><a href="#constant-drag-finish" aria-label="Link to DragFinish">#</a></header><h3>DragFinish</h3><pre><code>public const uint DragFinish = 2151830000</code></pre></article><article class="reference-member" id="constant-drag-query"><header><span class="reference-kind">constant</span><a href="#constant-drag-query" aria-label="Link to DragQuery">#</a></header><h3>DragQuery</h3><pre><code>public const uint DragQuery = 2151809633</code></pre></article><article class="reference-member" id="constant-drag-report"><header><span class="reference-kind">constant</span><a href="#constant-drag-report" aria-label="Link to DragReport">#</a></header><h3>DragReport</h3><pre><code>public const uint DragReport = 2151869869</code></pre></article><article class="reference-member" id="constant-draw"><header><span class="reference-kind">constant</span><a href="#constant-draw" aria-label="Link to Draw">#</a></header><h3>Draw</h3><pre><code>public const uint Draw = 2151837503</code></pre></article><article class="reference-member" id="constant-draw-background"><header><span class="reference-kind">constant</span><a href="#constant-draw-background" aria-label="Link to DrawBackground">#</a></header><h3>DrawBackground</h3><pre><code>public const uint DrawBackground = 2151823562</code></pre></article><article class="reference-member" id="constant-exit-resize"><header><span class="reference-kind">constant</span><a href="#constant-exit-resize" aria-label="Link to ExitResize">#</a></header><h3>ExitResize</h3><pre><code>public const uint ExitResize = 2151842865</code></pre></article><article class="reference-member" id="constant-export"><header><span class="reference-kind">constant</span><a href="#constant-export" aria-label="Link to Export">#</a></header><h3>Export</h3><pre><code>public const uint Export = 2151812892</code></pre></article><article class="reference-member" id="constant-find-object"><header><span class="reference-kind">constant</span><a href="#constant-find-object" aria-label="Link to FindObject">#</a></header><h3>FindObject</h3><pre><code>public const uint FindObject = 2151809935</code></pre></article><article class="reference-member" id="constant-find-udata"><header><span class="reference-kind">constant</span><a href="#constant-find-udata" aria-label="Link to FindUData">#</a></header><h3>FindUData</h3><pre><code>public const uint FindUData = 2151858582</code></pre></article><article class="reference-member" id="constant-get-config-item"><header><span class="reference-kind">constant</span><a href="#constant-get-config-item" aria-label="Link to GetConfigItem">#</a></header><h3>GetConfigItem</h3><pre><code>public const uint GetConfigItem = 2151825115</code></pre></article><article class="reference-member" id="constant-get-udata"><header><span class="reference-kind">constant</span><a href="#constant-get-udata" aria-label="Link to GetUData">#</a></header><h3>GetUData</h3><pre><code>public const uint GetUData = 2151869708</code></pre></article><article class="reference-member" id="constant-go-active"><header><span class="reference-kind">constant</span><a href="#constant-go-active" aria-label="Link to GoActive">#</a></header><h3>GoActive</h3><pre><code>public const uint GoActive = 2151827738</code></pre></article><article class="reference-member" id="constant-go-inactive"><header><span class="reference-kind">constant</span><a href="#constant-go-inactive" aria-label="Link to GoInactive">#</a></header><h3>GoInactive</h3><pre><code>public const uint GoInactive = 2151820300</code></pre></article><article class="reference-member" id="constant-handle-event"><header><span class="reference-kind">constant</span><a href="#constant-handle-event" aria-label="Link to HandleEvent">#</a></header><h3>HandleEvent</h3><pre><code>public const uint HandleEvent = 2151837030</code></pre></article><article class="reference-member" id="constant-handle-input"><header><span class="reference-kind">constant</span><a href="#constant-handle-input" aria-label="Link to HandleInput">#</a></header><h3>HandleInput</h3><pre><code>public const uint HandleInput = 2151819802</code></pre></article><article class="reference-member" id="constant-hide"><header><span class="reference-kind">constant</span><a href="#constant-hide" aria-label="Link to Hide">#</a></header><h3>Hide</h3><pre><code>public const uint Hide = 2151870991</code></pre></article><article class="reference-member" id="constant-import"><header><span class="reference-kind">constant</span><a href="#constant-import" aria-label="Link to Import">#</a></header><h3>Import</h3><pre><code>public const uint Import = 2151862290</code></pre></article><article class="reference-member" id="constant-init-resize"><header><span class="reference-kind">constant</span><a href="#constant-init-resize" aria-label="Link to InitResize">#</a></header><h3>InitResize</h3><pre><code>public const uint InitResize = 2151846589</code></pre></article><article class="reference-member" id="constant-kill-notify"><header><span class="reference-kind">constant</span><a href="#constant-kill-notify" aria-label="Link to KillNotify">#</a></header><h3>KillNotify</h3><pre><code>public const uint KillNotify = 2151862848</code></pre></article><article class="reference-member" id="constant-kill-notify-obj"><header><span class="reference-kind">constant</span><a href="#constant-kill-notify-obj" aria-label="Link to KillNotifyObj">#</a></header><h3>KillNotifyObj</h3><pre><code>public const uint KillNotifyObj = 2151854405</code></pre></article><article class="reference-member" id="constant-layout"><header><span class="reference-kind">constant</span><a href="#constant-layout" aria-label="Link to Layout">#</a></header><h3>Layout</h3><pre><code>public const uint Layout = 2151842907</code></pre></article><article class="reference-member" id="constant-multi-set"><header><span class="reference-kind">constant</span><a href="#constant-multi-set" aria-label="Link to MultiSet">#</a></header><h3>MultiSet</h3><pre><code>public const uint MultiSet = 2151863126</code></pre></article><article class="reference-member" id="constant-no-notify-set"><header><span class="reference-kind">constant</span><a href="#constant-no-notify-set" aria-label="Link to NoNotifySet">#</a></header><h3>NoNotifySet</h3><pre><code>public const uint NoNotifySet = 2151817583</code></pre></article><article class="reference-member" id="constant-open-custom-font"><header><span class="reference-kind">constant</span><a href="#constant-open-custom-font" aria-label="Link to OpenCustomFont">#</a></header><h3>OpenCustomFont</h3><pre><code>public const uint OpenCustomFont = 2151871452</code></pre></article><article class="reference-member" id="constant-relayout"><header><span class="reference-kind">constant</span><a href="#constant-relayout" aria-label="Link to Relayout">#</a></header><h3>Relayout</h3><pre><code>public const uint Relayout = 2151854977</code></pre></article><article class="reference-member" id="constant-set"><header><span class="reference-kind">constant</span><a href="#constant-set" aria-label="Link to Set">#</a></header><h3>Set</h3><pre><code>public const uint Set = 2151830682</code></pre></article><article class="reference-member" id="constant-set-as-string"><header><span class="reference-kind">constant</span><a href="#constant-set-as-string" aria-label="Link to SetAsString">#</a></header><h3>SetAsString</h3><pre><code>public const uint SetAsString = 2151818640</code></pre></article><article class="reference-member" id="constant-set-udata"><header><span class="reference-kind">constant</span><a href="#constant-set-udata" aria-label="Link to SetUData">#</a></header><h3>SetUData</h3><pre><code>public const uint SetUData = 2151860512</code></pre></article><article class="reference-member" id="constant-set-udata-once"><header><span class="reference-kind">constant</span><a href="#constant-set-udata-once" aria-label="Link to SetUDataOnce">#</a></header><h3>SetUDataOnce</h3><pre><code>public const uint SetUDataOnce = 2151860761</code></pre></article><article class="reference-member" id="constant-setup"><header><span class="reference-kind">constant</span><a href="#constant-setup" aria-label="Link to Setup">#</a></header><h3>Setup</h3><pre><code>public const uint Setup = 2151842644</code></pre></article><article class="reference-member" id="constant-show"><header><span class="reference-kind">constant</span><a href="#constant-show" aria-label="Link to Show">#</a></header><h3>Show</h3><pre><code>public const uint Show = 2151861380</code></pre></article><article class="reference-member" id="constant-text-dim"><header><span class="reference-kind">constant</span><a href="#constant-text-dim" aria-label="Link to TextDim">#</a></header><h3>TextDim</h3><pre><code>public const uint TextDim = 2151819991</code></pre></article><article class="reference-member" id="constant-update-config"><header><span class="reference-kind">constant</span><a href="#constant-update-config" aria-label="Link to UpdateConfig">#</a></header><h3>UpdateConfig</h3><pre><code>public const uint UpdateConfig = 2151854249</code></pre></article><article class="reference-member" id="constant-write-long"><header><span class="reference-kind">constant</span><a href="#constant-write-long" aria-label="Link to WriteLong">#</a></header><h3>WriteLong</h3><pre><code>public const uint WriteLong = 2151845254</code></pre></article><article class="reference-member" id="constant-write-string"><header><span class="reference-kind">constant</span><a href="#constant-write-string" aria-label="Link to WriteString">#</a></header><h3>WriteString</h3><pre><code>public const uint WriteString = 2151828468</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

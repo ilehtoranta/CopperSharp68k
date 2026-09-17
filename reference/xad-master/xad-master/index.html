@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>XadMaster | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.XadMaster members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="XadMaster | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.XadMaster members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/xad-master/xad-master"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/xad-master/xad-master"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.XadMaster API reference","description":"Amiga.XadMaster members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/xad-master/xad-master","about":["CopperSharp.Sdk.Amiga","XadMaster","Amiga.XadMaster"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/xad-master">XadMaster</a><span>/</span><span aria-current="page">XadMaster</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code>xadmaster.library</code></div><h1>XadMaster</h1><p class="reference-full-name">Amiga.XadMaster</p><pre class="reference-signature"><code>public static class XadMaster</code></pre><div class="reference-source-row"><span>28<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/XadMaster/XadMaster.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-name">Name</a><a href="#method-xad-alloc-object-a">XadAllocObjectA</a><a href="#method-xad-free-object-a">XadFreeObjectA</a><a href="#method-xad-recog-file-a">XadRecogFileA</a><a href="#method-xad-get-info-a">XadGetInfoA</a><a href="#method-xad-free-info">XadFreeInfo</a><a href="#method-xad-file-un-arc-a">XadFileUnArcA</a><a href="#method-xad-disk-un-arc-a">XadDiskUnArcA</a><a href="#method-xad-get-error-text">XadGetErrorText</a><a href="#method-xad-get-client-info">XadGetClientInfo</a><a href="#method-xad-hook-access">XadHookAccess</a><a href="#method-xad-convert-dates-a">XadConvertDatesA</a><a href="#method-xad-calc-crc16">XadCalcCRC16</a><a href="#method-xad-calc-crc32">XadCalcCRC32</a><a href="#method-xad-alloc-vec">XadAllocVec</a><a href="#method-xad-copy-mem">XadCopyMem</a><a href="#method-xad-hook-tag-access-a">XadHookTagAccessA</a><a href="#method-xad-convert-protection-a">XadConvertProtectionA</a><a href="#method-xad-get-disk-info-a">XadGetDiskInfoA</a><a href="#method-xad-get-hook-access-a">XadGetHookAccessA</a><a href="#method-xad-free-hook-access-a">XadFreeHookAccessA</a><a href="#method-xad-add-file-entry-a">XadAddFileEntryA</a><a href="#method-xad-add-disk-entry-a">XadAddDiskEntryA</a><a href="#method-xad-get-filename-a">XadGetFilenameA</a><a href="#method-xad-convert-name-a">XadConvertNameA</a><a href="#method-xad-get-default-name-a">XadGetDefaultNameA</a><a href="#method-xad-get-system-info">XadGetSystemInfo</a><a href="#property-xad-master-library-base">XadMasterLibraryBase</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-name"><header><span class="reference-kind">constant</span><a href="#constant-name" aria-label="Link to Name">#</a></header><h3>Name</h3><pre><code>public const string Name = &quot;xadmaster.library&quot;</code></pre></article><article class="reference-member" id="method-xad-alloc-object-a"><header><span class="reference-kind">method</span><a href="#method-xad-alloc-object-a" aria-label="Link to XadAllocObjectA">#</a></header><h3>XadAllocObjectA</h3><pre><code>public static uint XadAllocObjectA(uint type, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-30</dd></div><div><dt>Registers</dt><dd>type: D0 · tags: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>type</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-free-object-a"><header><span class="reference-kind">method</span><a href="#method-xad-free-object-a" aria-label="Link to XadFreeObjectA">#</a></header><h3>XadFreeObjectA</h3><pre><code>public static void XadFreeObjectA(uint obj, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-36</dd></div><div><dt>Registers</dt><dd>obj: A0 · tags: A1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>obj</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-recog-file-a"><header><span class="reference-kind">method</span><a href="#method-xad-recog-file-a" aria-label="Link to XadRecogFileA">#</a></header><h3>XadRecogFileA</h3><pre><code>public static uint XadRecogFileA(uint size, uint memory, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-42</dd></div><div><dt>Registers</dt><dd>size: D0 · memory: A0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>size</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>memory</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-info-a"><header><span class="reference-kind">method</span><a href="#method-xad-get-info-a" aria-label="Link to XadGetInfoA">#</a></header><h3>XadGetInfoA</h3><pre><code>public static int XadGetInfoA(uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-48</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-free-info"><header><span class="reference-kind">method</span><a href="#method-xad-free-info" aria-label="Link to XadFreeInfo">#</a></header><h3>XadFreeInfo</h3><pre><code>public static void XadFreeInfo(uint archiveInfo)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-54</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-file-un-arc-a"><header><span class="reference-kind">method</span><a href="#method-xad-file-un-arc-a" aria-label="Link to XadFileUnArcA">#</a></header><h3>XadFileUnArcA</h3><pre><code>public static int XadFileUnArcA(uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-60</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-disk-un-arc-a"><header><span class="reference-kind">method</span><a href="#method-xad-disk-un-arc-a" aria-label="Link to XadDiskUnArcA">#</a></header><h3>XadDiskUnArcA</h3><pre><code>public static int XadDiskUnArcA(uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-66</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-error-text"><header><span class="reference-kind">method</span><a href="#method-xad-get-error-text" aria-label="Link to XadGetErrorText">#</a></header><h3>XadGetErrorText</h3><pre><code>public static CString XadGetErrorText(int errorNumber)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-72</dd></div><div><dt>Registers</dt><dd>errorNumber: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>errorNumber</code><span>int</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-client-info"><header><span class="reference-kind">method</span><a href="#method-xad-get-client-info" aria-label="Link to XadGetClientInfo">#</a></header><h3>XadGetClientInfo</h3><pre><code>public static uint XadGetClientInfo()</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-78</dd></div><div><dt>Registers</dt><dd>return: D0</dd></div></dl></article><article class="reference-member" id="method-xad-hook-access"><header><span class="reference-kind">method</span><a href="#method-xad-hook-access" aria-label="Link to XadHookAccess">#</a></header><h3>XadHookAccess</h3><pre><code>public static int XadHookAccess(uint command, int data, uint buffer, uint archiveInfo)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-84</dd></div><div><dt>Registers</dt><dd>command: D0 · data: D1 · buffer: A0 · archiveInfo: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>command</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>data</code><span>int</span></dt><dd>Register D1</dd></div><div><dt><code>buffer</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-convert-dates-a"><header><span class="reference-kind">method</span><a href="#method-xad-convert-dates-a" aria-label="Link to XadConvertDatesA">#</a></header><h3>XadConvertDatesA</h3><pre><code>public static int XadConvertDatesA(uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-90</dd></div><div><dt>Registers</dt><dd>tags: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>tags</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-calc-crc16"><header><span class="reference-kind">method</span><a href="#method-xad-calc-crc16" aria-label="Link to XadCalcCRC16">#</a></header><h3>XadCalcCRC16</h3><pre><code>public static ushort XadCalcCRC16(uint id, uint initial, uint size, uint buffer)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-96</dd></div><div><dt>Registers</dt><dd>id: D0 · initial: D1 · size: D2 · buffer: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>id</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>initial</code><span>uint</span></dt><dd>Register D1</dd></div><div><dt><code>size</code><span>uint</span></dt><dd>Register D2</dd></div><div><dt><code>buffer</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-calc-crc32"><header><span class="reference-kind">method</span><a href="#method-xad-calc-crc32" aria-label="Link to XadCalcCRC32">#</a></header><h3>XadCalcCRC32</h3><pre><code>public static uint XadCalcCRC32(uint id, uint initial, uint size, uint buffer)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-102</dd></div><div><dt>Registers</dt><dd>id: D0 · initial: D1 · size: D2 · buffer: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>id</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>initial</code><span>uint</span></dt><dd>Register D1</dd></div><div><dt><code>size</code><span>uint</span></dt><dd>Register D2</dd></div><div><dt><code>buffer</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-alloc-vec"><header><span class="reference-kind">method</span><a href="#method-xad-alloc-vec" aria-label="Link to XadAllocVec">#</a></header><h3>XadAllocVec</h3><pre><code>public static uint XadAllocVec(uint size, uint flags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-108</dd></div><div><dt>Registers</dt><dd>size: D0 · flags: D1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>size</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>flags</code><span>uint</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-xad-copy-mem"><header><span class="reference-kind">method</span><a href="#method-xad-copy-mem" aria-label="Link to XadCopyMem">#</a></header><h3>XadCopyMem</h3><pre><code>public static void XadCopyMem(uint source, uint destination, uint size)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-114</dd></div><div><dt>Registers</dt><dd>source: A0 · destination: A1 · size: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>source</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>destination</code><span>uint</span></dt><dd>Register A1</dd></div><div><dt><code>size</code><span>uint</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-xad-hook-tag-access-a"><header><span class="reference-kind">method</span><a href="#method-xad-hook-tag-access-a" aria-label="Link to XadHookTagAccessA">#</a></header><h3>XadHookTagAccessA</h3><pre><code>public static int XadHookTagAccessA(uint command, int data, uint buffer, uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-120</dd></div><div><dt>Registers</dt><dd>command: D0 · data: D1 · buffer: A0 · archiveInfo: A1 · tags: A2 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>command</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>data</code><span>int</span></dt><dd>Register D1</dd></div><div><dt><code>buffer</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A1</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A2</dd></div></dl></div></article><article class="reference-member" id="method-xad-convert-protection-a"><header><span class="reference-kind">method</span><a href="#method-xad-convert-protection-a" aria-label="Link to XadConvertProtectionA">#</a></header><h3>XadConvertProtectionA</h3><pre><code>public static int XadConvertProtectionA(uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-126</dd></div><div><dt>Registers</dt><dd>tags: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>tags</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-disk-info-a"><header><span class="reference-kind">method</span><a href="#method-xad-get-disk-info-a" aria-label="Link to XadGetDiskInfoA">#</a></header><h3>XadGetDiskInfoA</h3><pre><code>public static int XadGetDiskInfoA(uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-132</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-hook-access-a"><header><span class="reference-kind">method</span><a href="#method-xad-get-hook-access-a" aria-label="Link to XadGetHookAccessA">#</a></header><h3>XadGetHookAccessA</h3><pre><code>public static int XadGetHookAccessA(uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-144</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0 · tags: A1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-free-hook-access-a"><header><span class="reference-kind">method</span><a href="#method-xad-free-hook-access-a" aria-label="Link to XadFreeHookAccessA">#</a></header><h3>XadFreeHookAccessA</h3><pre><code>public static void XadFreeHookAccessA(uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-150</dd></div><div><dt>Registers</dt><dd>archiveInfo: A0 · tags: A1</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A1</dd></div></dl></div></article><article class="reference-member" id="method-xad-add-file-entry-a"><header><span class="reference-kind">method</span><a href="#method-xad-add-file-entry-a" aria-label="Link to XadAddFileEntryA">#</a></header><h3>XadAddFileEntryA</h3><pre><code>public static int XadAddFileEntryA(uint fileInfo, uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-156</dd></div><div><dt>Registers</dt><dd>fileInfo: A0 · archiveInfo: A1 · tags: A2 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>fileInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A1</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A2</dd></div></dl></div></article><article class="reference-member" id="method-xad-add-disk-entry-a"><header><span class="reference-kind">method</span><a href="#method-xad-add-disk-entry-a" aria-label="Link to XadAddDiskEntryA">#</a></header><h3>XadAddDiskEntryA</h3><pre><code>public static int XadAddDiskEntryA(uint diskInfo, uint archiveInfo, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-162</dd></div><div><dt>Registers</dt><dd>diskInfo: A0 · archiveInfo: A1 · tags: A2 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>diskInfo</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>archiveInfo</code><span>uint</span></dt><dd>Register A1</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A2</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-filename-a"><header><span class="reference-kind">method</span><a href="#method-xad-get-filename-a" aria-label="Link to XadGetFilenameA">#</a></header><h3>XadGetFilenameA</h3><pre><code>public static int XadGetFilenameA(uint bufferSize, uint buffer, uint path, uint name, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-168</dd></div><div><dt>Registers</dt><dd>bufferSize: D0 · buffer: A0 · path: A1 · name: A2 · tags: A3 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>bufferSize</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>buffer</code><span>uint</span></dt><dd>Register A0</dd></div><div><dt><code>path</code><span>uint</span></dt><dd>Register A1</dd></div><div><dt><code>name</code><span>uint</span></dt><dd>Register A2</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A3</dd></div></dl></div></article><article class="reference-member" id="method-xad-convert-name-a"><header><span class="reference-kind">method</span><a href="#method-xad-convert-name-a" aria-label="Link to XadConvertNameA">#</a></header><h3>XadConvertNameA</h3><pre><code>public static uint XadConvertNameA(uint charset, uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-174</dd></div><div><dt>Registers</dt><dd>charset: D0 · tags: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>charset</code><span>uint</span></dt><dd>Register D0</dd></div><div><dt><code>tags</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-default-name-a"><header><span class="reference-kind">method</span><a href="#method-xad-get-default-name-a" aria-label="Link to XadGetDefaultNameA">#</a></header><h3>XadGetDefaultNameA</h3><pre><code>public static uint XadGetDefaultNameA(uint tags)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-180</dd></div><div><dt>Registers</dt><dd>tags: A0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>tags</code><span>uint</span></dt><dd>Register A0</dd></div></dl></div></article><article class="reference-member" id="method-xad-get-system-info"><header><span class="reference-kind">method</span><a href="#method-xad-get-system-info" aria-label="Link to XadGetSystemInfo">#</a></header><h3>XadGetSystemInfo</h3><pre><code>public static uint XadGetSystemInfo()</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-186</dd></div><div><dt>Registers</dt><dd>return: D0</dd></div></dl></article><article class="reference-member" id="property-xad-master-library-base"><header><span class="reference-kind">property</span><a href="#property-xad-master-library-base" aria-label="Link to XadMasterLibraryBase">#</a></header><h3>XadMasterLibraryBase</h3><pre><code>public static APTR XadMasterLibraryBase { get; set; }</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

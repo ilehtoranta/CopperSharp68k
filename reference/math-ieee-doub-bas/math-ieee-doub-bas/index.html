@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>MathIeeeDoubBas | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.MathIeeeDoubBas members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="MathIeeeDoubBas | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.MathIeeeDoubBas members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/math-ieee-doub-bas/math-ieee-doub-bas"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/math-ieee-doub-bas/math-ieee-doub-bas"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.MathIeeeDoubBas API reference","description":"Amiga.MathIeeeDoubBas members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/math-ieee-doub-bas/math-ieee-doub-bas","about":["CopperSharp.Sdk.Amiga","MathIeeeDoubBas","Amiga.MathIeeeDoubBas"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/math-ieee-doub-bas">MathIeeeDoubBas</a><span>/</span><span aria-current="page">MathIeeeDoubBas</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code>mathieeedoubbas.library</code></div><h1>MathIeeeDoubBas</h1><p class="reference-full-name">Amiga.MathIeeeDoubBas</p><pre class="reference-signature"><code>public static class MathIeeeDoubBas</code></pre><div class="reference-source-row"><span>14<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/MathIeeeDoubBas/MathIeeeDoubBas.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-name">Name</a><a href="#method-ieeedpfix">IEEEDPFix</a><a href="#method-ieeedpflt">IEEEDPFlt</a><a href="#method-ieeedpcmp">IEEEDPCmp</a><a href="#method-ieeedptst">IEEEDPTst</a><a href="#method-ieeedpabs">IEEEDPAbs</a><a href="#method-ieeedpneg">IEEEDPNeg</a><a href="#method-ieeedpadd">IEEEDPAdd</a><a href="#method-ieeedpsub">IEEEDPSub</a><a href="#method-ieeedpmul">IEEEDPMul</a><a href="#method-ieeedpdiv">IEEEDPDiv</a><a href="#method-ieeedpfloor">IEEEDPFloor</a><a href="#method-ieeedpceil">IEEEDPCeil</a><a href="#property-math-ieee-doub-bas-library-base">MathIeeeDoubBasLibraryBase</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-name"><header><span class="reference-kind">constant</span><a href="#constant-name" aria-label="Link to Name">#</a></header><h3>Name</h3><pre><code>public const string Name = &quot;mathieeedoubbas.library&quot;</code></pre></article><article class="reference-member" id="method-ieeedpfix"><header><span class="reference-kind">method</span><a href="#method-ieeedpfix" aria-label="Link to IEEEDPFix">#</a></header><h3>IEEEDPFix</h3><pre><code>public static int IEEEDPFix(ulong value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-30</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>ulong</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpflt"><header><span class="reference-kind">method</span><a href="#method-ieeedpflt" aria-label="Link to IEEEDPFlt">#</a></header><h3>IEEEDPFlt</h3><pre><code>public static ulong IEEEDPFlt(int value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-36</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>int</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpcmp"><header><span class="reference-kind">method</span><a href="#method-ieeedpcmp" aria-label="Link to IEEEDPCmp">#</a></header><h3>IEEEDPCmp</h3><pre><code>public static int IEEEDPCmp(ulong left, ulong right)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-42</dd></div><div><dt>Registers</dt><dd>left: D0 · right: D1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>left</code><span>ulong</span></dt><dd>Register D0</dd></div><div><dt><code>right</code><span>ulong</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-ieeedptst"><header><span class="reference-kind">method</span><a href="#method-ieeedptst" aria-label="Link to IEEEDPTst">#</a></header><h3>IEEEDPTst</h3><pre><code>public static int IEEEDPTst(ulong value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-48</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>ulong</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpabs"><header><span class="reference-kind">method</span><a href="#method-ieeedpabs" aria-label="Link to IEEEDPAbs">#</a></header><h3>IEEEDPAbs</h3><pre><code>public static ulong IEEEDPAbs(ulong value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-54</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>ulong</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpneg"><header><span class="reference-kind">method</span><a href="#method-ieeedpneg" aria-label="Link to IEEEDPNeg">#</a></header><h3>IEEEDPNeg</h3><pre><code>public static ulong IEEEDPNeg(ulong value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-60</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>ulong</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpadd"><header><span class="reference-kind">method</span><a href="#method-ieeedpadd" aria-label="Link to IEEEDPAdd">#</a></header><h3>IEEEDPAdd</h3><pre><code>public static ulong IEEEDPAdd(ulong left, ulong right)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-66</dd></div><div><dt>Registers</dt><dd>left: D0 · right: D1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>left</code><span>ulong</span></dt><dd>Register D0</dd></div><div><dt><code>right</code><span>ulong</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpsub"><header><span class="reference-kind">method</span><a href="#method-ieeedpsub" aria-label="Link to IEEEDPSub">#</a></header><h3>IEEEDPSub</h3><pre><code>public static ulong IEEEDPSub(ulong left, ulong right)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-72</dd></div><div><dt>Registers</dt><dd>left: D0 · right: D1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>left</code><span>ulong</span></dt><dd>Register D0</dd></div><div><dt><code>right</code><span>ulong</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpmul"><header><span class="reference-kind">method</span><a href="#method-ieeedpmul" aria-label="Link to IEEEDPMul">#</a></header><h3>IEEEDPMul</h3><pre><code>public static ulong IEEEDPMul(ulong left, ulong right)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-78</dd></div><div><dt>Registers</dt><dd>left: D0 · right: D1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>left</code><span>ulong</span></dt><dd>Register D0</dd></div><div><dt><code>right</code><span>ulong</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpdiv"><header><span class="reference-kind">method</span><a href="#method-ieeedpdiv" aria-label="Link to IEEEDPDiv">#</a></header><h3>IEEEDPDiv</h3><pre><code>public static ulong IEEEDPDiv(ulong left, ulong right)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-84</dd></div><div><dt>Registers</dt><dd>left: D0 · right: D1 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>left</code><span>ulong</span></dt><dd>Register D0</dd></div><div><dt><code>right</code><span>ulong</span></dt><dd>Register D1</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpfloor"><header><span class="reference-kind">method</span><a href="#method-ieeedpfloor" aria-label="Link to IEEEDPFloor">#</a></header><h3>IEEEDPFloor</h3><pre><code>public static ulong IEEEDPFloor(ulong value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-90</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>ulong</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="method-ieeedpceil"><header><span class="reference-kind">method</span><a href="#method-ieeedpceil" aria-label="Link to IEEEDPCeil">#</a></header><h3>IEEEDPCeil</h3><pre><code>public static ulong IEEEDPCeil(ulong value)</code></pre><dl class="reference-abi"><div><dt>LVO</dt><dd>-96</dd></div><div><dt>Registers</dt><dd>value: D0 · return: D0</dd></div></dl><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>value</code><span>ulong</span></dt><dd>Register D0</dd></div></dl></div></article><article class="reference-member" id="property-math-ieee-doub-bas-library-base"><header><span class="reference-kind">property</span><a href="#property-math-ieee-doub-bas-library-base" aria-label="Link to MathIeeeDoubBasLibraryBase">#</a></header><h3>MathIeeeDoubBasLibraryBase</h3><pre><code>public static APTR MathIeeeDoubBasLibraryBase { get; set; }</code></pre></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>

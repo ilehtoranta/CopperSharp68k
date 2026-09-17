@@ -1,0 +1,201 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>TheBar | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.MUI.TheBar members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:title" content="TheBar | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.MUI.TheBar members and signatures in CopperSharp.Sdk.Amiga."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/muimaster/the-bar"/><meta property="og:type" content="article"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://coppersharp.dev/og.png"/><link rel="shortcut icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="icon" href="https://coppersharp.dev/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/muimaster/the-bar"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page reference-type-page"><script type="application/ld+json">{"@context":"https://schema.org","@type":"TechArticle","headline":"Amiga.MUI.TheBar API reference","description":"Amiga.MUI.TheBar members and signatures in CopperSharp.Sdk.Amiga.","mainEntityOfPage":"https://ilehtoranta.github.io/CopperSharp68k/reference/muimaster/the-bar","about":["CopperSharp.Sdk.Amiga","MUIMaster","Amiga.MUI.TheBar"]}</script><header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header><article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/muimaster">MUIMaster</a><span>/</span><span aria-current="page">TheBar</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span></div><h1>TheBar</h1><p class="reference-full-name">Amiga.MUI.TheBar</p><pre class="reference-signature"><code>public static class TheBar</code></pre><div class="reference-source-row"><span>69<!-- --> declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/main/Sdk.Amiga/MUIMaster/MUIThirdPartyConstants.cs">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-name">Name</a><a href="#constant-min-ver">MinVer</a><a href="#constant-buttons">Buttons</a><a href="#constant-images">Images</a><a href="#constant-pics">Pics</a><a href="#constant-pics-drawer">PicsDrawer</a><a href="#constant-view-mode">ViewMode</a><a href="#constant-borderless">Borderless</a><a href="#constant-raised">Raised</a><a href="#constant-sunny">Sunny</a><a href="#constant-scaled">Scaled</a><a href="#constant-spacer-index">SpacerIndex</a><a href="#constant-strip">Strip</a><a href="#constant-strip-brush">StripBrush</a><a href="#constant-enable-keys">EnableKeys</a><a href="#constant-text-only">TextOnly</a><a href="#constant-label-pos">LabelPos</a><a href="#constant-bar-pos">BarPos</a><a href="#constant-drag-bar">DragBar</a><a href="#constant-frame">Frame</a><a href="#constant-limbo">Limbo</a><a href="#constant-active">Active</a><a href="#constant-columns">Columns</a><a href="#constant-rows">Rows</a><a href="#constant-free-horiz">FreeHoriz</a><a href="#constant-free-vert">FreeVert</a><a href="#constant-free">Free</a><a href="#constant-bar-spacer">BarSpacer</a><a href="#constant-remove-spacers">RemoveSpacers</a><a href="#constant-sel-images">SelImages</a><a href="#constant-dis-images">DisImages</a><a href="#constant-sel-pics">SelPics</a><a href="#constant-dis-pics">DisPics</a><a href="#constant-sel-strip">SelStrip</a><a href="#constant-dis-strip">DisStrip</a><a href="#constant-sel-strip-brush">SelStripBrush</a><a href="#constant-dis-strip-brush">DisStripBrush</a><a href="#constant-strip-rows">StripRows</a><a href="#constant-strip-cols">StripCols</a><a href="#constant-strip-hspace">StripHSpace</a><a href="#constant-strip-vspace">StripVSpace</a><a href="#constant-horiz-spacing">HorizSpacing</a><a href="#constant-vert-spacing">VertSpacing</a><a href="#constant-bar-spacer-spacing">BarSpacerSpacing</a><a href="#constant-horiz-inner-spacing">HorizInnerSpacing</a><a href="#constant-top-inner-spacing">TopInnerSpacing</a><a href="#constant-bottom-inner-spacing">BottomInnerSpacing</a><a href="#constant-left-bar-frame-spacing">LeftBarFrameSpacing</a><a href="#constant-right-bar-frame-spacing">RightBarFrameSpacing</a><a href="#constant-top-bar-frame-spacing">TopBarFrameSpacing</a><a href="#constant-bottom-bar-frame-spacing">BottomBarFrameSpacing</a><a href="#constant-horiz-text-gfx-spacing">HorizTextGfxSpacing</a><a href="#constant-vert-text-gfx-spacing">VertTextGfxSpacing</a><a href="#constant-precision">Precision</a><a href="#constant-scale">Scale</a><a href="#constant-dis-mode">DisMode</a><a href="#constant-special-select">SpecialSelect</a><a href="#constant-text-over-use-shine">TextOverUseShine</a><a href="#constant-ignore-sel-images">IgnoreSelImages</a><a href="#constant-ignore-dis-images">IgnoreDisImages</a><a href="#constant-dont-move">DontMove</a><a href="#constant-mouse-over">MouseOver</a><a href="#constant-nt-raise-active">NtRaiseActive</a><a href="#constant-spacers-size">SpacersSize</a><a href="#constant-appearance">Appearance</a><a href="#constant-ignore-appearance">IgnoreAppearance</a><a href="#constant-hovered-button">HoveredButton</a><a href="#method-new">New</a><a href="#method-do">Do</a></aside><section class="reference-member-list" aria-labelledby="members-heading"><h2 id="members-heading">Members</h2><article class="reference-member" id="constant-name"><header><span class="reference-kind">constant</span><a href="#constant-name" aria-label="Link to Name">#</a></header><h3>Name</h3><pre><code>public const string Name = &quot;TheBar.mcc&quot;</code></pre></article><article class="reference-member" id="constant-min-ver"><header><span class="reference-kind">constant</span><a href="#constant-min-ver" aria-label="Link to MinVer">#</a></header><h3>MinVer</h3><pre><code>public const uint MinVer = 4150985270</code></pre></article><article class="reference-member" id="constant-buttons"><header><span class="reference-kind">constant</span><a href="#constant-buttons" aria-label="Link to Buttons">#</a></header><h3>Buttons</h3><pre><code>public const uint Buttons = 4150985271</code></pre></article><article class="reference-member" id="constant-images"><header><span class="reference-kind">constant</span><a href="#constant-images" aria-label="Link to Images">#</a></header><h3>Images</h3><pre><code>public const uint Images = 4150985272</code></pre></article><article class="reference-member" id="constant-pics"><header><span class="reference-kind">constant</span><a href="#constant-pics" aria-label="Link to Pics">#</a></header><h3>Pics</h3><pre><code>public const uint Pics = 4150985273</code></pre></article><article class="reference-member" id="constant-pics-drawer"><header><span class="reference-kind">constant</span><a href="#constant-pics-drawer" aria-label="Link to PicsDrawer">#</a></header><h3>PicsDrawer</h3><pre><code>public const uint PicsDrawer = 4150985274</code></pre></article><article class="reference-member" id="constant-view-mode"><header><span class="reference-kind">constant</span><a href="#constant-view-mode" aria-label="Link to ViewMode">#</a></header><h3>ViewMode</h3><pre><code>public const uint ViewMode = 4150985275</code></pre></article><article class="reference-member" id="constant-borderless"><header><span class="reference-kind">constant</span><a href="#constant-borderless" aria-label="Link to Borderless">#</a></header><h3>Borderless</h3><pre><code>public const uint Borderless = 4150985276</code></pre></article><article class="reference-member" id="constant-raised"><header><span class="reference-kind">constant</span><a href="#constant-raised" aria-label="Link to Raised">#</a></header><h3>Raised</h3><pre><code>public const uint Raised = 4150985277</code></pre></article><article class="reference-member" id="constant-sunny"><header><span class="reference-kind">constant</span><a href="#constant-sunny" aria-label="Link to Sunny">#</a></header><h3>Sunny</h3><pre><code>public const uint Sunny = 4150985278</code></pre></article><article class="reference-member" id="constant-scaled"><header><span class="reference-kind">constant</span><a href="#constant-scaled" aria-label="Link to Scaled">#</a></header><h3>Scaled</h3><pre><code>public const uint Scaled = 4150985279</code></pre></article><article class="reference-member" id="constant-spacer-index"><header><span class="reference-kind">constant</span><a href="#constant-spacer-index" aria-label="Link to SpacerIndex">#</a></header><h3>SpacerIndex</h3><pre><code>public const uint SpacerIndex = 4150985280</code></pre></article><article class="reference-member" id="constant-strip"><header><span class="reference-kind">constant</span><a href="#constant-strip" aria-label="Link to Strip">#</a></header><h3>Strip</h3><pre><code>public const uint Strip = 4150985281</code></pre></article><article class="reference-member" id="constant-strip-brush"><header><span class="reference-kind">constant</span><a href="#constant-strip-brush" aria-label="Link to StripBrush">#</a></header><h3>StripBrush</h3><pre><code>public const uint StripBrush = 4150985282</code></pre></article><article class="reference-member" id="constant-enable-keys"><header><span class="reference-kind">constant</span><a href="#constant-enable-keys" aria-label="Link to EnableKeys">#</a></header><h3>EnableKeys</h3><pre><code>public const uint EnableKeys = 4150985283</code></pre></article><article class="reference-member" id="constant-text-only"><header><span class="reference-kind">constant</span><a href="#constant-text-only" aria-label="Link to TextOnly">#</a></header><h3>TextOnly</h3><pre><code>public const uint TextOnly = 4150985284</code></pre></article><article class="reference-member" id="constant-label-pos"><header><span class="reference-kind">constant</span><a href="#constant-label-pos" aria-label="Link to LabelPos">#</a></header><h3>LabelPos</h3><pre><code>public const uint LabelPos = 4150985285</code></pre></article><article class="reference-member" id="constant-bar-pos"><header><span class="reference-kind">constant</span><a href="#constant-bar-pos" aria-label="Link to BarPos">#</a></header><h3>BarPos</h3><pre><code>public const uint BarPos = 4150985286</code></pre></article><article class="reference-member" id="constant-drag-bar"><header><span class="reference-kind">constant</span><a href="#constant-drag-bar" aria-label="Link to DragBar">#</a></header><h3>DragBar</h3><pre><code>public const uint DragBar = 4150985287</code></pre></article><article class="reference-member" id="constant-frame"><header><span class="reference-kind">constant</span><a href="#constant-frame" aria-label="Link to Frame">#</a></header><h3>Frame</h3><pre><code>public const uint Frame = 4150985288</code></pre></article><article class="reference-member" id="constant-limbo"><header><span class="reference-kind">constant</span><a href="#constant-limbo" aria-label="Link to Limbo">#</a></header><h3>Limbo</h3><pre><code>public const uint Limbo = 4150985289</code></pre></article><article class="reference-member" id="constant-active"><header><span class="reference-kind">constant</span><a href="#constant-active" aria-label="Link to Active">#</a></header><h3>Active</h3><pre><code>public const uint Active = 4150985290</code></pre></article><article class="reference-member" id="constant-columns"><header><span class="reference-kind">constant</span><a href="#constant-columns" aria-label="Link to Columns">#</a></header><h3>Columns</h3><pre><code>public const uint Columns = 4150985291</code></pre></article><article class="reference-member" id="constant-rows"><header><span class="reference-kind">constant</span><a href="#constant-rows" aria-label="Link to Rows">#</a></header><h3>Rows</h3><pre><code>public const uint Rows = 4150985292</code></pre></article><article class="reference-member" id="constant-free-horiz"><header><span class="reference-kind">constant</span><a href="#constant-free-horiz" aria-label="Link to FreeHoriz">#</a></header><h3>FreeHoriz</h3><pre><code>public const uint FreeHoriz = 4150985293</code></pre></article><article class="reference-member" id="constant-free-vert"><header><span class="reference-kind">constant</span><a href="#constant-free-vert" aria-label="Link to FreeVert">#</a></header><h3>FreeVert</h3><pre><code>public const uint FreeVert = 4150985294</code></pre></article><article class="reference-member" id="constant-free"><header><span class="reference-kind">constant</span><a href="#constant-free" aria-label="Link to Free">#</a></header><h3>Free</h3><pre><code>public const uint Free = 4150985295</code></pre></article><article class="reference-member" id="constant-bar-spacer"><header><span class="reference-kind">constant</span><a href="#constant-bar-spacer" aria-label="Link to BarSpacer">#</a></header><h3>BarSpacer</h3><pre><code>public const uint BarSpacer = 4150985296</code></pre></article><article class="reference-member" id="constant-remove-spacers"><header><span class="reference-kind">constant</span><a href="#constant-remove-spacers" aria-label="Link to RemoveSpacers">#</a></header><h3>RemoveSpacers</h3><pre><code>public const uint RemoveSpacers = 4150985297</code></pre></article><article class="reference-member" id="constant-sel-images"><header><span class="reference-kind">constant</span><a href="#constant-sel-images" aria-label="Link to SelImages">#</a></header><h3>SelImages</h3><pre><code>public const uint SelImages = 4150985299</code></pre></article><article class="reference-member" id="constant-dis-images"><header><span class="reference-kind">constant</span><a href="#constant-dis-images" aria-label="Link to DisImages">#</a></header><h3>DisImages</h3><pre><code>public const uint DisImages = 4150985300</code></pre></article><article class="reference-member" id="constant-sel-pics"><header><span class="reference-kind">constant</span><a href="#constant-sel-pics" aria-label="Link to SelPics">#</a></header><h3>SelPics</h3><pre><code>public const uint SelPics = 4150985301</code></pre></article><article class="reference-member" id="constant-dis-pics"><header><span class="reference-kind">constant</span><a href="#constant-dis-pics" aria-label="Link to DisPics">#</a></header><h3>DisPics</h3><pre><code>public const uint DisPics = 4150985302</code></pre></article><article class="reference-member" id="constant-sel-strip"><header><span class="reference-kind">constant</span><a href="#constant-sel-strip" aria-label="Link to SelStrip">#</a></header><h3>SelStrip</h3><pre><code>public const uint SelStrip = 4150985303</code></pre></article><article class="reference-member" id="constant-dis-strip"><header><span class="reference-kind">constant</span><a href="#constant-dis-strip" aria-label="Link to DisStrip">#</a></header><h3>DisStrip</h3><pre><code>public const uint DisStrip = 4150985304</code></pre></article><article class="reference-member" id="constant-sel-strip-brush"><header><span class="reference-kind">constant</span><a href="#constant-sel-strip-brush" aria-label="Link to SelStripBrush">#</a></header><h3>SelStripBrush</h3><pre><code>public const uint SelStripBrush = 4150985305</code></pre></article><article class="reference-member" id="constant-dis-strip-brush"><header><span class="reference-kind">constant</span><a href="#constant-dis-strip-brush" aria-label="Link to DisStripBrush">#</a></header><h3>DisStripBrush</h3><pre><code>public const uint DisStripBrush = 4150985306</code></pre></article><article class="reference-member" id="constant-strip-rows"><header><span class="reference-kind">constant</span><a href="#constant-strip-rows" aria-label="Link to StripRows">#</a></header><h3>StripRows</h3><pre><code>public const uint StripRows = 4150985307</code></pre></article><article class="reference-member" id="constant-strip-cols"><header><span class="reference-kind">constant</span><a href="#constant-strip-cols" aria-label="Link to StripCols">#</a></header><h3>StripCols</h3><pre><code>public const uint StripCols = 4150985308</code></pre></article><article class="reference-member" id="constant-strip-hspace"><header><span class="reference-kind">constant</span><a href="#constant-strip-hspace" aria-label="Link to StripHSpace">#</a></header><h3>StripHSpace</h3><pre><code>public const uint StripHSpace = 4150985309</code></pre></article><article class="reference-member" id="constant-strip-vspace"><header><span class="reference-kind">constant</span><a href="#constant-strip-vspace" aria-label="Link to StripVSpace">#</a></header><h3>StripVSpace</h3><pre><code>public const uint StripVSpace = 4150985310</code></pre></article><article class="reference-member" id="constant-horiz-spacing"><header><span class="reference-kind">constant</span><a href="#constant-horiz-spacing" aria-label="Link to HorizSpacing">#</a></header><h3>HorizSpacing</h3><pre><code>public const uint HorizSpacing = 4150985311</code></pre></article><article class="reference-member" id="constant-vert-spacing"><header><span class="reference-kind">constant</span><a href="#constant-vert-spacing" aria-label="Link to VertSpacing">#</a></header><h3>VertSpacing</h3><pre><code>public const uint VertSpacing = 4150985312</code></pre></article><article class="reference-member" id="constant-bar-spacer-spacing"><header><span class="reference-kind">constant</span><a href="#constant-bar-spacer-spacing" aria-label="Link to BarSpacerSpacing">#</a></header><h3>BarSpacerSpacing</h3><pre><code>public const uint BarSpacerSpacing = 4150985313</code></pre></article><article class="reference-member" id="constant-horiz-inner-spacing"><header><span class="reference-kind">constant</span><a href="#constant-horiz-inner-spacing" aria-label="Link to HorizInnerSpacing">#</a></header><h3>HorizInnerSpacing</h3><pre><code>public const uint HorizInnerSpacing = 4150985314</code></pre></article><article class="reference-member" id="constant-top-inner-spacing"><header><span class="reference-kind">constant</span><a href="#constant-top-inner-spacing" aria-label="Link to TopInnerSpacing">#</a></header><h3>TopInnerSpacing</h3><pre><code>public const uint TopInnerSpacing = 4150985315</code></pre></article><article class="reference-member" id="constant-bottom-inner-spacing"><header><span class="reference-kind">constant</span><a href="#constant-bottom-inner-spacing" aria-label="Link to BottomInnerSpacing">#</a></header><h3>BottomInnerSpacing</h3><pre><code>public const uint BottomInnerSpacing = 4150985316</code></pre></article><article class="reference-member" id="constant-left-bar-frame-spacing"><header><span class="reference-kind">constant</span><a href="#constant-left-bar-frame-spacing" aria-label="Link to LeftBarFrameSpacing">#</a></header><h3>LeftBarFrameSpacing</h3><pre><code>public const uint LeftBarFrameSpacing = 4150985317</code></pre></article><article class="reference-member" id="constant-right-bar-frame-spacing"><header><span class="reference-kind">constant</span><a href="#constant-right-bar-frame-spacing" aria-label="Link to RightBarFrameSpacing">#</a></header><h3>RightBarFrameSpacing</h3><pre><code>public const uint RightBarFrameSpacing = 4150985318</code></pre></article><article class="reference-member" id="constant-top-bar-frame-spacing"><header><span class="reference-kind">constant</span><a href="#constant-top-bar-frame-spacing" aria-label="Link to TopBarFrameSpacing">#</a></header><h3>TopBarFrameSpacing</h3><pre><code>public const uint TopBarFrameSpacing = 4150985319</code></pre></article><article class="reference-member" id="constant-bottom-bar-frame-spacing"><header><span class="reference-kind">constant</span><a href="#constant-bottom-bar-frame-spacing" aria-label="Link to BottomBarFrameSpacing">#</a></header><h3>BottomBarFrameSpacing</h3><pre><code>public const uint BottomBarFrameSpacing = 4150985320</code></pre></article><article class="reference-member" id="constant-horiz-text-gfx-spacing"><header><span class="reference-kind">constant</span><a href="#constant-horiz-text-gfx-spacing" aria-label="Link to HorizTextGfxSpacing">#</a></header><h3>HorizTextGfxSpacing</h3><pre><code>public const uint HorizTextGfxSpacing = 4150985321</code></pre></article><article class="reference-member" id="constant-vert-text-gfx-spacing"><header><span class="reference-kind">constant</span><a href="#constant-vert-text-gfx-spacing" aria-label="Link to VertTextGfxSpacing">#</a></header><h3>VertTextGfxSpacing</h3><pre><code>public const uint VertTextGfxSpacing = 4150985322</code></pre></article><article class="reference-member" id="constant-precision"><header><span class="reference-kind">constant</span><a href="#constant-precision" aria-label="Link to Precision">#</a></header><h3>Precision</h3><pre><code>public const uint Precision = 4150985323</code></pre></article><article class="reference-member" id="constant-scale"><header><span class="reference-kind">constant</span><a href="#constant-scale" aria-label="Link to Scale">#</a></header><h3>Scale</h3><pre><code>public const uint Scale = 4150985325</code></pre></article><article class="reference-member" id="constant-dis-mode"><header><span class="reference-kind">constant</span><a href="#constant-dis-mode" aria-label="Link to DisMode">#</a></header><h3>DisMode</h3><pre><code>public const uint DisMode = 4150985326</code></pre></article><article class="reference-member" id="constant-special-select"><header><span class="reference-kind">constant</span><a href="#constant-special-select" aria-label="Link to SpecialSelect">#</a></header><h3>SpecialSelect</h3><pre><code>public const uint SpecialSelect = 4150985327</code></pre></article><article class="reference-member" id="constant-text-over-use-shine"><header><span class="reference-kind">constant</span><a href="#constant-text-over-use-shine" aria-label="Link to TextOverUseShine">#</a></header><h3>TextOverUseShine</h3><pre><code>public const uint TextOverUseShine = 4150985328</code></pre></article><article class="reference-member" id="constant-ignore-sel-images"><header><span class="reference-kind">constant</span><a href="#constant-ignore-sel-images" aria-label="Link to IgnoreSelImages">#</a></header><h3>IgnoreSelImages</h3><pre><code>public const uint IgnoreSelImages = 4150985329</code></pre></article><article class="reference-member" id="constant-ignore-dis-images"><header><span class="reference-kind">constant</span><a href="#constant-ignore-dis-images" aria-label="Link to IgnoreDisImages">#</a></header><h3>IgnoreDisImages</h3><pre><code>public const uint IgnoreDisImages = 4150985330</code></pre></article><article class="reference-member" id="constant-dont-move"><header><span class="reference-kind">constant</span><a href="#constant-dont-move" aria-label="Link to DontMove">#</a></header><h3>DontMove</h3><pre><code>public const uint DontMove = 4150985331</code></pre></article><article class="reference-member" id="constant-mouse-over"><header><span class="reference-kind">constant</span><a href="#constant-mouse-over" aria-label="Link to MouseOver">#</a></header><h3>MouseOver</h3><pre><code>public const uint MouseOver = 4150985332</code></pre></article><article class="reference-member" id="constant-nt-raise-active"><header><span class="reference-kind">constant</span><a href="#constant-nt-raise-active" aria-label="Link to NtRaiseActive">#</a></header><h3>NtRaiseActive</h3><pre><code>public const uint NtRaiseActive = 4150985333</code></pre></article><article class="reference-member" id="constant-spacers-size"><header><span class="reference-kind">constant</span><a href="#constant-spacers-size" aria-label="Link to SpacersSize">#</a></header><h3>SpacersSize</h3><pre><code>public const uint SpacersSize = 4150985334</code></pre></article><article class="reference-member" id="constant-appearance"><header><span class="reference-kind">constant</span><a href="#constant-appearance" aria-label="Link to Appearance">#</a></header><h3>Appearance</h3><pre><code>public const uint Appearance = 4150985335</code></pre></article><article class="reference-member" id="constant-ignore-appearance"><header><span class="reference-kind">constant</span><a href="#constant-ignore-appearance" aria-label="Link to IgnoreAppearance">#</a></header><h3>IgnoreAppearance</h3><pre><code>public const uint IgnoreAppearance = 4150985336</code></pre></article><article class="reference-member" id="constant-hovered-button"><header><span class="reference-kind">constant</span><a href="#constant-hovered-button" aria-label="Link to HoveredButton">#</a></header><h3>HoveredButton</h3><pre><code>public const uint HoveredButton = 4150985337</code></pre></article><article class="reference-member" id="method-new"><header><span class="reference-kind">method</span><a href="#method-new" aria-label="Link to New">#</a></header><h3>New</h3><pre><code>public static uint New(uint tags)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>tags</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article><article class="reference-member" id="method-do"><header><span class="reference-kind">method</span><a href="#method-do" aria-label="Link to Do">#</a></header><h3>Do</h3><pre><code>public static uint Do(uint obj, uint message)</code></pre><div class="reference-parameters"><h4>Parameters</h4><dl><div><dt><code>obj</code><span>uint</span></dt><dd>No description provided.</dd></div><div><dt><code>message</code><span>uint</span></dt><dd>No description provided.</dd></div></dl></div></article></section></div></article><footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer></main></body></html>
