@@ -27,7 +27,8 @@ public sealed class M68kAggregateReturnForwardingExecutionTests
 		new("Discarded", 0x31), new("ByrefLocal", 0x31), new("RawLocal", 0x31),
 		new("ApointerLocal", 0x31), new("DirectByref", 0x31), new("DirectRaw", 0x31),
 		new("DirectApointer", 0x31), new("DirectNative", 0x31), new("ManyArguments", 0x31),
-		new("PrivateWithPlatform", 0x31), new("PrivatePassedByValue", 0x31)
+		new("FourStackArguments", 0x31), new("PrivateWithPlatform", 0x31),
+		new("PrivatePassedByValue", 0x31)
 	];
 
 	[Theory]
@@ -118,7 +119,11 @@ public sealed class M68kAggregateReturnForwardingExecutionTests
 		var lowerStackGuard = bus.Memory.AsSpan((int)StackBottom - 16, 16).ToArray();
 		var upperStackGuard = bus.Memory.AsSpan((int)stack + 4, 256).ToArray();
 		var target = Method(compilation, scenario.Method);
-		var watched = new[] { "Make", "MakeWithPlatform", "MakeMany", "RewriteByref", "RewriteRaw", "RewriteApointer", "RewriteNative" }
+		var watched = new[]
+		{
+			"Make", "MakeWithPlatform", "MakeMany", "MakeWithFourStackArguments",
+			"RewriteByref", "RewriteRaw", "RewriteApointer", "RewriteNative"
+		}
 			.Select(name => (Name: name, Symbol: Method(compilation, name)))
 			.GroupBy(static item => item.Symbol.Address)
 			.ToDictionary(static group => LoadAddress + group.Key,
@@ -152,7 +157,9 @@ public sealed class M68kAggregateReturnForwardingExecutionTests
 			}
 			if (watched.TryGetValue(cpu.State.ProgramCounter, out var names))
 			{
-				var explicitStackBytes = names.Contains("MakeMany") ? 4u : 0;
+				var explicitStackBytes = names.Contains("MakeWithFourStackArguments")
+					? 16u
+					: names.Contains("MakeMany") ? 4u : 0;
 				calls.Add(new Invocation(names, cpu.State.A[7],
 					bus.ReadLong(cpu.State.A[7] + 4 + explicitStackBytes),
 					names.Contains("RewriteNative") ? cpu.State.D[0] : cpu.State.A[0]));
@@ -201,10 +208,12 @@ public sealed class M68kAggregateReturnForwardingExecutionTests
 	{
 		var makes = calls.Where(static call => call.Methods.Contains("Make")).ToArray();
 		Assert.NotEmpty(makes);
-		var directlyReturned = scenario.Method is "Immediate" or "Multiple" || scenario.Method == "Mixed" && scenario.Seed == 0;
+		var directlyReturned = scenario.Method is
+			"Immediate" or "Multiple" or "Mixed" or "ManyArguments" or "FourStackArguments";
 		if (directlyReturned)
 		{
-			Assert.Equal(output, Assert.Single(makes).ReturnBuffer);
+			Assert.True(output == Assert.Single(makes).ReturnBuffer,
+				$"{context}: Make returned into ${Assert.Single(makes).ReturnBuffer:X8}, expected ${output:X8}.");
 		}
 		if (scenario.Method is "Private" or "Repeated" or "PrivatePassedByValue")
 		{
@@ -229,14 +238,25 @@ public sealed class M68kAggregateReturnForwardingExecutionTests
 		{
 			Assert.Equal(2, makes.Length);
 			Assert.NotEqual(output, makes[0].ReturnBuffer);
-			Assert.Equal(output, makes[1].ReturnBuffer);
+			if (makes[1].ReturnBuffer != output)
+			{
+				AssertFrameAddress(makes[1].ReturnBuffer, stack, context);
+				if (outlineCopies)
+					Assert.Contains(copies, copy => copy.Source == makes[1].ReturnBuffer &&
+						copy.Destination == output);
+			}
 		}
 		if (scenario.Method == "ManyArguments" || scenario.Method == "Mixed" && scenario.Seed != 0)
 		{
 			var many = Assert.Single(calls, static call => call.Methods.Contains("MakeMany"));
-			Assert.NotEqual(output, many.ReturnBuffer);
+			Assert.Equal(output, many.ReturnBuffer);
 			Assert.Equal(many.ReturnBuffer, Assert.Single(makes).ReturnBuffer);
-			Assert.True(stack - many.StackPointer - 12 >= PacketBytes, context);
+		}
+		if (scenario.Method == "FourStackArguments")
+		{
+			var four = Assert.Single(calls, static call => call.Methods.Contains("MakeWithFourStackArguments"));
+			Assert.Equal(output, four.ReturnBuffer);
+			Assert.Equal(four.ReturnBuffer, Assert.Single(makes).ReturnBuffer);
 		}
 		foreach (var alias in calls.Where(call => call.Methods.Any(static name => name.StartsWith("Rewrite", StringComparison.Ordinal))))
 		{
@@ -256,6 +276,7 @@ public sealed class M68kAggregateReturnForwardingExecutionTests
 		{
 			"Multiple" or "Mixed" when scenario.Seed == 0 => 7u,
 			"Mixed" or "ManyArguments" => scenario.Seed + 10,
+			"FourStackArguments" => scenario.Seed + 28,
 			"Repeated" or "Discarded" => scenario.Seed + 1,
 			"ByrefLocal" or "RawLocal" or "ApointerLocal" => scenario.Seed * 2 + 1,
 			"DirectByref" or "DirectRaw" or "DirectApointer" or "DirectNative" => scenario.Seed + 0x23,
@@ -327,6 +348,7 @@ public static class AggregateForwardingExecutionFixture
 		12 => Sum(DirectNative(0x31000, 0x31)),
 		13 => Sum(ManyArguments(0x31)),
 		14 => Sum(PrivateWithPlatform(ref *(Platform*)0x31000, 0x31)),
+		15 => Sum(FourStackArguments(0x31)),
 		_ => Sum(PrivatePassedByValue(0x31))
 	};
 
@@ -393,7 +415,23 @@ public static class AggregateForwardingExecutionFixture
 		Make(first + second + third + fourth + fifth);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static Packet MakeWithFourStackArguments(
+		uint first,
+		uint second,
+		uint third,
+		uint fourth,
+		uint fifth,
+		uint sixth,
+		uint seventh,
+		uint eighth) =>
+		Make(first + second + third + fourth + fifth + sixth + seventh + eighth);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static Packet ManyArguments(uint seed) => MakeMany(seed, 1, 2, 3, 4);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static Packet FourStackArguments(uint seed) =>
+		MakeWithFourStackArguments(seed, 1, 2, 3, 4, 5, 6, 7);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static unsafe Packet RewriteByref(ref Packet previous, uint seed)

@@ -316,8 +316,12 @@ public struct FileHandle
 	public int Functions;
 	public int Function2;
 	public int Function3;
-	public int Arguments;
 	public int Argument1;
+	public int Argument2;
+
+	// NDK 3.1 dosextens.h aliases fh_Arg1 to fh_Args at byte 36.
+	// Keep the older SDK spelling as an alias, without adding a guest field.
+	public int Arguments { readonly get => Argument1; set => Argument1 = value; }
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 2, Size = 48)]

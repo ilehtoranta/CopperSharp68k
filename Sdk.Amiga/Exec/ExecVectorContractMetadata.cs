@@ -189,6 +189,7 @@ public static class ExecVectorContractMetadata
 			case ExecLvo.DumpTaskState:
 			case ExecLvo.NewGetTaskPIDAttrsA:
 			case ExecLvo.NewSetTaskPIDAttrsA:
+			case ExecLvo.FindTaskByPID:
 				profiles = ExecAbiProfileMask.MorphOsM68k;
 				return true;
 

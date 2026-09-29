@@ -114,6 +114,16 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] FileMode accessMode);
 
+	/// <summary>
+	/// Raw Open result for resident callers that must distinguish the classic
+	/// zero BPTR directly without introducing nullable-value runtime support.
+	/// </summary>
+	[AmigaLvo(DosLvo.Open)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern BPTR OpenRaw(
+		[M68kRegister(M68kRegister.D1)] CString name,
+		[M68kRegister(M68kRegister.D2)] FileMode accessMode);
+
 	[AmigaLvo(DosLvo.Close)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern int Close(
@@ -165,6 +175,16 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] CString name,
 		[M68kRegister(M68kRegister.D2)] LockMode type);
 
+	/// <summary>
+	/// Raw Lock result for resident callers that must test a zero BPTR without
+	/// introducing nullable-value runtime support.
+	/// </summary>
+	[AmigaLvo(DosLvo.Lock)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern BPTR LockRaw(
+		[M68kRegister(M68kRegister.D1)] CString name,
+		[M68kRegister(M68kRegister.D2)] LockMode type);
+
 	[AmigaLvo(DosLvo.UnLock)]
 	public static extern void UnLock(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
@@ -192,14 +212,32 @@ public static class DOS
 		[M68kRegister(M68kRegister.D1)] BPTR lock_,
 		[M68kRegister(M68kRegister.D2), M68kWritesEntireBuffer] APTR parameterBlock);
 
-	[AmigaLvo(-120)]
+	[AmigaLvo(DosLvo.CreateDir)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? CreateDir(
+		[M68kRegister(M68kRegister.D1)] CString name);
+
+	/// <summary>
+	/// Raw CreateDir result for resident callers that must test a zero BPTR
+	/// without introducing nullable-value runtime support.
+	/// </summary>
+	[AmigaLvo(DosLvo.CreateDirRaw)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern BPTR CreateDirRaw(
 		[M68kRegister(M68kRegister.D1)] CString name);
 
 	[AmigaLvo(DosLvo.CurrentDir)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? CurrentDir(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
+
+	/// <summary>
+	/// Raw CurrentDir result for resident callers that must test a zero BPTR
+	/// without introducing nullable-value runtime support.
+	/// </summary>
+	[AmigaLvo(DosLvo.CurrentDir)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern BPTR CurrentDirRaw(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(DosLvo.IoErr)]
@@ -262,6 +300,15 @@ public static class DOS
 	[AmigaLvo(DosLvo.ParentDir)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern BPTR? ParentDir(
+		[M68kRegister(M68kRegister.D1)] BPTR lock_);
+
+	/// <summary>
+	/// Raw ParentDir result for resident callers that must test a zero BPTR
+	/// without introducing nullable-value runtime support.
+	/// </summary>
+	[AmigaLvo(DosLvo.ParentDir)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern BPTR ParentDirRaw(
 		[M68kRegister(M68kRegister.D1)] BPTR lock_);
 
 	[AmigaLvo(DosLvo.IsInteractive)]

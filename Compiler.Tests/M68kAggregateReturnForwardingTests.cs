@@ -214,19 +214,21 @@ public sealed class M68kAggregateReturnForwardingTests
 	}
 
 	[Fact]
-	public void UnforwardedExitKeepsSharedTemporaryAndOriginalReturnCopy()
+	public void ScalarStackArgumentsLetBothExitsReleaseSharedTemporary()
 	{
 		using var fixture = Build(nameof(AggregateReturnForwardingFixture.MixedReturns));
 		var sharedTemporary = Assert.Single(fixture.Function.ReusableAggregateReturnHomes);
 
 		var result = M68kAggregateReturnForwarding.Run(fixture.Function, fixture.Module);
 
-		Assert.True(result.ReturnBuffersForwarded == 1, $"{result}{Environment.NewLine}{Dump(fixture.Function)}");
-		Assert.Equal(0, result.TemporaryHomesRemoved);
-		Assert.Contains(sharedTemporary.Value, fixture.Function.LocalHomes.Keys);
+		Assert.True(result.ReturnBuffersForwarded == 2, $"{result}{Environment.NewLine}{Dump(fixture.Function)}");
+		Assert.Equal(1, result.TemporaryHomesRemoved);
+		Assert.Equal(80, result.TemporaryBytesRemoved);
+		Assert.DoesNotContain(sharedTemporary.Value, fixture.Function.LocalHomes.Keys);
+		Assert.Empty(fixture.Function.ReusableAggregateReturnHomes);
 		var returns = Instructions(fixture.Function).Where(static instruction => instruction.Operation == M68kMachineOperation.Return).ToArray();
-		Assert.Single(returns, static instruction => instruction.ReturnBufferWritten);
-		Assert.Single(returns, static instruction => !instruction.ReturnBufferWritten && instruction.Uses.Length == 1);
+		Assert.Equal(2, returns.Length);
+		Assert.All(returns, static instruction => Assert.True(instruction.ReturnBufferWritten));
 		M68kMachineIrVerifier.Verify(fixture.Function);
 	}
 
@@ -238,12 +240,105 @@ public sealed class M68kAggregateReturnForwardingTests
 	[InlineData(nameof(AggregateReturnForwardingFixture.ImmediateNativePointerReturn))]
 	[InlineData(nameof(AggregateReturnForwardingFixture.ImmediateApointerReturn))]
 	[InlineData(nameof(AggregateReturnForwardingFixture.SameCallRawPointerAlias))]
-	[InlineData(nameof(AggregateReturnForwardingFixture.ManyArgumentsReturn))]
 	[InlineData(nameof(AggregateReturnForwardingFixture.ExceptionObservedLocal))]
 	public void UnprovenDestinationsKeepSnapshotAndMetadataUnchanged(string entry)
 	{
 		using var fixture = Build(entry);
 		var before = Instructions(fixture.Function);
+		var homes = fixture.Function.LocalHomes.ToArray();
+		var values = fixture.Function.Values.ToArray();
+
+		var result = M68kAggregateReturnForwarding.Run(fixture.Function, fixture.Module);
+
+		Assert.False(result.Changed);
+		Assert.Equal(before, Instructions(fixture.Function));
+		Assert.Equal(homes, fixture.Function.LocalHomes.ToArray());
+		Assert.Equal(values, fixture.Function.Values.ToArray());
+		M68kMachineIrVerifier.Verify(fixture.Function);
+	}
+
+	[Fact]
+	public void ScalarStackArgumentsPermitImmediateReturnForwarding()
+	{
+		using var fixture = Build(nameof(AggregateReturnForwardingFixture.ManyArgumentsReturn));
+		var before = Instructions(fixture.Function);
+		var cleanup = Assert.Single(before, static instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentCleanup);
+		Assert.True(cleanup.ArgumentIndex > 4);
+		var pushCount = before.Count(static instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentPush);
+		var temporary = Assert.Single(fixture.Function.LocalHomes,
+			item => item.Key >= fixture.Method.Locals.Length);
+
+		var result = M68kAggregateReturnForwarding.Run(fixture.Function, fixture.Module);
+
+		Assert.Equal(1, result.ReturnBuffersForwarded);
+		Assert.Equal(0, result.LocalsForwarded);
+		Assert.Equal(1, result.TemporaryHomesRemoved);
+		Assert.Equal(80, result.TemporaryBytesRemoved);
+		Assert.DoesNotContain(temporary.Key, fixture.Function.LocalHomes.Keys);
+		var after = Instructions(fixture.Function);
+		Assert.Equal(pushCount, after.Count(static instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentPush));
+		Assert.Contains(after, instruction => instruction.Id == cleanup.Id &&
+			instruction.ArgumentIndex == cleanup.ArgumentIndex);
+		var address = Assert.Single(after, static instruction =>
+			instruction.Operation == M68kMachineOperation.ReturnBufferAddress);
+		Assert.Single(after, instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentPush &&
+			instruction.Uses.Contains(address.Definitions[0]));
+		var returned = Assert.Single(after, static instruction =>
+			instruction.Operation == M68kMachineOperation.Return);
+		Assert.True(returned.ReturnBufferWritten);
+		Assert.Empty(returned.Uses);
+		M68kMachineIrVerifier.Verify(fixture.Function);
+	}
+
+	[Fact]
+	public void FourScalarStackArgumentsPermitImmediateReturnForwarding()
+	{
+		using var fixture = Build(nameof(AggregateReturnForwardingFixture.FourScalarStackArgumentsReturn));
+		var before = Instructions(fixture.Function);
+		var cleanup = Assert.Single(before, static instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentCleanup);
+		Assert.Equal(20, cleanup.ArgumentIndex);
+		var pushes = before.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentPush).ToArray();
+		Assert.Equal(5, pushes.Length);
+		Assert.All(pushes, static push => Assert.Equal(4, push.ArgumentIndex));
+		Assert.Equal(4, pushes.Count(push =>
+			fixture.Function.Values[Assert.Single(push.Uses)].Kind != CilStackValueKind.AggregateAddress));
+		var temporary = Assert.Single(fixture.Function.LocalHomes,
+			item => item.Key >= fixture.Method.Locals.Length);
+
+		var result = M68kAggregateReturnForwarding.Run(fixture.Function, fixture.Module);
+
+		Assert.Equal(1, result.ReturnBuffersForwarded);
+		Assert.Equal(0, result.LocalsForwarded);
+		Assert.Equal(1, result.TemporaryHomesRemoved);
+		Assert.Equal(80, result.TemporaryBytesRemoved);
+		Assert.DoesNotContain(temporary.Key, fixture.Function.LocalHomes.Keys);
+		var after = Instructions(fixture.Function);
+		Assert.Equal(pushes.Select(static push => push.Id), after.Where(static instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentPush).Select(static push => push.Id));
+		Assert.Contains(after, instruction => instruction.Id == cleanup.Id &&
+			instruction.ArgumentIndex == 20);
+		var returned = Assert.Single(after, static instruction =>
+			instruction.Operation == M68kMachineOperation.Return);
+		Assert.True(returned.ReturnBufferWritten);
+		Assert.Empty(returned.Uses);
+		M68kMachineIrVerifier.Verify(fixture.Function);
+	}
+
+	[Fact]
+	public void ByValueAggregateStackArgumentKeepsSnapshotAndMetadataUnchanged()
+	{
+		using var fixture = Build(nameof(AggregateReturnForwardingFixture.AggregateStackArgumentReturn));
+		var before = Instructions(fixture.Function);
+		Assert.Contains(before, instruction =>
+			instruction.Operation == M68kMachineOperation.OutgoingArgumentPush &&
+			instruction.ArgumentIndex == 8 &&
+			fixture.Function.Values[Assert.Single(instruction.Uses)].Kind == CilStackValueKind.AggregateAddress);
 		var homes = fixture.Function.LocalHomes.ToArray();
 		var values = fixture.Function.Values.ToArray();
 
@@ -425,6 +520,12 @@ public static class AggregateReturnForwardingFixture
 		public uint Value;
 	}
 
+	public struct Pair
+	{
+		public uint First;
+		public uint Second;
+	}
+
 	private static nuint _escaped;
 	private static uint _observed;
 
@@ -456,6 +557,14 @@ public static class AggregateReturnForwardingFixture
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static Packet MakeMany(uint a, uint b, uint c, uint d, uint e) => Make(a + b + c + d + e);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static Packet MakeEight(uint a, uint b, uint c, uint d, uint e, uint f, uint g, uint h) =>
+		Make(a + b + c + d + e + f + g + h);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static Packet MakeWithAggregate(uint a, uint b, uint c, uint d, Pair value) =>
+		Make(a + b + c + d + value.First + value.Second);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint Consume(Packet value) => value.First + value.Last;
@@ -580,6 +689,15 @@ public static class AggregateReturnForwardingFixture
 	}
 
 	public static Packet ManyArgumentsReturn(uint seed) => MakeMany(seed, 1, 2, 3, 4);
+
+	public static Packet FourScalarStackArgumentsReturn(uint seed) =>
+		MakeEight(seed, 1, 2, 3, 4, 5, 6, 7);
+
+	public static Packet AggregateStackArgumentReturn(uint seed)
+	{
+		var value = new Pair { First = 4, Second = 5 };
+		return MakeWithAggregate(seed, 1, 2, 3, value);
+	}
 
 	public static uint ExceptionObservedLocal(uint seed)
 	{

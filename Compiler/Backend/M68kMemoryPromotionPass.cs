@@ -344,7 +344,27 @@ internal static class M68kMemoryPromotionPass
 					0),
 				_ => M68kMachineConstant.Int32(0)
 			};
-		entry.Instructions.Insert(0, function.CreateInstruction(
+		// The allocated prologue materializes incoming arguments before body
+		// instructions. Keep their SSA definitions and canonical copies ahead of
+		// these seeds as well, so even a retained, unused seed cannot be assigned
+		// a register holding an incoming value whose SSA lifetime starts later.
+		var incomingValues = entry.Instructions
+			.Where(static instruction => instruction.Operation == M68kMachineOperation.Argument)
+			.SelectMany(static instruction => instruction.Definitions)
+			.ToHashSet();
+		var insertionIndex = 0;
+		while (insertionIndex < entry.Instructions.Count)
+		{
+			var instruction = entry.Instructions[insertionIndex];
+			if (instruction.Operation != M68kMachineOperation.Argument &&
+				!(instruction.Operation == M68kMachineOperation.Copy &&
+				  instruction.IlOffset == entry.StartIlOffset &&
+				  instruction.Uses is [var source] && incomingValues.Contains(source) &&
+				  instruction.Definitions.Length == 1))
+				break;
+			insertionIndex++;
+		}
+		entry.Instructions.Insert(insertionIndex, function.CreateInstruction(
 			M68kMachineOperation.Constant,
 			Math.Max(0, entry.StartIlOffset),
 			definitions: [value.Id],

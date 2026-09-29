@@ -104,6 +104,7 @@ internal static class M68kAllocatedFramePlanner
 			.Select(static location => location.Value)
 			.SelectMany(static location =>
 				location.OccupiedRegisters.Enumerate())
+			.Concat(parallelCopies.ReferencedRegisters)
 			.Concat(function.Blocks
 				.SelectMany(static block => block.Instructions)
 				.SelectMany(static instruction =>

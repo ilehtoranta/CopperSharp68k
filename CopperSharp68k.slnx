@@ -4,6 +4,7 @@
   <Project Path="Compiler.BootAdf/CopperSharp.Compiler.BootAdf.csproj" />
   <Project Path="Compiler.Tests/CopperSharp.Compiler.Tests.csproj" />
   <Project Path="Compiler.Tests.FunctionAddressFixtures/CopperSharp.Compiler.Tests.FunctionAddressFixtures.csproj" />
+  <Project Path="Compiler.Tests.PromotedLocalFixture/CopperSharp.Compiler.Tests.PromotedLocalFixture.csproj" />
   <Project Path="Compiler.Tests.WinUaeFixture/CopperSharp.Compiler.Tests.WinUaeFixture.csproj" />
   <Project Path="Compiler.Tests.MultiModule/CopperSharp.Compiler.Tests.MultiModule.csproj" />
   <Project Path="Runtime.Managed/CopperSharp.Runtime.Managed.csproj" />

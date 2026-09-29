@@ -1523,6 +1523,21 @@ public sealed class M68kRegisterAllocationTests
 			static copy =>
 				copy.Destination ==
 					M68kStorageLocation.Register(M68kRegister.D2));
+
+		var frame = M68kAllocatedFramePlanner.Create(
+			function,
+			allocation,
+			new M68kSpillLayout(
+				new Dictionary<int, M68kSpillSlot>(),
+				new HashSet<int>(),
+				FrameBytes: 0),
+			new M68kSafepointPlan(
+				[],
+				new Dictionary<int, int>(),
+				FirstRootSlot: 0,
+				RootSlotCount: 0),
+			plan);
+		Assert.Equal([M68kRegister.D2], frame.CalleeSavedRegisters);
 	}
 
 	[Fact]

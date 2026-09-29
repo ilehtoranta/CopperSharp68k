@@ -4938,20 +4938,26 @@ internal sealed partial class M68kCodeGenerator
 				throw new InvalidOperationException(
 					$"Allocated argument home {home.Index} has unsupported size {home.Size}.");
 			}
+			// The home address denotes the managed byte/word, not the high
+			// byte of a widened ABI longword on this big-endian target.
+			var homeWidth = AllocatedFrameStorageWidth(
+				TypeForArgument(method, home.Index), M68kMachineValueWidth.Long);
 			if (source.Register is null)
 			{
 				// MC68000 MOVE supports memory-to-memory copies. No implicit D7
 				// scratch (or temporary stack-depth adjustment) is needed here.
 				EmitAllocatedIncomingStackToFrame(
-					checked(savedBytes + 4 + source.StackOffset),
+					checked(savedBytes + 4 + source.StackOffset +
+						(homeWidth == M68kMachineValueWidth.Byte ? 3 :
+						 homeWidth == M68kMachineValueWidth.Word ? 2 : 0)),
 					AllocatedFrameOffset(
 						allocated,
-						allocated.Frame.ArgumentHomeOffsets[home.Index]));
+						allocated.Frame.ArgumentHomeOffsets[home.Index]), homeWidth);
 				continue;
 			}
 			EmitAllocatedFrameStore(
 				source.Register.Value,
-				M68kMachineValueWidth.Long,
+				homeWidth,
 				AllocatedFrameOffset(
 					allocated,
 					allocated.Frame.ArgumentHomeOffsets[home.Index]));
@@ -5983,6 +5989,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (definition.ImportName is
 			"intrinsic:copperstart-probe-cpu" or
+			"intrinsic:m68k-read-stack-pointer" or
 			"intrinsic:copperstart-disable-rom-overlay" or
 			"intrinsic:copperstart-disable-interrupts" or
 			"intrinsic:copperstart-restore-interrupts" or
@@ -6234,6 +6241,17 @@ internal sealed partial class M68kCodeGenerator
 		if (name == "intrinsic:copperstart-probe-cpu")
 		{
 			EmitCopperStartCpuProbeAllocated(Definition());
+			return;
+		}
+		if (name == "intrinsic:m68k-read-stack-pointer")
+		{
+			var destination = Definition();
+			if (destination > M68kRegister.D7)
+			{
+				throw new InvalidOperationException(
+					"Current stack pointer capture requires a data register.");
+			}
+			_assembler.EmitWord((ushort)(0x200F | ((int)destination << 9)));
 			return;
 		}
 		if (name.StartsWith(
@@ -12144,7 +12162,8 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitAllocatedIncomingStackToFrame(
 		int sourceDisplacement,
-		int destinationDisplacement)
+		int destinationDisplacement,
+		M68kMachineValueWidth width = M68kMachineValueWidth.Long)
 	{
 		if (sourceDisplacement is < 0 or > short.MaxValue)
 		{
@@ -12152,9 +12171,16 @@ internal sealed partial class M68kCodeGenerator
 				"Allocated stack argument exceeds d16(A7) range.");
 		}
 		ValidateAllocatedFrameDisplacement(destinationDisplacement);
-		_assembler.EmitWord((ushort)(UsesAllocatedFrameAnchor
-			? 0x2B6F // MOVE.L d16(A7),d16(A5)
-			: 0x2F6F)); // MOVE.L d16(A7),d16(A7)
+		var sizeBits = width switch
+		{
+			M68kMachineValueWidth.Byte => 0x1000,
+			M68kMachineValueWidth.Word => 0x3000,
+			M68kMachineValueWidth.Long => 0x2000,
+			_ => throw new InvalidOperationException("Unsupported incoming argument copy width.")
+		};
+		_assembler.EmitWord((ushort)(sizeBits | (UsesAllocatedFrameAnchor
+			? 0x0B6F // MOVE d16(A7),d16(A5)
+			: 0x0F6F))); // MOVE d16(A7),d16(A7)
 		_assembler.EmitWord(unchecked((ushort)(short)sourceDisplacement));
 		_assembler.EmitWord(unchecked((ushort)(short)destinationDisplacement));
 	}

@@ -1477,8 +1477,8 @@ public static class DosFileHandleCodec
 		Functions = S(ref memory, address, DosLayout.FileHandle.Functions),
 		Function2 = S(ref memory, address, DosLayout.FileHandle.Function2),
 		Function3 = S(ref memory, address, DosLayout.FileHandle.Function3),
-		Arguments = S(ref memory, address, DosLayout.FileHandle.Arguments),
 		Argument1 = S(ref memory, address, DosLayout.FileHandle.Argument1),
+		Argument2 = S(ref memory, address, DosLayout.FileHandle.Argument2),
 	};
 
 	public static void Write<TMemory>(ref TMemory memory, APTR address,
@@ -1493,8 +1493,8 @@ public static class DosFileHandleCodec
 		W(ref memory, address, DosLayout.FileHandle.Functions, value.Functions);
 		W(ref memory, address, DosLayout.FileHandle.Function2, value.Function2);
 		W(ref memory, address, DosLayout.FileHandle.Function3, value.Function3);
-		W(ref memory, address, DosLayout.FileHandle.Arguments, value.Arguments);
 		W(ref memory, address, DosLayout.FileHandle.Argument1, value.Argument1);
+		W(ref memory, address, DosLayout.FileHandle.Argument2, value.Argument2);
 	}
 
 	public static void WritePosition<TMemory>(ref TMemory memory, APTR address,

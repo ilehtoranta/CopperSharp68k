@@ -1438,6 +1438,13 @@ public static class CompilerFixtures
 		return ImportedValue() + 8;
 	}
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint CurrentStackPointerIntrinsicEntry() =>
+		ReadCurrentStackPointerIntrinsic();
+
+	[M68kImport("intrinsic:m68k-read-stack-pointer")]
+	public static extern uint ReadCurrentStackPointerIntrinsic();
+
 	[M68kImport("fixture.value")]
 	public static extern int ImportedValue();
 

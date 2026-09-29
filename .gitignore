@@ -527,3 +527,6 @@ benchmark-results
 *.map
 .codex-temp
 *.asm
+
+# The website is maintained as an independent Git repository.
+/website/

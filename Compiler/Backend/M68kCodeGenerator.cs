@@ -2299,6 +2299,7 @@ internal sealed partial class M68kCodeGenerator
 		if (definition.IsImport &&
 			definition.ImportName is not
 				("intrinsic:copperstart-probe-cpu" or
+				 "intrinsic:m68k-read-stack-pointer" or
 				 "intrinsic:copperstart-disable-rom-overlay" or
 				 "intrinsic:copperstart-disable-interrupts" or
 				 "intrinsic:copperstart-restore-interrupts" or
@@ -3186,6 +3187,7 @@ internal sealed partial class M68kCodeGenerator
 		else if (definition.IsImport &&
 			definition.ImportName is not
 				("intrinsic:copperstart-probe-cpu" or
+				 "intrinsic:m68k-read-stack-pointer" or
 				 "intrinsic:copperstart-disable-rom-overlay" or
 				 "intrinsic:copperstart-disable-interrupts" or
 				 "intrinsic:copperstart-restore-interrupts" or
@@ -6262,6 +6264,11 @@ internal sealed partial class M68kCodeGenerator
 			EmitCopperStartCpuProbe(pushResult);
 			return;
 		}
+		if (target.ImportName == "intrinsic:m68k-read-stack-pointer")
+		{
+			EmitCurrentStackPointer(pushResult);
+			return;
+		}
 		if (target.ImportName == "intrinsic:copperstart-disable-rom-overlay")
 		{
 			EmitCopperStartDisableRomOverlay();
@@ -6829,6 +6836,15 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitCopperStartCpuProbe(bool pushResult)
 	{
 		EmitCopperStartCpuProbeCore();
+		if (pushResult)
+		{
+			EmitPushD0();
+		}
+	}
+
+	private void EmitCurrentStackPointer(bool pushResult)
+	{
+		_assembler.EmitWord(0x200F); // MOVE.L A7,D0
 		if (pushResult)
 		{
 			EmitPushD0();

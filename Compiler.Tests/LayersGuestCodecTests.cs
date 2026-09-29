@@ -181,6 +181,33 @@ public sealed class LayersGuestCodecTests
 	}
 
 	[Fact]
+	public void RastPortFlagsUseExactlyOneBigEndianWord()
+	{
+		var memory = new Memory(256);
+		var rastPort = APTR.FromPointer(32);
+		for (var offset = 0; offset < LayersRastPortCodec.Size; offset++)
+			memory.WriteUInt8(rastPort, offset, 0xA5);
+
+		memory.WriteUInt8(rastPort, GraphicsLayout.RastPort.Flags, 0x9B);
+		memory.WriteUInt8(rastPort, GraphicsLayout.RastPort.Flags + 1, 0x28);
+		Assert.Equal((RastPortFlags)0x9B28,
+			LayersRastPortCodec.ReadFlags(ref memory, rastPort));
+
+		// Unknown high bits are public data too: the typed codec must not mask
+		// them, reverse the two bytes, or overwrite neighboring RastPort fields.
+		const RastPortFlags flags = (RastPortFlags)0xC000 |
+			RastPortFlags.FirstDot | RastPortFlags.OneDot;
+		LayersRastPortCodec.WriteFlags(ref memory, rastPort, flags);
+		Assert.Equal(flags, LayersRastPortCodec.ReadFlags(ref memory, rastPort));
+		for (var offset = 0; offset < LayersRastPortCodec.Size; offset++)
+		{
+			var expected = offset == GraphicsLayout.RastPort.Flags ? (byte)0xC0 :
+				offset == GraphicsLayout.RastPort.Flags + 1 ? (byte)0x03 : (byte)0xA5;
+			Assert.Equal(expected, memory.ReadUInt8(rastPort, offset));
+		}
+	}
+
+	[Fact]
 	public void LayersPublicEnvelopesRoundTripNamedFields()
 	{
 		var memory = new Memory(4096);

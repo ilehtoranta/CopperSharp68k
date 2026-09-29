@@ -955,6 +955,14 @@ internal static class CilMachineIrBuilder
 		return method.Signature.ParameterTypes[argumentIndex];
 	}
 
+	private static bool IsTransparentScalarArgumentLoad(CilInstruction producer,
+		CilMethod method, CompilationModule module)
+	{
+		if (TryGetLoadArgumentIndex(producer, out var argument))
+			return module.IsTransparentScalarType(ArgumentType(method, argument));
+		return false;
+	}
+
 	private static int?[] CreateBlockLocalValues(
 		M68kMachineFunction function,
 		CilMethod method,
@@ -1577,9 +1585,9 @@ internal static class CilMachineIrBuilder
 					frameIndex = loadedArgument;
 				}
 				else if (function.ArgumentHomes.ContainsKey(loadedArgument) &&
-					function.Values[definitions[0]].Width == M68kMachineValueWidth.Long)
+					function.Values[definitions[0]].Width != M68kMachineValueWidth.LongPair)
 				{
-					// Taking a 32-bit parameter's address makes its home authoritative:
+					// Taking a scalar parameter's address makes its home authoritative:
 					// a callee may change it through that address. A copy of the
 					// incoming SSA value would keep observing the original value.
 					uses = [];
@@ -1805,7 +1813,26 @@ internal static class CilMachineIrBuilder
 					mayThrow: true,
 					sourceInstruction: instruction));
 			}
-			if (instruction.OpCode == OpCodes.Box)
+			if (instruction.OpCode == OpCodes.Ldfld &&
+				uses.Length == 1 && instructionIndex > 0 &&
+				module.ResolveFieldToken((int)instruction.Operand!, method,
+					instruction.Offset) is { } scalarField &&
+				module.IsTransparentScalarField(scalarField) &&
+				((stackKinds[^1] == CilStackValueKind.Int32 &&
+					TryGetLoadLocalIndex(state.Instructions[instructionIndex - 1], out _) &&
+					CilStackAnalyzer.StackKindForType(scalarField.Type) == CilStackValueKind.Int32) ||
+					IsTransparentScalarArgumentLoad(state.Instructions[instructionIndex - 1], method, module)))
+			{
+				// A by-value transparent local/parameter already carries the field
+				// payload, including pointer payloads copied into a larger record.
+				// Select it without dereferencing its contents. The producer's
+				// declared type excludes ref/out locals, parameters, and instance
+				// this; ldloca/ldarga also retain address-based field loads below.
+				state.Block.Instructions.Add(function.CreateInstruction(
+					M68kMachineOperation.Copy, instruction.Offset,
+					uses: uses, definitions: definitions));
+			}
+			else if (instruction.OpCode == OpCodes.Box)
 			{
 				AddConstrainedBox(
 					function,
@@ -4934,6 +4961,7 @@ internal static class CilMachineIrBuilder
 			IsNonThrowingMemoryIntrinsic(target.ImportName) ||
 				target.ImportName is
 				"intrinsic:copperstart-probe-cpu" or
+				"intrinsic:m68k-read-stack-pointer" or
 				"intrinsic:copperstart-disable-rom-overlay" or
 				"intrinsic:copperstart-disable-interrupts" or
 				"intrinsic:copperstart-restore-interrupts" or

@@ -303,6 +303,15 @@ public static class LayersRastPortCodec
 		where TMemory : struct, IAmigaGuestMemory => memory.ReadUInt8(address,
 		GraphicsLayout.RastPort.Mask);
 
+	public static RastPortFlags ReadFlags<TMemory>(ref TMemory memory,
+		APTR address)
+		where TMemory : struct, IAmigaGuestMemory => (RastPortFlags)
+		memory.ReadUInt16(address, GraphicsLayout.RastPort.Flags);
+	public static void WriteFlags<TMemory>(ref TMemory memory, APTR address,
+		RastPortFlags value)
+		where TMemory : struct, IAmigaGuestMemory => memory.WriteUInt16(address,
+		GraphicsLayout.RastPort.Flags, (ushort)value);
+
 	public static void WriteLinePattern<TMemory>(ref TMemory memory,
 		APTR address, ushort value)
 		where TMemory : struct, IAmigaGuestMemory => memory.WriteUInt16(address,

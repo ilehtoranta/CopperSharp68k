@@ -59,6 +59,32 @@ public sealed class DosLayoutTests
 	}
 
 	[Fact]
+	public void FileHandleHandlerCookieMatchesOriginalNdkByteLayout()
+	{
+		// Independent NDK 3.1 layout: fh_Args/fh_Arg1 at 36, fh_Arg2 at 40.
+		// Different raw cookies prevent a self-consistent but incorrect codec
+		// and structure definition from passing a round-trip-only check.
+		var memory = new Memory(512);
+		var address = APTR.FromPointer(0x100);
+		memory.WriteUInt32(address, 36, 0xA1B2_C3D4);
+		memory.WriteUInt32(address, 40, 0x2468_0040);
+		var handle = DosFileHandleCodec.Read(ref memory, address);
+		Assert.Equal(unchecked((int)0xA1B2_C3D4), handle.Argument1);
+		Assert.Equal(handle.Argument1, handle.Arguments);
+		Assert.Equal(0x2468_0040, handle.Argument2);
+		Assert.Equal(36, Marshal.OffsetOf<FileHandle>(nameof(FileHandle.Argument1)).ToInt32());
+		Assert.Equal(40, Marshal.OffsetOf<FileHandle>(nameof(FileHandle.Argument2)).ToInt32());
+		Assert.Equal(44, Marshal.SizeOf<FileHandle>());
+
+		handle.Arguments = 0x1357_0036;
+		Assert.Equal(handle.Arguments, handle.Argument1);
+		handle.Argument2 = unchecked((int)0xD4C3_B2A1);
+		DosFileHandleCodec.Write(ref memory, address, handle);
+		Assert.Equal(0x1357_0036u, memory.ReadUInt32(address, 36));
+		Assert.Equal(0xD4C3_B2A1u, memory.ReadUInt32(address, 40));
+	}
+
+	[Fact]
 	public void StandardPacketEmbedsMessageThenPacketWithoutHostPadding()
 	{
 		Assert.Equal(0, DosLayout.StandardPacket.Message);

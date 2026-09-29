@@ -108,9 +108,14 @@ public sealed class FramePreservationEmissionTests
 			[incoming.Id] = new(M68kRegister.D4, false)
 		}, new HashSet<int>());
 		var registers = M68kAllocatedPreservationAnalysis.RequiredRegisters(function, allocation,
-			[M68kRegister.D3, M68kRegister.D4, M68kRegister.D5, M68kRegister.A5],
-			new HashSet<int> { constant.Id }, new Dictionary<int, M68kRegisterSet>(), []);
-		Assert.Equal([M68kRegister.D3, M68kRegister.D4, M68kRegister.A5], registers);
+			[M68kRegister.D3, M68kRegister.D4, M68kRegister.D5,
+				M68kRegister.D7, M68kRegister.A5],
+			new HashSet<int> { constant.Id }, new Dictionary<int, M68kRegisterSet>(),
+			[M68kRegister.D7]);
+		Assert.Equal(
+			[M68kRegister.D3, M68kRegister.D4, M68kRegister.D7,
+				M68kRegister.A5],
+			registers);
 	}
 
 	private const uint LoadAddress = 0x10000, StackAddress = 0x80000, Sentinel = 0x1000;

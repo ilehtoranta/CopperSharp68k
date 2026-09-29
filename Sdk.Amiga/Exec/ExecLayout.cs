@@ -151,6 +151,26 @@ public static class ExecLayout
 		public const int UserData = 88;
 	}
 
+	public static class MorphOSTask
+	{
+		public const int ETask = 34;
+	}
+
+	public static class MorphOSETAsk
+	{
+		public const int Message = 0;
+		public const int Parent = 20;
+		public const int UniqueId = 24;
+		public const int Children = 28;
+		public const int TrapAllocated = 40;
+		public const int TrapEnabled = 42;
+		public const int Result1 = 44;
+		public const int Result2 = 48;
+		public const int MessagePort = 52;
+		public const uint Size = 86;
+		public const uint UniqueIdEnd = 28;
+	}
+
 	public static class StackSwapStruct
 	{
 		public const int Lower = 0;
@@ -267,6 +287,7 @@ public static class ExecLayout
 		public const int KickTagPtr = 550;
 		public const int KickCheckSum = 554;
 		public const int ExPad0 = 558;
+		public const int ExTaskId = 576;
 		public const int ExReserved1 = 580;
 		public const int ExMmuLock = 600;
 		public const int ExReserved2 = 604;

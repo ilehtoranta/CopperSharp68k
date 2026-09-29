@@ -20,6 +20,10 @@ public sealed class ArgumentHomeMutationTests
 			foreach (var entry in new[]
 			{
 				nameof(ArgumentHomeMutationFixture.ReadAfterMutation),
+				nameof(ArgumentHomeMutationFixture.BooleanRegisterHome),
+				nameof(ArgumentHomeMutationFixture.BooleanStackHome),
+				nameof(ArgumentHomeMutationFixture.ByteHomes),
+				nameof(ArgumentHomeMutationFixture.WordHomes),
 				nameof(ArgumentHomeMutationFixture.LoopAfterMutation),
 				nameof(ArgumentHomeMutationFixture.StackArgumentAfterMutation)
 			})
@@ -34,7 +38,14 @@ public sealed class ArgumentHomeMutationTests
 				M68kPeepholeOptimizationMode.FixedPoint,
 				M68kPeepholeOptimizationMode.Disabled
 			})
-				cases.Add(entry, target, model, mode);
+			{
+				// Copper68k 1.4.0 has no exact MC68020 timing for the valid
+				// MOVE.B d16(A7),(A7) selected by this particular case.
+				var executionModel = entry == nameof(ArgumentHomeMutationFixture.BooleanStackHome) &&
+					target == M68kCpuTarget.M68020 && mode == M68kPeepholeOptimizationMode.FixedPoint
+					? M68kCpuModel.M68040 : model;
+				cases.Add(entry, target, executionModel, mode);
+			}
 			return cases;
 		}
 	}
@@ -85,6 +96,90 @@ public sealed class ArgumentHomeMutationTests
 
 public static class ArgumentHomeMutationFixture
 {
+	public static uint ByteHomes() =>
+		CheckBytes(0xE1, -117, 3, 4, 0xA3, -93) ? 42u : 0u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool CheckBytes(byte a, sbyte b, uint c, uint d, byte e, sbyte f)
+	{
+		bool before = ReadByte(ref a) == 0xE1 && ReadSignedByte(ref b) == -117 &&
+			ReadByte(ref e) == 0xA3 && ReadSignedByte(ref f) == -93;
+		return before && a == 0x92 && b == -34 && e == 0x92 && f == -34 && c + d == 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadByte(ref byte value)
+	{
+		int result = value;
+		value = 0x92;
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadSignedByte(ref sbyte value)
+	{
+		int result = value;
+		value = -34;
+		return result;
+	}
+
+	public static uint WordHomes() =>
+		CheckWords(0xE123, -30117, 3, 4, 0xA345, -23093) ? 42u : 0u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool CheckWords(ushort a, short b, uint c, uint d, ushort e, short f)
+	{
+		bool before = ReadWord(ref a) == 0xE123 && ReadSignedWord(ref b) == -30117 &&
+			ReadWord(ref e) == 0xA345 && ReadSignedWord(ref f) == -23093;
+		return before && a == 0x9234 && b == -1234 && e == 0x9234 && f == -1234 && c + d == 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadWord(ref ushort value)
+	{
+		int result = value;
+		value = 0x9234;
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int ReadSignedWord(ref short value)
+	{
+		int result = value;
+		value = -1234;
+		return result;
+	}
+
+	public static uint BooleanRegisterHome() =>
+		ToggleParameter(true) == 1 && ToggleParameter(false) == 2 ? 42u : 0u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ToggleParameter(bool value)
+	{
+		uint before = ObserveAndToggle(ref value);
+		return before + (value ? 2u : 0u);
+	}
+
+	public static uint BooleanStackHome() =>
+		ToggleStackParameter(1, 2, 3, 4, 5, true) == 16 &&
+		ToggleStackParameter(1, 2, 3, 4, 5, false) == 17 ? 42u : 0u;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ToggleStackParameter(uint a, uint b, uint c, uint d,
+		uint e, bool value)
+	{
+		uint before = ObserveAndToggle(ref value);
+		return a + b + c + d + e + before + (value ? 2u : 0u);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint ObserveAndToggle(ref bool value)
+	{
+		uint before = value ? 1u : 0u;
+		value = !value;
+		return before;
+	}
+
 	public static uint ReadAfterMutation() => SnapshotThenReplace(4);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

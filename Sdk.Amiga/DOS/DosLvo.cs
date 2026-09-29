@@ -12,12 +12,13 @@ namespace Amiga;
 public static class DosLvo
 {
 	// Amiga 3.1 V40 public vectors.
-	public const short Open = -30, Close = -36, Read = -42, Write = -48, Input = -54, Output = -60;
-	public const short Seek = -66, DeleteFile = -72, Rename = -78, Lock = -84, UnLock = -90, DupLock = -96;
-	public const short Examine = -102, ExNext = -108, Info = -114, CreateDir = -120, CurrentDir = -126, IoErr = -132;
+	public const short Open = -30, OpenRaw = Open, Close = -36, Read = -42, Write = -48, Input = -54, Output = -60;
+	public const short Seek = -66, DeleteFile = -72, Rename = -78, Lock = -84, LockRaw = Lock, UnLock = -90, DupLock = -96;
+	public const short Examine = -102, ExNext = -108, Info = -114, CreateDir = -120, CreateDirRaw = CreateDir;
+	public const short CurrentDir = -126, CurrentDirRaw = CurrentDir, IoErr = -132;
 	public const short CreateProc = -138, Exit = -144, LoadSeg = -150, UnLoadSeg = -156, DeviceProc = -174;
 	public const short SetComment = -180, SetProtection = -186, DateStamp = -192, Delay = -198, WaitForChar = -204;
-	public const short ParentDir = -210, IsInteractive = -216, Execute = -222, AllocDosObject = -228;
+	public const short ParentDir = -210, ParentDirRaw = ParentDir, IsInteractive = -216, Execute = -222, AllocDosObject = -228;
 	public const short FreeDosObject = -234, DoPkt = -240, SendPkt = -246, WaitPkt = -252, ReplyPkt = -258;
 	public const short AbortPkt = -264, LockRecord = -270, LockRecords = -276, UnLockRecord = -282;
 	public const short UnLockRecords = -288, SelectInput = -294, SelectOutput = -300, FGetC = -306, FPutC = -312;

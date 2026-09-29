@@ -116,7 +116,7 @@ public static class DosLayout
 	{
 		public const int Link = 0, Port = 4, Type = 8, Buffer = 12, Position = 16;
 		public const int End = 20, Functions = 24, Function2 = 28, Function3 = 32;
-		public const int Arguments = 36, Argument1 = 40;
+		public const int Argument1 = 36, Arguments = Argument1, Argument2 = 40;
 		public const int Size = 44;
 	}
 

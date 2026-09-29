@@ -216,6 +216,7 @@ public enum TaskInfoType : uint
 	TrapData = 0x0C,
 	TrapCode = 0x0D,
 	StackSizeM68k = 0x0E,
+	ProcessIdCli = 0x24,
 	StackLowerM68k = 0x28,
 	StackUpperM68k = 0x29,
 	NameCopy = 0x2A,

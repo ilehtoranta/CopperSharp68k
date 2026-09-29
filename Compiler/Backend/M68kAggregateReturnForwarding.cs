@@ -23,7 +23,7 @@ internal sealed record M68kAggregateReturnForwardingStatistics(
 /// <summary>
 /// Redirects an aggregate call's hidden return pointer to an immediately used
 /// destination. Run after memory promotion and before bulk-copy selection.
-/// Unknown aliases, EH observation points, and stack argument snapshots retain
+/// Unknown aliases, EH observation points, and unproven stack layouts retain
 /// the existing temporary-and-copy sequence.
 /// </summary>
 internal static class M68kAggregateReturnForwarding
@@ -132,7 +132,7 @@ internal static class M68kAggregateReturnForwarding
 		}
 		if (candidates.Count == 0 && branchedReturns.Count == 0)
 		{
-			return M68kAggregateReturnForwardingStatistics.Empty;
+			return ForwardSharedReturnedLocal(function, module, method, uses, methodSummaries);
 		}
 
 		var replacements = new Dictionary<int, M68kMachineInstruction>();
@@ -275,6 +275,128 @@ internal static class M68kAggregateReturnForwarding
 			statistics.TemporaryBytesRemoved + followUp.TemporaryBytesRemoved);
 	}
 
+	private static M68kAggregateReturnForwardingStatistics ForwardSharedReturnedLocal(
+		M68kMachineFunction function,
+		CompilationModule module,
+		CilMethod method,
+		UseIndex uses,
+		IReadOnlyDictionary<CilMethodIdentity, M68kMethodMemorySummary>?
+			methodSummaries)
+	{
+		// A prior pass may have redirected every branch's call into one private
+		// local. When the join does nothing but return that local, route all of
+		// those hidden pointers to the caller and return from each producer.
+		foreach (var returnBlock in function.Blocks)
+		{
+			if (returnBlock.Id == function.EntryBlockId || returnBlock.IsExceptionEntry ||
+				returnBlock.Predecessors.Count < 2 || returnBlock.Successors.Count != 0 ||
+				returnBlock.SuccessorEdges.Count != 0 ||
+				returnBlock.Phis.Count != 0 || returnBlock.Instructions.Count != 2 ||
+				returnBlock.Instructions[0] is not
+					{ Operation: M68kMachineOperation.LocalAddress, ArgumentIndex: { } local,
+					  Definitions: [var returnedAddress] } returnAddress ||
+				returnBlock.Instructions[1] is not
+					{ Operation: M68kMachineOperation.Return, ReturnBufferWritten: false,
+					  Uses: [var returnedValue] } returned ||
+				returnedValue != returnedAddress ||
+				(returned.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0 ||
+				local < 0 || local >= method.Locals.Length ||
+				method.Locals[local].DisplayName != method.Signature.ReturnType.DisplayName ||
+				!function.LocalHomes.TryGetValue(local, out var home) || home.HasGcReferences ||
+				!module.TryGetReferenceFreeStructLayout(method.Signature.ReturnType,
+					method.ModuleName, out var layout) || layout.Size <= 4 ||
+				layout.ReferenceBitmap != 0 || home.Size != layout.Size)
+			{
+				continue;
+			}
+
+			var producers = new List<(M68kMachineBlock Block, M68kMachineInstruction Call,
+				M68kMachineInstruction Address, M68kMachineInstruction? Branch)>();
+			foreach (var predecessorId in returnBlock.Predecessors)
+			{
+				var block = function.Blocks.SingleOrDefault(candidate => candidate.Id == predecessorId);
+				if (block is null || block.Successors is not [var successor] ||
+					successor != returnBlock.Id || block.SuccessorEdges.Any(static edge =>
+						edge.Kind != M68kMachineEdgeKind.Normal) ||
+					!block.ActiveExceptionRegionIds.SequenceEqual(returnBlock.ActiveExceptionRegionIds))
+					break;
+				var instructions = block.Instructions;
+				var branch = instructions.LastOrDefault() is
+					{ Operation: M68kMachineOperation.Branch, Uses.Length: 0 } finalBranch
+					? finalBranch : null;
+				var callIndex = instructions.Count - (branch is null ? 2 : 3);
+				if (callIndex < 0 || instructions[callIndex] is not
+					{ Operation: M68kMachineOperation.Call, LogicalCall: { ResultValueIds.Length: 0 } } call ||
+					!TryResolveDirectCall(module, method, call, out var target) ||
+					call.Origin?.SourceMethod?.Identity != method.Identity ||
+					call.Definitions.Length != 0 ||
+					call.StackVarargsRegister is not null ||
+					(call.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0 ||
+					target.Signature.ParameterTypes.Any(parameter => HasUnprovenReturnAlias(module, parameter)) ||
+					target.Signature.ReturnType.DisplayName != method.Signature.ReturnType.DisplayName ||
+					!module.TryGetReferenceFreeStructLayout(target.Signature.ReturnType,
+						target.ModuleName, out var targetLayout) ||
+					targetLayout.Size != layout.Size || targetLayout.ReferenceBitmap != 0 ||
+					instructions[callIndex + 1] is not
+						{ Operation: M68kMachineOperation.OutgoingArgumentCleanup,
+						  ArgumentIndex: >= 4 } cleanup ||
+					!TryFindHiddenReturnAddress(function, instructions, callIndex, call, local,
+						cleanup.ArgumentIndex!.Value, uses, out var address))
+					break;
+				producers.Add((block, call, address, branch));
+			}
+			if (producers.Count != returnBlock.Predecessors.Count)
+				continue;
+			var allowedAddresses = producers.Select(static producer => producer.Address.Id)
+				.Append(returnAddress.Id).ToHashSet();
+			if (function.Blocks.SelectMany(static block => block.Instructions).Any(instruction =>
+				instruction.ArgumentIndex == local &&
+				instruction.Operation is (M68kMachineOperation.LocalAddress or
+					M68kMachineOperation.LocalLoad or M68kMachineOperation.LocalStore) &&
+				!allowedAddresses.Contains(instruction.Id)))
+				continue;
+
+			foreach (var (block, call, address, branch) in producers)
+			{
+				var addressIndex = block.Instructions.FindIndex(instruction => instruction.Id == address.Id);
+				block.Instructions[addressIndex] = address with
+				{
+					Operation = M68kMachineOperation.ReturnBufferAddress,
+					ArgumentIndex = null,
+					MemoryEffect = M68kMachineMemoryEffect.Read,
+					ExactMemoryAccesses = []
+				};
+				var callIndex = block.Instructions.FindIndex(instruction => instruction.Id == call.Id);
+				block.Instructions[callIndex] = call with { ExactMemoryAccesses = [] };
+				if (branch is not null)
+				{
+					var branchIndex = block.Instructions.FindIndex(instruction => instruction.Id == branch.Id);
+					block.Instructions[branchIndex] = returned with
+					{
+						Id = branch.Id, Uses = [], ReturnBufferWritten = true,
+						ExactMemoryAccesses = []
+					};
+				}
+				else
+				{
+					block.Instructions.Add(function.CreateInstruction(
+						M68kMachineOperation.Return, returned.IlOffset,
+						sourceInstruction: returned.SourceInstruction,
+						origin: returned.Origin) with { ReturnBufferWritten = true });
+				}
+				block.Successors.Clear();
+			}
+			function.RemoveBlocks(new HashSet<int> { returnBlock.Id });
+			RemoveUnreferencedValues(function, new HashSet<int> { returnedAddress });
+			M68kMachineIrVerifier.Verify(function);
+			var followUp = Run(function, module, methodSummaries);
+			return new(producers.Count + followUp.ReturnBuffersForwarded,
+				followUp.LocalsForwarded, followUp.TemporaryHomesRemoved,
+				followUp.TemporaryBytesRemoved);
+		}
+		return M68kAggregateReturnForwardingStatistics.Empty;
+	}
+
 	private static bool TryFindCandidate(
 		M68kMachineFunction function,
 		CompilationModule module,
@@ -296,7 +418,8 @@ internal static class M68kAggregateReturnForwarding
 			!module.TryGetReferenceFreeStructLayout(target.Signature.ReturnType, target.ModuleName, out var layout) ||
 			layout.Size <= 4 || layout.ReferenceBitmap != 0 ||
 			callIndex + 3 >= instructions.Count ||
-			instructions[callIndex + 1] is not { Operation: M68kMachineOperation.OutgoingArgumentCleanup, ArgumentIndex: 4 })
+			instructions[callIndex + 1] is not
+				{ Operation: M68kMachineOperation.OutgoingArgumentCleanup, ArgumentIndex: >= 4 } cleanup)
 		{
 			return false;
 		}
@@ -365,31 +488,18 @@ internal static class M68kAggregateReturnForwarding
 			return false;
 		}
 
-		M68kMachineInstruction? hiddenAddress = null;
-		for (var index = callIndex - 1; index >= 0; index--)
+		if (!TryFindHiddenReturnAddress(
+				function,
+				instructions,
+				callIndex,
+				call,
+				temporaryHome,
+				cleanup.ArgumentIndex!.Value,
+				uses,
+				out var hiddenAddress))
 		{
-			var instruction = instructions[index];
-			if (instruction.IlOffset != call.IlOffset || instruction.Origin != call.Origin) break;
-			if (instruction.Operation == M68kMachineOperation.OutgoingArgumentPush)
-			{
-				if (instruction.ArgumentIndex != 4 || instruction.Uses is not [var addressValue] ||
-					!uses.HasOnlyUse(addressValue, instruction.Id) ||
-					!uses.Definitions.TryGetValue(addressValue, out var address) ||
-					address.Operation != M68kMachineOperation.LocalAddress || address.ArgumentIndex != temporaryHome ||
-					index == 0 || instructions[index - 1].Id != address.Id)
-				{
-					return false;
-				}
-				hiddenAddress = address;
-				break;
-			}
-			if (instruction.Operation != M68kMachineOperation.Copy || instruction.MemoryEffect != M68kMachineMemoryEffect.None ||
-				instruction.MayThrow || instruction.IsSafepoint)
-			{
-				return false;
-			}
+			return false;
 		}
-		if (hiddenAddress is null) return false;
 		candidate = new(call, hiddenAddress, consumer, scaffolding, temporaryHome, destinationHome);
 		return true;
 	}
@@ -415,7 +525,7 @@ internal static class M68kAggregateReturnForwarding
 			layout.Size <= 4 || layout.ReferenceBitmap != 0 ||
 			callIndex + 1 >= instructions.Count ||
 			instructions[callIndex + 1] is not
-				{ Operation: M68kMachineOperation.OutgoingArgumentCleanup, ArgumentIndex: 4 } ||
+				{ Operation: M68kMachineOperation.OutgoingArgumentCleanup, ArgumentIndex: >= 4 } cleanup ||
 			block.Successors is not [var returnBlockId] ||
 			block.SuccessorEdges.Any(static edge => edge.Kind != M68kMachineEdgeKind.Normal))
 		{
@@ -481,23 +591,66 @@ internal static class M68kAggregateReturnForwarding
 			return false;
 		}
 
-		M68kMachineInstruction? hiddenAddress = null;
+		if (!TryFindHiddenReturnAddress(
+				function,
+				instructions,
+				callIndex,
+				call,
+				temporaryHome,
+				cleanup.ArgumentIndex!.Value,
+				uses,
+				out var hiddenAddress))
+		{
+			return false;
+		}
+		candidate = new(block, call, hiddenAddress, branch, returnBlock, returned, temporaryHome);
+		return true;
+	}
+
+	private static bool TryFindHiddenReturnAddress(
+		M68kMachineFunction function,
+		IReadOnlyList<M68kMachineInstruction> instructions,
+		int callIndex,
+		M68kMachineInstruction call,
+		int temporaryHome,
+		int cleanupBytes,
+		UseIndex uses,
+		out M68kMachineInstruction hiddenAddress)
+	{
+		hiddenAddress = null!;
+		var pushedBytes = 0;
 		for (var index = callIndex - 1; index >= 0; index--)
 		{
 			var instruction = instructions[index];
 			if (instruction.IlOffset != call.IlOffset || instruction.Origin != call.Origin) break;
 			if (instruction.Operation == M68kMachineOperation.OutgoingArgumentPush)
 			{
-				if (instruction.ArgumentIndex != 4 || instruction.Uses is not [var addressValue] ||
-					!uses.HasOnlyUse(addressValue, instruction.Id) ||
-					!uses.Definitions.TryGetValue(addressValue, out var address) ||
-					address.Operation != M68kMachineOperation.LocalAddress || address.ArgumentIndex != temporaryHome ||
-					index == 0 || instructions[index - 1].Id != address.Id)
+				if (instruction.ArgumentIndex != 4 || instruction.Uses is not [var value] ||
+					instruction.MemoryEffect != M68kMachineMemoryEffect.Write ||
+					instruction.MayThrow || instruction.IsSafepoint ||
+					!function.Values.TryGetValue(value, out var pushed) ||
+					pushed.Width != M68kMachineValueWidth.Long ||
+					pushedBytes > cleanupBytes - 4)
 				{
 					return false;
 				}
-				hiddenAddress = address;
-				break;
+				pushedBytes += 4;
+				if (uses.HasOnlyUse(value, instruction.Id) &&
+					uses.Definitions.TryGetValue(value, out var address) &&
+					address.Operation == M68kMachineOperation.LocalAddress &&
+					address.ArgumentIndex == temporaryHome &&
+					index != 0 && instructions[index - 1].Id == address.Id)
+				{
+					if (pushed.Kind != CilStackValueKind.AggregateAddress ||
+						pushedBytes != cleanupBytes)
+					{
+						return false;
+					}
+					hiddenAddress = address;
+					return true;
+				}
+				if (pushed.Kind == CilStackValueKind.AggregateAddress) return false;
+				continue;
 			}
 			if (instruction.Operation != M68kMachineOperation.Copy ||
 				instruction.MemoryEffect != M68kMachineMemoryEffect.None ||
@@ -506,9 +659,7 @@ internal static class M68kAggregateReturnForwarding
 				return false;
 			}
 		}
-		if (hiddenAddress is null) return false;
-		candidate = new(block, call, hiddenAddress, branch, returnBlock, returned, temporaryHome);
-		return true;
+		return false;
 	}
 
 	private static bool HasUnprovenReturnAlias(CompilationModule module, CilType parameter) =>

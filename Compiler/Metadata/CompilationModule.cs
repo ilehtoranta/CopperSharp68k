@@ -2846,8 +2846,11 @@ internal sealed class CompilationModule : IDisposable
 			return cached;
 		}
 
+		// Reject recursive value-layout probes while classifying nested
+		// single-word wrappers (for example a record containing APTR).
+		_transparentScalarTypeCache[type.DisplayName] = false;
 		var result = IsTransparentScalarType(type.DisplayName);
-		_transparentScalarTypeCache.Add(type.DisplayName, result);
+		_transparentScalarTypeCache[type.DisplayName] = result;
 		return result;
 	}
 
@@ -3226,13 +3229,25 @@ internal sealed class CompilationModule : IDisposable
 				? GetTypeName(type)
 				: method.DisplayName.Split("::", StringSplitOptions.None)[0]));
 
-	public bool IsTransparentScalarField(CilField field) =>
-		IsTransparentScalarType(new CilType(
-			CilTypeKind.ValueType,
-			4,
-			field.DisplayName.Split("::", StringSplitOptions.None)[0])) &&
-		field.Type.IsSupportedScalar &&
-		field.Type.Size == 4;
+	public bool IsTransparentScalarField(CilField field)
+	{
+		if (!IsTransparentScalarPayload(field.Type))
+			return false;
+		if (!field.DeclaringType.IsNil && field.ConstructedDeclaringType is null)
+		{
+			// Nested types may share a short display name. The resolved field
+			// already carries its exact owner; do not rebind it by that name.
+			var module = GetModule(field.ModuleName);
+			return module.IsTransparentScalarType(
+				module.Reader.GetTypeDefinition(field.DeclaringType));
+		}
+		return IsTransparentScalarType(field.ConstructedDeclaringType ?? new CilType(
+			CilTypeKind.ValueType, 4,
+			field.DisplayName.Split("::", StringSplitOptions.None)[0]));
+	}
+
+	private bool IsTransparentScalarPayload(CilType type) =>
+		(type.IsSupportedScalar && type.Size == 4) || IsTransparentScalarType(type);
 
 	private bool IsTransparentScalarType(string displayName)
 	{
@@ -3296,8 +3311,7 @@ internal sealed class CompilationModule : IDisposable
 			.Where(static field => !field.IsStatic)
 			.ToArray();
 		return fields.Length == 1 &&
-			fields[0].Type.IsSupportedScalar &&
-			fields[0].Type.Size == 4;
+			IsTransparentScalarPayload(fields[0].Type);
 	}
 
 	private bool TypeNameMatches(TypeDefinition definition, string displayName)
@@ -4578,6 +4592,7 @@ internal sealed class CompilationModule : IDisposable
 		}
 
 		var assembly = Assembly.LoadFrom(path);
+		LoadDeclaredReflectionDependencies(assembly, new HashSet<string>(StringComparer.Ordinal));
 		var type = assembly.GetType(typeName, throwOnError: false);
 		var flags = BindingFlags.Public | BindingFlags.NonPublic |
 			BindingFlags.Static | BindingFlags.Instance;
@@ -4619,6 +4634,21 @@ internal sealed class CompilationModule : IDisposable
 			declaration is MethodInfo methodInfo
 				? DecodeReflectionAttributes(methodInfo.ReturnParameter.CustomAttributes)
 				: Array.Empty<M68kMetadataAttribute>());
+	}
+
+	private void LoadDeclaredReflectionDependencies(Assembly assembly, HashSet<string> visited)
+	{
+		if (!visited.Add(assembly.FullName!)) return;
+		// A reflected declaration can implement an interface from a dependency
+		// outside its output directory. GetType(false) may otherwise return null,
+		// disguising that missing dependency as a missing method or constructor.
+		// Use only explicitly supplied managed inputs; do not broaden probing.
+		foreach (var reference in assembly.GetReferencedAssemblies())
+		{
+			if (reference.Name is not null &&
+				_root._managedAssemblyPaths.TryGetValue(reference.Name, out var dependencyPath))
+				LoadDeclaredReflectionDependencies(Assembly.LoadFrom(dependencyPath), visited);
+		}
 	}
 
 	private static bool ParametersMatch(MethodBase method, MethodSignature<CilType> signature)

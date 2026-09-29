@@ -179,6 +179,7 @@ public static class ExecLvo
 	// CopperOS 68k compatibility extensions.
 	public const short AllocPooledAligned = -984;
 	public const short AddResident = -990;
+	public const short FindTaskByPID = -994;
 
 	// MorphOS m68k ABI extensions.
 	public const short DumpTaskState = -1026;

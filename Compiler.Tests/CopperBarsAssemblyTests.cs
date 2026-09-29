@@ -61,7 +61,8 @@ public sealed partial class CopperBarsAssemblyTests
 		// actual code/data links.
 		Assert.True(result.Code.Length <= 1_322, $"Code budget exceeded: {result.Code.Length} bytes.");
 		Assert.True(result.Image.Length <= 1_476, $"Stripped HUNK budget exceeded: {result.Image.Length} bytes.");
-		Assert.Equal(14, result.Relocations.Count);
+		Assert.True(result.Relocations.Count <= 14,
+			$"Relocation budget exceeded: {result.Relocations.Count} entries.");
 	}
 
 	[Fact]

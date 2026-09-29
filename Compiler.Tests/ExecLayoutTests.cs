@@ -331,7 +331,7 @@ public sealed class ExecLayoutTests
 			.Where(method => method.GetCustomAttribute<CopperSharp.Sdk.Amiga.AmigaLvoAttribute>() is not null)
 			.ToArray();
 
-		Assert.Equal(194, methods.Length);
+		Assert.Equal(199, methods.Length);
 		foreach (var method in methods)
 		{
 			var field = typeof(DosLvo).GetField(method.Name,

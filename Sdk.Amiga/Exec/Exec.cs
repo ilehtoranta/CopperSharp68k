@@ -230,6 +230,17 @@ public static class Exec
 	public static extern APTR FindTask(
 		[M68kRegister(M68kRegister.A1)] CString name);
 
+	// MorphOS exposes FindTaskByPID through a pointer-indirect slot rather than
+	// a six-byte library vector. The caller loads that slot from ExecBase-994
+	// and supplies the function pointer in A3; the first ABI argument is the
+	// Exec base in A0, followed by the process ID in D0.
+	[AmigaIndirectCall(M68kRegister.A3)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern APTR FindTaskByPIDIndirect(
+		[M68kRegister(M68kRegister.A3)] APTR function,
+		[M68kRegister(M68kRegister.A0)] APTR execBase,
+		[M68kRegister(M68kRegister.D0)] uint processId);
+
 	[AmigaLvo(ExecLvo.SetTaskPri)]
 	[return: M68kRegister(M68kRegister.D0)]
 	public static extern sbyte SetTaskPri(

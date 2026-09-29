@@ -721,7 +721,16 @@ internal static class M68kParallelCopyResolver
 internal sealed record M68kParallelCopyPlan(
 	IReadOnlyDictionary<(int From, int To), IReadOnlyList<M68kParallelCopy>>
 		EdgeCopies,
-	bool NeedsTemporarySlot);
+	bool NeedsTemporarySlot)
+{
+	public IEnumerable<M68kRegister> ReferencedRegisters =>
+		EdgeCopies.Values
+			.SelectMany(static copies => copies)
+			.SelectMany(static copy => new[] { copy.Source, copy.Destination })
+			.Where(static location => location.Kind == M68kStorageKind.Register)
+			.Select(static location => (M68kRegister)location.Index)
+			.Distinct();
+}
 
 internal static class M68kParallelCopyPlanner
 {

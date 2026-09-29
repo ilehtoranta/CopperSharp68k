@@ -14,6 +14,30 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class CompilerExecutionTests
 {
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void TransparentOutStructFieldDistinguishesValueAndReferenceReceivers(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var optimization in new[] { M68kPeepholeOptimizationMode.FixedPoint,
+			M68kPeepholeOptimizationMode.Disabled })
+		foreach (var entry in new[] { "Entry", "PointerEntry" })
+		{
+			var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = typeof(TransparentOutStructFixtures).Assembly.Location,
+				EntryPoint = "CopperSharp.Compiler.Tests.TransparentOutStructFixtures::" + entry,
+				Cpu = target,
+				ClrPolicy = M68kClrPolicy.Always,
+				OutputFormat = M68kOutputFormat.Hunk,
+				RuntimeProfile = M68kRuntimeProfile.Freestanding,
+				IncludedExportNames = Array.Empty<string>(),
+				PeepholeOptimization = optimization
+			});
+			Assert.Equal(42u, ExecuteHunk(result, model));
+		}
+	}
+
 	private const uint HunkLoadAddress = 0x0001_0000;
 	private const uint StackPointer = 0x0008_0000;
 	private const uint ReturnSentinel = 0x0000_1000;
@@ -2131,6 +2155,28 @@ public sealed class CompilerExecutionTests
 		Assert.Contains(
 			result.Symbols,
 			symbol => symbol.Name.EndsWith("::AddAndDouble", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CurrentStackPointerIntrinsicReturnsLiveA7(
+		M68kCpuTarget target,
+		M68kCpuModel model)
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" +
+				"CurrentStackPointerIntrinsicEntry",
+			Cpu = target,
+			ClrPolicy = M68kClrPolicy.Always,
+			OutputFormat = M68kOutputFormat.Hunk,
+			RuntimeProfile = M68kRuntimeProfile.Freestanding,
+			IncludedExportNames = Array.Empty<string>()
+		});
+
+		var stackPointer = ExecuteHunk(result, model);
+		Assert.InRange(stackPointer, StackPointer - 256, StackPointer);
 	}
 
 	[Fact]

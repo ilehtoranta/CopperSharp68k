@@ -31,6 +31,16 @@ public enum DosExAllDataLevel : int
 	Owner = 7,
 }
 
+/// <summary>ReadArgs control flags from dos/rdargs.h.</summary>
+[System.Flags]
+public enum DosRdArgsFlags : int
+{
+	None = 0,
+	StandardInput = 1 << 0,
+	NoAllocate = 1 << 1,
+	NoPrompt = 1 << 2,
+}
+
 /// <summary>Token bytes emitted by ParsePattern from dos/dosasl.h.</summary>
 public enum DosPatternToken : byte
 {
