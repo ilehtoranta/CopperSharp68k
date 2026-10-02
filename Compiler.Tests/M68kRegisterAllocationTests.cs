@@ -1412,6 +1412,72 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void SpilledPhiWebSharesOneSlotSoEdgesNeedNoCopies()
+	{
+		// entry: decoy = ...; first = ...; use(decoy); branch -> alternate | join
+		// alternate: second = ...; -> join
+		// join: result = phi(first, second); return result
+		// The decoy is placed first and interferes only with 'first'. Plain
+		// first-fit would put 'second' and 'result' in the decoy's slot and
+		// 'first' elsewhere, forcing a slot-to-slot copy on the entry edge.
+		var function = new M68kMachineFunction("phi-web-slots", 0);
+		var entry = AddBlock(function, 0, 0);
+		var alternate = AddBlock(function, 1, 10);
+		var join = AddBlock(function, 2, 20);
+		Connect(entry, alternate);
+		Connect(entry, join);
+		Connect(alternate, join);
+		var decoy = CreateLong(function);
+		var first = CreateLong(function);
+		var second = CreateLong(function);
+		var result = CreateLong(function);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other, 0, definitions: [decoy.Id]));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other, 1, definitions: [first.Id]));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other, 2, uses: [decoy.Id]));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.ConditionalBranch, 3));
+		alternate.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other, 10, definitions: [second.Id]));
+		alternate.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Branch, 11));
+		join.Phis.Add(new M68kMachinePhi(
+			result.Id,
+			new Dictionary<int, int>
+			{
+				[entry.Id] = first.Id,
+				[alternate.Id] = second.Id
+			}));
+		join.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return, 20, uses: [result.Id]));
+		M68kCriticalEdgeSplitter.SplitPhiEdges(function);
+		var graph = M68kInterferenceBuilder.Build(
+			function, M68kLivenessAnalysis.Analyze(function));
+		var spilled = new HashSet<int> { decoy.Id, first.Id, second.Id, result.Id };
+
+		var layout = M68kSpillSlotAllocator.Allocate(function, graph, spilled);
+		M68kSpillSlotAllocator.Verify(function, graph, spilled, layout);
+
+		Assert.Equal(layout.Slots[first.Id], layout.Slots[result.Id]);
+		Assert.Equal(layout.Slots[second.Id], layout.Slots[result.Id]);
+		Assert.NotEqual(layout.Slots[decoy.Id], layout.Slots[first.Id]);
+
+		M68kSpillRewriter.Rewrite(function, layout);
+
+		var instructions = function.Blocks.SelectMany(static block => block.Instructions).ToArray();
+		// One store per definition (decoy, first, second) and one load per use
+		// (decoy, result); the phi itself costs nothing on either edge.
+		Assert.Equal(3, instructions.Count(static instruction =>
+			instruction.Operation == M68kMachineOperation.SpillStore));
+		Assert.Equal(2, instructions.Count(static instruction =>
+			instruction.Operation == M68kMachineOperation.SpillLoad));
+		Assert.Empty(join.Phis);
+		M68kMachineIrVerifier.Verify(function);
+	}
+
+	[Fact]
 	public void GcAndScalarSpillsNeverShareAFrameSlot()
 	{
 		var function = new M68kMachineFunction("gc-spills", 0);
