@@ -2735,7 +2735,7 @@ internal sealed partial class M68kCodeGenerator
 			InlineCandidateKind.ConstantAddressWriteWord ||
 		candidate.SavedBytes > 0 || candidate.SavedCycles >= 16;
 
-	// Keep always-inlining deliberately structural and bounded. These faÃ§ades
+	// Keep always-inlining deliberately structural and bounded. These façades
 	// have no locals, exception regions, allocation, branches, or observable
 	// call boundary; forwarding is limited to one constant argument.
 	private bool TryGetConstantAddressReadBody(
