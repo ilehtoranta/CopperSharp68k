@@ -110,8 +110,10 @@ public sealed class ResidentCodeSizeExecutionTests
     // Exercise the serialized HUNK relocations, rather than relocating the
     // compiler's raw code buffer. These fixtures intentionally have one hunk.
     private static byte[] Load(M68kCompilationResult result, uint address)
+        => LoadImage(result.Image, address);
+
+    internal static byte[] LoadImage(byte[] image, uint address)
     {
-        var image = result.Image;
         var offset = 0;
         uint Long() { var value = BinaryPrimitives.ReadUInt32BigEndian(image.AsSpan(offset, 4)); offset += 4; return value; }
         Assert.Equal(0x3f3u, Long()); Assert.Equal(0u, Long());
