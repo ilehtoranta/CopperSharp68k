@@ -13,9 +13,9 @@ internal sealed partial class M68kCodeGenerator
 		IReadOnlyList<CilMethod> methods,
 		IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions)
 	{
-		if (_request.RomSizeOptimizations?.ClusterInternalCalls != true ||
+		if (_request.EffectiveCodeSizeOptions?.ClusterInternalCalls != true ||
 			_request.Cpu != M68kCpuTarget.M68000 ||
-			_request.RuntimeProfile != M68kRuntimeProfile.Rom ||
+			!SupportsCodeSizeProfile ||
 			_request.ExceptionMode != M68kExceptionMode.Yolo ||
 			_memoryManagement != M68kMemoryManagement.None ||
 			_managedPoolRuntime is not null || _managedLifecycles.Count != 0 ||
