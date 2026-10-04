@@ -296,9 +296,9 @@ internal sealed partial class M68kCodeGenerator
 			() => LowerAggregateCopies(methods, rawFunctions, bulkCopyTarget),
 			foldedMethodAliases: _foldedMethodAliases,
 			inlineSingleUseMethods:
-				_request.RomSizeOptimizations?.InlineSingleUseMethods == true &&
+				_request.EffectiveCodeSizeOptions?.InlineSingleUseMethods == true &&
 				_request.Cpu == M68kCpuTarget.M68000 &&
-				_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+				SupportsCodeSizeProfile &&
 				_request.ExceptionMode == M68kExceptionMode.Yolo &&
 				_memoryManagement == M68kMemoryManagement.None &&
 				_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
