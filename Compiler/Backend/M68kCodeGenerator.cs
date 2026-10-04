@@ -403,25 +403,27 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.MarkDataStart();
 		EmitSwitchAddressTables();
 		var enableWholeImageRomSizeOptimizations =
-			_request.RomSizeOptimizations is not null &&
+			_request.EffectiveCodeSizeOptions is not null &&
 			_request.Cpu == M68kCpuTarget.M68000 &&
-			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+			SupportsCodeSizeProfile &&
 			_request.ExceptionMode == M68kExceptionMode.Yolo &&
 			_memoryManagement == M68kMemoryManagement.None &&
 			_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
 			!_usesExceptionRuntime;
 		_assembler.EnableRepeatedCallResultTestOptimization =
-			enableWholeImageRomSizeOptimizations;
+			enableWholeImageRomSizeOptimizations &&
+			(_request.CodeSizeOptimizations is null || _request.EffectiveCodeSizeOptions!.ShareReturnSequences);
 		// Shared tails use only exact, self-contained terminal blocks. Managed
 		// memory, exception-runtime and dynamic-stack methods retain their exits.
 		_assembler.EnableMethodLocalTerminalReuse =
 			enableWholeImageRomSizeOptimizations &&
-			_request.RomSizeOptimizations!.ShareReturnSequences;
+			_request.EffectiveCodeSizeOptions!.ShareReturnSequences;
 		_assembler.EnableMethodLocalTerminalSuffixReuse = _assembler.EnableMethodLocalTerminalReuse;
 		_assembler.EnableRegionalTerminalReuse = _assembler.EnableMethodLocalTerminalReuse;
 		_assembler.EnableIdenticalMethodThunks =
 			enableWholeImageRomSizeOptimizations &&
-			_request.RomSizeOptimizations!.ShareIdenticalMethods;
+			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+			_request.EffectiveCodeSizeOptions!.ShareIdenticalMethods;
 		if (_assembler.EnableMethodLocalTerminalReuse ||
 			_assembler.EnableIdenticalMethodThunks)
 		{
@@ -2734,7 +2736,7 @@ internal sealed partial class M68kCodeGenerator
 			InlineCandidateKind.ConstantAddressWriteWord ||
 		candidate.SavedBytes > 0 || candidate.SavedCycles >= 16;
 
-	// Keep always-inlining deliberately structural and bounded. These façades
+	// Keep always-inlining deliberately structural and bounded. These faÃ§ades
 	// have no locals, exception regions, allocation, branches, or observable
 	// call boundary; forwarding is limited to one constant argument.
 	private bool TryGetConstantAddressReadBody(
@@ -11938,6 +11940,7 @@ internal sealed record GeneratedProgram(
 {
 	public uint ResidentContextBytes { get; init; }
 	public bool ResidentContextOnHeap { get; init; }
+}
 
 internal sealed record GeneratedPlatformBase(
 	M68kExternalCallConvention Binding,
