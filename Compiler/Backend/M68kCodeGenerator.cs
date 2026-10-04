@@ -422,7 +422,6 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EnableRegionalTerminalReuse = _assembler.EnableMethodLocalTerminalReuse;
 		_assembler.EnableIdenticalMethodThunks =
 			enableWholeImageRomSizeOptimizations &&
-			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
 			_request.EffectiveCodeSizeOptions!.ShareIdenticalMethods;
 		if (_assembler.EnableMethodLocalTerminalReuse ||
 			_assembler.EnableIdenticalMethodThunks)
