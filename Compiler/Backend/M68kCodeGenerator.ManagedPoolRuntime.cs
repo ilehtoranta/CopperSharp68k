@@ -66,17 +66,30 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitAddress(RuntimeInitialStackLabel);
 		}
 		var returnType = entry.Signature.ReturnType;
+		// Releasing a stack-backed context changes only A7. Results need
+		// temporaries only when cleanup calls can clobber the private ABI.
+		var cleanupClobbersResult = usesManagedRuntime || usesManagedLifecycle ||
+			UsesResidentHeapInvocationContext || _usesFinalizers;
 		var preservesScalarResult =
+			cleanupClobbersResult &&
 			!returnType.IsVoid &&
 			!Is64BitScalar(returnType) &&
 			!IsInternalAddressReturn(returnType);
-		var preservesAddressResult = IsInternalAddressReturn(returnType);
-		var preservesWideResult = Is64BitScalar(returnType);
-		var needsD2 = usesAmigaStartupArguments ||
+		var preservesAddressResult = cleanupClobbersResult && IsInternalAddressReturn(returnType);
+		var preservesWideResult = cleanupClobbersResult && Is64BitScalar(returnType);
+		var preservesStartupArguments = usesAmigaStartupArguments &&
+			(usesManagedRuntime || usesManagedLifecycle || UsesResidentHeapInvocationContext ||
+				_usedPlatformBases.Values.Any(platformBase =>
+					IsMaterializedPlatformBase(platformBase) &&
+					RequiresPlatformBaseInitialization(platformBase) &&
+					(platformBase.Binding.BaseSource == M68kExternalBaseSource.CachedPointer
+						? platformBase.Binding.CacheRegister
+						: platformBase.Binding.BaseRegister) is M68kRegister.D0 or M68kRegister.A0));
+		var needsD2 = preservesStartupArguments ||
 			preservesScalarResult ||
 			preservesWideResult;
 		var needsD3 = preservesWideResult;
-		var needsA2 = usesAmigaStartupArguments || preservesAddressResult;
+		var needsA2 = preservesStartupArguments || preservesAddressResult;
 		var residentAllocationFailed = UsesResidentHeapInvocationContext
 			? UniqueLabel("resident_context_allocation_failed")
 			: null;
@@ -97,7 +110,7 @@ internal sealed partial class M68kCodeGenerator
 			{
 				EmitPushRegister(M68kRegister.A2);
 			}
-			if (usesAmigaStartupArguments)
+			if (preservesStartupArguments)
 			{
 				// AllocMem returns its block in D0, so preserve the process
 				// startup pair before an oversized resident context can take the
@@ -137,7 +150,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitManagedLifecycleInitialize();
 		if (wrapsEntry)
 		{
-			if (usesAmigaStartupArguments)
+			if (preservesStartupArguments)
 			{
 				EmitMoveRegister(M68kRegister.D2, M68kRegister.D0);
 				EmitMoveRegister(M68kRegister.A2, M68kRegister.A0);

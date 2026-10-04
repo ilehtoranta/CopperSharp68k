@@ -669,27 +669,52 @@ internal static class M68kMachineOptimizer
 		M68kMachineFunction function,
 		MutableStatistics statistics)
 	{
-		var changed = false;
-		bool removed;
-		do
+		// Phi inputs are dependencies, not observable uses. Seeding liveness
+		// with every phi input keeps unused joins (and entire phi/copy cycles)
+		// alive, causing allocation to materialize otherwise dead edge copies.
+		var dependencies = new Dictionary<int, int[]>();
+		var live = new HashSet<int>();
+		var pending = new Stack<int>();
+		foreach (var block in function.Blocks)
 		{
-			var used = function.Blocks.SelectMany(block =>
-				block.Instructions.SelectMany(static instruction => instruction.Uses)
-					.Concat(block.Phis.SelectMany(static phi => phi.Inputs.Values)))
-				.ToHashSet();
-			removed = false;
-			foreach (var block in function.Blocks)
+			foreach (var phi in block.Phis)
 			{
-				var count = block.Instructions.RemoveAll(instruction =>
-					instruction.Definitions.Length != 0 &&
-					instruction.Definitions.All(definition => !used.Contains(definition)) &&
-					IsDeadRemovable(instruction));
-				statistics.InstructionsRemoved += count;
-				removed |= count != 0;
+				dependencies.Add(phi.Definition, phi.Inputs.Values.ToArray());
 			}
-			changed |= removed;
+			foreach (var instruction in block.Instructions)
+			{
+				var inputs = instruction.Uses.ToArray();
+				foreach (var definition in instruction.Definitions)
+				{
+					dependencies.Add(definition, inputs);
+				}
+				if (instruction.Definitions.Length == 0 || !IsDeadRemovable(instruction))
+				{
+					foreach (var input in inputs) pending.Push(input);
+				}
+			}
 		}
-		while (removed);
+		while (pending.TryPop(out var value))
+		{
+			if (!live.Add(value) || !dependencies.TryGetValue(value, out var inputs))
+			{
+				continue;
+			}
+			foreach (var input in inputs) pending.Push(input);
+		}
+
+		var changed = false;
+		foreach (var block in function.Blocks)
+		{
+			var phis = block.Phis.RemoveAll(phi => !live.Contains(phi.Definition));
+			var instructions = block.Instructions.RemoveAll(instruction =>
+				instruction.Definitions.Length != 0 &&
+				instruction.Definitions.All(definition => !live.Contains(definition)) &&
+				IsDeadRemovable(instruction));
+			statistics.PhisRemoved += phis;
+			statistics.InstructionsRemoved += instructions;
+			changed |= phis != 0 || instructions != 0;
+		}
 		return changed;
 	}
 

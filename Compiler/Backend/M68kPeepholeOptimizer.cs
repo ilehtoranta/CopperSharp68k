@@ -3225,7 +3225,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 					instructions,
 					instruction.TargetOffset,
 					register,
-					addressRegister: true,
+					addressRegister: false,
 					dataflow);
 			}
 		}

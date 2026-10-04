@@ -10502,6 +10502,9 @@ internal sealed partial class M68kCodeGenerator
 			.Where(item =>
 				IsMaterializedPlatformBase(item) &&
 				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
+				// A source-backed slot is assigned immediately afterwards by
+				// EmitInitializePlatformBases; its initial value is never read.
+				!RequiresPlatformBaseInitialization(item) &&
 				item.Label is not null)
 			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 		{
