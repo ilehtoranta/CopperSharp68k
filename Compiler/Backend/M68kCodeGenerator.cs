@@ -15,6 +15,10 @@ internal sealed partial class M68kCodeGenerator
 {
 	private readonly CompilationModule _module;
 	private readonly M68kCompilationRequest _request;
+	private bool SupportsCodeSizeProfile => _request.RuntimeProfile == M68kRuntimeProfile.Rom ||
+		_request.CodeSizeOptimizations is not null &&
+		_request.RuntimeProfile == M68kRuntimeProfile.Resident &&
+		_request.OutputFormat == M68kOutputFormat.Hunk;
 	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _usedTypeLayouts = new();
@@ -454,7 +458,11 @@ internal sealed partial class M68kCodeGenerator
 			_allocationStatistics,
 			_terminalDeadStoreStatistics,
 			_machineOptimizationStatistics,
-			_loopLayouts);
+			_loopLayouts)
+		{
+            ResidentContextBytes = UsesResidentInvocationContext ? (uint)ResidentInvocationContextBytes : 0,
+			ResidentContextOnHeap = UsesResidentHeapInvocationContext
+		};
 	}
 
 	private void VerifyAllocatedPrePeepholeOutput()
@@ -11926,7 +11934,10 @@ internal sealed record GeneratedProgram(
 	IReadOnlyDictionary<CilMethodIdentity, M68kTerminalDeadStoreStatistics>
 		TerminalDeadStoreStatistics,
 	M68kMachineModuleOptimizationStatistics MachineOptimizationStatistics,
-	IReadOnlyList<M68kLoopLayout> LoopLayouts);
+	IReadOnlyList<M68kLoopLayout> LoopLayouts)
+{
+	public uint ResidentContextBytes { get; init; }
+	public bool ResidentContextOnHeap { get; init; }
 
 internal sealed record GeneratedPlatformBase(
 	M68kExternalCallConvention Binding,

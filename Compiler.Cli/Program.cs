@@ -42,6 +42,27 @@ static int Run(string[] args)
 			GetOptional(args, "--peephole") ?? "fixed-point");
 		var romSizeOptimizations = ParseRomSizeOptimizations(
 			GetOptional(args, "--rom-size-optimizations") ?? "off");
+		var codeSizeOptimizations = ParseCodeSizeOptimizations(
+			GetOptional(args, "--code-size-optimizations") ?? "off");
+		if (GetOptional(args, "--code-size-passes") is { } passes)
+		{
+			if (codeSizeOptimizations is null)
+				throw new ArgumentException("--code-size-passes requires --code-size-optimizations on.");
+			var selected = passes.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal);
+			var names = typeof(M68kCodeSizeOptions).GetProperties().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+			if (selected.Count == 0 || selected.Any(p => !names.Contains(p)))
+				throw new ArgumentException("Unknown or empty code size pass selection.");
+			codeSizeOptimizations = new M68kCodeSizeOptions
+			{
+				ElideUnusedRegisterArguments = selected.Contains(nameof(M68kCodeSizeOptions.ElideUnusedRegisterArguments)),
+				ShareReturnSequences = selected.Contains(nameof(M68kCodeSizeOptions.ShareReturnSequences)),
+				ShareIdenticalMethods = selected.Contains(nameof(M68kCodeSizeOptions.ShareIdenticalMethods)),
+				ReuseIncomingArgumentHomes = selected.Contains(nameof(M68kCodeSizeOptions.ReuseIncomingArgumentHomes)),
+				ClusterInternalCalls = selected.Contains(nameof(M68kCodeSizeOptions.ClusterInternalCalls)),
+				InlineSingleUseMethods = selected.Contains(nameof(M68kCodeSizeOptions.InlineSingleUseMethods)),
+				ForwardReadOnlyAggregateLocals = selected.Contains(nameof(M68kCodeSizeOptions.ForwardReadOnlyAggregateLocals))
+			};
+		}
 		var bulkCopy = ParseBulkCopyOptions(
 			GetOptional(args, "--bulk-copy-provider"),
 			GetOptional(args, "--bulk-copy-min-bytes"));
@@ -90,6 +111,9 @@ static int Run(string[] args)
 			ClrPolicy = clrPolicy,
 			PeepholeOptimization = peepholeOptimization,
 			RomSizeOptimizations = romSizeOptimizations,
+			CodeSizeOptimizations = codeSizeOptimizations,
+			ResidentStackContextThresholdBytes = ParseInt(GetOptional(args, "--resident-stack-context-threshold") ??
+				M68kCompilationRequest.DefaultResidentStackContextThresholdBytes.ToString(CultureInfo.InvariantCulture)),
 			BulkCopy = bulkCopy,
 			ExceptionMode = exceptionMode,
 			OutputFormat = format,
@@ -247,6 +271,9 @@ static string[] ExpandResponseManifest(string[] args)
 			"clr" => "--clr",
 			"peephole" => "--peephole",
 			"rom-size-optimizations" => "--rom-size-optimizations",
+			"code-size-optimizations" => "--code-size-optimizations",
+			"code-size-passes" => "--code-size-passes",
+			"resident-stack-context-threshold" => "--resident-stack-context-threshold",
 			"bulk-copy-provider" => "--bulk-copy-provider",
 			"bulk-copy-min-bytes" => "--bulk-copy-min-bytes",
 			"exceptions" => "--exceptions",
@@ -454,6 +481,14 @@ static M68kPeepholeOptimizationMode ParsePeepholeOptimization(string value) =>
 			$"Unknown peephole optimization mode '{value}'.")
 	};
 
+static M68kCodeSizeOptions? ParseCodeSizeOptimizations(string value) =>
+	value switch
+	{
+		"off" => null,
+		"on" => new M68kCodeSizeOptions(),
+		_ => throw new ArgumentException($"Unknown code size optimization mode '{value}'; expected on or off.")
+	};
+
 static M68kRomSizeOptions? ParseRomSizeOptimizations(string value) =>
 	value switch
 	{
@@ -651,6 +686,9 @@ static void PrintUsage()
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
 		  [--clr auto|always] [--peephole fixed-point|bounded|disabled]
 		  [--rom-size-optimizations on|off; default off]
+		  [--code-size-optimizations on|off; default off; mutually exclusive with ROM policy]
+		  [--code-size-passes comma-separated M68kCodeSizeOptions property names; qualification only]
+		  [--resident-stack-context-threshold bytes; default 512]
 		  [--bulk-copy-provider <Assembly::Namespace.Type::Method>]
 		  [--bulk-copy-min-bytes <positive bytes; default 64 with provider>]
 		  [--exceptions full|yolo] [--format hunk|rom|asm] [--symbols on|off]
