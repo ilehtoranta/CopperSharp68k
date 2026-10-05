@@ -25,6 +25,9 @@ internal sealed partial class M68kCodeGenerator
 		_memoryManagement == M68kMemoryManagement.None && !_usesExceptionRuntime;
 	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();
+	private const string SharedDivisionCoreLabel = "generated-size:unsigned-division-core";
+	private int _sharedDivisionCoreCalls;
+	private readonly List<(string Start, string End)> _sharedDivisionCallRanges = [];
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _usedTypeLayouts = new();
 	private readonly Dictionary<string, (CilType Type, CilTypeLayout Layout)>
 		_constructedTypeDescriptors = new(StringComparer.Ordinal);
@@ -398,6 +401,17 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitLong(0);
 		}
 		EmitManagedPoolRuntime();
+		if (_sharedDivisionCoreCalls != 0)
+		{
+			_assembler.Mark(SharedDivisionCoreLabel);
+			EmitUnsignedDivisionCore();
+			var returnOffset = _assembler.Offset;
+			_assembler.EmitWord(0x4E75);
+			_assembler.SetInstructionEffects(returnOffset, new(0xFF, 0, 0xFF, 0x80,
+				M68kConditionCodeSet.All, M68kConditionCodeSet.None, M68kMemorySet.Stack,
+				M68kMemorySet.None, 4, true, false));
+			_assembler.Mark(SharedDivisionCoreLabel + "-limit");
+		}
 		VerifyAllocatedPrePeepholeOutput();
 		_assembler.ApplyRequestedAlignments();
 		var sizeFirstLoops = _request.Cpu == M68kCpuTarget.M68020
@@ -465,6 +479,13 @@ internal sealed partial class M68kCodeGenerator
 			_request.ClrPolicy,
 			sizeFirstLoops,
 			_request.PeepholeOptimization);
+		if (_sharedDivisionCoreCalls != 0)
+		{
+			var coreBytes = _assembler.Labels[SharedDivisionCoreLabel + "-limit"] - _assembler.Labels[SharedDivisionCoreLabel];
+			var callBytes = _sharedDivisionCallRanges.Sum(range => _assembler.Labels[range.End] - _assembler.Labels[range.Start]);
+			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.ShareArithmeticCores),
+				_sharedDivisionCoreCalls * 22 - coreBytes - callBytes);
+		}
 		_assembler.ApplyRequestedAlignments();
 		var deferZeroInitializedStorage = ShouldDeferZeroInitializedStorage();
 		EmitData(methods);
@@ -1583,7 +1604,9 @@ internal sealed partial class M68kCodeGenerator
 		var ilOptimizations = CilOptimizer.Optimize(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
 		M68kCallAbiLowering.FinalizeLogicalCalls(machineFunction);
-		_integerArithmeticPlans = M68kMachineArithmeticOptimizer.Run(machineFunction, _request.Cpu, _module);
+		_integerArithmeticPlans = M68kMachineArithmeticOptimizer.Run(machineFunction, _request.Cpu, _module,
+			SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.ShareArithmeticCores &&
+			!machineFunction.HasExceptionHandlers && !machineFunction.HasDynamicStackAllocation);
 		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(
 			machineFunction,
 			!M68kCompiler.IsManagedRuntime(_request) ||
@@ -5152,25 +5175,22 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.Mark(divisorPositive);
 		}
 
-		var loop = UniqueLabel("div_loop");
-		var subtract = UniqueLabel("div_subtract");
-		var noSubtract = UniqueLabel("div_no_sub");
-		// The carry-chain body is 18 bytes on MC68000 versus 22 bytes for the
-		// former BTST/ORI/BSET body. It also retains the 33rd remainder bit in C,
-		// which is required when doubling a remainder above $7fffffff.
-		_assembler.EmitWord(0x7600); // MOVEQ #0,D3 remainder
-		_assembler.EmitWord(0x781F); // MOVEQ #31,D4 counter
-		_assembler.Mark(loop);
-		_assembler.EmitWord(0xD080); // ADD.L D0,D0: shift dividend/quotient, bit into X
-		_assembler.EmitWord(0xD783); // ADDX.L D3,D3: shift remainder and consume bit
-		_assembler.EmitBranch(M68kCondition.CarrySet, subtract);
-		_assembler.EmitWord(0xB681); // CMP.L D1,D3
-		_assembler.EmitBranch(M68kCondition.CarrySet, noSubtract);
-		_assembler.Mark(subtract);
-		_assembler.EmitWord(0x9681); // SUB.L D1,D3
-		_assembler.EmitWord(0x5280); // ADDQ.L #1,D0: append quotient bit
-		_assembler.Mark(noSubtract);
-		_assembler.EmitDbra(4, loop);
+		if (SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.ShareArithmeticCores &&
+			_emittingAllocatedFunction is { Function.HasExceptionHandlers: false, Function.HasDynamicStackAllocation: false })
+		{
+			var callStart = "generated-division-call-start-" + _sharedDivisionCoreCalls;
+			var callEnd = "generated-division-call-limit-" + _sharedDivisionCoreCalls;
+			_assembler.Mark(callStart);
+			var callOffset = _assembler.Offset;
+			_assembler.EmitJsr(SharedDivisionCoreLabel, external: false);
+			_assembler.Mark(callEnd);
+			_sharedDivisionCallRanges.Add((callStart, callEnd));
+			_assembler.SetInstructionEffects(callOffset, new(0x3, 0x19, 0x80, 0,
+				M68kConditionCodeSet.None, M68kConditionCodeSet.All, M68kMemorySet.Stack,
+				M68kMemorySet.Stack, 0, true, false));
+			_sharedDivisionCoreCalls++;
+		}
+		else EmitUnsignedDivisionCore();
 
 		if (signed)
 		{
@@ -5196,6 +5216,25 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitShift(OpCode op)
 	{
 		EmitShift(op, CilStackValueKind.Int32);
+	}
+	private void EmitUnsignedDivisionCore()
+	{
+		var loop = UniqueLabel("div_loop");
+		var subtract = UniqueLabel("div_subtract");
+		var noSubtract = UniqueLabel("div_no_sub");
+		_assembler.EmitWord(0x7600); // MOVEQ #0,D3
+		_assembler.EmitWord(0x781F); // MOVEQ #31,D4
+		_assembler.Mark(loop);
+		_assembler.EmitWord(0xD080); // ADD.L D0,D0
+		_assembler.EmitWord(0xD783); // ADDX.L D3,D3, retaining the 33rd remainder bit
+		_assembler.EmitBranch(M68kCondition.CarrySet, subtract);
+		_assembler.EmitWord(0xB681); // CMP.L D1,D3
+		_assembler.EmitBranch(M68kCondition.CarrySet, noSubtract);
+		_assembler.Mark(subtract);
+		_assembler.EmitWord(0x9681); // SUB.L D1,D3
+		_assembler.EmitWord(0x5280); // ADDQ.L #1,D0
+		_assembler.Mark(noSubtract);
+		_assembler.EmitDbra(4, loop);
 	}
 
 	private void EmitShift(
