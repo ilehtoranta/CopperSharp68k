@@ -770,7 +770,15 @@ internal sealed record M68kMethodAllocationStatistics(
 	int GcRootSlots,
 	int AllocationIterations,
 	int CodeBytes,
-	int StackMemoryInstructions);
+	int StackMemoryInstructions)
+{
+	public int FrameBytes { get; init; }
+	public int SavedBytes { get; init; }
+	public IReadOnlyList<M68kFrameSlotStatistics> FrameSlots { get; init; } = [];
+	public IReadOnlyDictionary<string, int> OperationCounts { get; init; } = new Dictionary<string, int>();
+}
+
+internal sealed record M68kFrameSlotStatistics(string Kind, int Index, int Offset, int Size, bool AddressTaken);
 
 internal sealed record M68kAllocatedFunction(
 	M68kMachineFunction Function,

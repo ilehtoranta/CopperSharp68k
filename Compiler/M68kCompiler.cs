@@ -914,6 +914,14 @@ public static class M68kCompiler
 			$"argument-calls={copies.ArgumentCopies} argument-bytes={copies.ArgumentBytes} " +
 			$"unclassified-calls={copies.UnclassifiedCopies} unclassified-bytes={copies.UnclassifiedBytes} " +
 			$"managed-providers={copies.ManagedProviders} external-providers={copies.ExternalProviders}");
+		foreach (var statistics in program.AllocationStatistics.Values.OrderBy(statistics => statistics.Method))
+		{
+			map.AppendLine($"ALLOCATION method={statistics.Method} values={statistics.VirtualValues} registers={statistics.RegisterValues} spilled={statistics.SpilledValues} reloads={statistics.Reloads} rematerialized={statistics.RematerializedValues} spill-bytes={statistics.SpillFrameBytes} frame-bytes={statistics.FrameBytes} saved-bytes={statistics.SavedBytes} iterations={statistics.AllocationIterations} pre-peephole-code-bytes={statistics.CodeBytes} pre-peephole-stack-instructions={statistics.StackMemoryInstructions}");
+			foreach (var slot in statistics.FrameSlots)
+				map.AppendLine($"FRAME-SLOT method={statistics.Method} kind={slot.Kind} index={slot.Index} offset={slot.Offset} size={slot.Size} address-taken={(slot.AddressTaken ? "yes" : "no")}");
+			foreach (var operation in statistics.OperationCounts.OrderBy(pair => pair.Key))
+				map.AppendLine($"MACHINE-OP method={statistics.Method} operation={operation.Key} count={operation.Value}");
+		}
 		map.AppendLine("SYMBOLS");
 		foreach (var symbol in symbols)
 		{

@@ -1678,7 +1678,20 @@ internal sealed partial class M68kCodeGenerator
 			allocatedFunction.Statistics with
 			{
 				CodeBytes = emittedEnd - emittedStart,
-				StackMemoryInstructions = stackMemoryInstructions
+				StackMemoryInstructions = stackMemoryInstructions,
+				FrameBytes = allocatedFunction.Frame.FrameBytes,
+				SavedBytes = allocatedFunction.Frame.CalleeSavedRegisters.Count * 4,
+				FrameSlots = allocatedFunction.Frame.LocalOffsets.Select(pair => new M68kFrameSlotStatistics(
+					"local", pair.Key, pair.Value, allocatedFunction.Function.LocalHomes[pair.Key].Size,
+					allocatedFunction.Function.Blocks.SelectMany(block => block.Instructions).Any(instruction =>
+						instruction.Operation == M68kMachineOperation.LocalAddress && instruction.ArgumentIndex == pair.Key)))
+					.Concat(allocatedFunction.Frame.ArgumentHomeOffsets.Select(pair => new M68kFrameSlotStatistics(
+						"argument", pair.Key, pair.Value, allocatedFunction.Function.ArgumentHomes[pair.Key].Size, true)))
+					.Concat(allocatedFunction.Frame.SpillOffsets.Select(pair => new M68kFrameSlotStatistics(
+						"spill", pair.Key, pair.Value, allocatedFunction.Spills.Slots.Values.First(slot => slot.Index == pair.Key).Size, false)))
+					.OrderBy(slot => slot.Offset).ThenBy(slot => slot.Kind).ToArray(),
+				OperationCounts = allocatedFunction.Function.Blocks.SelectMany(block => block.Instructions)
+					.GroupBy(instruction => instruction.Operation.ToString()).ToDictionary(group => group.Key, group => group.Count())
 			};
 	}
 
