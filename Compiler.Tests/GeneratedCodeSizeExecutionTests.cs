@@ -159,29 +159,45 @@ public sealed class GeneratedCodeSizeExecutionTests
         Assert.Equal(Raw(live, false).Bytes.Length, Raw(live, true).Bytes.Length);
     }
 
-    [Fact]
-    public void CStringLiteralConversionRejectsMergedStringsAndSupportsConvertedBranches()
+    [Theory]
+    [InlineData("ConditionalCStringEntry")]
+    [InlineData("ExplicitConditionalCStringEntry")]
+    [InlineData("LocalCStringEntry")]
+    [InlineData("NestedCStringEntry")]
+    [InlineData("MixedManagedCStringEntry")]
+    public void CStringLiteralConversionSelectsTheActualOperand(string entry)
     {
-        var request = new M68kCompilationRequest {
-            AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
-            EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::ConditionalCStringEntry",
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
-            OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
-            MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
-            Hunk = new() { IncludeSymbols = false },
-            CodeSizeOptimizations = new() { ValidateLiteralOperands = true }
-        };
-        Assert.False(new M68kCodeSizeOptions().ValidateLiteralOperands);
+        foreach (var policy in new M68kCodeSizeOptions?[] { null, new() { ValidateLiteralOperands = true } })
+        foreach (var peephole in Enum.GetValues<M68kPeepholeOptimizationMode>())
         foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
-            var error = Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(request with { Cpu = target }));
-            Assert.Contains("literal", error.Message, StringComparison.OrdinalIgnoreCase);
+            var compiled = AmigaM68kCompiler.Compile(new M68kCompilationRequest {
+                AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
+                EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::" + entry,
+                Cpu = target, RuntimeProfile = M68kRuntimeProfile.Resident,
+                OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+                MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
+                Hunk = new() { IncludeSymbols = false }, CodeSizeOptimizations = policy,
+                PeepholeOptimization = peephole
+            });
+            foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
+            foreach (var load in new uint[] { 0x10000, 0x20000 })
+            foreach (var input in new uint[] { 0, 1, uint.MaxValue })
+                Assert.Equal(input == 0 ? (uint)'F' : (uint)'T', Guest(compiled, model, load, input)[0]);
         }
-        var compiled = AmigaM68kCompiler.Compile(request with {
-            EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::ExplicitConditionalCStringEntry" });
-        foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
-        foreach (var load in new uint[] { 0x10000, 0x20000 })
-        foreach (var input in new uint[] { 0, 1, uint.MaxValue })
-            Assert.Equal(input == 0 ? (uint)'F' : (uint)'T', Guest(compiled, model, load, input)[0]);
+    }
+
+    [Fact]
+    public void CStringLiteralConversionRejectsUnknownStringProvenance()
+    {
+        var error = Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(
+            new M68kCompilationRequest {
+                AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
+                EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::UnknownCStringEntry",
+                Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
+                OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+                MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = []
+            }));
+        Assert.Contains("derived only from string literals", error.Message);
     }
 
     private static LinkedCode Raw(ushort[] words, bool enabled)
@@ -275,6 +291,31 @@ public sealed class GeneratedCodeSizeExecutionTests
 
 public static unsafe class GeneratedSizeFixtures
 {
+    public static uint LocalCStringEntry()
+    {
+        string text;
+        if (APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) != 0) text = "True";
+        else text = "False";
+        return APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(CString.FromLiteral(text))), 0);
+    }
+    public static uint NestedCStringEntry()
+    {
+        var input = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        CString text = input == 0 ? "False" : input == 1 ? "True" : "Third";
+        return APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(text)), 0);
+    }
+    public static uint MixedManagedCStringEntry()
+    {
+        string text = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) != 0 ? "True" : "False";
+        var native = CString.FromLiteral(text);
+        // The managed value must retain its UTF-16 layout and length header.
+        return text.Length == 4 || text.Length == 5
+            ? APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(native)), 0) : 0u;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static string UnknownString() => "True";
+    public static uint UnknownCStringEntry() => CString.ToUInt32(CString.FromLiteral(UnknownString()));
+
     public static uint ConditionalCStringEntry()
     {
         var choose = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) != 0;

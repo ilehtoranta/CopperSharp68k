@@ -234,6 +234,7 @@ internal static class CilMachineIrBuilder
 		AttachCatchValues(function, states);
 		ConnectExceptionalEdges(function, states, blocksByOffset);
 		PopulatePhiInputs(states);
+		LowerLiteralAddressOperands(function, method, module);
 		FoldIncomingStackArgumentForwarding(
 			function,
 			method,
@@ -5315,15 +5316,88 @@ internal static class CilMachineIrBuilder
 			AllowedRegisters = M68kRegisterSet.DataOrAddress
 		};
 
-		// The managed string operand only identifies a compile-time literal. The
-		// intrinsic emitter materializes the corresponding native address and
-		// never calls managed code, so keeping the operand would create a false
-		// GC root and safepoint around a non-call.
+		// Retain the SSA operand until all phi inputs are available. Lowering then
+		// replaces it with a native-address graph before GC and allocation analysis.
 		block.Instructions.Add(function.CreateInstruction(
 			M68kMachineOperation.Call,
 			instruction.Offset,
+			uses: uses,
 			definitions: definitions,
 			sourceInstruction: instruction));
+	}
+
+	// Lower from SSA provenance rather than physical CIL adjacency. Clone only
+	// the native-address graph so other consumers retain managed string values.
+	private static void LowerLiteralAddressOperands(
+		M68kMachineFunction function, CilMethod method, CompilationModule module)
+	{
+		var producers = function.Blocks.SelectMany(block => block.Instructions
+			.SelectMany(instruction => instruction.Definitions.Select(value =>
+				(value, block, instruction))))
+			.ToDictionary(item => item.value);
+		var phis = function.Blocks.SelectMany(block => block.Phis
+			.Select(phi => (phi.Definition, block, phi)))
+			.ToDictionary(item => item.Definition);
+		var calls = function.Blocks.SelectMany(block => block.Instructions
+			.Where(instruction => instruction.Operation == M68kMachineOperation.Call &&
+				instruction.SourceInstruction?.Operand is int token &&
+				IsLiteralAddressIntrinsic(module.ResolveMethodToken(token, method,
+					instruction.IlOffset).ImportName))
+			.Select(instruction => (block, instruction))).ToArray();
+		foreach (var (block, call) in calls)
+		{
+			var clones = new Dictionary<int, int>();
+			var foundLiteral = false;
+			int Clone(int value)
+			{
+				if (clones.TryGetValue(value, out var existing)) return existing;
+				var native = function.CreateValue(CilStackValueKind.Int32,
+					M68kMachineValueWidth.Long, M68kRegisterSet.DataOrAddress).Id;
+				clones.Add(value, native);
+				if (phis.TryGetValue(value, out var merge))
+				{
+					var inputs = merge.phi.Inputs.ToDictionary(pair => pair.Key,
+						pair => Clone(pair.Value));
+					merge.block.Phis.Add(new M68kMachinePhi(native, inputs));
+					return native;
+				}
+				if (producers.TryGetValue(value, out var producer))
+				{
+					var source = producer.instruction;
+					M68kMachineInstruction replacement;
+					if (source.Operation == M68kMachineOperation.Address &&
+						source.SourceInstruction is { OpCode: var op, Operand: int literal } &&
+						op == OpCodes.Ldstr)
+					{
+						foundLiteral = true;
+						replacement = function.CreateInstruction(M68kMachineOperation.Call,
+							call.IlOffset, definitions: [native],
+							sourceInstruction: call.SourceInstruction, immediate: literal);
+					}
+					else if (source.Operation == M68kMachineOperation.Copy &&
+						source.Uses.Length == 1 && source.Definitions.Length == 1)
+					{
+						replacement = function.CreateInstruction(M68kMachineOperation.Copy,
+							source.IlOffset, uses: [Clone(source.Uses[0])], definitions: [native],
+							sourceInstruction: source.SourceInstruction);
+					}
+					else throw Unsupported();
+					producer.block.Instructions.Insert(
+						producer.block.Instructions.IndexOf(source) + 1, replacement);
+					return native;
+				}
+				throw Unsupported();
+			}
+			M68kCompilationException Unsupported() => new(
+				M68kDiagnosticIds.UnsupportedInstruction,
+				"Literal address intrinsic requires a value derived only from string literals.",
+				method.DisplayName, call.IlOffset);
+			var operand = Clone(call.Uses[0]);
+			if (!foundLiteral) throw Unsupported();
+			block.Instructions[block.Instructions.IndexOf(call)] = function.CreateInstruction(
+				M68kMachineOperation.Copy, call.IlOffset, uses: [operand],
+				definitions: call.Definitions, sourceInstruction: call.SourceInstruction);
+		}
 	}
 
 	private static bool HasFlexibleScalarReturn(string? importName) =>

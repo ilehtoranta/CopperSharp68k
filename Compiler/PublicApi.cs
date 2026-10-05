@@ -566,7 +566,7 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM and resident HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
-	/// <summary>Reject control-flow merges that do not supply one immediate literal to literal-address intrinsics.</summary>
+	/// <summary>Compatibility switch retained for existing clients. Literal provenance is now always validated; literal-only merges are supported.</summary>
 	public bool ValidateLiteralOperands { get; init; }
 	/// <summary>Remove proven redundant register and private stack transport.</summary>
 	public bool RemoveRedundantTransport { get; init; }
