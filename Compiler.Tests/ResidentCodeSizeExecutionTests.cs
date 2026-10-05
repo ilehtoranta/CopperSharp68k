@@ -84,7 +84,10 @@ public sealed class ResidentCodeSizeExecutionTests
         InlineSingleUseMethods = pass is "Combined" or "InlineSingleUseMethods",
         ClusterInternalCalls = pass is "Combined" or "ClusterInternalCalls",
         ShareIdenticalMethods = pass is "Combined" or "ShareIdenticalMethods",
-        ShareReturnSequences = pass is "Combined" or "ShareReturnSequences"
+        ShareReturnSequences = pass is "Combined" or "ShareReturnSequences",
+        RemoveRedundantTransport = pass == "Combined", CompactGuestMemory = pass == "Combined",
+        NarrowOperations = pass == "Combined", EliminateRedundantInitialization = pass == "Combined",
+        SizeFirstCosts = pass == "Combined", InlineMemoryHelpers = pass == "Combined", ShareArithmeticCores = pass == "Combined"
     };
 
     [Fact]
