@@ -226,6 +226,7 @@ public static unsafe class GeneratedSizeFixtures
     public static uint Entry() {
         var input = *(uint*)0x40000;
         var p = APTR.FromPointer(0x40008);
+        APTR.WriteUInt8(p, (int)(input & 7), (byte)input);
         APTR.WriteUInt8(p, 0, (byte)input);
         APTR.WriteUInt16(p, 2, (ushort)input);
         APTR.WriteUInt32(p, 4, input);

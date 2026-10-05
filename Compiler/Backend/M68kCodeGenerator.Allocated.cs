@@ -8597,8 +8597,15 @@ internal sealed partial class M68kCodeGenerator
 				constantOffset is >= short.MinValue and <= short.MaxValue
 					? (short)constantOffset
 					: (short)0;
-			if (!hasConstantOffset ||
-				constantOffset is < short.MinValue or > short.MaxValue)
+			// A narrow load sharing its index/result register cannot preclear
+			// the result. Keep that address available to the late liveness pass,
+			// which can fold it without paying a wider normalization sequence.
+			var indexedAccess = name == "intrinsic:aptr-read-uint32" && !hasConstantOffset && SupportsGeneratedCodeSizeProfile &&
+				_request.CodeSizeOptimizations!.CompactGuestMemory && !allocated.Function.HasExceptionHandlers &&
+				!allocated.Function.HasDynamicStackAllocation && !allocated.Function.Values.Values.Any(value => value.IsGcReference) &&
+				!allocated.Function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+				!allocated.Function.ArgumentHomes.Values.Any(home => home.HasGcReferences);
+			if (!indexedAccess && (!hasConstantOffset || constantOffset is < short.MinValue or > short.MaxValue))
 			{
 				EmitAllocatedBinaryInPlace(
 					M68kMachineOperation.Add,
@@ -8608,11 +8615,12 @@ internal sealed partial class M68kCodeGenerator
 			}
 			var width = name == "intrinsic:aptr-read-uint8" ? M68kMachineValueWidth.Byte :
 				name == "intrinsic:aptr-read-uint16" ? M68kMachineValueWidth.Word : M68kMachineValueWidth.Long;
-			EmitAllocatedBaseLoad(
-				baseRegister,
-				destination,
-				width,
-				displacement);
+			if (indexedAccess)
+			{
+				EmitAllocatedIndexedLoad(baseRegister, Use(1), destination, width, 1, 0);
+				_assembler.RecordCodeSizeRewrite("IndexedGuestAccess", 0);
+			}
+			else EmitAllocatedBaseLoad(baseRegister, destination, width, displacement);
 			if (width != M68kMachineValueWidth.Long)
 			{
 				// APTR reads publish canonical CLR byte/ushort values. A byte/word
@@ -8673,8 +8681,12 @@ internal sealed partial class M68kCodeGenerator
 				constantOffset is >= short.MinValue and <= short.MaxValue
 					? (short)constantOffset
 					: (short)0;
-			if (!hasConstantOffset ||
-				constantOffset is < short.MinValue or > short.MaxValue)
+			var indexedAccess = !hasConstantOffset && SupportsGeneratedCodeSizeProfile &&
+				_request.CodeSizeOptimizations!.CompactGuestMemory && !allocated.Function.HasExceptionHandlers &&
+				!allocated.Function.HasDynamicStackAllocation && !allocated.Function.Values.Values.Any(value => value.IsGcReference) &&
+				!allocated.Function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+				!allocated.Function.ArgumentHomes.Values.Any(home => home.HasGcReferences);
+			if (!indexedAccess && (!hasConstantOffset || constantOffset is < short.MinValue or > short.MaxValue))
 			{
 				EmitAllocatedBinaryInPlace(
 					M68kMachineOperation.Add,
@@ -8684,11 +8696,12 @@ internal sealed partial class M68kCodeGenerator
 			}
 			var width = name == "intrinsic:aptr-write-uint8" ? M68kMachineValueWidth.Byte :
 				name == "intrinsic:aptr-write-uint16" ? M68kMachineValueWidth.Word : M68kMachineValueWidth.Long;
-			EmitAllocatedBaseStore(
-				Use(instruction.Immediate is null ? 2 : 1),
-				baseRegister,
-				width,
-				displacement);
+			if (indexedAccess)
+			{
+				EmitAllocatedIndexedStore(Use(2), baseRegister, Use(1), width, 1, 0);
+				_assembler.RecordCodeSizeRewrite("IndexedGuestAccess", 0);
+			}
+			else EmitAllocatedBaseStore(Use(instruction.Immediate is null ? 2 : 1), baseRegister, width, displacement);
 			return;
 		}
 		if (name == "intrinsic:aptr-raw")
