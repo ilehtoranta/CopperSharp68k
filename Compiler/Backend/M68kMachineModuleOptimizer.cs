@@ -76,7 +76,7 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlySet<CilMethodIdentity>? noInlineMethods = null,
 		Action? beforeRetention = null,
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases = null,
-		bool inlineSingleUseMethods = false)
+		bool inlineSingleUseMethods = false, bool sizeFirstCosts = false)
 	{
 		ArgumentNullException.ThrowIfNull(methods);
 		ArgumentNullException.ThrowIfNull(functions);
@@ -177,6 +177,7 @@ internal static class M68kMachineModuleOptimizer
 					noInlineMethods,
 					foldedMethodAliases,
 					singleUseCandidates,
+					sizeFirstCosts,
 					ref singleUseInlined);
 			}
 		}
@@ -491,6 +492,7 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlySet<CilMethodIdentity>? noInlineMethods,
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases,
 		IReadOnlySet<CilMethodIdentity> singleUseCandidates,
+		bool sizeFirstCosts,
 		ref int singleUseInlined)
 	{
 		var count = 0;
@@ -599,11 +601,11 @@ internal static class M68kMachineModuleOptimizer
 				var beforeCost = M68kTargetCostModel.Estimate(
 					block.Instructions.Skip(first).Take(removedCount),
 					cpu,
-					block.LoopDepth);
+					block.LoopDepth, sizeFirstCosts);
 				var afterCost = M68kTargetCostModel.Estimate(
 					body,
 					cpu,
-					block.LoopDepth) +
+					block.LoopDepth, sizeFirstCosts) +
 					(logicalCall.ResultValueIds.Length == 0
 						? new M68kTargetCost()
 						: M68kTargetCostModel.Estimate(
@@ -622,7 +624,7 @@ internal static class M68kMachineModuleOptimizer
 				var forceInline = guestMemoryIntrinsicWrapper ||
 					trivialValueTypeConstructor;
 				var acceptedNormally = delta <= 0 &&
-					M68kTargetCostModel.Accept(beforeCost, afterCost, cpu);
+					M68kTargetCostModel.Accept(beforeCost, afterCost, cpu, sizeFirstCosts);
 				var pressurePenalty = checked(4L * Math.Max(
 					0,
 					afterCost.AddedLiveValuePressure -

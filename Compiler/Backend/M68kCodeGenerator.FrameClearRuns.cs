@@ -27,7 +27,8 @@ internal sealed partial class M68kCodeGenerator
 		var loopKind = hasCounter && hasAddress && hasZero ? M68kFrameClearLoopKind.Scratch
 			: hasAddress ? M68kFrameClearLoopKind.PreserveData : M68kFrameClearLoopKind.PreserveDataAndAddress;
 		var unrolledZeroAvailable = TrySelectAllocatedFrameZeroRegister(abi, allocated, out var unrolledZero);
-		var plan = M68kFrameClearRunPlanner.Create(clearDisplacements, unrolledZeroAvailable, loopKind);
+		var plan = M68kFrameClearRunPlanner.Create(clearDisplacements, unrolledZeroAvailable, loopKind,
+			SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.SizeFirstCosts);
 		if (plan is null) return false;
 		foreach (var run in plan.Runs)
 		{
@@ -59,6 +60,23 @@ internal sealed partial class M68kCodeGenerator
 	{
 		EmitAllocatedFrameAddress(addressRegister, clearDisplacements[0], trackNonNull: false);
 		_assembler.EmitWord((ushort)(0x7000 | ((int)zeroRegister << 9)));
+		if (SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.SizeFirstCosts &&
+			_emittingAllocatedFunction is { Function.HasExceptionHandlers: false, Function.HasDynamicStackAllocation: false } &&
+			!_emittingAllocatedFunction.Function.Values.Values.Any(value => value.IsGcReference) &&
+			clearDisplacements.Count is > 0 and <= 65536)
+		{
+			EmitAllocatedImmediate(clearDisplacements.Count - 1, counterRegister);
+			var compactLoop = UniqueLabel("allocated-frame-compact-zero-loop");
+			_assembler.Mark(compactLoop);
+			_assembler.EmitWord((ushort)(0x20C0 |
+				(((int)addressRegister - (int)M68kRegister.A0) << 9) | (int)zeroRegister));
+			_assembler.EmitDbra((int)counterRegister, compactLoop);
+			var oldBodyBytes = (clearDisplacements.Count % 4) * 2 +
+				(clearDisplacements.Count / 4 - 1 <= 127 ? 2 : 6) + 8 + 4;
+			var newBodyBytes = (clearDisplacements.Count - 1 <= 127 ? 2 : 6) + 2 + 4;
+			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.SizeFirstCosts), oldBodyBytes - newBodyBytes);
+			return;
+		}
 		var remainder = clearDisplacements.Count % 4;
 		for (var index = 0; index < remainder; index++)
 			_assembler.EmitWord((ushort)(0x20C0 |

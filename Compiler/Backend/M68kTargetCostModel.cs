@@ -24,13 +24,17 @@ internal static class M68kTargetCostModel
 	public static M68kTargetCost Estimate(
 		IEnumerable<M68kMachineInstruction> instructions,
 		M68kCpuTarget cpu,
-		int loopDepth = 0)
+		int loopDepth = 0, bool sizeFirstEncodings = false)
 	{
 		var cost = new M68kTargetCost();
 		var values = new HashSet<int>();
 		foreach (var instruction in instructions)
 		{
-			var bytes = EstimatedBytes(instruction);
+			var bytes = sizeFirstEncodings && cpu == M68kCpuTarget.M68000 &&
+				instruction.Operation is M68kMachineOperation.Divide or M68kMachineOperation.Remainder
+					? instruction.SourceInstruction?.OpCode == System.Reflection.Emit.OpCodes.Div_Un ||
+						instruction.SourceInstruction?.OpCode == System.Reflection.Emit.OpCodes.Rem_Un ? 22 : 60
+					: EstimatedBytes(instruction);
 			var cycles = EstimatedCycles(instruction, cpu);
 			var loopWeight = 1L;
 			for (var depth = 0; depth < loopDepth && loopWeight < 1_000_000; depth++)
@@ -50,8 +54,9 @@ internal static class M68kTargetCostModel
 	public static bool Accept(
 		M68kTargetCost before,
 		M68kTargetCost after,
-		M68kCpuTarget cpu)
+		M68kCpuTarget cpu, bool sizeFirst = false)
 	{
+		if (sizeFirst) return after.Bytes < before.Bytes;
 		if (after.Bytes <= before.Bytes && after.Cycles <= before.Cycles &&
 			after.AddedLiveValuePressure <= before.AddedLiveValuePressure)
 		{

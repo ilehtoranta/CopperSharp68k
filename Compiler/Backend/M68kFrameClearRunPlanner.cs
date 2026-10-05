@@ -26,7 +26,8 @@ internal static class M68kFrameClearRunPlanner
 	internal static M68kFrameClearRunPlan? Create(
 		IReadOnlyList<int> displacements,
 		bool hasUnrolledZeroRegister,
-		M68kFrameClearLoopKind loopKind)
+		M68kFrameClearLoopKind loopKind,
+		bool sizeFirst = false)
 	{
 		if (displacements.Count < 8) return null;
 		var groups = new List<M68kFrameClearRun>();
@@ -55,9 +56,12 @@ internal static class M68kFrameClearRunPlanner
 		var anyLoop = false;
 		foreach (var group in groups)
 		{
-			var cost = LoopCost(group.Count, loopKind);
+			var compact = sizeFirst && loopKind == M68kFrameClearLoopKind.Scratch && group.Count <= 65536;
+			var cost = compact ? (Bytes: 4 + 2 + (group.Count - 1 <= 127 ? 2 : 6) + 2 + 4,
+				Cycles: 8L + 4 + (group.Count - 1 <= 127 ? 4 : 12) + group.Count * 12L + (group.Count - 1L) * 10 + 14)
+				: LoopCost(group.Count, loopKind);
 			var loop = group.Count >= minimum &&
-				cost.Bytes < (long)group.Count * 4 && cost.Cycles <= (long)group.Count * storeCycles;
+				cost.Bytes < (long)group.Count * 4 && (sizeFirst || cost.Cycles <= (long)group.Count * storeCycles);
 			if (loop)
 			{
 				runs.Add(group with { Loop = true });
@@ -80,7 +84,7 @@ internal static class M68kFrameClearRunPlanner
 		}
 		// Every short segment after a loop pays for its own MOVEQ. A data
 		// register used by that loop's counter cannot be assumed still zero.
-		return anyLoop && plannedBytes < originalBytes && plannedCycles <= originalCycles
+		return anyLoop && plannedBytes < originalBytes && (sizeFirst || plannedCycles <= originalCycles)
 			? new(runs, originalBytes, plannedBytes, originalCycles, plannedCycles) : null;
 	}
 
