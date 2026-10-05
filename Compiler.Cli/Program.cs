@@ -54,6 +54,13 @@ static int Run(string[] args)
 				throw new ArgumentException("Unknown or empty code size pass selection.");
 			codeSizeOptimizations = new M68kCodeSizeOptions
 			{
+				RemoveRedundantTransport = selected.Contains(nameof(M68kCodeSizeOptions.RemoveRedundantTransport)),
+				CompactGuestMemory = selected.Contains(nameof(M68kCodeSizeOptions.CompactGuestMemory)),
+				NarrowOperations = selected.Contains(nameof(M68kCodeSizeOptions.NarrowOperations)),
+				EliminateRedundantInitialization = selected.Contains(nameof(M68kCodeSizeOptions.EliminateRedundantInitialization)),
+				SizeFirstCosts = selected.Contains(nameof(M68kCodeSizeOptions.SizeFirstCosts)),
+				InlineMemoryHelpers = selected.Contains(nameof(M68kCodeSizeOptions.InlineMemoryHelpers)),
+				ShareArithmeticCores = selected.Contains(nameof(M68kCodeSizeOptions.ShareArithmeticCores)),
 				ElideUnusedRegisterArguments = selected.Contains(nameof(M68kCodeSizeOptions.ElideUnusedRegisterArguments)),
 				ShareReturnSequences = selected.Contains(nameof(M68kCodeSizeOptions.ShareReturnSequences)),
 				ShareIdenticalMethods = selected.Contains(nameof(M68kCodeSizeOptions.ShareIdenticalMethods)),
@@ -687,7 +694,10 @@ static void PrintUsage()
 		  [--clr auto|always] [--peephole fixed-point|bounded|disabled]
 		  [--rom-size-optimizations on|off; default off]
 		  [--code-size-optimizations on|off; default off; mutually exclusive with ROM policy]
-		  [--code-size-passes comma-separated M68kCodeSizeOptions property names; qualification only]
+		  [--code-size-passes comma-separated M68kCodeSizeOptions property names]
+		    New generated-code passes default off: RemoveRedundantTransport,
+		    CompactGuestMemory, NarrowOperations, EliminateRedundantInitialization,
+		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores.
 		  [--resident-stack-context-threshold bytes; default 512]
 		  [--bulk-copy-provider <Assembly::Namespace.Type::Method>]
 		  [--bulk-copy-min-bytes <positive bytes; default 64 with provider>]

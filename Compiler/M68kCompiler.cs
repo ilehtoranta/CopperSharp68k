@@ -853,6 +853,12 @@ public static class M68kCompiler
 		map.AppendLine($"RESIDENT-CONTEXT bytes={program.ResidentContextBytes} placement=" +
 			(program.ResidentContextBytes == 0 ? "none" : program.ResidentContextOnHeap ? "heap" : "stack"));
 		map.AppendLine($"CODE-SIZE mode={(request.CodeSizeOptimizations is not null ? "general" : request.RomSizeOptimizations is not null ? "rom" : "off")}");
+		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
+			? string.Join(',', typeof(M68kCodeSizeOptions).GetProperties().Where(p => (bool)p.GetValue(generatedPolicy)!).Select(p => p.Name))
+			: "none"));
+		foreach (var (pass, statistics) in program.Assembler.GeneratedCodeSizeStatistics.OrderBy(p => p.Key, StringComparer.Ordinal))
+			map.AppendLine($"GENERATED-SIZE-REWRITE pass={pass} rewrites={statistics.Rewrites} local-byte-delta={statistics.Bytes}" +
+				(pass == nameof(M68kCodeSizeOptions.EliminateRedundantInitialization) ? $" private-storage-bytes={statistics.Rewrites * 4}" : ""));
 		map.AppendLine($"ENTRY {entryPoint:X8}");
 		map.AppendLine(
 			$"METRICS artifact-bytes={artifactBytes} code-bytes={codeBytes} " +

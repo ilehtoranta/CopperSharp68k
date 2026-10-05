@@ -566,6 +566,20 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM and resident HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Remove proven redundant register and private stack transport.</summary>
+	public bool RemoveRedundantTransport { get; init; }
+	/// <summary>Select compact indexed guest accesses and direct memory tests.</summary>
+	public bool CompactGuestMemory { get; init; }
+	/// <summary>Defer narrow normalization when consumers use only the low part.</summary>
+	public bool NarrowOperations { get; init; }
+	/// <summary>Remove implicit private initialization superseded before observation.</summary>
+	public bool EliminateRedundantInitialization { get; init; }
+	/// <summary>Prefer fewer bytes even when clear loops execute more instructions.</summary>
+	public bool SizeFirstCosts { get; init; }
+	/// <summary>Consider additional private memory helpers for size inlining.</summary>
+	public bool InlineMemoryHelpers { get; init; }
+	/// <summary>Share repeated software arithmetic cores when encoded bytes decrease.</summary>
+	public bool ShareArithmeticCores { get; init; }
 	/// <summary>
 	/// Stop staging provably unused register arguments at direct managed calls.
 	/// Formal ABI positions, argument evaluation, and stack arguments are unchanged.
@@ -705,8 +719,8 @@ public sealed record M68kCompilationRequest
 	/// <summary>General image-size policy. Cannot be combined with RomSizeOptimizations.</summary>
 	public M68kCodeSizeOptions? CodeSizeOptimizations { get; init; }
 
-	internal M68kRomSizeOptions? EffectiveCodeSizeOptions => CodeSizeOptimizations is { } policy
-		? new M68kRomSizeOptions
+	internal M68kCodeSizeOptions? EffectiveCodeSizeOptions => CodeSizeOptimizations ?? (RomSizeOptimizations is { } policy
+		? new M68kCodeSizeOptions
 		{
 			ElideUnusedRegisterArguments = policy.ElideUnusedRegisterArguments,
 			ShareReturnSequences = policy.ShareReturnSequences,
@@ -716,7 +730,7 @@ public sealed record M68kCompilationRequest
 			InlineSingleUseMethods = policy.InlineSingleUseMethods,
 			ForwardReadOnlyAggregateLocals = policy.ForwardReadOnlyAggregateLocals,
 		}
-		: RomSizeOptimizations;
+		: null);
 
 
 	/// <summary>

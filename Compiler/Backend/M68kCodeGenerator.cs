@@ -19,6 +19,10 @@ internal sealed partial class M68kCodeGenerator
 		_request.CodeSizeOptimizations is not null &&
 		_request.RuntimeProfile == M68kRuntimeProfile.Resident &&
 		_request.OutputFormat == M68kOutputFormat.Hunk;
+	private bool SupportsGeneratedCodeSizeProfile => _request.CodeSizeOptimizations is not null &&
+		_request.Cpu == M68kCpuTarget.M68000 && _request.RuntimeProfile == M68kRuntimeProfile.Resident &&
+		_request.OutputFormat == M68kOutputFormat.Hunk && _request.ExceptionMode == M68kExceptionMode.Yolo &&
+		_memoryManagement == M68kMemoryManagement.None && !_usesExceptionRuntime;
 	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _usedTypeLayouts = new();
@@ -413,6 +417,22 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EnableRepeatedCallResultTestOptimization =
 			enableWholeImageRomSizeOptimizations &&
 			(_request.CodeSizeOptimizations is null || _request.EffectiveCodeSizeOptions!.ShareReturnSequences);
+		if (SupportsGeneratedCodeSizeProfile)
+		{
+			_assembler.GeneratedCodeSizeOptions = _request.CodeSizeOptimizations;
+			_assembler.GeneratedCodeSizeRanges = methods
+				.Where(method => rawFunctions.TryGetValue(method.Identity, out var function) &&
+					!function.HasExceptionHandlers && !function.HasDynamicStackAllocation &&
+					!function.Values.Values.Any(value => value.IsGcReference) &&
+					!function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+					!function.ArgumentHomes.Values.Any(home => home.HasGcReferences))
+				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
+			_assembler.GeneratedPrivateHelperRanges = methods.Where(method =>
+				(method.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Private &&
+				(method.ImplAttributes & MethodImplAttributes.NoInlining) == 0 && !optimizerRoots.Contains(method.Identity) &&
+				_assembler.GeneratedCodeSizeRanges.Any(range => range.StartLabel == MethodLabel(method)))
+				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
+		}
 		// Shared tails use only exact, self-contained terminal blocks. Managed
 		// memory, exception-runtime and dynamic-stack methods retain their exits.
 		_assembler.EnableMethodLocalTerminalReuse =
