@@ -255,6 +255,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				{
 					changed = TryRemoveGeneratedTransport(dataflow) ||
 						TryCompactGeneratedMemory(dataflow) ||
+						TryDeferGeneratedNormalization(dataflow) ||
 						TryRemoveDeadInstruction(dataflow);
 				}
 			}
