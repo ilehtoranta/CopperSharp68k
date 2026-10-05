@@ -159,6 +159,29 @@ public sealed class GeneratedCodeSizeExecutionTests
         Assert.Equal(Raw(live, false).Bytes.Length, Raw(live, true).Bytes.Length);
     }
 
+    [Fact]
+    public void CStringLiteralConversionRejectsMergedStringsAndSupportsConvertedBranches()
+    {
+        var request = new M68kCompilationRequest {
+            AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
+            EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::ConditionalCStringEntry",
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
+            OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+            MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
+            Hunk = new() { IncludeSymbols = false }
+        };
+        foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
+            var error = Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(request with { Cpu = target }));
+            Assert.Contains("literal", error.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        var compiled = AmigaM68kCompiler.Compile(request with {
+            EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::ExplicitConditionalCStringEntry" });
+        foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
+        foreach (var load in new uint[] { 0x10000, 0x20000 })
+        foreach (var input in new uint[] { 0, 1, uint.MaxValue })
+            Assert.Equal(input == 0 ? (uint)'F' : (uint)'T', Guest(compiled, model, load, input)[0]);
+    }
+
     private static LinkedCode Raw(ushort[] words, bool enabled)
     {
         var assembler = new M68kAssembler {
@@ -250,6 +273,20 @@ public sealed class GeneratedCodeSizeExecutionTests
 
 public static unsafe class GeneratedSizeFixtures
 {
+    public static uint ConditionalCStringEntry()
+    {
+        var choose = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) != 0;
+        CString text = choose ? "True" : "False";
+        return APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(text)), 0);
+    }
+
+    public static uint ExplicitConditionalCStringEntry()
+    {
+        var choose = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) != 0;
+        CString text = choose ? (CString)"True" : (CString)"False";
+        return APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(text)), 0);
+    }
+
     public static uint Entry() {
         var input = *(uint*)0x40000;
         var p = APTR.FromPointer(0x40008);

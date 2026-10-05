@@ -7432,7 +7432,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		if (index <= 0 ||
+		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(instruction.Offset) ||
 			caller.Instructions[index - 1] is not { OpCode: var previousOp, Operand: int token } ||
 			previousOp != OpCodes.Ldstr)
 		{
