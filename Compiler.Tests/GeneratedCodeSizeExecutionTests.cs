@@ -14,6 +14,9 @@ public sealed class GeneratedCodeSizeExecutionTests
             [0x2009, 0x2002, 0x4e75], // overwritten full register move, X preserved
             [0x206f, 12, 0x2f48, 12, 0x7000, 0x4e75], // private stack writeback
             [0x2f6f, 12, 12, 0x7000, 0x4e75], // labeled self-move
+            [0x2f6f, 12, 12, 0x4e75], // live long flags become a shorter test
+            [0x3f6f, 12, 12, 0x4e75], // live word flags
+            [0x1f6f, 12, 12, 0x4e75], // live byte flags
             [0x2248, 0xd3c2, 0x7000, 0x1011, 0x4e75], // indexed canonical byte read
             [0x1010, 0x4a00, 0x4e75], // loaded value has only a test consumer
             [0x0280, 0, 255, 0x1280, 0x4e75], // low-byte store needs no wider normalization

@@ -21,11 +21,22 @@ internal sealed partial class M68kPeepholeOptimizer
 			var selfStack = move.Length == 6 && family is 0x1000 or 0x2000 or 0x3000 &&
 				(move.Opcode & 0x1FF) == 0x16F && (move.Opcode >> 9 & 7) == 7 &&
 				_buffer.ReadWord(move.Offset + 2) == _buffer.ReadWord(move.Offset + 4);
-			if (selfStack && dataflow.TryGetFacts(move.Offset, out var selfFacts) &&
-				(selfFacts.Effects.WritesConditions & selfFacts.LiveConditionsAfter) == 0)
+			if (selfStack && dataflow.TryGetFacts(move.Offset, out var selfFacts))
 			{
-				_buffer.RemoveBytes(move.Offset, move.Length);
-				_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), move.Length);
+				if ((selfFacts.Effects.WritesConditions & selfFacts.LiveConditionsAfter) == 0)
+				{
+					_buffer.RemoveBytes(move.Offset, move.Length);
+					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), move.Length);
+				}
+				else
+				{
+					// A private self-store changes no bytes. TST keeps its exact
+					// NZVC result and preserves X, using only one displacement.
+					var size = family == 0x1000 ? 0 : family == 0x3000 ? 0x40 : 0x80;
+					_buffer.WriteWord(move.Offset, (ushort)(0x4A2F | size));
+					_buffer.RemoveBytes(move.Offset + 4, 2);
+					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), 2);
+				}
 				return true;
 			}
 			if (i + 1 == instructions.Count) continue;
