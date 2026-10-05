@@ -54,6 +54,7 @@ static int Run(string[] args)
 				throw new ArgumentException("Unknown or empty code size pass selection.");
 			codeSizeOptimizations = new M68kCodeSizeOptions
 			{
+				ValidateLiteralOperands = selected.Contains(nameof(M68kCodeSizeOptions.ValidateLiteralOperands)),
 				RemoveRedundantTransport = selected.Contains(nameof(M68kCodeSizeOptions.RemoveRedundantTransport)),
 				CompactPrivateStackCopies = selected.Contains(nameof(M68kCodeSizeOptions.CompactPrivateStackCopies)),
 				CompactGuestMemory = selected.Contains(nameof(M68kCodeSizeOptions.CompactGuestMemory)),
@@ -698,7 +699,7 @@ static void PrintUsage()
 		  [--code-size-passes comma-separated M68kCodeSizeOptions property names]
 		    New generated-code passes default off: RemoveRedundantTransport,
 		    CompactGuestMemory, NarrowOperations, EliminateRedundantInitialization,
-		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores, CompactPrivateStackCopies.
+		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores, CompactPrivateStackCopies, ValidateLiteralOperands.
 		  [--resident-stack-context-threshold bytes; default 512]
 		  [--bulk-copy-provider <Assembly::Namespace.Type::Method>]
 		  [--bulk-copy-min-bytes <positive bytes; default 64 with provider>]

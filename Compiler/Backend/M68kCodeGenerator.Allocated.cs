@@ -10361,7 +10361,7 @@ internal sealed partial class M68kCodeGenerator
 		// A branch into the conversion can carry a different literal than the
 		// physically preceding ldstr. FromLiteral accepts one immediate literal,
 		// not a managed-string phi; never silently choose the fallthrough token.
-		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(instruction.IlOffset) ||
+		if (index <= 0 || (_request.CodeSizeOptimizations?.ValidateLiteralOperands == true && GetBranchTargets(caller.Instructions).Contains(instruction.IlOffset)) ||
 			caller.Instructions[index - 1] is not
 				{ OpCode: var op, Operand: int token } ||
 			op != OpCodes.Ldstr)

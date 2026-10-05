@@ -168,8 +168,10 @@ public sealed class GeneratedCodeSizeExecutionTests
             Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
             OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
-            Hunk = new() { IncludeSymbols = false }
+            Hunk = new() { IncludeSymbols = false },
+            CodeSizeOptimizations = new() { ValidateLiteralOperands = true }
         };
+        Assert.False(new M68kCodeSizeOptions().ValidateLiteralOperands);
         foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
             var error = Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(request with { Cpu = target }));
             Assert.Contains("literal", error.Message, StringComparison.OrdinalIgnoreCase);
