@@ -307,6 +307,7 @@ internal sealed partial class M68kCodeGenerator
 				_memoryManagement == M68kMemoryManagement.None &&
 				_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
 				!_usesExceptionRuntime,
+			inlineMemoryHelpers: SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.InlineMemoryHelpers,
 			sizeFirstCosts: SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.SizeFirstCosts);
 		_machineOptimizationStatistics = WithAggregateCopyStatistics(
 			_machineOptimizationStatistics, rawFunctions, _aggregateReturnForwardingStatistics);
