@@ -4833,6 +4833,14 @@ internal sealed partial class M68kCodeGenerator
 			var overwrittenLocals = M68kFrameInitializationAnalysis.FindEntryOverwrites(
 				allocated.Function,
 				instruction => AllocatedEntryLocalWriteSize(method, allocated, instruction));
+			if (SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.EliminateRedundantInitialization)
+			{
+				var additional = M68kPrivateInitializationAnalysis.FindOverwrites(allocated.Function,
+					instruction => AllocatedEntryLocalWriteSize(method, allocated, instruction));
+				foreach (var cell in additional.Except(overwrittenLocals))
+					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.EliminateRedundantInitialization), 0);
+				overwrittenLocals = overwrittenLocals.Concat(additional).ToHashSet();
+			}
 			var clearDisplacements = allocated.Function.LocalHomes.Values
 				.Where(static home => home.Initialize)
 				.OrderBy(static home => home.Index)
