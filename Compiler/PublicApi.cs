@@ -568,6 +568,8 @@ public sealed record M68kCodeSizeOptions
 {
 	/// <summary>Remove proven redundant register and private stack transport.</summary>
 	public bool RemoveRedundantTransport { get; init; }
+	/// <summary>Fold private stack copies when their intermediate register is dead.</summary>
+	public bool CompactPrivateStackCopies { get; init; }
 	/// <summary>Select compact indexed guest accesses and direct memory tests.</summary>
 	public bool CompactGuestMemory { get; init; }
 	/// <summary>Defer narrow normalization when consumers use only the low part.</summary>

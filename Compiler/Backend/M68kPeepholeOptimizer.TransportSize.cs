@@ -8,6 +8,7 @@ internal sealed partial class M68kPeepholeOptimizer
 {
 	private bool TryRemoveGeneratedTransport(M68kInstructionDataflow dataflow)
 	{
+		if (TryCompactPrivateStackCopies(dataflow)) return true;
 		if (_assembler.GeneratedCodeSizeOptions?.RemoveRedundantTransport != true) return false;
 		var instructions = dataflow.Instructions;
 		for (var i = 0; i < instructions.Count; i++)
@@ -78,6 +79,40 @@ internal sealed partial class M68kPeepholeOptimizer
 				continue;
 			_buffer.RemoveBytes(next.Offset, next.Length);
 			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), next.Length);
+			return true;
+		}
+		return false;
+	}
+	private bool TryCompactPrivateStackCopies(M68kInstructionDataflow dataflow)
+	{
+		if (_assembler.GeneratedCodeSizeOptions?.CompactPrivateStackCopies != true) return false;
+		var instructions = dataflow.Instructions;
+		for (var i = 0; i + 1 < instructions.Count; i++)
+		{
+			var load = instructions[i];
+			var store = instructions[i + 1];
+			var family = load.Opcode & 0xF000;
+			var bank = load.Opcode >> 6 & 7;
+			var register = load.Opcode >> 9 & 7;
+			if (!load.IsDecoded || !store.IsDecoded || family is not (0x1000 or 0x2000 or 0x3000) ||
+				load.Length != 4 || store.Length != 4 || store.Offset != load.Offset + 4 ||
+				(load.Opcode & 0x3F) != 0x2F || bank > 1 || family == 0x1000 && bank == 1 ||
+				bank == 1 && (family != 0x2000 || register == 7) ||
+				(store.Opcode & 0xF000) != family || (store.Opcode >> 6 & 7) != 5 ||
+				(store.Opcode >> 9 & 7) != 7 || (store.Opcode & 0x3F) != (bank << 3 | register) ||
+				unchecked((short)load.ExtensionWord) < 0 || unchecked((short)store.ExtensionWord) < 0 ||
+				HasInternalLabel(load) || HasFrameTransferBoundary(store) ||
+				!GeneratedSizeEligible(load.Offset, store.Offset + store.Length) ||
+				_assembler.TryGetInstructionEffects(load.Offset, out _) ||
+				_assembler.TryGetInstructionEffects(store.Offset, out _) ||
+				!dataflow.TryGetFacts(store.Offset, out var facts) ||
+				((bank == 1 ? facts.LiveAddressAfter : facts.LiveDataAfter) & (1 << register)) != 0) continue;
+			// MOVE memory-to-memory reads before writing and establishes identical
+			// NZVC while preserving X. Address-register word sign extension is excluded.
+			_buffer.WriteWord(load.Offset, (ushort)(family | 7 << 9 | 5 << 6 | 0x2F));
+			_buffer.WriteWord(load.Offset + 4, store.ExtensionWord);
+			_buffer.RemoveBytes(load.Offset + 6, 2);
+			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.CompactPrivateStackCopies), 2);
 			return true;
 		}
 		return false;

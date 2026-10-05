@@ -55,6 +55,7 @@ static int Run(string[] args)
 			codeSizeOptimizations = new M68kCodeSizeOptions
 			{
 				RemoveRedundantTransport = selected.Contains(nameof(M68kCodeSizeOptions.RemoveRedundantTransport)),
+				CompactPrivateStackCopies = selected.Contains(nameof(M68kCodeSizeOptions.CompactPrivateStackCopies)),
 				CompactGuestMemory = selected.Contains(nameof(M68kCodeSizeOptions.CompactGuestMemory)),
 				NarrowOperations = selected.Contains(nameof(M68kCodeSizeOptions.NarrowOperations)),
 				EliminateRedundantInitialization = selected.Contains(nameof(M68kCodeSizeOptions.EliminateRedundantInitialization)),
@@ -697,7 +698,7 @@ static void PrintUsage()
 		  [--code-size-passes comma-separated M68kCodeSizeOptions property names]
 		    New generated-code passes default off: RemoveRedundantTransport,
 		    CompactGuestMemory, NarrowOperations, EliminateRedundantInitialization,
-		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores.
+		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores, CompactPrivateStackCopies.
 		  [--resident-stack-context-threshold bytes; default 512]
 		  [--bulk-copy-provider <Assembly::Namespace.Type::Method>]
 		  [--bulk-copy-min-bytes <positive bytes; default 64 with provider>]

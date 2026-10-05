@@ -11,6 +11,16 @@ public sealed class GeneratedCodeSizeExecutionTests
     public static IEnumerable<object[]> RawCases()
     {
         foreach (var words in new ushort[][] {
+            [0x202f, 12, 0x7201, 0x202f, 12, 0x7000, 0x4e75], // repeated stack reload, flags dead
+            [0x202f, 12, 0x7201, 0x202f, 12, 0x4e75], // live flags retain reload
+            [0x202f, 12, 0x5280, 0x202f, 12, 0x4e75], // destination modified
+            [0x202f, 12, 0x2f42, 12, 0x202f, 12, 0x4e75], // frame slot written
+            [0x206f, 12, 0x7201, 0x206f, 12, 0x4e75], // MOVEA preserves flags
+            [0x202f, 12, 0x2f40, 16, 0x7000, 0x4e75], // compact long private stack copy
+            [0x302f, 12, 0x3f40, 16, 0x7000, 0x4e75], // compact word private stack copy
+            [0x102f, 12, 0x1f40, 16, 0x7000, 0x4e75], // compact byte private stack copy
+            [0x206f, 12, 0x2f48, 16, 0x2049, 0x4e75], // dead address register long copy
+            [0x202f, 12, 0x2f40, 16, 0x4e75], // live data register retains both moves
             [0x2009, 0x2002, 0x4e75], // overwritten full register move, X preserved
             [0x206f, 12, 0x2f48, 12, 0x7000, 0x4e75], // private stack writeback
             [0x2f6f, 12, 12, 0x7000, 0x4e75], // labeled self-move
@@ -42,6 +52,7 @@ public sealed class GeneratedCodeSizeExecutionTests
             Assert.Equal(a.Flags, b.Flags);
             Assert.Equal(a.Memory, b.Memory);
             Assert.Equal(a.Stack, b.Stack);
+            Assert.Equal(a.PrivateStack, b.PrivateStack);
             Assert.Equal(a.Reserved, b.Reserved);
             Assert.Equal(a.Accesses, b.Accesses);
             if (words[0] is not (0x1010 or 0x0280)) Assert.Equal(a.D0, b.D0);
@@ -59,6 +70,7 @@ public sealed class GeneratedCodeSizeExecutionTests
         Assert.False(new M68kCodeSizeOptions().RemoveRedundantTransport);
         Assert.False(new M68kCodeSizeOptions().CompactGuestMemory);
         Assert.False(new M68kCodeSizeOptions().NarrowOperations);
+        Assert.False(new M68kCodeSizeOptions().CompactPrivateStackCopies);
     }
 
     [Theory]
@@ -69,6 +81,7 @@ public sealed class GeneratedCodeSizeExecutionTests
     [InlineData("SizeFirstCosts")]
     [InlineData("InlineMemoryHelpers")]
     [InlineData("ShareArithmeticCores")]
+    [InlineData("CompactPrivateStackCopies")]
     [InlineData("Combined")]
     public void ResidentHunkRelocationAliasingAndRepeatedInvocationAgree(string pass)
     {
@@ -83,6 +96,7 @@ public sealed class GeneratedCodeSizeExecutionTests
         var before = AmigaM68kCompiler.Compile(request);
         var policy = new M68kCodeSizeOptions {
             RemoveRedundantTransport = pass is "Combined" or "RemoveRedundantTransport",
+            CompactPrivateStackCopies = pass is "Combined" or "CompactPrivateStackCopies",
             CompactGuestMemory = pass is "Combined" or "CompactGuestMemory",
             NarrowOperations = pass is "Combined" or "NarrowOperations",
             EliminateRedundantInitialization = pass is "Combined" or "EliminateRedundantInitialization",
@@ -135,10 +149,20 @@ public sealed class GeneratedCodeSizeExecutionTests
         }
     }
 
+    [Fact]
+    public void CompactStackCopiesRequireDeadRegisterAndPreserveLiveFlags()
+    {
+        var positive = new ushort[] { 0x202f, 12, 0x2f40, 16, 0x7000, 0x4e75 };
+        // The default peepholes can already fold this isolated raw sequence.
+        Assert.True(Raw(positive, true).Bytes.Length <= Raw(positive, false).Bytes.Length);
+        var live = new ushort[] { 0x202f, 12, 0x2f40, 16, 0x4e75 };
+        Assert.Equal(Raw(live, false).Bytes.Length, Raw(live, true).Bytes.Length);
+    }
+
     private static LinkedCode Raw(ushort[] words, bool enabled)
     {
         var assembler = new M68kAssembler {
-            GeneratedCodeSizeOptions = enabled ? new() { RemoveRedundantTransport = true,
+            GeneratedCodeSizeOptions = enabled ? new() { RemoveRedundantTransport = true, CompactPrivateStackCopies = true,
                 CompactGuestMemory = true, NarrowOperations = true } : null,
             GeneratedCodeSizeRanges = [("start", "end")]
         };
@@ -154,7 +178,7 @@ public sealed class GeneratedCodeSizeExecutionTests
         return assembler.Link(0x10000, new Dictionary<string, uint>());
     }
 
-    private sealed record Observation(uint D0, ushort Flags, uint Stack, byte[] Memory, uint[] Reserved, uint[] Accesses);
+    private sealed record Observation(uint D0, ushort Flags, uint Stack, byte[] Memory, uint[] Reserved, uint[] Accesses, byte[] PrivateStack);
     private static Observation Run(LinkedCode code, M68kCpuModel model, int flags)
     {
         var bus = new CountedBus();
@@ -169,7 +193,7 @@ public sealed class GeneratedCodeSizeExecutionTests
         for (var step = 0; step < 100 && cpu.State.ProgramCounter != 0x1000; step++) cpu.ExecuteInstruction();
         Assert.Equal(0x1000u, cpu.State.ProgramCounter);
         return new(cpu.State.D[0], cpu.State.StatusRegister, cpu.State.A[7],
-            bus.Memory.AsSpan(0x40000, 16).ToArray(), [cpu.State.A[5], cpu.State.A[6]], bus.Accesses.ToArray());
+            bus.Memory.AsSpan(0x40000, 16).ToArray(), [cpu.State.A[5], cpu.State.A[6]], bus.Accesses.ToArray(), bus.Memory.AsSpan(0x80008, 24).ToArray());
     }
 
     private static uint[] Guest(M68kCompilationResult result, M68kCpuModel model, uint load, uint input, uint divisor = 0)
