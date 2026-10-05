@@ -165,6 +165,7 @@ public sealed class GeneratedCodeSizeExecutionTests
     [InlineData("LocalCStringEntry")]
     [InlineData("NestedCStringEntry")]
     [InlineData("MixedManagedCStringEntry")]
+    [InlineData("LoopCStringEntry")]
     public void CStringLiteralConversionSelectsTheActualOperand(string entry)
     {
         foreach (var policy in new M68kCodeSizeOptions?[] { null, new() { ValidateLiteralOperands = true } })
@@ -186,13 +187,15 @@ public sealed class GeneratedCodeSizeExecutionTests
         }
     }
 
-    [Fact]
-    public void CStringLiteralConversionRejectsUnknownStringProvenance()
+    [Theory]
+    [InlineData("UnknownCStringEntry")]
+    [InlineData("NullableCStringEntry")]
+    public void CStringLiteralConversionRejectsUnknownStringProvenance(string entry)
     {
         var error = Assert.Throws<M68kCompilationException>(() => AmigaM68kCompiler.Compile(
             new M68kCompilationRequest {
                 AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
-                EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::UnknownCStringEntry",
+                EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::" + entry,
                 Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
                 OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
                 MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = []
@@ -311,6 +314,19 @@ public static unsafe class GeneratedSizeFixtures
         // The managed value must retain its UTF-16 layout and length header.
         return text.Length == 4 || text.Length == 5
             ? APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(native)), 0) : 0u;
+    }
+    public static uint LoopCStringEntry()
+    {
+        var input = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        string text = "False";
+        for (var index = 0; index < 3; index++)
+            if (input != 0) text = "True";
+        return APTR.ReadUInt8(APTR.FromPointer(CString.ToUInt32(CString.FromLiteral(text))), 0);
+    }
+    public static uint NullableCStringEntry()
+    {
+        string text = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) != 0 ? "True" : null!;
+        return CString.ToUInt32(CString.FromLiteral(text));
     }
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static string UnknownString() => "True";

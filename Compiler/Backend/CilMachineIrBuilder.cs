@@ -5346,6 +5346,20 @@ internal static class CilMachineIrBuilder
 			.Select(instruction => (block, instruction))).ToArray();
 		foreach (var (block, call) in calls)
 		{
+			// Keep the established direct-literal graph and register allocation.
+			// Only merges require a separate native-address transport graph.
+			if (producers.TryGetValue(call.Uses[0], out var direct) &&
+				direct.instruction.Operation == M68kMachineOperation.Address &&
+				direct.instruction.SourceInstruction is { OpCode: var directOp, Operand: int directToken } &&
+				directOp == OpCodes.Ldstr)
+			{
+				block.Instructions[block.Instructions.IndexOf(call)] = call with
+				{
+					Uses = ImmutableArray<int>.Empty,
+					Immediate = directToken
+				};
+				continue;
+			}
 			var clones = new Dictionary<int, int>();
 			var foundLiteral = false;
 			int Clone(int value)
