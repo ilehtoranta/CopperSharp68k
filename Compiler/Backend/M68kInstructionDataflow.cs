@@ -1041,9 +1041,12 @@ internal sealed class M68kInstructionDataflow
 				else
 				{
 					UseData((opcode >> 9) & 7);
-					AddEffectiveAddress((ushort)(((opcode >> 9) & 7) | (operationMode << 3)), EffectiveAddressAccess.ReadWrite);
+					// EOR's destination is the low six-bit effective address,
+					// not the source register and operation-mode fields.
+					AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				}
-				WriteArithmeticConditions();
+				// CMP, CMPA and EOR preserve the extend bit.
+				WriteMoveConditions();
 				return;
 			}
 

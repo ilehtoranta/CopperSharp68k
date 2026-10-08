@@ -10,6 +10,122 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kInstructionDataflowTests
 {
+	[Theory]
+	[InlineData(0xB902)] // EOR.B D4,D2
+	[InlineData(0xB942)] // EOR.W D4,D2
+	[InlineData(0xB982)] // EOR.L D4,D2 (FileStats checksum).
+	public void ExclusiveOrUsesItsActualDestinationAndPreservesExtend(int opcode)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord((ushort)opcode);
+		var effects = M68kInstructionDataflow.GetEffects(Assert.Single(assembler.GetInstructionStream()));
+		Assert.Equal((1 << 4) | (1 << 2), effects.UsesData);
+		Assert.Equal(1 << 2, effects.DefinesData);
+		Assert.Equal(0, effects.UsesAddress);
+		Assert.Equal(0, effects.DefinesAddress);
+		Assert.Equal(M68kMemorySet.None, effects.ReadsMemory);
+		Assert.Equal(M68kMemorySet.None, effects.WritesMemory);
+		Assert.Equal(M68kConditionCodeSet.All & ~M68kConditionCodeSet.Extend, effects.WritesConditions);
+	}
+
+	[Theory]
+	[InlineData(0xB882)] // CMP.L D2,D4.
+	[InlineData(0xB842)] // CMP.W D2,D4.
+	public void ComparePreservesExtend(int opcode)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord((ushort)opcode);
+		var effects = M68kInstructionDataflow.GetEffects(Assert.Single(assembler.GetInstructionStream()));
+		Assert.Equal(M68kConditionCodeSet.All & ~M68kConditionCodeSet.Extend, effects.WritesConditions);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void DeferredWordRotateFoldsAfterFullOrWordScratchOverwrite(bool partialOverwrite)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x3003); // MOVE.W D3,D0
+		assembler.EmitWord(0xEB48); // LSL.W #5,D0
+		assembler.EmitWord(0x3200); // MOVE.W D0,D1
+		assembler.EmitWord(0x3003); // MOVE.W D3,D0
+		assembler.EmitWord(0xE048); // LSR.W #8,D0
+		assembler.EmitWord(0xE648); // LSR.W #3,D0
+		assembler.EmitWord(0x8240); // OR.W D0,D1
+		assembler.EmitWord(0xD244); // ADD.W D4,D1
+		assembler.EmitWord(0x2A01); // MOVE.L D1,D5
+		assembler.EmitWord(0xB982); // EOR.L D4,D2 must not falsely read D0.
+		assembler.EmitWord(0x2002); // MOVE.L D2,D0 kills the first scratch.
+		if (partialOverwrite)
+		{
+			assembler.EmitWord(0x322F); // MOVE.W 8(A7),D1 preserves the upper word.
+			assembler.EmitWord(8);
+		}
+		else
+		{
+			assembler.EmitWord(0x7200); // MOVEQ #0,D1 kills the entire second scratch.
+		}
+		assembler.EmitWord(0x2C01); // MOVE.L D1,D6 observes the complete register.
+		assembler.EmitWord(0x4E75); // RTS
+
+		assembler.OptimizeForM68000();
+
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("rol.w\t#5,d5", assembly, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[InlineData(0x323C, 0x1234, true)] // MOVE.W #$1234,D1 kills all changed bits.
+	[InlineData(0x122F, 8, false)] // MOVE.B 8(A7),D1 preserves live bits 8..15.
+	[InlineData(0x3201, -1, false)] // MOVE.W D1,D1 reads the changed word.
+	[InlineData(0x3232, 0x1000, false)] // MOVE.W (0,A2,D1.W),D1 reads it as an index.
+	public void DeferredWordRotateRejectsReadsAndInsufficientScratchOverwrites(
+		int overwriteOpcode, int extension, bool shouldFold)
+	{
+		var assembler = new M68kAssembler();
+		foreach (var opcode in new ushort[] { 0x3003, 0xEB48, 0x3200, 0x3003,
+			0xE048, 0xE648, 0x8240, 0xD244, 0x2A01 }) assembler.EmitWord(opcode);
+		assembler.EmitWord(0x5286); // ADDQ.L #1,D6 kills checksum flags.
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0 kills the first scratch.
+		assembler.EmitWord((ushort)overwriteOpcode);
+		if (extension >= 0) assembler.EmitWord((ushort)extension);
+		assembler.EmitWord(0x2C01); // Observe the entire second scratch.
+		assembler.EmitWord(0x4E75);
+
+		assembler.OptimizeForM68000();
+
+		Assert.Equal(shouldFold, assembler.RenderAssembly(M68kCpuTarget.M68000)
+			.Contains("rol.w", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void DeferredWordRotateKeepsScratchReadOnEitherBranch(bool readOnTakenPath)
+	{
+		var assembler = new M68kAssembler();
+		foreach (var opcode in new ushort[] { 0x3003, 0xEB48, 0x3200, 0x3003,
+			0xE048, 0xE648, 0x8240, 0xD244, 0x2A01 }) assembler.EmitWord(opcode);
+		assembler.EmitWord(0x5286);
+		assembler.EmitWord(0x7000);
+		assembler.EmitBranch(M68kCondition.NotEqual, "taken");
+		EmitSuccessor(!readOnTakenPath);
+		assembler.EmitBranch(M68kCondition.True, "done");
+		assembler.Mark("taken");
+		EmitSuccessor(readOnTakenPath);
+		assembler.Mark("done");
+		assembler.EmitWord(0x4E75);
+		assembler.OptimizeForM68000();
+		Assert.DoesNotContain("rol.w", assembler.RenderAssembly(M68kCpuTarget.M68000), StringComparison.Ordinal);
+
+		void EmitSuccessor(bool readsScratch)
+		{
+			if (readsScratch) assembler.EmitWord(0x2C01); // MOVE.L D1,D6 before overwriting.
+			assembler.EmitWord(0x323C);
+			assembler.EmitWord(0x1234);
+		}
+	}
+
 	[Fact]
 	public void DisabledPeepholePreservesUnoptimizedInstructionStream()
 	{
@@ -5215,7 +5331,7 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains("rol.w\t#5,d7", assembly, StringComparison.Ordinal);
 		Assert.Contains("add.w\td4,d7", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.w\td7,d0", assembly, StringComparison.Ordinal);
-		Assert.DoesNotContain("move.l\td0,d7", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\td0,d7", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -5238,11 +5354,11 @@ public sealed class M68kInstructionDataflowTests
 		assembler.OptimizeForM68000();
 
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
-		Assert.Contains("move.l\td7,d6", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\td0,d6", assembly, StringComparison.Ordinal);
 		Assert.Contains("rol.w\t#5,d6", assembly, StringComparison.Ordinal);
 		Assert.Contains("add.w\td4,d6", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("move.w\td7,d0", assembly, StringComparison.Ordinal);
-		Assert.DoesNotContain("move.l\td0,d6", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.w\td7,d6", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -5265,7 +5381,7 @@ public sealed class M68kInstructionDataflowTests
 		assembler.OptimizeForM68000();
 
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
-		Assert.Contains("move.l\td7,d6", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\td5,d6", assembly, StringComparison.Ordinal);
 		Assert.Contains("rol.w\t#5,d6", assembly, StringComparison.Ordinal);
 		Assert.Contains("add.w\td4,d6", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("or.w", assembly, StringComparison.Ordinal);

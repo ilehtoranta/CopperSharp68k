@@ -12,7 +12,7 @@ using Copper68k;
 
 namespace CopperSharp.Compiler.Tests;
 
-public sealed class CompilerExecutionTests
+public sealed partial class CompilerExecutionTests
 {
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
