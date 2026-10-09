@@ -59,42 +59,6 @@ The implementation-pack manifest records:
 
 This makes managed implementation reuse reproducible and auditable. A servicing update cannot silently replace method bodies merely because a newer runtime is installed on the build host.
 
-## Bounded unlisted-body ingestion spike
-
-An August 2026 architectural spike tested whether a verified CoreLib pack could replace the per-member managed-body allowlist. The spike resolves an arbitrary official framework identity to the matching `System.Private.CoreLib` definition, constructs closed generic declaring types and generic methods from the application arguments, and recursively admits only reachable IL. Compiler intrinsics and required PAL bindings retain precedence. The experiment is isolated behind an internal test switch; normal implementation-pack behavior is unchanged.
-
-Two probes were used without adding `StringBuilder` or `List<T>` binding rules:
-
-- `StringBuilder.Append(int)`, followed by length and character checks;
-- construction and property access on `List<int>`.
-
-Both probes crossed the facade-to-CoreLib boundary and entered closed generic CoreLib bodies. A follow-up dispatch gate added direct resolution for primitive constrained receivers, default interface bodies, constructed generic interface methods, and the `constrained.` plus `call` form used by static interface members. Static concrete interface bodies are treated as direct calls rather than runtime interface-table slots. These changes let both probes pass the original numeric-formatting and generic-comparison boundary, including CoreLib's static generic conversion methods and constrained `List<T>.Enumerator.Dispose` calls.
-
-Before introducing a target-runtime cut point, both probes stopped at the same substantially later boundary: `System.Exception.ToString()` reached stack-trace and runtime-type helpers, expanding into the reflection cache graph where `RuntimeTypeCache.MemberInfoCache<RuntimeConstructorInfo>` contains the unsupported `CerHashtable<string, RuntimeConstructorInfo[]>` layout. This is useful negative evidence for efficiency: unrestricted official-body ingestion remains closed-world, but ordinary validation and formatting paths can import a large runtime subsystem unless target-specific cut points replace those dependencies.
-
-The next bounded gate introduced exactly one experimental cut point. While unlisted-body ingestion is enabled, the exact `System.Exception.ToString(): string` identity resolves to `CopperSharp.Runtime.ShadowException.ToString()`, which returns the compact target-owned text `System.Exception`. The override is applied consistently during framework reachability, static analysis, and final code discovery, and it remains virtual-dispatch capable. A dedicated M68000 execution probe forces the exact base call through the complete backend and verifies both the compact result and the absence of stack-trace/reflection symbols. The override is not registered in the normal public compatibility profile, so ordinary implementation-pack behavior and the advertised .NET surface remain unchanged.
-
-That cut point clears the reflection-cache boundary for both probes. Their next common stop is now in globalization/platform reachability: numeric or resource formatting requests `CultureInfo.DateTimeFormat`, then Japanese-era initialization reaches the Windows registry and environment expansion path; `Win32Marshal.GetExceptionForWin32Error` finally requires the unsupported `System.OperationCanceledException::_cancellationToken` field of type `System.Threading.CancellationToken`. This is a separate boundary and is intentionally left unresolved by this one-cut-point spike.
-
-The following bounded gate adds one date/time-globalization cut point for the exact virtual `CultureInfo.DateTimeFormat` getter. Closed-world analysis sees that branch in `CultureInfo.GetFormat(Type)` even when the runtime request is numeric or asks for a custom formatter. The target-owned getter returns `null`, so it imports no calendar, locale, registry, environment, or formatter object graph. Numeric formatting remains on the official CoreLib `NumberFormat` path. This deliberately means date/time formatting is unsupported rather than partially emulated, and the override remains behind the same experimental switch.
-
-Both probes clear the former Windows-globalization boundary. They next converge in `System.SR` resource lookup: `ResourceManager` and `ManifestBasedResourceGroveler` use `Activator.CreateInstance` to construct a resource set, which reaches `RuntimeTypeCache.MemberInfoCache<RuntimeConstructorInfo>` and its unsupported `CerHashtable<string, RuntimeConstructorInfo[]>` field. Resource lookup is therefore the next independent cut point; it is not folded into the globalization change.
-
-The next bounded gate enables CoreLib's resource-key behavior without carrying resource files or `ResourceManager`. The exact static `System.SR.GetResourceString(string)` member maps to a target body that returns its input key. Opt-in pinned `System.SR` helper bodies also use target-owned type initialization, preventing generated `SR.get_*` properties from triggering the host resource initializer before they reach the cut point. This matches the deterministic behavior exposed by .NET's `System.Resources.UseSystemResourceKeys` switch; ordinary application-facing `ResourceManager` APIs remain outside the override.
-
-After that gate the probes no longer share a boundary. `List<int>` initially appeared to reach machine-IR lowering for a multiword `System.ExceptionArgument` value passed into `ThrowHelper`. The underlying defect was earlier in metadata decoding: CoreLib defines both `ExceptionArgument` and its `System.Enum` base in the same module, while enum detection handled only an external `TypeReference` base. Accepting the equivalent `TypeDefinition` base classifies the enum as its four-byte signed underlying scalar without relaxing any true multiword-struct rule. With that correction, the official `List<int>(capacity)` body allocates its array and runs end to end through the M68000 backend.
-
-`StringBuilder.Append(int)` remains at a separate boundary in `ExternalException.ToString`, whose derived override imports stack-trace reflection independently of the exact `Exception.ToString` cut point. It should be evaluated as its own future spike rather than hidden behind broader resource or exception substitution.
-
-The spike therefore validates on-demand identity, generic-body ingestion, and the constrained-dispatch shapes encountered by the probes, but not an end-to-end replacement for shadows. Before this path can become a supported profile feature, the compiler needs:
-
-- a small target-runtime override table for CoreLib methods that have no IL body, including bulk memory movement;
-- bounded handling for derived exception formatting and remaining target-OS cut points;
-- completion tests for the remaining static-abstract interface encoding shapes before advertising general static-interface support; and
-- corpus and size/cycle gates proving that closed-world CoreLib ingestion remains pay-for-play.
-
-This is a compiler-time reachability problem, not an offline analyzer or monthly manual CoreLib member inventory. The implementation pack remains hash-pinned; servicing changes are evaluated by recompiling the compatibility corpus and reviewing newly reached runtime boundaries.
-
 ## Selection rules
 
 Binding selection follows these rules:
@@ -129,3 +93,49 @@ Compilation fails when:
 - the contract, implementation manifest, and executable registry disagree.
 
 These failures are compatibility diagnostics, not linker surprises.
+
+## StringBuilder implementation and admission
+
+StringBuilder uses released Microsoft CoreLib CIL together with explicitly declared target intrinsics, runtime shadows and PAL leaves. Stable admission requires the verified `Microsoft.NETCore.App.Runtime.win-x64` 10.0.9 implementation input, including its exact CoreLib identity and SHA-256. Synthetic packs and adjacent servicing versions do not satisfy this gate. Stable tests leave `EnableUnlistedManagedBodies` disabled. The internal unlisted-body experiment remains available for architectural probes; it is not needed by the audited StringBuilder acceptance graph and does not authorize general CoreLib ingestion.
+
+The public inventory contains 103 instance constructor/method/accessor signatures. Exact effect declarations additionally cover the reached private StringBuilder helpers, ChunkEnumerator, its ManyChunkInfo, and AppendInterpolatedStringHandler. Structural matching includes assembly/type identity, calling convention, generic arity, parameter and return shapes, modifiers and substituted generic arguments. Private serialization members, adjacent signatures and application lookalikes receive no automatic declaration. Callback allocation, collection and exception effects remain separate from StringBuilder's own storage effects.
+
+Bindings for implementation dependencies validate the actual input, member, caller, closed payload and target layout as applicable. A matching display name, fabricated method record or token coincidence is insufficient. Owned call-site restrictions keep private CoreLib resource, numeric and memory helpers from becoming unrestricted application APIs. Compatibility analysis records the exact unsupported identity and root path before backend rejection; a deferred numeric-lowering error must not hide that diagnostic.
+
+## Storage, borrowing and collection
+
+Strings contain immutable UTF-16 target data. Character copies handle overlapping ranges, self-copy and zero lengths and preserve NUL, surrogate and non-ASCII code units. Allocation byte counts are checked before overflow. Target spans retain a twelve-byte data/length/owner representation. Projected references and snapshots retain owners through collection after the original source variable dies. Borrowed character references are admitted only for the audited synchronous nonescaping StringBuilder consumers.
+
+Chunk enumeration and readonly-memory views retain their builder and backing arrays. GetChunks construction above eight chunks can allocate an index object and reference array, so its declarations include allocation and collection; enumeration advance and Current do not allocate. Fixed two-/three-object formatting storage occupies eight/twelve bytes and marks every reference slot. The exact character NumberBuffer and ValueListBuilder views preserve their digit/span/array owners; their private ABI checks do not enable arbitrary ref-like fields.
+
+Primitive initialized arrays validate constant length, immediate RVA metadata, primitive width and blob size, reject interior control-flow entry, and convert PE little-endian elements to target byte order. Nested managed aggregate reference bitmaps, including admitted nullable application payloads, propagate into ordinary/constructed containers, iterator state and boxed payloads, retaining overflow checks. A nullable payload's CoreLib identity does not remove its managed references from a containing runtime shadow. Allocation and implicit boxing participate in normal safepoints and cleanup; allocation-failure handling must preserve committed output and dispose acquired iterators according to the public contract.
+
+Unwind entries are sorted by final native return address after optimization. Managed root walkers use lower-bound search, preserving the first registered duplicate and missing-address termination. Root maps retain their original registration labels. Boundary and physical retention tests verify both table widths, unsigned addresses, duplicates, missing keys, caller roots and finalizers. The faster lookup preserves the original native instruction ceilings.
+
+## Formatting and public behavior
+
+The audited bodies cover construction, capacity/length/indexing, append and insert, replacement/removal, snapshots, array/span/memory/pointer copying, chunks, joins, composite formatting and interpolated handlers. Tests compare content, ranges, validation order, partial prefixes, snapshots, reuse, disposal and callback counts with CoreLib. Managed-pool execution collects on every allocation and within callbacks. Success-only examples do not establish exception or allocation-failure semantics.
+
+Integer, Decimal and floating formatting share the verified numeric settings and managed formatting paths. Closed generic and nested payload identities remain significant; a method specialization must match its actual caller and complete element shape. Floating acceptance uses SoftFloat. Object, enum, application-value/reference and nullable formatting retain their separate exact dispatch and boxing/layout gates. A resolved constrained value implementation executes directly rather than redispatching through an empty boxed virtual table. Default ValueType names come from resolved metadata; this does not supply general reflection.
+
+Target-owned CurrentCulture and DefaultThreadCurrentCulture references participate in static GC rooting. An explicit current culture wins over the default; an unset pair selects invariant culture. Numeric settings can come from NumberFormatInfo or an application IFormatProvider. Application culture overrides preserve their virtual/interface slots. Culture storage currently represents one execution context; thread/async culture isolation and named-culture locale data remain outside this runtime implementation.
+
+Typed validation exceptions retain parameter and actual-value payloads. Resource adapters use deterministic target resource text and exact released resource identities; full localized message rendering and reflection-based exception formatting are separate runtime facilities. Exception constructors, aliases and cleanup leaves require their audited callers and effects rather than namespace-wide admission.
+
+## List enumeration and runtime identity
+
+Join array fast paths and List field views are separate from public custom enumeration. The List field view requires an exact List descriptor; subclasses retain public IEnumerable dispatch, including explicit reimplementations. Acquired custom iterators are disposed if adapter allocation fails. Enumeration callbacks can allocate, collect or throw, and their ownership and disposal-failure precedence must remain intact.
+
+Admitted application List subclasses inherit the verified twenty-byte base storage and reference bitmap before their own fields. Both released and shadow List storage require _items, _size and _version at offsets eight, twelve and sixteen. Runtime base descriptors retain the actual closed List construction. Open Decimal List constructor/Add and enumeration references require an actual matching closed application caller. This scoped support does not imply unrestricted framework subclassing.
+
+Ordinary List subclasses inherit the base enumeration interface slots. Local explicit and implicit reimplementations retain precedence. Nonempty shadow enumeration boxes the value enumerator and preserves generic/nongeneric Current, completion, Reset and mutation detection. Empty interface enumeration uses CoreLib's cached empty-enumerator behavior, including retention through collection. The direct value-returning List.GetEnumerator path keeps its separate empty/mutation contract.
+
+Boxed shadow enumerators and the exact released Decimal List enumerator register actual Runtime.Managed/CoreLib metadata layouts only for the pinned StringBuilder input, after checking size and reference bitmap against admitted value storage. A synthetic value layout with no metadata handle cannot supply an interface table. Constructed GetType maps preserve the emitted layout's actual module and handle; re-resolving a public alias by name can select a different physical identity than its constructor and type token. Public names and target descriptor identities must stay consistent.
+
+## Verification and costs
+
+The public signature inventory and explicit-use tests audit all 103 released public signatures. Unified native acceptance runs every CPU in both optimizer modes with full exceptions, the exact input hash, disabled unlisted bodies and physical every-allocation collection. Dedicated deeper matrices exercise nullable/application behavior and all 33 original allocation-failure families without reducing the inventory, guarded failure regions, result oracles or instruction limits.
+
+Representative cost tests retain exact allocation counts and independent image, loaded-image and per-CPU cycle ceilings for baseline, presized/growing text, integer handlers and integer composite formatting. Trimming checks reject unused Decimal/floating and general integer formatter dependencies; the baseline contains no StringBuilder implementation. These gates are budgets for the named programs, not universal workload performance claims. General example-program baselines and external integration availability remain separate checks.
+
+StringBuilder acceptance is complete for the pinned 10.0.9 input on all four CPUs in both optimizer modes. See [CompatibilityTesting.md](CompatibilityTesting.md) for retained evidence covering released-input provenance, dependency compatibility, native behavior, allocation failures, GC ownership and costs, together with the separate repository-wide failures. Historical exploratory measurements and superseded checkpoint claims are not proof of the current source.

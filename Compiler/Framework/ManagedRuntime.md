@@ -21,11 +21,17 @@ A descriptor is the canonical runtime identity for a constructed managed type. I
 
 The layout is versioned as part of the private runtime ABI. Public package compatibility does not permit incompatible layout changes without a new runtime ABI generation.
 
+An admitted array of aggregates containing references uses a zero descriptor size and the `0x80000000` flag in the reference word at descriptor offset 4. Its appended fields hold element kind 2 at offset 24, element stride at offset 28 and element reference bitmap at offset 32. The collector visits the indicated four-byte reference slots within each element, advancing by that stride. Existing reference arrays retain their one-reference-per-element descriptor format; arrays without references require no element scan. These additive fields preserve the existing descriptor offsets and ABI version.
+
 ## Static initialization
 
 Each type with runtime initialization has a compact state cell representing uninitialized, initializing, initialized, or failed. Initialization is once-only and supports recursive entry according to .NET type-initialization rules. A failed initializer caches the failure and subsequent access throws `TypeInitializationException` rather than rerunning the initializer.
 
 Checks are inserted only at reachable operations that require the type to be initialized. Types and state cells that are never reached are omitted.
+
+The experimental CoreLib numeric formatting path stores `CultureInfo.CurrentCulture` and `DefaultThreadCurrentCulture` in target-owned image statics. An explicitly assigned current culture takes precedence over the default, and an unset pair selects the shared invariant culture. These references participate in ordinary static GC rooting. This storage supports a single execution context; thread/async culture flow and isolation between concurrent resident invocations are not implemented. Named cultures also remain unsupported pending target locale data.
+
+Experimental Decimal formatting admits only the verified CoreLib sixteen-byte value layout: `_flags` at offset 0, `_hi32` at offset 4 and `_lo64` at offset 8, with no managed references. The 64-bit field uses target byte order. Logical `Decimal.GetBits` accessors extract the significand into three words; the formatting adapter divides these words by ten to construct a Decimal-kind NumberBuffer with the original sign and scale. It does not reinterpret the host-endian DecCalc union. Standard and custom UTF-16 rendering executes the pinned CoreLib format parser and numeric renderers using the verified span-owner layouts. This formatting boundary does not admit Decimal arithmetic, parsing or its internal union as general target operations.
 
 ## Type tests, casts, and array stores
 
@@ -109,6 +115,8 @@ The current surface includes selected array and reference constructors, length, 
 
 The list implementation uses a managed array, count, and mutation version. Capacity grows geometrically, starting at four and doubling subject to checked limits. Mutation updates the version so enumeration detects modification. The admitted member set includes selected construction, capacity, indexing, mutation, searching, copying, and enumeration operations for supported scalar, reference, and selected value layouts.
 
+StringBuilder join enumeration uses the field view only for an exact List descriptor. Admitted subclasses retain inherited or explicitly replaced public enumeration. Interface enumeration boxes a nonempty value enumerator; generic and nongeneric Current, Reset and mutation detection preserve their distinct CoreLib contracts. Empty interface enumeration uses a cached empty enumerator, while direct value enumeration keeps the List enumerator's empty/mutation behavior. Actual metadata layouts provide boxed interface dispatch and managed payload roots; synthetic value-storage layouts do not supply interface tables. Decimal List enumeration retains its released CoreLib implementation.
+
 ### `Dictionary<TKey,TValue>`
 
 The dictionary uses target-owned parallel storage and open addressing with linear probing and a bounded load factor. Admitted key shapes include selected integral and enum types plus ordinal strings. Value shapes include selected scalars, strings, managed references, and reference-free value layouts. Enumeration and `Values` behavior are deterministic for the implementation but callers must not treat order as a public sorting guarantee.
@@ -124,3 +132,7 @@ Deferred operators remain deferred and invoke callbacks in .NET order. A support
 Descriptors, stack maps, byref provenance, delegate payloads, generic layouts, and collection storage all feed the same precise managed-reference model. Native PAL resources are not managed references and use deterministic ownership with cleanup on normal and exceptional paths.
 
 No runtime service may infer ownership from an untyped 32-bit address. The compiler must be able to identify every managed root and interior owner at each safepoint.
+
+The compiler emits the unwind/safepoint table in ascending return-address order after native instruction optimization. Equal addresses preserve registration order and the original root-map identifiers. Managed root walkers use lower-bound binary search, preserving the first matching site's frame adjustment and root map. Both the 20-byte basic and 24-byte extended entries retain their existing field offsets; an absent address terminates the walk as before.
+
+Immutable runtime type objects used for type-name rendering have a twenty-byte representation: the eight-byte object header, classification at offset eight, the canonical name reference at offset twelve, and default Object.ToString eligibility at offset sixteen. The reference bitmap remains two. The compiler validates the supplied ShadowRuntimeType field view against this representation. Type.ToString returns the name independently of eligibility; the internal object fallback accessor checks eligibility and throws for unsupported overrides. Eligibility is determined from method and inheritance metadata without requiring an instance layout for every type token.

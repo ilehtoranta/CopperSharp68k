@@ -127,15 +127,18 @@ internal sealed class M68kConditionProvenanceAnalysis
 	}
 
 	private readonly IReadOnlyDictionary<int, State> _before;
+	private readonly IReadOnlySet<int> _symbolicOperands;
 
 	private M68kConditionProvenanceAnalysis(
-		IReadOnlyDictionary<int, State> before)
+		IReadOnlyDictionary<int, State> before,
+		IReadOnlySet<int> symbolicOperands)
 	{
 		_before = before;
+		_symbolicOperands = symbolicOperands;
 	}
 
 	internal static M68kConditionProvenanceAnalysis Empty { get; } =
-		new(new Dictionary<int, State>());
+		new(new Dictionary<int, State>(), new HashSet<int>());
 
 	internal bool TryGetKnownZeroTest(
 		M68kEmittedInstruction instruction,
@@ -143,7 +146,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 	{
 		nonZero = false;
 		if (!_before.TryGetValue(instruction.Offset, out var state) ||
-			!TryDescribeCandidate(state, instruction, out var expected) ||
+			!TryDescribeCandidate(state, instruction, out var expected, _symbolicOperands.Contains(instruction.Offset)) ||
 			expected.Zero.Kind != M68kConditionFactKind.Zero ||
 			expected.Zero.Width != 4 ||
 			!expected.Zero.Left.IsKnown)
@@ -164,7 +167,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 		M68kConditionCodeSet required)
 	{
 		if (!_before.TryGetValue(instruction.Offset, out var state) ||
-			!TryDescribeCandidate(state, instruction, out var expected))
+			!TryDescribeCandidate(state, instruction, out var expected, _symbolicOperands.Contains(instruction.Offset)))
 		{
 			return false;
 		}
@@ -203,8 +206,21 @@ internal sealed class M68kConditionProvenanceAnalysis
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyList<int>[] successors,
 		IReadOnlyList<int>[] predecessors,
-		IReadOnlyList<M68kInstructionEffects> effects)
+		IReadOnlyList<M68kInstructionEffects> effects,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
+		var symbolicOperands = new HashSet<int>();
+		foreach (var instruction in instructions)
+		{
+			for (var offset = instruction.Offset + 2; offset < instruction.Offset + instruction.Length; offset += 2)
+			{
+				if (addressFixupOffsets.Contains(offset))
+				{
+					symbolicOperands.Add(instruction.Offset);
+					break;
+				}
+			}
+		}
 		var before = new State?[instructions.Count];
 		var pending = new Queue<int>();
 		var queued = new bool[instructions.Count];
@@ -223,7 +239,9 @@ internal sealed class M68kConditionProvenanceAnalysis
 		{
 			var index = pending.Dequeue();
 			queued[index] = false;
-			var output = Transfer(before[index]!, instructions[index], effects[index]);
+			var output = Transfer(
+				before[index]!, instructions[index], effects[index],
+				symbolicOperands.Contains(instructions[index].Offset));
 			if (instructions[index].IsNonReturning)
 			{
 				continue;
@@ -249,7 +267,8 @@ internal sealed class M68kConditionProvenanceAnalysis
 			instructions
 				.Select((instruction, index) => (instruction.Offset, State: before[index]))
 				.Where(static item => item.State is not null)
-				.ToDictionary(static item => item.Offset, static item => item.State!));
+				.ToDictionary(static item => item.Offset, static item => item.State!),
+			symbolicOperands);
 	}
 
 	private static State RefineBranch(
@@ -310,7 +329,8 @@ internal sealed class M68kConditionProvenanceAnalysis
 	private static State Transfer(
 		State input,
 		M68kEmittedInstruction instruction,
-		M68kInstructionEffects effects)
+		M68kInstructionEffects effects,
+		bool symbolicOperand)
 	{
 		var output = input.Clone();
 		UpdateRegisterValues(input, output, instruction, effects);
@@ -327,7 +347,8 @@ internal sealed class M68kConditionProvenanceAnalysis
 					input,
 					output,
 					instruction,
-					effects),
+					effects,
+					symbolicOperand),
 				effects.WritesConditions);
 		}
 		return output;
@@ -341,11 +362,14 @@ internal sealed class M68kConditionProvenanceAnalysis
 	{
 		for (var register = 0; register < 8; register++)
 		{
-			if ((effects.DefinesData & (1 << register)) != 0)
+			// Calls and opaque instructions can change register values even when
+			// their liveness effects do not declare individual definitions. Break
+			// pre-call aliases before learning facts about a returned value.
+			if (effects.IsBarrier || (effects.DefinesData & (1 << register)) != 0)
 			{
 				output.Data[register] = DefinedValue(instruction, register, address: false);
 			}
-			if ((effects.DefinesAddress & (1 << register)) != 0)
+			if (effects.IsBarrier || (effects.DefinesAddress & (1 << register)) != 0)
 			{
 				output.Address[register] = DefinedValue(instruction, register, address: true);
 			}
@@ -387,9 +411,10 @@ internal sealed class M68kConditionProvenanceAnalysis
 		State input,
 		State output,
 		M68kEmittedInstruction instruction,
-		M68kInstructionEffects effects)
+		M68kInstructionEffects effects,
+		bool symbolicOperand)
 	{
-		if (TryDescribeCandidate(input, instruction, out var candidate))
+		if (TryDescribeCandidate(input, instruction, out var candidate, symbolicOperand))
 		{
 			return candidate;
 		}
@@ -430,8 +455,16 @@ internal sealed class M68kConditionProvenanceAnalysis
 	private static bool TryDescribeCandidate(
 		State state,
 		M68kEmittedInstruction instruction,
-		out M68kConditionProvenance provenance)
+		out M68kConditionProvenance provenance,
+		bool symbolicOperand)
 	{
+		// Before linking, an address relocation occupies zero-filled bytes.
+		// Those bytes must not establish literal-zero comparison facts.
+		if (symbolicOperand)
+		{
+			provenance = default;
+			return false;
+		}
 		var opcode = instruction.Opcode;
 		if ((opcode & 0xFFF8) is 0x4A00 or 0x4A40 or 0x4A80)
 		{

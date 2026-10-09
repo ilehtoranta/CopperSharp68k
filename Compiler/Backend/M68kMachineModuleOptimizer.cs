@@ -745,6 +745,20 @@ internal static class M68kMachineModuleOptimizer
 			}
 		}
 
+		// APTR is a verified transparent word. Its caller can carry those raw
+		// bits as ManagedPointer while the wrapper's argument is Int32. Admit
+		// that equivalence only for the intrinsic's address operand; offsets,
+		// stored values, results and GC references retain exact kind checks.
+		var nativeAddressValues = new HashSet<int>();
+		if (parameterCount > 0 &&
+			targetMethod.Signature.ParameterTypes[0] is
+				{ Kind: CilTypeKind.ValueType, DisplayName: "Amiga.APTR" } addressType &&
+			module.IsTransparentScalarType(addressType) &&
+			argumentValues.TryGetValue(instanceArgumentCount, out var addressArgument))
+		{
+			nativeAddressValues.Add(addressArgument);
+			nativeAddressValues.Add(intrinsic.Uses[0]);
+		}
 		var admittedInstructions = new HashSet<int> { intrinsic.Id };
 		var operandPlans = new List<(
 			int WrapperArgumentIndex,
@@ -989,16 +1003,21 @@ internal static class M68kMachineModuleOptimizer
 			return clonedValue.Id;
 		}
 
-		static bool CanSubstituteMachineValue(
+		bool CanSubstituteMachineValue(
 			M68kMachineValue replacement,
 			M68kMachineValue original) =>
 			HaveCompatibleRepresentation(replacement, original) &&
 			replacement.AllowedRegisters.Except(original.AllowedRegisters).IsEmpty;
 
-		static bool HaveCompatibleRepresentation(
+		bool HaveCompatibleRepresentation(
 			M68kMachineValue replacement,
 			M68kMachineValue original) =>
-			replacement.Kind == original.Kind &&
+			(replacement.Kind == original.Kind ||
+			 nativeAddressValues.Contains(original.Id) &&
+			 replacement.Width == M68kMachineValueWidth.Long &&
+			 !replacement.IsGcReference && !original.IsGcReference &&
+			 replacement.Kind is CilStackValueKind.Int32 or CilStackValueKind.ManagedPointer &&
+			 original.Kind is CilStackValueKind.Int32 or CilStackValueKind.ManagedPointer) &&
 			replacement.Width == original.Width &&
 			replacement.IsGcReference == original.IsGcReference;
 
@@ -1461,7 +1480,7 @@ internal static class M68kMachineModuleOptimizer
 			candidates = candidates.Prepend(declaration);
 		}
 		return candidates
-			.Select(static candidate => candidate.Identity)
+			.Select(candidate => module.ApplyTargetRuntimeOverride(candidate).Identity)
 			.Where(functions.ContainsKey)
 			.Distinct()
 			.OrderBy(static identity => identity.ModuleName, StringComparer.Ordinal)

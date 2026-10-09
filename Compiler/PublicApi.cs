@@ -563,6 +563,58 @@ public sealed record M68kRomSizeOptions
 
 }
 
+/// <summary>Opt-in size policy for eligible MC68000 ROM and resident HUNK images.</summary>
+public sealed record M68kCodeSizeOptions
+{
+	/// <summary>
+	/// Stop staging provably unused register arguments at direct managed calls.
+	/// Formal ABI positions, argument evaluation, and stack arguments are unchanged.
+	/// </summary>
+	public bool ElideUnusedRegisterArguments { get; init; } = true;
+
+	/// <summary>
+	/// Share identical terminal blocks and stack-restore suffixes within a method.
+	/// An affected exit can gain one branch. Disabled peepholes disable this pass.
+	/// </summary>
+	public bool ShareReturnSequences { get; init; } = true;
+
+	/// <summary>
+	/// Replace structurally identical closed-world method bodies with distinct
+	/// six-byte absolute-jump entries to one retained body. Function addresses
+	/// remain distinct, while an affected invocation can gain one jump.
+	/// </summary>
+	public bool ShareIdenticalMethods { get; init; } = true;
+
+	/// <summary>
+	/// Reuse the callee-owned incoming copy of a by-value stack aggregate instead
+	/// of copying it into a second local home. Formal ABI and frame size are unchanged.
+	/// </summary>
+	public bool ReuseIncomingArgumentHomes { get; init; } = true;
+
+	/// <summary>
+	/// Place methods with frequent direct calls into bounded affinity clusters so
+	/// the assembler can select PC-relative calls when their final range permits.
+	/// Method identity, function addresses, and the call ABI are unchanged.
+	/// </summary>
+	public bool ClusterInternalCalls { get; init; } = true;
+
+	/// <summary>
+	/// Inline a private scalar helper referenced from exactly one call site when
+	/// removing its now-unreachable body is estimated to reduce total image bytes.
+	/// Roots, function-address targets, recursive calls, and NoInlining methods
+	/// retain separate bodies.
+	/// </summary>
+	public bool InlineSingleUseMethods { get; init; } = true;
+
+	/// <summary>
+	/// Forward an aggregate return directly into a private local that is later
+	/// exposed only to direct, closed-world read-only-reference callees. Metadata
+	/// readonly markers and computed no-write/no-capture effects must both agree.
+	/// </summary>
+	public bool ForwardReadOnlyAggregateLocals { get; init; } = true;
+
+}
+
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
@@ -650,6 +702,22 @@ public sealed record M68kCompilationRequest
 	/// Measure execution and stack budgets before enabling shared return paths.
 	/// </summary>
 	public M68kRomSizeOptions? RomSizeOptimizations { get; init; }
+	/// <summary>General image-size policy. Cannot be combined with RomSizeOptimizations.</summary>
+	public M68kCodeSizeOptions? CodeSizeOptimizations { get; init; }
+
+	internal M68kRomSizeOptions? EffectiveCodeSizeOptions => CodeSizeOptimizations is { } policy
+		? new M68kRomSizeOptions
+		{
+			ElideUnusedRegisterArguments = policy.ElideUnusedRegisterArguments,
+			ShareReturnSequences = policy.ShareReturnSequences,
+			ShareIdenticalMethods = policy.ShareIdenticalMethods,
+			ReuseIncomingArgumentHomes = policy.ReuseIncomingArgumentHomes,
+			ClusterInternalCalls = policy.ClusterInternalCalls,
+			InlineSingleUseMethods = policy.InlineSingleUseMethods,
+			ForwardReadOnlyAggregateLocals = policy.ForwardReadOnlyAggregateLocals,
+		}
+		: RomSizeOptimizations;
+
 
 	/// <summary>
 	/// Optional large-copy provider. Null preserves the existing inline copy

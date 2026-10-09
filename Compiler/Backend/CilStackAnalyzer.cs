@@ -30,7 +30,35 @@ internal enum CilStackValueKind
 
 internal readonly record struct CilAggregateStackType(
 	string ModuleName,
-	CilType Type);
+	CilType Type)
+{
+	// Independently decoded generic signatures have different ImmutableArray
+	// instances. Aggregate stores and joins compare their semantic type shape,
+	// retaining the implementation module, element types and modifiers.
+	public bool Equals(CilAggregateStackType other) =>
+		StringComparer.Ordinal.Equals(ModuleName, other.ModuleName) && SameType(Type, other.Type);
+
+	public override int GetHashCode() => HashCode.Combine(ModuleName, Type?.Kind, Type?.Size, Type?.DisplayName);
+
+	private static bool SameType(CilType? first, CilType? second)
+	{
+		if (ReferenceEquals(first, second)) return true;
+		if (first is null || second is null) return false;
+		if (first.Kind != second.Kind || first.Size != second.Size || first.IsReadOnly != second.IsReadOnly ||
+			first.IsEnum != second.IsEnum || !StringComparer.Ordinal.Equals(first.DisplayName, second.DisplayName)) return false;
+		if (first.ElementType is { } firstElement)
+		{
+			if (second.ElementType is not { } secondElement || !SameType(firstElement, secondElement)) return false;
+		}
+		else if (second.ElementType is not null) return false;
+		var firstCount = first.GenericArguments.IsDefault ? 0 : first.GenericArguments.Length;
+		var secondCount = second.GenericArguments.IsDefault ? 0 : second.GenericArguments.Length;
+		if (firstCount != secondCount) return false;
+		for (var index = 0; index < firstCount; index++)
+			if (!SameType(first.GenericArguments[index], second.GenericArguments[index])) return false;
+		return true;
+	}
+}
 
 internal static class CilStackAnalyzer
 {
@@ -605,6 +633,8 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Ldelem_I4 ||
 		op == OpCodes.Ldelem_U4 ||
 		op == OpCodes.Ldelem_I8 ||
+		op == OpCodes.Ldelem_R4 ||
+		op == OpCodes.Ldelem_R8 ||
 		op == OpCodes.Ldelem_I ||
 		op == OpCodes.Ldelem_Ref ||
 		op == OpCodes.Ldelem ||
@@ -631,6 +661,7 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Ldind_I ||
 		op == OpCodes.Ldind_I8 ||
 		op == OpCodes.Ldind_R4 ||
+		op == OpCodes.Ldind_R8 ||
 		op == OpCodes.Ldind_Ref;
 
 	private static bool IsIndirectStore(OpCode op) =>
@@ -640,9 +671,13 @@ internal static class CilStackAnalyzer
 		op == OpCodes.Stind_I ||
 		op == OpCodes.Stind_I8 ||
 		op == OpCodes.Stind_R4 ||
+		op == OpCodes.Stind_R8 ||
 		op == OpCodes.Stind_Ref;
 
 	private static bool IsConversion(OpCode op) =>
+		op == OpCodes.Conv_R4 ||
+		op == OpCodes.Conv_R8 ||
+		op == OpCodes.Conv_R_Un ||
 		op == OpCodes.Conv_I ||
 		op == OpCodes.Conv_U ||
 		op == OpCodes.Conv_I4 ||
@@ -846,6 +881,11 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Dup)
 		{
 			EnsureDepth(method, instruction, stack, 1);
+			if (stack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
+			{
+				EnsureDepth(method, instruction, stack, 2);
+				return stack.Add(stack[^2]).Add(stack[^1]);
+			}
 			return stack.Add(stack[^1]);
 		}
 
@@ -878,12 +918,15 @@ internal static class CilStackAnalyzer
 			op == OpCodes.Rem_Un || op == OpCodes.Shl || op == OpCodes.Shr ||
 			op == OpCodes.Shr_Un)
 		{
-			var arithmeticKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
+			var shift = op == OpCodes.Shl || op == OpCodes.Shr || op == OpCodes.Shr_Un;
+			var arithmeticKind = stack.Length < (shift ? 2 : 1) ? CilStackValueKind.Int32 : stack[shift ? ^2 : ^1];
 			if (arithmeticKind == CilStackValueKind.Int64)
 			{
-				if (op != OpCodes.Add && op != OpCodes.Sub)
+				if (shift) return PushValue(Pop(method, instruction, stack, 3), CilStackValueKind.Int64);
+				if (op != OpCodes.Add && op != OpCodes.Sub && op != OpCodes.Mul && op != OpCodes.And && op != OpCodes.Or && op != OpCodes.Xor &&
+					op != OpCodes.Div && op != OpCodes.Div_Un && op != OpCodes.Rem && op != OpCodes.Rem_Un)
 				{
-					throw Unsupported(method, instruction, "64-bit arithmetic other than addition or subtraction");
+					throw Unsupported(method, instruction, "checked 64-bit arithmetic");
 				}
 				return PushValue(
 					Pop(method, instruction, stack, 4),
@@ -915,7 +958,7 @@ internal static class CilStackAnalyzer
 			var unaryKind = stack.Length == 0 ? CilStackValueKind.Int32 : stack[^1];
 			if (unaryKind == CilStackValueKind.Int64)
 			{
-				throw Unsupported(method, instruction, "64-bit arithmetic");
+				return PushValue(Pop(method, instruction, stack, 2), CilStackValueKind.Int64);
 			}
 			if (unaryKind is CilStackValueKind.Float32 or CilStackValueKind.Float64 && op == OpCodes.Not)
 			{
@@ -932,7 +975,8 @@ internal static class CilStackAnalyzer
 		if (op == OpCodes.Brtrue || op == OpCodes.Brtrue_S ||
 			op == OpCodes.Brfalse || op == OpCodes.Brfalse_S)
 		{
-			return Pop(method, instruction, stack, 1);
+			return Pop(method, instruction, stack,
+				stack.Length != 0 && stack[^1] == CilStackValueKind.Int64 ? 2 : 1);
 		}
 
 		if (IsUnconditionalBranch(op))
@@ -1078,6 +1122,10 @@ internal static class CilStackAnalyzer
 				? CilStackValueKind.ManagedPointer
 				: op == OpCodes.Ldelem_Ref
 					? CilStackValueKind.Reference
+					: op == OpCodes.Ldelem_R4
+						? CilStackValueKind.Float32
+					: op == OpCodes.Ldelem_R8
+						? CilStackValueKind.Float64
 					: op == OpCodes.Ldelem_I8
 						? CilStackValueKind.Int64
 					: op == OpCodes.Ldelem_I1
@@ -1112,6 +1160,8 @@ internal static class CilStackAnalyzer
 					? CilStackValueKind.Reference
 					: op == OpCodes.Ldind_R4
 						? CilStackValueKind.Float32
+					: op == OpCodes.Ldind_R8
+						? CilStackValueKind.Float64
 					: op == OpCodes.Ldind_I8
 						? CilStackValueKind.Int64
 					: op == OpCodes.Ldind_I1
@@ -1131,7 +1181,7 @@ internal static class CilStackAnalyzer
 				method,
 				instruction,
 				stack,
-				op == OpCodes.Stind_I8 ? 3 : 2);
+				op == OpCodes.Stind_I8 || op == OpCodes.Stind_R8 ? 3 : 2);
 		}
 
 		if (op == OpCodes.Ldfld || op == OpCodes.Ldflda ||
@@ -1223,6 +1273,11 @@ internal static class CilStackAnalyzer
 		if (instruction.OpCode == OpCodes.Dup)
 		{
 			EnsureDepth(method, instruction, currentStack, 1);
+			if (currentStack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
+			{
+				EnsureDepth(method, instruction, currentStack, 2);
+				return currentAggregateTypes.Add(currentAggregateTypes[^2]).Add(currentAggregateTypes[^1]);
+			}
 			return currentAggregateTypes.Add(currentAggregateTypes[^1]);
 		}
 
@@ -1422,6 +1477,7 @@ internal static class CilStackAnalyzer
 	}
 
 	private static bool IsSpanByrefConstructor(string? importName) =>
+		importName is "intrinsic:readonly-span-from-ref-length:char" or "intrinsic:span-from-ref-length:char" or "intrinsic:readonly-span-from-ref-length:object" ||
 		importName?.StartsWith(
 			"intrinsic:span-from-ref:",
 			StringComparison.Ordinal) == true ||
@@ -1431,6 +1487,8 @@ internal static class CilStackAnalyzer
 
 	private static bool IsSpanValueConstructor(string? importName) =>
 		IsSpanByrefConstructor(importName) ||
+		importName is "intrinsic:span-from-array-ctor:char" or "intrinsic:readonly-span-from-array-ctor:char" or "intrinsic:readonly-span-from-array-ctor:string" or "intrinsic:readonly-span-from-array-ctor:object" ||
+		importName is "intrinsic:span-from-array-range:char" or "intrinsic:span-from-array-range:string" or "intrinsic:span-from-array-range:object" ||
 		importName?.StartsWith(
 			"intrinsic:span-from-pointer:",
 			StringComparison.Ordinal) == true;
@@ -1586,10 +1644,13 @@ internal static class CilStackAnalyzer
 		{
 			return 2;
 		}
-		if (op == OpCodes.Stind_I8)
+		if (op == OpCodes.Stind_I8 || op == OpCodes.Stind_R8)
 		{
 			return 3;
 		}
+		if ((op == OpCodes.Shl || op == OpCodes.Shr || op == OpCodes.Shr_Un) &&
+			currentStack.Length >= 3 && currentStack[^2] == CilStackValueKind.Int64)
+			return 3;
 		if (op == OpCodes.Stfld || op == OpCodes.Stsfld)
 		{
 			var field = module.ResolveFieldToken(
@@ -1631,7 +1692,14 @@ internal static class CilStackAnalyzer
 		{
 			return 4;
 		}
+		if ((op == OpCodes.Brtrue || op == OpCodes.Brtrue_S ||
+			op == OpCodes.Brfalse || op == OpCodes.Brfalse_S) &&
+			currentStack.Length != 0 && currentStack[^1] == CilStackValueKind.Int64)
+		{
+			return 2;
+		}
 		if ((op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.Mul ||
+			op == OpCodes.And || op == OpCodes.Or || op == OpCodes.Xor ||
 			op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem ||
 			op == OpCodes.Rem_Un || op == OpCodes.Ceq || op == OpCodes.Cgt ||
 			op == OpCodes.Cgt_Un || op == OpCodes.Clt || op == OpCodes.Clt_Un) &&
@@ -1641,7 +1709,7 @@ internal static class CilStackAnalyzer
 			return 4;
 		}
 		if ((op == OpCodes.Neg || op == OpCodes.Not) &&
-			currentStack.Length != 0 && currentStack[^1] == CilStackValueKind.Float64)
+			currentStack.Length != 0 && currentStack[^1] is CilStackValueKind.Int64 or CilStackValueKind.Float64)
 		{
 			return 2;
 		}
@@ -1731,7 +1799,7 @@ internal static class CilStackAnalyzer
 					method.DisplayName.Split("::", StringSplitOptions.None)[0]);
 				return module.IsTransparentScalarType(declaringType)
 					? CilStackValueKind.Int32
-					: CilStackValueKind.Reference;
+					: module.IsValueTypeMethod(method) ? CilStackValueKind.ManagedPointer : CilStackValueKind.Reference;
 			}
 
 			index--;
@@ -1830,6 +1898,8 @@ internal static class CilStackAnalyzer
 	}
 
 	private static CilStackValueKind StackKindForConversion(OpCode op) =>
+		op == OpCodes.Conv_R4 ? CilStackValueKind.Float32 :
+		op == OpCodes.Conv_R8 || op == OpCodes.Conv_R_Un ? CilStackValueKind.Float64 :
 		op == OpCodes.Conv_I8 || op == OpCodes.Conv_U8
 			? CilStackValueKind.Int64
 			: TryGetNarrowConversionKind(op, out var kind)
@@ -1867,7 +1937,7 @@ internal static class CilStackAnalyzer
 		!module.IsTransparentScalarType(type) &&
 		(module.TryGetReferenceFreeStructLayout(type, moduleName, out var layout) ||
 		 module.TryGetStructLayout(type, moduleName, out layout)) &&
-		layout.Size > 4
+		layout.UsesAggregateTransport
 			? CilStackValueKind.AggregateAddress
 			: StackKindForType(type);
 

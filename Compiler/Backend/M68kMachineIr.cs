@@ -442,8 +442,19 @@ internal sealed record M68kMachineInstruction(
 {
 	public M68kMachineBulkCopy? BulkCopy { get; init; }
 
+	// Object/array/offset projections use Uses[0]; span data uses Uses[1]
+	// for the owner loaded from the target span's third word. A span-element
+	// Copy carries the returned address in Uses[0] and this owner in Uses[1].
+	public M68kManagedByrefProjection ManagedByrefProjection { get; init; }
+	public int ManagedByrefSourceArgumentCount { get; init; } = 1;
+	public bool BorrowsSpanOwnerFromCaller { get; init; }
+
 	// A preceding, explicit copy has filled the hidden aggregate return buffer.
 	public bool ReturnBufferWritten { get; init; }
+
+	// A stack argument copies a struct payload, rather than transporting an
+	// address such as the hidden return buffer. These differ even at four bytes.
+	public bool CopiesAggregateArgument { get; init; }
 
 	public static M68kMachineInstruction Create(
 		int id,
@@ -1098,11 +1109,13 @@ internal static class M68kMachineIrVerifier
 	{
 		if (instruction.TransportsManagedByrefOwner &&
 			(instruction.Operation != M68kMachineOperation.Call ||
-			 instruction.Uses.Length is < 1 or > 2 ||
+			 instruction.ManagedByrefSourceArgumentCount is < 1 or > 2 ||
+			 instruction.Uses.Length < instruction.ManagedByrefSourceArgumentCount ||
+			 instruction.Uses.Length > instruction.ManagedByrefSourceArgumentCount + 1 ||
 			 function.Values[instruction.Uses[0]].Kind !=
 				CilStackValueKind.ManagedPointer ||
-			 instruction.Uses.Length == 2 &&
-				!function.Values[instruction.Uses[1]].IsGcReference))
+			 instruction.Uses.Length == instruction.ManagedByrefSourceArgumentCount + 1 &&
+				!function.Values[instruction.Uses[^1]].IsGcReference))
 		{
 			throw Invalid(
 				function,

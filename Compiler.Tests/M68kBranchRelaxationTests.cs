@@ -10,6 +10,69 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kBranchRelaxationTests
 {
+	[Theory]
+	[InlineData(1)]
+	[InlineData(99)]
+	[InlineData(100)]
+	public void AlignedBlockKeepsThePrecedingCallReturnAddressBeforePadding(int callCount)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x4E71);
+		for (var index = 0; index < callCount; index++)
+			assembler.EmitJsr("callee", external: false);
+		assembler.MarkReturnAddress("resume");
+		assembler.Mark("hot-loop");
+		assembler.Mark("callee");
+		assembler.RequestLongAlignment("hot-loop");
+		assembler.RequestLongAlignment("callee");
+		assembler.EmitWord(0x4E75);
+		assembler.MarkDataStart();
+		assembler.EmitAddress("resume");
+
+		assembler.RelaxFinalLayout();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var resume = callCount * 4 + 2;
+		Assert.Equal(resume, linked.Labels["resume"]);
+		Assert.Equal(resume + 2, linked.Labels["hot-loop"]);
+		Assert.Equal(resume + 2, linked.Labels["callee"]);
+		Assert.Equal(0x6100, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(resume - 4)));
+		Assert.Equal(0x4E71, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(resume)));
+		Assert.Equal((uint)resume, BinaryPrimitives.ReadUInt32BigEndian(linked.Bytes.AsSpan(resume + 4)));
+		Assert.Equal(linked.Bytes, assembler.Link(0, new Dictionary<string, uint>()).Bytes);
+	}
+
+	[Theory]
+	[InlineData(99)]
+	[InlineData(100)]
+	public void RepeatedRelaxationKeepsAtMostOneAlignmentNop(int callCount)
+	{
+		var assembler = new M68kAssembler();
+		for (var index = 0; index < callCount; index++)
+		{
+			assembler.EmitJsr("callee", external: false);
+		}
+		assembler.EmitWord(0x4E71);
+		assembler.Mark("hot-loop");
+		assembler.Mark("callee");
+		assembler.RequestLongAlignment("hot-loop");
+		assembler.RequestLongAlignment("callee");
+		assembler.EmitWord(0x4E75);
+
+		assembler.RelaxFinalLayout();
+		var linked = assembler.Link(0, new Dictionary<string, uint>());
+		var expectedHeader = callCount * 4 + 4;
+		Assert.Equal(expectedHeader, linked.Labels["hot-loop"]);
+		Assert.Equal(expectedHeader, linked.Labels["callee"]);
+		Assert.Equal(expectedHeader + 2, linked.Bytes.Length);
+		for (var index = 0; index < callCount; index++)
+		{
+			Assert.Equal(0x6100, BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(index * 4)));
+			Assert.Equal(expectedHeader - (index * 4 + 2), BinaryPrimitives.ReadInt16BigEndian(linked.Bytes.AsSpan(index * 4 + 2)));
+		}
+		// Linking again must preserve the same padding and displacements.
+		Assert.Equal(linked.Bytes, assembler.Link(0, new Dictionary<string, uint>()).Bytes);
+	}
+
 	[Fact]
 	public void RendersExplicitRomRamAndBssSections()
 	{

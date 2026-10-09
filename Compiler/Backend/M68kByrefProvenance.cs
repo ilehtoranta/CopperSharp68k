@@ -72,6 +72,17 @@ internal enum M68kByrefProvenanceKind
 	BoxInterior
 }
 
+internal enum M68kManagedByrefProjection
+{
+	None,
+	Null,
+	ObjectData,
+	ArrayData,
+	SpanData,
+	ElementOffset,
+	Identity
+}
+
 internal readonly record struct M68kByrefProvenance(
 	M68kByrefProvenanceKind Kind,
 	int? OwnerValue = null)
@@ -197,6 +208,7 @@ internal static class M68kManagedByrefTypeTracker
 						if (!tracked.ContainsKey(definition) ||
 							!TryDescribe(
 								instruction,
+								function,
 								method,
 								module,
 								tracked,
@@ -222,6 +234,7 @@ internal static class M68kManagedByrefTypeTracker
 
 	private static bool TryDescribe(
 		M68kMachineInstruction instruction,
+		M68kMachineFunction function,
 		CilMethod method,
 		CompilationModule module,
 		IReadOnlyDictionary<int, M68kManagedByrefType?> tracked,
@@ -229,11 +242,21 @@ internal static class M68kManagedByrefTypeTracker
 		out M68kManagedByrefType description)
 	{
 		if (instruction.Operation == M68kMachineOperation.Copy &&
-			instruction.Uses.Length == 1 &&
+			(instruction.Uses.Length == 1 || instruction.Uses.Length == 2 &&
+			 instruction.ManagedByrefProjection == M68kManagedByrefProjection.SpanData) &&
 			tracked.TryGetValue(instruction.Uses[0], out var copied) &&
 			copied is not null)
 		{
 			description = copied.Value;
+			if (instruction.SourceInstruction is { } store &&
+				(store.OpCode == OpCodes.Starg || store.OpCode == OpCodes.Starg_S) &&
+				TryGetArgumentType(method, Convert.ToInt32(store.Operand), out var assignedType))
+			{
+				var assignedArgument = Convert.ToInt32(store.Operand);
+				if (assignedType.ElementType is { } expected && !SameReferentType(expected, description.ReferentType))
+					throw Incompatible(function, instruction.IlOffset, expected, description.ReferentType, "argument assignment");
+				description = description with { IsReadOnly = description.IsReadOnly || IsReadOnlyArgument(method, assignedArgument) || assignedType.IsReadOnly };
+			}
 			return true;
 		}
 		if (instruction.Operation == M68kMachineOperation.Argument &&
@@ -374,11 +397,7 @@ internal static class M68kManagedByrefTypeTracker
 		var inputs = new List<M68kManagedByrefType>();
 		foreach (var value in values)
 		{
-			if (!tracked.TryGetValue(value, out var input) || input is null)
-			{
-				merged = default;
-				return false;
-			}
+			if (!tracked.TryGetValue(value, out var input) || input is null) continue;
 			inputs.Add(input.Value);
 		}
 		if (inputs.Count == 0)
@@ -408,6 +427,10 @@ internal static class M68kManagedByrefTypeTracker
 
 	private static bool SameReferentType(CilType first, CilType second)
 	{
+		// Separately decoded constructed signatures have distinct immutable-array
+		// instances. Compare their exact nested shape as aggregate stores do.
+		if (new CilAggregateStackType(string.Empty, first).Equals(new CilAggregateStackType(string.Empty, second)))
+			return true;
 		if (first == second)
 		{
 			return true;
@@ -425,6 +448,14 @@ internal static class M68kManagedByrefTypeTracker
 				CompilationModule.IsSupportedMemoryLikeType(second) ||
 			CompilationModule.IsListEnumeratorType(first) &&
 				CompilationModule.IsListEnumeratorType(second) ||
+			CompilationModule.IsIntegerValueListBuilder(first) &&
+				CompilationModule.IsIntegerValueListBuilder(second) ||
+			first.Kind == CilTypeKind.ValueType && second.Kind == CilTypeKind.ValueType &&
+				first.DisplayName.StartsWith("System.Runtime.CompilerServices.InlineArray", StringComparison.Ordinal) &&
+				second.DisplayName.StartsWith("System.Runtime.CompilerServices.InlineArray", StringComparison.Ordinal) &&
+				!first.GenericArguments.IsDefault && !second.GenericArguments.IsDefault &&
+				first.GenericArguments is [{ Kind: CilTypeKind.ManagedReference, DisplayName: "object" }] &&
+				second.GenericArguments is [{ Kind: CilTypeKind.ManagedReference, DisplayName: "object" }] ||
 			first.IsNullable && second.IsNullable;
 		return isAdmittedConstructedValue &&
 			first.DisplayName.Split('<', 2)[0] ==
@@ -437,7 +468,8 @@ internal static class M68kManagedByrefTypeTracker
 		int value,
 		M68kManagedByrefType description)
 	{
-		if (tracked[value] == description)
+		if (tracked[value] is { } prior && prior.IsReadOnly == description.IsReadOnly &&
+			SameReferentType(prior.ReferentType, description.ReferentType))
 			return false;
 		tracked[value] = description;
 		return true;
@@ -518,16 +550,37 @@ internal static class M68kByrefProvenanceAnalyzer
 		bool allowCallerBorrowedByrefs,
 		out IReadOnlyDictionary<int, int> canonicalOwners)
 	{
-		var managedPointers = function.Values.Values
-			.Where(static value =>
-				value.Kind == CilStackValueKind.ManagedPointer)
-			.Select(static value => value.Id)
-			.ToHashSet();
-		var inferred = managedPointers.ToDictionary(
+		var pointerValues = function.Values.Values
+			.Where(static value => value.Kind == CilStackValueKind.ManagedPointer)
+			.Select(static value => value.Id).ToHashSet();
+		// Native pointer casts have the same 32-bit representation, but their
+		// intermediate SSA values use Int32. Track only the copy/cast dependencies
+		// of managed pointers so unrelated integer arguments never gain a lifetime.
+		bool expanded;
+		do
+		{
+			expanded = false;
+			foreach (var instruction in function.Blocks.SelectMany(block => block.Instructions))
+			{
+				if (instruction.Operation != M68kMachineOperation.Copy && !IsNativePointerConversion(instruction) &&
+					instruction.ManagedByrefProjection != M68kManagedByrefProjection.Identity) continue;
+				if (!instruction.Definitions.Any(pointerValues.Contains) && !instruction.Uses.Any(pointerValues.Contains)) continue;
+				foreach (var value in instruction.Definitions.Concat(instruction.Uses.Take(1)))
+					if (function.Values[value].Width == M68kMachineValueWidth.Long &&
+						function.Values[value].Kind is CilStackValueKind.ManagedPointer or CilStackValueKind.Int32 or CilStackValueKind.AggregateAddress)
+						expanded |= pointerValues.Add(value);
+			}
+			foreach (var phi in function.Blocks.SelectMany(block => block.Phis))
+				if (pointerValues.Contains(phi.Definition) || phi.Inputs.Values.Any(pointerValues.Contains))
+					foreach (var value in phi.Inputs.Values.Append(phi.Definition))
+						if (function.Values[value].Width == M68kMachineValueWidth.Long) expanded |= pointerValues.Add(value);
+		} while (expanded);
+		var inferred = pointerValues.ToDictionary(
 			static value => value,
 			static _ => (M68kByrefProvenance?)null);
 		canonicalOwners = BuildCanonicalGcOwners(function);
 
+		var unresolvedSealed = false;
 		var changed = true;
 		while (changed)
 		{
@@ -537,7 +590,7 @@ internal static class M68kByrefProvenanceAnalyzer
 			{
 				foreach (var phi in block.Phis)
 				{
-					if (!managedPointers.Contains(phi.Definition) ||
+					if (!pointerValues.Contains(phi.Definition) ||
 						!TryMerge(
 							phi.Inputs.Values,
 							inferred,
@@ -552,13 +605,13 @@ internal static class M68kByrefProvenanceAnalyzer
 				{
 					foreach (var definition in instruction.Definitions)
 					{
-						if (!managedPointers.Contains(definition) ||
+						if (!pointerValues.Contains(definition) ||
 							!TryInferInstruction(
 								instruction,
 								inferred,
 								spillProvenance,
 								canonicalOwners,
-								allowCallerBorrowedByrefs,
+								allowCallerBorrowedByrefs && function.Values[definition].Kind == CilStackValueKind.ManagedPointer,
 								out var provenance))
 						{
 							continue;
@@ -567,6 +620,18 @@ internal static class M68kByrefProvenanceAnalyzer
 					}
 				}
 			}
+			if (!changed && !unresolvedSealed)
+			{
+				// Seed loop phis from known incoming edges, then treat any remaining
+				// unresolvable definitions as Unknown and propagate that conservative
+				// result before ownership is used at a safepoint.
+				foreach (var value in inferred.Where(static pair => pair.Value is null).Select(static pair => pair.Key).ToArray())
+				{
+					inferred[value] = new M68kByrefProvenance(M68kByrefProvenanceKind.Unknown);
+					changed = true;
+				}
+				unresolvedSealed = true;
+			}
 		}
 
 		return inferred.ToDictionary(
@@ -574,6 +639,10 @@ internal static class M68kByrefProvenanceAnalyzer
 			static item => item.Value ??
 				new M68kByrefProvenance(M68kByrefProvenanceKind.Unknown));
 	}
+
+	private static bool IsNativePointerConversion(M68kMachineInstruction instruction) =>
+		instruction.Operation == M68kMachineOperation.Convert && instruction.Uses.Length == 1 &&
+		instruction.SourceInstruction?.OpCode is { } op && (op == OpCodes.Conv_U || op == OpCodes.Conv_I);
 
 	private static IReadOnlyDictionary<int, M68kByrefProvenance>
 		InferSpillProvenance(
@@ -609,6 +678,42 @@ internal static class M68kByrefProvenanceAnalyzer
 		bool allowCallerBorrowedByrefs,
 		out M68kByrefProvenance provenance)
 	{
+		if (instruction.ManagedByrefProjection == M68kManagedByrefProjection.Null)
+		{
+			provenance = new M68kByrefProvenance(M68kByrefProvenanceKind.Ownerless);
+			return true;
+		}
+		if (instruction.ManagedByrefProjection == M68kManagedByrefProjection.SpanData &&
+			instruction.Uses.Length == 2 && canonicalOwners.TryGetValue(instruction.Uses[1], out var spanOwner))
+		{
+			// The target span's third word holds its managed owner, or null for
+			// frame/static data. Rooting null is harmless; the data address itself
+			// is never interpreted as an object reference by the collector.
+			provenance = new M68kByrefProvenance(M68kByrefProvenanceKind.ObjectInterior, spanOwner);
+			return true;
+		}
+		if (instruction.ManagedByrefProjection is
+				M68kManagedByrefProjection.ObjectData or M68kManagedByrefProjection.ArrayData &&
+			instruction.Uses.Length != 0 &&
+			canonicalOwners.TryGetValue(instruction.Uses[0], out var dataOwner))
+		{
+			provenance = new M68kByrefProvenance(
+				instruction.ManagedByrefProjection == M68kManagedByrefProjection.ArrayData
+					? M68kByrefProvenanceKind.ArrayInterior : M68kByrefProvenanceKind.ObjectInterior,
+				dataOwner);
+			return true;
+		}
+		if (instruction.ManagedByrefProjection is M68kManagedByrefProjection.ElementOffset or M68kManagedByrefProjection.Identity &&
+			instruction.Uses.Length != 0)
+		{
+			if (inferred.TryGetValue(instruction.Uses[0], out var elementBase) && elementBase is not null)
+			{
+				provenance = elementBase.Value;
+				return true;
+			}
+			provenance = default;
+			return false;
+		}
 		if (instruction.Operation == M68kMachineOperation.Argument)
 		{
 			provenance = new M68kByrefProvenance(
@@ -619,6 +724,7 @@ internal static class M68kByrefProvenanceAnalyzer
 		}
 		if (instruction.Operation is
 			M68kMachineOperation.LocalAddress or
+			M68kMachineOperation.DynamicStackAllocate or
 			M68kMachineOperation.ArgumentAddress or
 			M68kMachineOperation.AggregateArrayLoad or
 			M68kMachineOperation.AggregateIndirectLoad)
@@ -672,7 +778,7 @@ internal static class M68kByrefProvenanceAnalyzer
 				boxOwner);
 			return true;
 		}
-		if (instruction.Operation == M68kMachineOperation.Copy &&
+		if ((instruction.Operation == M68kMachineOperation.Copy || IsNativePointerConversion(instruction)) &&
 			instruction.Uses.Length == 1 &&
 			inferred.TryGetValue(instruction.Uses[0], out var copied) &&
 			copied is not null)
@@ -689,7 +795,7 @@ internal static class M68kByrefProvenanceAnalyzer
 
 		provenance = new M68kByrefProvenance(
 			M68kByrefProvenanceKind.Unknown);
-		return instruction.Operation is not
+		return !IsNativePointerConversion(instruction) && instruction.Operation is not
 			M68kMachineOperation.Copy and not
 			M68kMachineOperation.SpillLoad;
 	}
@@ -793,23 +899,23 @@ internal static class M68kByrefProvenanceAnalyzer
 		static void CollectTerminalRoots(
 			int root,
 			IReadOnlyDictionary<int, HashSet<int>> dependencies,
-			HashSet<int> visiting,
+			HashSet<int> visited,
 			HashSet<int> terminals)
 		{
-			if (!dependencies.TryGetValue(root, out var inputs))
+			// Reachability determines the terminal owners. Enumerating every path
+			// through shared phi inputs is exponential and adds no information.
+			var pending = new Stack<int>();
+			pending.Push(root);
+			while (pending.TryPop(out var current))
 			{
-				terminals.Add(root);
-				return;
+				if (!visited.Add(current)) continue;
+				if (!dependencies.TryGetValue(current, out var inputs))
+				{
+					terminals.Add(current);
+					continue;
+				}
+				foreach (var input in inputs) pending.Push(input);
 			}
-			if (!visiting.Add(root))
-			{
-				return;
-			}
-			foreach (var input in inputs)
-			{
-				CollectTerminalRoots(input, dependencies, visiting, terminals);
-			}
-			visiting.Remove(root);
 		}
 	}
 
@@ -821,11 +927,7 @@ internal static class M68kByrefProvenanceAnalyzer
 		var inputs = new List<M68kByrefProvenance>();
 		foreach (var value in values)
 		{
-			if (!inferred.TryGetValue(value, out var input) || input is null)
-			{
-				provenance = default;
-				return false;
-			}
+			if (!inferred.TryGetValue(value, out var input) || input is null) continue;
 			inputs.Add(input.Value);
 		}
 		if (inputs.Count == 0)
@@ -881,6 +983,7 @@ internal static class M68kByrefOwnerRooting
 		M68kManagedByrefEscapeValidator.Validate(
 			function,
 			allowUntrackedManagedByrefs);
+		TransportPhiOwners(function, allowCallerBorrowedByrefs);
 		var provenance = M68kByrefProvenanceAnalyzer.Analyze(
 			function,
 			allowCallerBorrowedByrefs,
@@ -929,8 +1032,8 @@ internal static class M68kByrefOwnerRooting
 				var owners = new HashSet<int>();
 				foreach (var valueId in liveness.LiveBefore[instruction.Id]
 					.Where(value =>
-						function.Values[value].Kind ==
-							CilStackValueKind.ManagedPointer))
+						function.Values[value].Kind == CilStackValueKind.ManagedPointer ||
+							provenance.TryGetValue(value, out var nativePointer) && nativePointer.OwnerValue is not null))
 				{
 					var byref = provenance[valueId];
 					if (byref.IsSafeWithoutOwnerRoot)
@@ -981,6 +1084,67 @@ internal static class M68kByrefOwnerRooting
 		M68kMachineIrVerifier.Verify(function);
 	}
 
+	// A byref phi can select storage owned by different objects. Select the GC
+	// owner on the same incoming edge, then associate the two SSA values before
+	// any instruction in the joining block can collect or export a span.
+	private static void TransportPhiOwners(M68kMachineFunction function, bool allowCallerBorrowedByrefs)
+	{
+		var transported = new HashSet<int>();
+		int? nullOwner = null;
+		while (true)
+		{
+			var provenance = M68kByrefProvenanceAnalyzer.Analyze(function, allowCallerBorrowedByrefs, out var canonicalOwners);
+			var dominance = BuildOwnerDominance(function);
+			var changed = false;
+			foreach (var block in function.Blocks)
+			{
+				for (var index = 0; index < block.Phis.Count; index++)
+				{
+					var phi = block.Phis[index];
+					if (transported.Contains(phi.Definition) || !provenance.TryGetValue(phi.Definition, out var merged) ||
+						merged.Kind != M68kByrefProvenanceKind.Unknown || phi.Inputs.Count == 0) continue;
+					// Unknown, caller-borrowed, and frame addresses cannot acquire an
+					// object lifetime by joining an owned address.
+					if (phi.Inputs.Values.Any(value => !provenance.TryGetValue(value, out var input) ||
+						(input.OwnerValue is null && input.Kind is not (M68kByrefProvenanceKind.Ownerless or M68kByrefProvenanceKind.Static)))) continue;
+					var ownerInputs = new Dictionary<int, int>();
+					foreach (var (predecessorId, value) in phi.Inputs)
+					{
+						if (provenance[value].OwnerValue is { } owner)
+						{
+							var predecessor = function.Blocks.Single(candidate => candidate.Id == predecessorId);
+							ownerInputs.Add(predecessorId, FindDominatingOwner(function, predecessor, null, owner, canonicalOwners, dominance));
+						}
+						else
+						{
+							if (nullOwner is null)
+							{
+								nullOwner = function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true).Id;
+								function.Blocks.Single(candidate => candidate.Id == function.EntryBlockId).Instructions.Insert(0,
+									function.CreateInstruction(M68kMachineOperation.Constant, 0, definitions: [nullOwner.Value], immediate: 0, constantValue: M68kMachineConstant.Null));
+							}
+							ownerInputs.Add(predecessorId, nullOwner.Value);
+						}
+					}
+					var original = function.Values[phi.Definition];
+					var address = function.CreateValue(original.Kind, original.Width, original.AllowedRegisters);
+					var selectedOwner = function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true);
+					block.Phis[index] = phi with { Definition = address.Id };
+					block.Phis.Add(new M68kMachinePhi(selectedOwner.Id, ownerInputs));
+					if (function.ManagedByrefTypes.TryGetValue(phi.Definition, out var byrefType)) function.ManagedByrefTypes[address.Id] = byrefType;
+					block.Instructions.Insert(0, function.CreateInstruction(M68kMachineOperation.Copy, block.StartIlOffset,
+						uses: [address.Id, selectedOwner.Id], definitions: [phi.Definition]) with { ManagedByrefProjection = M68kManagedByrefProjection.SpanData });
+					transported.Add(address.Id);
+					changed = true;
+					// Recompute provenance and dominance before processing dependent joins.
+					break;
+				}
+				if (changed) break;
+			}
+			if (!changed) return;
+		}
+	}
+
 	private static void MarkFrameDependentCalls(
 		M68kMachineFunction function,
 		IReadOnlyDictionary<int, M68kByrefProvenance> provenance)
@@ -1023,7 +1187,7 @@ internal static class M68kByrefOwnerRooting
 				{
 					continue;
 				}
-				if (instruction.Uses.Length != 1)
+				if (instruction.Uses.Length != instruction.ManagedByrefSourceArgumentCount)
 				{
 					throw new InvalidOperationException(
 						$"Managed-byref owner transport {instruction.Id} has {instruction.Uses.Length} source operands before owner attachment.");
@@ -1039,6 +1203,7 @@ internal static class M68kByrefOwnerRooting
 				}
 				if (byref.Kind == M68kByrefProvenanceKind.CallerBorrowed)
 				{
+					if (instruction.BorrowsSpanOwnerFromCaller) continue;
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.UnsupportedInstruction,
 						$"Managed byref v{valueId} with CallerBorrowed provenance cannot initialize Span-like storage because the current managed-byref ABI does not transport the caller's GC owner.",
@@ -1072,12 +1237,12 @@ internal static class M68kByrefOwnerRooting
 	private static int FindDominatingOwner(
 		M68kMachineFunction function,
 		M68kMachineBlock useBlock,
-		M68kMachineInstruction useInstruction,
+		M68kMachineInstruction? useInstruction,
 		int canonicalOwner,
 		IReadOnlyDictionary<int, int> canonicalOwners,
 		OwnerDominanceInfo dominance)
 	{
-		var useIndex = dominance.InstructionIndices[useInstruction.Id];
+		var useIndex = useInstruction is null ? useBlock.Instructions.Count : dominance.InstructionIndices[useInstruction.Id];
 		var candidates = canonicalOwners
 			.Where(item => item.Value == canonicalOwner &&
 				function.Values[item.Key].IsGcReference &&
@@ -1090,7 +1255,10 @@ internal static class M68kByrefOwnerRooting
 					item.Definition.BlockId) &&
 				(item.Definition.BlockId != useBlock.Id ||
 				 item.Definition.Index < useIndex))
-			.OrderByDescending(item =>
+			// ABI argument copies are fixed to caller-save registers. Prefer an
+			// equivalent ordinary SSA value that allocation can preserve or spill.
+			.OrderBy(item => function.Values[item.Value].PrecoloredRegister is not null)
+			.ThenByDescending(item =>
 				dominance.Dominators[item.Definition.BlockId].Count)
 			.ThenByDescending(item => item.Definition.Index)
 			.ThenBy(item => item.Value)
@@ -1098,7 +1266,7 @@ internal static class M68kByrefOwnerRooting
 		if (candidates.Length == 0)
 		{
 			throw new InvalidOperationException(
-				$"No equivalent GC owner for canonical v{canonicalOwner} dominates instruction {useInstruction.Id}.");
+				$"No equivalent GC owner for canonical v{canonicalOwner} dominates {(useInstruction is null ? $"the end of block {useBlock.Id}" : $"instruction {useInstruction.Id}")}.");
 		}
 		return candidates[0].Value;
 	}

@@ -9873,11 +9873,14 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	private bool TryReplaceCompareZeroWithTest()
 	{
-		var (startOffset, endOffset) = _assembler.GetAnalysisRange();
-		for (var offset = startOffset; offset + 3 < endOffset; offset += 2)
+		foreach (var instruction in _assembler.GetExecutableInstructionStream())
 		{
-			var opcode = _buffer.ReadWord(offset);
-			if ((opcode & 0xFFF8) == 0x0C80 &&
+			// Operand words can look like CMPI #0. Rewriting them would corrupt
+			// immediate constants or addressing extensions and destroy boundaries.
+			if (!instruction.IsDecoded) continue;
+			var offset = instruction.Offset;
+			var opcode = instruction.Opcode;
+			if (instruction.Length == 6 && (opcode & 0xFFF8) == 0x0C80 &&
 				!HasAddressFixupAt(offset + 2) &&
 				_buffer.ReadLong(offset + 2) == 0)
 			{
@@ -9886,7 +9889,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				return true;
 			}
 
-			if ((opcode & 0xFFF8) == 0x0C40 &&
+			if (instruction.Length == 4 && (opcode & 0xFFF8) == 0x0C40 &&
 				_buffer.ReadWord(offset + 2) == 0)
 			{
 				_buffer.WriteWord(offset, (ushort)(0x4A40 | (opcode & 7))); // CMPI.W #0,Dn -> TST.W Dn
@@ -9894,7 +9897,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				return true;
 			}
 
-			if ((opcode & 0xFFF8) == 0x0C00 &&
+			if (instruction.Length == 4 && (opcode & 0xFFF8) == 0x0C00 &&
 				_buffer.ReadWord(offset + 2) == 0)
 			{
 				_buffer.WriteWord(offset, (ushort)(0x4A00 | (opcode & 7))); // CMPI.B #0,Dn -> TST.B Dn

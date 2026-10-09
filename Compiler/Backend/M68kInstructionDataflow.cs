@@ -285,7 +285,7 @@ internal sealed class M68kInstructionDataflow
 				instructions,
 				successors,
 				predecessors,
-				effects));
+				effects, assembler.AddressFixupOffsets));
 	}
 
 	private static IReadOnlyList<int>[] BuildSuccessors(
@@ -654,8 +654,10 @@ internal sealed class M68kInstructionDataflow
 			}
 
 			if ((opcode & 0xF1FF) == 0x41EF || opcode == 0x4FEF ||
-				(opcode & 0xF1C0) == 0x41C0)
+				(opcode & 0xF1C0) == 0x41C0 && ((opcode >> 3) & 7) >= 2)
 			{
+				// EXTB.L Dn shares LEA's broad opcode mask but has a data-register
+				// effective address. It writes Dn and CCR, never A4.
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.AddressOnly);
 				var destination = (opcode >> 9) & 7;
 				DefineAddress(destination);

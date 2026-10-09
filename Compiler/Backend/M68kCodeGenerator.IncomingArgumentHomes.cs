@@ -11,9 +11,9 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_allocatedIncomingArgumentHomes.Clear();
 		var function = allocated.Function;
-		if (_request.RomSizeOptimizations?.ReuseIncomingArgumentHomes != true ||
+		if (_request.EffectiveCodeSizeOptions?.ReuseIncomingArgumentHomes != true ||
 			_request.Cpu != M68kCpuTarget.M68000 ||
-			_request.RuntimeProfile != M68kRuntimeProfile.Rom ||
+			!SupportsCodeSizeProfile ||
 			_request.ExceptionMode != M68kExceptionMode.Yolo ||
 			_memoryManagement != M68kMemoryManagement.None ||
 			_managedPoolRuntime is not null || _managedLifecycles.Count != 0 || _usesExceptionRuntime ||

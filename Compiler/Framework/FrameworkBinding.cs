@@ -70,6 +70,10 @@ internal sealed class FrameworkTypeId : IEquatable<FrameworkTypeId>
 
 	public FrameworkTypeId? DeclaringType { get; }
 
+	public string? FullMetadataName => Kind == FrameworkTypeKind.Named && DeclaringType is not null
+		? $"{DeclaringType.FullMetadataName}+{MetadataName}"
+		: MetadataName;
+
 	public FrameworkTypeId? ElementType { get; }
 
 	public ImmutableArray<FrameworkTypeId> GenericArguments { get; }
@@ -411,6 +415,8 @@ internal enum FrameworkEffects
 internal readonly record struct FrameworkFeature(string Name)
 {
 	public static FrameworkFeature ManagedStrings { get; } = new("managed-strings");
+
+	public static FrameworkFeature StringBuilder { get; } = new("managed-stringbuilder");
 
 	public static FrameworkFeature NativeCStrings { get; } = new("native-cstrings");
 

@@ -57,8 +57,16 @@ internal sealed class Net10FrameworkContract
 		FrameworkMemberId exactMember,
 		CilMethodReferenceIdentity member,
 		MethodReference? resolved,
-		M68kCompilationException? resolutionFailure)
+		M68kCompilationException? resolutionFailure,
+		bool useVerifiedCoreLibIdentity = false,
+		FrameworkBinding? callSiteOverride = null,
+		bool requirePinnedCoreLibBinding = false)
 	{
+		if (useVerifiedCoreLibIdentity)
+		{
+			exactMember = FrameworkImplementationProfile.Canonicalize(exactMember);
+			member = member with { AssemblyName = exactMember.AssemblyName };
+		}
 		var rules = _bindings.Where(candidate => candidate.Matches(member)).ToArray();
 		if (resolutionFailure is not null)
 		{
@@ -72,7 +80,10 @@ internal sealed class Net10FrameworkContract
 
 		if (resolved?.FrameworkBinding is { } binding)
 		{
-			if (!binding.Member.Equals(exactMember))
+			var bindingMember = useVerifiedCoreLibIdentity
+				? FrameworkImplementationProfile.Canonicalize(binding.Member)
+				: binding.Member;
+			if (!bindingMember.Equals(exactMember))
 			{
 				return new FrameworkBindingDecision(
 					M68kFrameworkCompatibilityStatus.Unsupported,
@@ -102,7 +113,13 @@ internal sealed class Net10FrameworkContract
 						.Order(StringComparer.Ordinal)
 						.ToArray());
 			}
-			if (FrameworkImplementationProfile.IsTargetRuntimeOverride(binding))
+			if (FrameworkImplementationProfile.IsTargetRuntimeOverride(binding) ||
+				(useVerifiedCoreLibIdentity && callSiteOverride is { } expected && binding.Kind == expected.Kind &&
+				 binding.Target == expected.Target && binding.ShadowMethod == expected.ShadowMethod &&
+				 binding.PreservesVirtualDispatch == expected.PreservesVirtualDispatch &&
+				 binding.TypeInitializerPolicy == expected.TypeInitializerPolicy &&
+				 binding.EffectSummary.Effects == expected.EffectSummary.Effects &&
+				 binding.EffectSummary.RequiredFeatures.SequenceEqual(expected.EffectSummary.RequiredFeatures)))
 			{
 				return new FrameworkBindingDecision(
 					M68kFrameworkCompatibilityStatus.Implemented,
@@ -221,6 +238,9 @@ internal sealed class Net10FrameworkContract
 
 		if (resolved?.Definition is { IsImport: false })
 		{
+			if (requirePinnedCoreLibBinding && resolved.Definition.ModuleName == "System.Private.CoreLib")
+				return new FrameworkBindingDecision(M68kFrameworkCompatibilityStatus.Unsupported, null,
+					"The implementation dependency is outside the bounded compiler-owned CoreLib body profile.", [], []);
 			return new FrameworkBindingDecision(
 				M68kFrameworkCompatibilityStatus.Implemented,
 				resolved.Definition.DisplayName,

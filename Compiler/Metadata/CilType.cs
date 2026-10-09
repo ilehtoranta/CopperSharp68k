@@ -62,6 +62,14 @@ internal sealed record CilType(
 
 	public CilType? NullableElementType =>
 		IsNullable ? GenericArguments[0] : null;
+
+	// Decimal is the bounded framework aggregate whose nullable representation
+	// is known at signature decoding. Admission separately verifies its pinned
+	// sixteen-byte CoreLib layout. Application aggregates need the module's
+	// authoritative layout resolver rather than this signature-only fallback.
+	public static int NullableStorageSize(CilType element) => checked(
+		(element is { Kind: CilTypeKind.ValueType, Size: 0, DisplayName: "System.Decimal" }
+			? 16 : Math.Max(4, element.Size)) + 4);
 }
 
 internal readonly record struct CilGenericContext(
@@ -78,10 +86,18 @@ internal sealed class CilSignatureTypeProvider :
 	private readonly Func<MetadataReader, TypeReference, string, CilType?>?
 		_referencedEnumResolver;
 	private Dictionary<string, CilType>? _definedEnumTypes;
+	private readonly Func<bool>? _useCoreLibPrimitiveDefinitions;
+	private readonly Func<CilType, int>? _nullableStorageSizeResolver;
 
 	public CilSignatureTypeProvider(
-		Func<MetadataReader, TypeReference, string, CilType?>? referencedEnumResolver = null) =>
+		Func<MetadataReader, TypeReference, string, CilType?>? referencedEnumResolver = null,
+		Func<bool>? useCoreLibPrimitiveDefinitions = null,
+		Func<CilType, int>? nullableStorageSizeResolver = null)
+	{
 		_referencedEnumResolver = referencedEnumResolver;
+		_useCoreLibPrimitiveDefinitions = useCoreLibPrimitiveDefinitions;
+		_nullableStorageSizeResolver = nullableStorageSizeResolver;
+	}
 
 	public CilType GetArrayType(CilType elementType, ArrayShape shape) =>
 		new(CilTypeKind.ManagedReference, 4, $"{elementType.DisplayName}[{new string(',', Math.Max(0, shape.Rank - 1))}]", elementType);
@@ -101,7 +117,7 @@ internal sealed class CilSignatureTypeProvider :
 		genericType.DisplayName == "System.Nullable`1" && typeArguments.Length == 1
 			? new(
 				CilTypeKind.ValueType,
-				8,
+				_nullableStorageSizeResolver?.Invoke(typeArguments[0]) ?? CilType.NullableStorageSize(typeArguments[0]),
 				$"System.Nullable<{typeArguments[0].DisplayName}>",
 				GenericArguments: typeArguments)
 			: new(
@@ -165,6 +181,8 @@ internal sealed class CilSignatureTypeProvider :
 	{
 		var definition = reader.GetTypeDefinition(handle);
 		var name = QualifiedName(reader, handle, definition);
+		if (_useCoreLibPrimitiveDefinitions?.Invoke() == true && TryGetCoreLibPrimitiveCode(name) is { } primitiveCode)
+			return GetPrimitiveType(primitiveCode);
 		if (TryGetEnumUnderlyingType(reader, definition, out var underlying))
 		{
 			return underlying with
@@ -177,6 +195,28 @@ internal sealed class CilSignatureTypeProvider :
 			? new(CilTypeKind.ValueType, name == "Amiga.CString" ? 4 : 0, name)
 			: new(CilTypeKind.ManagedReference, 4, name);
 	}
+
+	private static PrimitiveTypeCode? TryGetCoreLibPrimitiveCode(string name) => name switch
+	{
+		"System.Void" => PrimitiveTypeCode.Void,
+		"System.Boolean" => PrimitiveTypeCode.Boolean,
+		"System.Char" => PrimitiveTypeCode.Char,
+		"System.SByte" => PrimitiveTypeCode.SByte,
+		"System.Byte" => PrimitiveTypeCode.Byte,
+		"System.Int16" => PrimitiveTypeCode.Int16,
+		"System.UInt16" => PrimitiveTypeCode.UInt16,
+		"System.Int32" => PrimitiveTypeCode.Int32,
+		"System.UInt32" => PrimitiveTypeCode.UInt32,
+		"System.Int64" => PrimitiveTypeCode.Int64,
+		"System.UInt64" => PrimitiveTypeCode.UInt64,
+		"System.IntPtr" => PrimitiveTypeCode.IntPtr,
+		"System.UIntPtr" => PrimitiveTypeCode.UIntPtr,
+		"System.Single" => PrimitiveTypeCode.Single,
+		"System.Double" => PrimitiveTypeCode.Double,
+		"System.String" => PrimitiveTypeCode.String,
+		"System.Object" => PrimitiveTypeCode.Object,
+		_ => null
+	};
 
 	public CilType GetTypeFromReference(
 		MetadataReader reader,

@@ -304,7 +304,7 @@ internal static class M68kAggregateReturnForwarding
 				method.Locals[local].DisplayName != method.Signature.ReturnType.DisplayName ||
 				!function.LocalHomes.TryGetValue(local, out var home) || home.HasGcReferences ||
 				!module.TryGetReferenceFreeStructLayout(method.Signature.ReturnType,
-					method.ModuleName, out var layout) || layout.Size <= 4 ||
+					method.ModuleName, out var layout) || !layout.UsesAggregateTransport ||
 				layout.ReferenceBitmap != 0 || home.Size != layout.Size)
 			{
 				continue;
@@ -416,7 +416,7 @@ internal static class M68kAggregateReturnForwarding
 			call.Definitions.Length != 0 || call.StackVarargsRegister is not null ||
 			(call.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0 ||
 			!module.TryGetReferenceFreeStructLayout(target.Signature.ReturnType, target.ModuleName, out var layout) ||
-			layout.Size <= 4 || layout.ReferenceBitmap != 0 ||
+			!layout.UsesAggregateTransport || layout.ReferenceBitmap != 0 ||
 			callIndex + 3 >= instructions.Count ||
 			instructions[callIndex + 1] is not
 				{ Operation: M68kMachineOperation.OutgoingArgumentCleanup, ArgumentIndex: >= 4 } cleanup)
@@ -522,7 +522,7 @@ internal static class M68kAggregateReturnForwarding
 			(call.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0 ||
 			call.LogicalCall!.ResultValueIds.Length != 0 ||
 			!module.TryGetReferenceFreeStructLayout(target.Signature.ReturnType, target.ModuleName, out var layout) ||
-			layout.Size <= 4 || layout.ReferenceBitmap != 0 ||
+			!layout.UsesAggregateTransport || layout.ReferenceBitmap != 0 ||
 			callIndex + 1 >= instructions.Count ||
 			instructions[callIndex + 1] is not
 				{ Operation: M68kMachineOperation.OutgoingArgumentCleanup, ArgumentIndex: >= 4 } cleanup ||

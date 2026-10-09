@@ -87,7 +87,7 @@ internal sealed partial class M68kCodeGenerator
 				if (stored.Kind == CilStackValueKind.AggregateAddress &&
 					_module.TryGetReferenceFreeStructLayout(
 						method.Locals[local], method.ModuleName, out var layout) &&
-					layout.Size > 4)
+					layout.UsesAggregateTransport)
 				{
 					return instruction.MemoryOffset == 0 ? layout.Size : 0;
 				}

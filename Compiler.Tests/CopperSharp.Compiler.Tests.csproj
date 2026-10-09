@@ -17,6 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x64" Version="[10.0.9]" />
+    <None Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-x64/10.0.9/runtimes/win-x64/lib/net10.0/System.Private.CoreLib.dll"
+          Link="PinnedCoreLib/10.0.9/System.Private.CoreLib.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 
@@ -47,7 +53,7 @@
 	<ProjectReference Include="..\Sdk.Amiga\Examples\CopperBars\CopperBars.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\StopwatchBenchmark\StopwatchBenchmark.csproj" />
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
-    <PackageReference Include="Copper68k" Version="1.4.0" />
+    <PackageReference Include="Copper68k" Version="1.5.1" />
   </ItemGroup>
 
 </Project>

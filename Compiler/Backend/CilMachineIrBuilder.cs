@@ -34,7 +34,10 @@ internal static class CilMachineIrBuilder
 		List<int> ExitValues,
 		int?[] EntryLocals,
 		int?[] ExitLocals,
-		Dictionary<int, M68kMachinePhi> LocalPhis);
+		Dictionary<int, M68kMachinePhi> LocalPhis,
+		int?[] EntryArguments,
+		int?[] ExitArguments,
+		Dictionary<int, M68kMachinePhi> ArgumentPhis);
 
 	public static M68kMachineFunction Build(
 		CilMethod method,
@@ -66,7 +69,14 @@ internal static class CilMachineIrBuilder
 			optimizations);
 		var blockInstructions = PartitionBlocks(instructions, leaders);
 		var blocksByOffset = new Dictionary<int, M68kMachineBlock>();
-		var function = new M68kMachineFunction(method.DisplayName, 0, method)
+		var promotableByrefArguments = GetPromotableByrefArguments(method, module);
+		var needsArgumentEntry = promotableByrefArguments.Any(static promotable => promotable) &&
+			instructions.Any(instruction =>
+				instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch &&
+				(instruction.Operand is int target && target == instructions[0].Offset ||
+				 instruction.Operand is int[] targets && targets.Contains(instructions[0].Offset)));
+		var function = new M68kMachineFunction(method.DisplayName,
+			needsArgumentEntry ? blockInstructions.Count : 0, method)
 		{
 			ReservedRegisters = M68kRegisterSet.None,
 			HasExceptionHandlers = method.ExceptionRegions.Count != 0
@@ -86,6 +96,14 @@ internal static class CilMachineIrBuilder
 		}
 
 		ConnectBlocks(function, blockInstructions, function.Blocks, blocksByOffset);
+		if (needsArgumentEntry)
+		{
+			// A loop may return to the first CIL instruction. Seed arguments once
+			// in a separate entry so the loop header can merge their assigned values.
+			var argumentEntry = new M68kMachineBlock(function.EntryBlockId, -1);
+			AddEdge(function, argumentEntry, function.Blocks[0]);
+			function.Blocks.Insert(0, argumentEntry);
+		}
 		CreateExceptionRegions(function, method, blocksByOffset);
 		ComputeLoopDepths(function);
 		var elidedLocals = optimizations.ElidedLocalIndices;
@@ -104,14 +122,15 @@ internal static class CilMachineIrBuilder
 					new M68kFrameHome(
 						index,
 							FrameHomeSize(module, type, includeAlignmentPadding: true),
-							type.IsReference,
+							type.Kind == CilTypeKind.ManagedReference,
 							GcReferenceOffsets:
 								GcReferenceOffsets(module, type, method.ModuleName)));
 			}
 		}
 		var argumentHomeIndices = method.Instructions
 			.Select(instruction =>
-				TryGetLoadArgumentAddressIndex(instruction, out var index)
+				TryGetLoadArgumentAddressIndex(instruction, out var index) ||
+				TryGetStoreArgumentIndex(instruction, out index) && !promotableByrefArguments[index]
 					? (int?)index
 					: null)
 			.OfType<int>()
@@ -120,25 +139,25 @@ internal static class CilMachineIrBuilder
 			argumentIndex < method.ParameterCount;
 			argumentIndex++)
 		{
-			var type = ArgumentType(method, argumentIndex);
+			var type = ArgumentType(method, argumentIndex, module);
 			if (module.TryGetReferenceFreeStructLayout(
 					type,
 					method.ModuleName,
 					out var layout) &&
-				layout.Size > 4)
+				layout.UsesAggregateTransport)
 			{
 				argumentHomeIndices.Add(argumentIndex);
 			}
 		}
 		foreach (var argumentIndex in argumentHomeIndices.Order())
 		{
-			var type = ArgumentType(method, argumentIndex);
+			var type = ArgumentType(method, argumentIndex, module);
 			function.ArgumentHomes.Add(
 				argumentIndex,
 				new M68kFrameHome(
 					argumentIndex,
 						FrameHomeSize(module, type, includeAlignmentPadding: false),
-						type.IsReference,
+						type.Kind == CilTypeKind.ManagedReference,
 						GcReferenceOffsets:
 							GcReferenceOffsets(module, type, method.ModuleName)));
 		}
@@ -163,9 +182,16 @@ internal static class CilMachineIrBuilder
 		var argumentValues = new int?[method.ParameterCount];
 		var entryBlock = function.Blocks.Single(
 			block => block.Id == function.EntryBlockId);
+		for (var index = 0; index < method.ParameterCount; index++)
+		{
+			if (promotableByrefArguments[index])
+				_ = GetOrCreateArgumentValue(function, entryBlock, index,
+					[CilStackValueKind.ManagedPointer], argumentValues, argumentRegisters);
+		}
 		foreach (var block in function.Blocks)
 		{
-			var entryKinds = stackStates[block.StartIlOffset];
+			var isArgumentEntry = needsArgumentEntry && block.Id == function.EntryBlockId;
+			var entryKinds = isArgumentEntry ? ImmutableArray<CilStackValueKind>.Empty : stackStates[block.StartIlOffset];
 			var entryValues = CreateStackValues(function, entryKinds);
 			var localValues = block.Id == function.EntryBlockId
 				? (int?[])entryLocalValues.Clone()
@@ -200,14 +226,24 @@ internal static class CilMachineIrBuilder
 				}
 			}
 
+			var blockArguments = new int?[method.ParameterCount];
+			for (var index = 0; index < method.ParameterCount; index++)
+			{
+				if (promotableByrefArguments[index])
+					blockArguments[index] = block.Id == function.EntryBlockId ? argumentValues[index]
+						: CreateValueForType(function, ArgumentType(method, index, module), module).Id;
+			}
 			states.Add(new BlockBuildState(
 				block,
-				blockInstructions[block.Id],
+				isArgumentEntry ? [] : blockInstructions[block.Id],
 				entryKinds,
 				entryValues,
 				new List<int>(),
 				localValues,
 				new int?[method.Locals.Length],
+				new Dictionary<int, M68kMachinePhi>(),
+				blockArguments,
+				new int?[method.ParameterCount],
 				new Dictionary<int, M68kMachinePhi>()));
 		}
 
@@ -218,6 +254,13 @@ internal static class CilMachineIrBuilder
 			{
 				AddEntryPhis(state);
 				AddLocalPhis(state);
+				foreach (var (value, index) in state.EntryArguments.Select((value, index) => (value, index)))
+				{
+					if (value is not { } definition) continue;
+					var phi = new M68kMachinePhi(definition, new Dictionary<int, int>());
+					state.Block.Phis.Add(phi);
+					state.ArgumentPhis.Add(index, phi);
+				}
 			}
 			LowerBlock(
 				function,
@@ -240,6 +283,7 @@ internal static class CilMachineIrBuilder
 			module,
 			argumentValues,
 			argumentRegisters);
+		EliminateUnneededSpanElementOwners(function);
 		EliminateDeadMachineValues(function);
 		PropagateNarrowExpressionWidths(function);
 		M68kMachineIrVerifier.Verify(function);
@@ -251,6 +295,59 @@ internal static class CilMachineIrBuilder
 		M68kMachineCostAnalysis.Apply(function);
 		M68kMachineIrVerifier.Verify(function);
 		return function;
+	}
+
+	private static void EliminateUnneededSpanElementOwners(M68kMachineFunction function)
+	{
+		var instructions = function.Blocks.SelectMany(static block => block.Instructions).ToArray();
+		if (!instructions.Any(IsSpanElementCopy)) return;
+		var pointerProvenance = M68kByrefProvenanceAnalyzer.Analyze(function, allowCallerBorrowedByrefs: false, out _);
+		var liveness = M68kLivenessAnalysis.AnalyzeInstructions(function, M68kLivenessAnalysis.Analyze(function));
+		var pending = new Queue<int>();
+		foreach (var instruction in instructions)
+		{
+			// Preserve ownership for collection, span construction and returned
+			// references. Pure synchronous scalar accesses need only the address.
+			if (instruction.IsSafepoint)
+				foreach (var value in liveness.LiveBefore[instruction.Id])
+					if (pointerProvenance.TryGetValue(value, out var pointer) && pointer.OwnerValue is not null) pending.Enqueue(value);
+					else EnqueueByref(value);
+			if (instruction.TransportsManagedByrefOwner || instruction.Operation == M68kMachineOperation.Return)
+				foreach (var value in instruction.Uses) EnqueueByref(value);
+		}
+		var inputs = new Dictionary<int, IEnumerable<int>>();
+		foreach (var instruction in instructions)
+			foreach (var definition in instruction.Definitions)
+				inputs[definition] = instruction.Uses;
+		foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
+			inputs[phi.Definition] = phi.Inputs.Values;
+		var needed = new HashSet<int>();
+		while (pending.TryDequeue(out var value))
+		{
+			if (!needed.Add(value) || !inputs.TryGetValue(value, out var sources)) continue;
+			foreach (var source in sources)
+				if (function.Values[source].Width == M68kMachineValueWidth.Long &&
+					function.Values[source].Kind is CilStackValueKind.ManagedPointer or CilStackValueKind.Int32 or CilStackValueKind.AggregateAddress)
+					pending.Enqueue(source);
+		}
+		foreach (var block in function.Blocks)
+			for (var index = 0; index < block.Instructions.Count; index++)
+			{
+				var instruction = block.Instructions[index];
+				if (!IsSpanElementCopy(instruction) || needed.Contains(instruction.Definitions[0])) continue;
+				block.Instructions[index] = instruction with
+				{
+					Uses = [instruction.Uses[0]],
+					ManagedByrefProjection = M68kManagedByrefProjection.None
+				};
+			}
+		void EnqueueByref(int value)
+		{
+			if (function.Values[value].Kind == CilStackValueKind.ManagedPointer) pending.Enqueue(value);
+		}
+		static bool IsSpanElementCopy(M68kMachineInstruction instruction) =>
+			instruction.Operation == M68kMachineOperation.Copy && instruction.Uses.Length == 2 &&
+			instruction.Definitions.Length == 1 && instruction.ManagedByrefProjection == M68kManagedByrefProjection.SpanData;
 	}
 
 	private static void FoldIncomingStackArgumentForwarding(
@@ -701,6 +798,26 @@ internal static class CilMachineIrBuilder
 		}
 		return result;
 	}
+
+	private static bool[] GetPromotableByrefArguments(CilMethod method, CompilationModule module)
+	{
+		var result = new bool[method.ParameterCount];
+		// Keep assignments in SSA so projected owners and readonly referent types
+		// follow the pointer through loops. Address-taken parameters and exception
+		// handlers still require frame storage and remain outside this shape.
+		if (method.ExceptionRegions.Count != 0) return result;
+		var addressed = method.Instructions
+			.Select(instruction => TryGetLoadArgumentAddressIndex(instruction, out var index) ? (int?)index : null)
+			.OfType<int>().ToHashSet();
+		foreach (var instruction in method.Instructions)
+		{
+			if (TryGetStoreArgumentIndex(instruction, out var index) &&
+				!addressed.Contains(index) && ArgumentType(method, index, module).Kind == CilTypeKind.ManagedPointer)
+				result[index] = true;
+		}
+		return result;
+	}
+
 	private static bool IsRegisterTransparentAddressAccess(
 		CilMethod method,
 		CompilationModule module,
@@ -710,8 +827,7 @@ internal static class CilMachineIrBuilder
 		var localType = method.Locals[localIndex];
 		var isTransparentScalar = module.IsTransparentScalarType(localType);
 		var isCompactNullable =
-			localType.NullableElementType is { } nullableElement &&
-			module.IsTransparentScalarType(nullableElement);
+			module.IsCompactNullableType(localType);
 		if (!isTransparentScalar && !isCompactNullable)
 		{
 			return false;
@@ -759,10 +875,9 @@ internal static class CilMachineIrBuilder
 		bool includeAlignmentPadding)
 	{
 		var slotLongs =
-			type.IsSupportedScalar && type.Size == 8 ||
-			type.IsNullable && !(type.NullableElementType is { } nullableElement &&
-				module.IsTransparentScalarType(nullableElement))
-				? 2
+			type.IsSupportedScalar && type.Size == 8 ? 2 :
+			type.IsNullable && !(module.IsCompactNullableType(type))
+				? checked((type.Size + 3) / 4)
 				: module.IsSupportedStructType(type)
 					? module.GetStructSlotLongs(type)
 					: 1;
@@ -842,7 +957,7 @@ internal static class CilMachineIrBuilder
 					type,
 					method.ModuleName,
 					out var layout) ||
-				layout.Size <= 4)
+				!layout.UsesAggregateTransport)
 			{
 				continue;
 			}
@@ -866,7 +981,8 @@ internal static class CilMachineIrBuilder
 					homeIndex,
 					layout.Size,
 					IsGcReference: false,
-					Initialize: false));
+					Initialize: layout.ReferenceBitmap != 0,
+					GcReferenceOffsets: GcReferenceOffsets(module, type, method.ModuleName)));
 			result.Add(instruction.Offset, homeIndex);
 		}
 		return result;
@@ -939,12 +1055,17 @@ internal static class CilMachineIrBuilder
 		return next?.OpCode == OpCodes.Ret;
 	}
 
-	private static CilType ArgumentType(CilMethod method, int argumentIndex)
+	private static CilType ArgumentType(CilMethod method, int argumentIndex, CompilationModule module)
 	{
 		if (method.Signature.Header.IsInstance)
 		{
 			if (argumentIndex == 0)
 			{
+				if (module.IsValueTypeMethod(method) && !module.IsTransparentScalarType(module.GetMethodDeclaringType(method)))
+				{
+					var owner = method.ConstructedDeclaringType ?? module.GetMethodDeclaringType(method);
+					return new CilType(CilTypeKind.ManagedPointer, 4, owner.DisplayName + "&", owner);
+				}
 				return new CilType(
 					CilTypeKind.ManagedReference,
 					4,
@@ -959,7 +1080,7 @@ internal static class CilMachineIrBuilder
 		CilMethod method, CompilationModule module)
 	{
 		if (TryGetLoadArgumentIndex(producer, out var argument))
-			return module.IsTransparentScalarType(ArgumentType(method, argument));
+			return module.IsTransparentScalarType(ArgumentType(method, argument, module));
 		return false;
 	}
 
@@ -1103,7 +1224,7 @@ internal static class CilMachineIrBuilder
 				type,
 				method.ModuleName,
 				out var layout) &&
-			layout.Size > 4;
+			layout.UsesAggregateTransport;
 	}
 
 	private static List<IReadOnlyList<CilInstruction>> PartitionBlocks(
@@ -1391,6 +1512,7 @@ internal static class CilMachineIrBuilder
 		var stackKinds = state.EntryKinds;
 		var stackValues = new List<int>(state.EntryValues);
 		var localValues = (int?[])state.EntryLocals.Clone();
+		var assignedArguments = (int?[])state.EntryArguments.Clone();
 		var stackVarargsArrays =
 			new Dictionary<int, StackVarargsArrayCandidate>();
 		for (var instructionIndex = 0;
@@ -1574,6 +1696,10 @@ internal static class CilMachineIrBuilder
 				var pushedKinds = nextKinds
 					.Skip(stackValues.Count)
 					.ToImmutableArray();
+				// Explicit single-word struct parameters arrive as by-value bits.
+				// Their ldarga home is an address; an ordinary ldarg is not a managed byref.
+				if (module.IsTransparentScalarType(ArgumentType(method, loadedArgument, module)))
+					pushedKinds = [CilStackValueKind.Int32];
 				var stackDefinitions = CreateStackValues(function, pushedKinds);
 				stackValues.AddRange(stackDefinitions);
 				definitions = stackDefinitions.Distinct().ToArray();
@@ -1584,12 +1710,15 @@ internal static class CilMachineIrBuilder
 					operation = M68kMachineOperation.ArgumentAddress;
 					frameIndex = loadedArgument;
 				}
-				else if (function.ArgumentHomes.ContainsKey(loadedArgument) &&
-					function.Values[definitions[0]].Width != M68kMachineValueWidth.LongPair)
+				else if (assignedArguments[loadedArgument] is { } assignedValue)
 				{
-					// Taking a scalar parameter's address makes its home authoritative:
-					// a callee may change it through that address. A copy of the
-					// incoming SSA value would keep observing the original value.
+					uses = [assignedValue];
+					operation = M68kMachineOperation.Copy;
+				}
+				else if (function.ArgumentHomes.ContainsKey(loadedArgument))
+				{
+					// Address-taking and starg make the parameter's home authoritative.
+					// Reload it so every path observes the most recent assignment.
 					uses = [];
 					operation = M68kMachineOperation.ArgumentLoad;
 					frameIndex = loadedArgument;
@@ -1602,9 +1731,18 @@ internal static class CilMachineIrBuilder
 						loadedArgument,
 						pushedKinds,
 						argumentValues,
-						argumentRegisters);					uses = [argumentValue];
+						argumentRegisters);
+					uses = [argumentValue];
 					operation = M68kMachineOperation.Copy;
 				}
+			}
+			else if (TryGetStoreArgumentIndex(instruction, out var assignedArgument) &&
+				assignedArguments[assignedArgument] is not null)
+			{
+				var copy = CreateValueForType(function, ArgumentType(method, assignedArgument, module), module);
+				definitions = [copy.Id];
+				assignedArguments[assignedArgument] = copy.Id;
+				operation = M68kMachineOperation.Copy;
 			}
 			else if (TryGetLoadLocalIndex(instruction, out var loadedLocal) &&
 				localValues[loadedLocal] is { } loadedValue &&
@@ -1710,12 +1848,16 @@ internal static class CilMachineIrBuilder
 					instruction,
 					out var storedArgument))
 				{
-					var type = ArgumentType(method, storedArgument);
-					if (!module.TryGetReferenceFreeStructLayout(
+					var type = ArgumentType(method, storedArgument, module);
+					var isScalar = type.Size is > 0 and <= 4 &&
+						type.Kind != CilTypeKind.ManagedPointer ||
+						type.Size == 8 && type.Kind is
+							(CilTypeKind.SignedInteger or CilTypeKind.UnsignedInteger or CilTypeKind.FloatingPoint);
+					if (!isScalar && (!module.TryGetReferenceFreeStructLayout(
 							type,
 							method.ModuleName,
 							out var layout) ||
-						layout.Size <= 4)
+						!layout.UsesAggregateTransport))
 					{
 						throw new M68kCompilationException(
 							M68kDiagnosticIds.UnsupportedInstruction,
@@ -1754,9 +1896,10 @@ internal static class CilMachineIrBuilder
 					uses);
 			}
 			if (operation == M68kMachineOperation.ArgumentStore &&
+				function.ArgumentHomes[frameIndex!.Value].Size > 4 &&
 				(uses.Length != 1 ||
-				 function.Values[uses[0]].Kind !=
-					CilStackValueKind.AggregateAddress))
+				 function.Values[uses[0]].Kind != CilStackValueKind.AggregateAddress &&
+				 function.Values[uses[0]].Width != M68kMachineValueWidth.LongPair))
 			{
 				throw new M68kCompilationException(
 					M68kDiagnosticIds.UnsupportedInstruction,
@@ -1813,7 +1956,27 @@ internal static class CilMachineIrBuilder
 					mayThrow: true,
 					sourceInstruction: instruction));
 			}
-			if (instruction.OpCode == OpCodes.Ldfld &&
+			if (operation is M68kMachineOperation.LocalAddress or M68kMachineOperation.ArgumentAddress &&
+				(TryGetLoadLocalIndex(instruction, out _) || TryGetLoadArgumentIndex(instruction, out _)) &&
+				definitions.Count == 1 && function.Values[definitions[0]].Kind == CilStackValueKind.AggregateAddress &&
+				NeedsAggregateSnapshot(method, module, state, instructionIndex, nextKinds) &&
+				module.TryGetReferenceFreeStructLayout(operation == M68kMachineOperation.LocalAddress ?
+					method.Locals[frameIndex!.Value] : ArgumentType(method, frameIndex!.Value, module), method.ModuleName, out var snapshotLayout))
+			{
+				// ldloc pushes a value, not an alias to storage that later argument
+				// evaluation may reuse or mutate before the value is consumed.
+				var source = function.CreateValue(CilStackValueKind.AggregateAddress, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+				var snapshotType = operation == M68kMachineOperation.LocalAddress ? method.Locals[frameIndex!.Value] : ArgumentType(method, frameIndex!.Value, module);
+				state.Block.Instructions.Add(function.CreateInstruction(operation, instruction.Offset,
+					definitions: [source.Id], argumentIndex: frameIndex, sourceInstruction: instruction));
+				var home = AllocateAggregateTemporaryHome(function, method, snapshotLayout.Size,
+					GcReferenceOffsets(module, snapshotType, method.ModuleName));
+				state.Block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.AggregateIndirectLoad, instruction.Offset,
+					uses: [source.Id], definitions: definitions, clobbers: M68kRegisterSet.From(M68kRegister.D0),
+					memoryEffect: M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write,
+					argumentIndex: home, sourceInstruction: instruction));
+			}
+			else if (instruction.OpCode == OpCodes.Ldfld &&
 				uses.Length == 1 && instructionIndex > 0 &&
 				module.ResolveFieldToken((int)instruction.Operand!, method,
 					instruction.Offset) is { } scalarField &&
@@ -2014,10 +2177,16 @@ internal static class CilMachineIrBuilder
 					definitions);
 			}
 			else if (instruction.OpCode == OpCodes.Newobj &&
+				module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset).ImportName == "intrinsic:object-ctor")
+			{
+				AddConstrainedObjectConstruction(function, state.Block, method, module, instruction, cpu, uses, definitions);
+			}
+			else if (instruction.OpCode == OpCodes.Newobj &&
 				module.ResolveMethodToken(
 					(int)instruction.Operand!,
 					method,
 					instruction.Offset).Definition is { } constructor &&
+				!module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset).IsConstructorFactory &&
 				!module.IsTransparentScalarConstructor(constructor))
 			{
 				AddConstrainedObjectConstruction(
@@ -2131,6 +2300,15 @@ internal static class CilMachineIrBuilder
 		}
 		state.ExitValues.AddRange(stackValues);
 		Array.Copy(localValues, state.ExitLocals, localValues.Length);
+		Array.Copy(assignedArguments, state.ExitArguments, assignedArguments.Length);
+		if (state.Instructions.Count == 0)
+		{
+			state.Block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Branch,
+				state.Block.StartIlOffset,
+				sourceInstruction: new CilInstruction(state.Block.StartIlOffset,
+					OpCodes.Br, method.Instructions[0].Offset, method.Instructions[0].Offset)));
+		}
 	}
 
 	private static bool TryLowerEphemeralSpanStringFormatCall(
@@ -2212,7 +2390,7 @@ internal static class CilMachineIrBuilder
 				type,
 				method.ModuleName,
 				out var layout) ||
-			layout.Size <= 4)
+			!layout.UsesAggregateTransport)
 		{
 			return false;
 		}
@@ -2284,6 +2462,28 @@ internal static class CilMachineIrBuilder
 		return true;
 	}
 
+	private static bool NeedsAggregateSnapshot(CilMethod method, CompilationModule module, BlockBuildState state,
+		int loadIndex, ImmutableArray<CilStackValueKind> kinds)
+	{
+		var valueSlot = kinds.Length - 1;
+		for (var index = loadIndex + 1; index < state.Instructions.Count; index++)
+		{
+			var next = state.Instructions[index];
+			var op = next.OpCode;
+			var popped = CilStackAnalyzer.GetPopSlotCount(method, module, next, kinds);
+			if (popped > kinds.Length - valueSlot - 1)
+				return op == OpCodes.Dup || op == OpCodes.Ldflda;
+			// Before consumption, calls or writes may change aliased frame
+			// storage. Crossing a control-flow edge also needs a stable value.
+			if (op.FlowControl is FlowControl.Call or FlowControl.Branch or FlowControl.Cond_Branch ||
+				IsIndirectStore(op) || IsMachineArrayStore(op) || op == OpCodes.Initobj || op == OpCodes.Cpobj ||
+				op == OpCodes.Initblk || op == OpCodes.Cpblk || op == OpCodes.Stfld || op == OpCodes.Stsfld ||
+				TryGetStoreLocalIndex(next, out _) || TryGetStoreArgumentIndex(next, out _)) return true;
+			kinds = CilStackAnalyzer.ApplyStackEffect(method, module, next, kinds);
+		}
+		return true;
+	}
+
 	private static bool TryLowerReferenceFreeAggregateIndirectOperation(
 		M68kMachineFunction function,
 		CilMethod method,
@@ -2331,7 +2531,7 @@ internal static class CilMachineIrBuilder
 			}
 			return false;
 		}
-		if (layout.Size <= 4 && op != OpCodes.Cpobj)
+		if (!layout.UsesAggregateTransport && op != OpCodes.Cpobj)
 		{
 			return false;
 		}
@@ -2370,7 +2570,7 @@ internal static class CilMachineIrBuilder
 				localIndex = AllocateAggregateTemporaryHome(
 					function,
 					method,
-					layout.Size);
+					layout.Size, GcReferenceOffsets(module, type, method.ModuleName));
 			}
 
 			var definitions = Array.Empty<int>();
@@ -2446,7 +2646,8 @@ internal static class CilMachineIrBuilder
 			temporaryHome = AllocateAggregateTemporaryHome(
 				function,
 				method,
-				layout.Size);
+				layout.Size,
+				GcReferenceOffsets(module, type, method.ModuleName));
 			operation = M68kMachineOperation.AggregateIndirectCopy;
 		}
 		else
@@ -2512,7 +2713,7 @@ internal static class CilMachineIrBuilder
 				field.Type,
 				field.ModuleName,
 				out var layout) ||
-			layout.Size <= 4)
+			!layout.UsesAggregateTransport)
 		{
 			return false;
 		}
@@ -2535,7 +2736,7 @@ internal static class CilMachineIrBuilder
 			localIndex = AllocateAggregateTemporaryHome(
 				function,
 				method,
-				layout.Size);
+				layout.Size, GcReferenceOffsets(module, field.Type, field.ModuleName));
 		}
 
 		var popSlots = CilStackAnalyzer.GetPopSlotCount(
@@ -2646,7 +2847,7 @@ internal static class CilMachineIrBuilder
 				type,
 				method.ModuleName,
 				out var layout) ||
-			layout.Size <= 4)
+			!layout.UsesAggregateTransport)
 		{
 			return false;
 		}
@@ -2669,7 +2870,8 @@ internal static class CilMachineIrBuilder
 			localIndex = AllocateAggregateTemporaryHome(
 				function,
 				method,
-				layout.Size);
+				layout.Size,
+				GcReferenceOffsets(module, type, method.ModuleName));
 		}
 
 		var popSlots = CilStackAnalyzer.GetPopSlotCount(
@@ -3360,11 +3562,23 @@ internal static class CilMachineIrBuilder
 			(int)instruction.Operand!,
 			caller,
 			instruction.Offset);
+		if (boxedType.Kind == CilTypeKind.ManagedReference)
+		{
+			// Closed generic CIL still boxes T for null checks when T is a
+			// reference type. Its object representation is already on the stack.
+			block.Instructions.Add(function.CreateInstruction(
+				M68kMachineOperation.Copy,
+				instruction.Offset,
+				uses: uses,
+				definitions: definitions,
+				sourceInstruction: instruction));
+			return;
+		}
 		if (module.TryGetReferenceFreeStructLayout(
 				boxedType,
 				caller.ModuleName,
 				out var structLayout) &&
-			structLayout.Size > 4)
+			structLayout.UsesAggregateTransport)
 		{
 			var producer = FindFrameValueProducer(block, source.Id);
 			if (source.Kind == CilStackValueKind.AggregateAddress)
@@ -3467,7 +3681,7 @@ internal static class CilMachineIrBuilder
 				method.Signature.ReturnType,
 				method.ModuleName,
 				out var layout) ||
-			layout.Size <= 4)
+			!layout.UsesAggregateTransport)
 		{
 			return uses.ToArray();
 		}
@@ -3529,7 +3743,7 @@ internal static class CilMachineIrBuilder
 				type,
 				method.ModuleName,
 				out var layout) ||
-			layout.Size <= 4)
+			!layout.UsesAggregateTransport)
 		{
 			return uses.ToArray();
 		}
@@ -3595,7 +3809,7 @@ internal static class CilMachineIrBuilder
 				field.Type,
 				field.ModuleName,
 				out var layout) ||
-			layout.Size <= 4)
+			!layout.UsesAggregateTransport)
 		{
 			return uses.ToArray();
 		}
@@ -3687,6 +3901,24 @@ internal static class CilMachineIrBuilder
 		IReadOnlyList<int> uses,
 		IReadOnlyList<int> definitions)
 	{
+		if (instruction.OpCode == OpCodes.Ldelema)
+		{
+			var type = module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset);
+			if (module.TryGetReferenceFreeStructLayout(type, method.ModuleName, out var layout) && layout.UsesAggregateTransport)
+			{
+				var array = AddFixedRegisterCopy(function, block, instruction, uses[0], M68kRegister.A2);
+				var index = AddFixedRegisterCopy(function, block, instruction, uses[1], M68kRegister.D2);
+				var result = function.Values[definitions[0]];
+				var address = function.CreateValue(result.Kind, result.Width, M68kRegisterSet.From(M68kRegister.A0),
+					precoloredRegister: M68kRegister.A0, isGcReference: result.IsGcReference);
+				block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.ArrayAddress, instruction.Offset,
+					uses: [array, index], definitions: [address.Id], clobbers: M68kRegisterSet.From(M68kRegister.D1, M68kRegister.A0),
+					memoryEffect: M68kMachineMemoryEffect.Read, mayThrow: true, sourceInstruction: instruction));
+				block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, instruction.Offset,
+					uses: [address.Id], definitions: definitions));
+				return;
+			}
+		}
 		if (instruction.OpCode == OpCodes.Stelem)
 		{
 			var type = module.ResolveTypeToken(
@@ -3697,7 +3929,7 @@ internal static class CilMachineIrBuilder
 					type,
 					method.ModuleName,
 					out var layout) &&
-				layout.Size > 4)
+				layout.UsesAggregateTransport)
 			{
 				if (uses.Count != 3 || definitions.Count != 0 ||
 					function.Values[uses[2]].Kind !=
@@ -3744,7 +3976,10 @@ internal static class CilMachineIrBuilder
 			constrainedUses[0] = AddFixedRegisterCopy(
 				function, block, instruction, uses[0], M68kRegister.A3);
 			constrainedUses[1] = AddFixedRegisterCopy(
-				function, block, instruction, uses[1], M68kRegister.D3);
+				function, block, instruction, uses[1], M68kRegister.D3,
+				// The 68000 scales this temporary in place. Keep a live loop
+				// index separate from the destructive array-store operand.
+				allowCopyCoalescing: cpu != M68kCpuTarget.M68000);
 			constrainedUses[2] = AddFixedRegisterCopy(
 				function, block, instruction, uses[2], M68kRegister.A4);
 		}
@@ -3819,7 +4054,8 @@ internal static class CilMachineIrBuilder
 		M68kMachineBlock block,
 		CilInstruction instruction,
 		int sourceId,
-		M68kRegister register)
+		M68kRegister register,
+		bool allowCopyCoalescing = true)
 	{
 		var source = function.Values[sourceId];
 		var constrained = function.CreateValue(
@@ -3834,7 +4070,7 @@ internal static class CilMachineIrBuilder
 			instruction.Offset,
 			uses: [sourceId],
 			definitions: [constrained.Id],
-			sourceInstruction: instruction));
+			sourceInstruction: instruction) with { AllowCopyCoalescing = allowCopyCoalescing });
 		return constrained.Id;
 	}
 
@@ -3874,6 +4110,24 @@ internal static class CilMachineIrBuilder
 				spillWeight: result.SpillWeight);
 			constrainedDefinitions[0] = addressResult.Id;
 		}
+		M68kMachineValue? spanOwner = null;
+		if (instruction.OpCode == OpCodes.Ldfld)
+		{
+			var field = module.ResolveFieldToken((int)instruction.Operand!, method, instruction.Offset);
+			if (field.ModuleName == "System.Private.CoreLib" && field.Type.Kind == CilTypeKind.ManagedPointer &&
+				field.ConstructedDeclaringType is { } ownerType && CompilationModule.IsSupportedSpanLikeType(ownerType) &&
+				module.GetTypeLayout(field).FieldOffsets[field.Handle] == 0)
+			{
+				// CoreLib also reads Span._reference directly. Retain the target
+				// span's third word just as for MemoryMarshal.GetReference.
+				spanOwner = function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long,
+					M68kRegisterSet.Address, isGcReference: true);
+				block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Load, instruction.Offset,
+					uses: [constrainedUses[0]], definitions: [spanOwner.Id], memoryEffect: M68kMachineMemoryEffect.Read,
+					sourceInstruction: instruction with { OpCode = OpCodes.Ldind_Ref, Operand = null }, memoryOffset: 8, memorySize: 4));
+				constrainedUses = [.. constrainedUses, spanOwner.Id];
+			}
+		}
 		block.Instructions.Add(function.CreateInstruction(
 			operation,
 			instruction.Offset,
@@ -3884,7 +4138,10 @@ internal static class CilMachineIrBuilder
 			isSafepoint: IsConservativeSafepoint(instruction.OpCode),
 			mayThrow: MayThrow(instruction.OpCode),
 			producesConditionCodes: IsComparison(instruction.OpCode),
-			sourceInstruction: instruction));
+			sourceInstruction: instruction) with
+		{
+			ManagedByrefProjection = spanOwner is null ? M68kManagedByrefProjection.None : M68kManagedByrefProjection.SpanData
+		});
 		if (addressResult is not null)
 		{
 			block.Instructions.Add(function.CreateInstruction(
@@ -3927,7 +4184,7 @@ internal static class CilMachineIrBuilder
 			: op == OpCodes.Ldelem_I2 || op == OpCodes.Ldelem_U2 ||
 				op == OpCodes.Stelem_I2
 					? 2
-					: op == OpCodes.Ldelem_I8 || op == OpCodes.Stelem_I8
+					: op == OpCodes.Ldelem_I8 || op == OpCodes.Stelem_I8 || op == OpCodes.Ldelem_R8 || op == OpCodes.Stelem_R8
 						? 8
 						: 4;
 
@@ -3951,10 +4208,14 @@ internal static class CilMachineIrBuilder
 		var hasConstantShiftCount = operation == M68kMachineOperation.Shift &&
 			TryGetMachineIntegerConstant(block, uses[1], out constantShiftCount);
 		var fixedUses = new int[hasConstantShiftCount ? 1 : 2];
+		var isLongMultiply = operation == M68kMachineOperation.Multiply &&
+			function.Values[definitions[0]].Kind == CilStackValueKind.Int64;
+		var isLongShift = operation == M68kMachineOperation.Shift &&
+			function.Values[definitions[0]].Kind == CilStackValueKind.Int64;
 		for (var index = 0; index < fixedUses.Length; index++)
 		{
 			var source = function.Values[uses[index]];
-			var register = index == 0 ? M68kRegister.D0 : M68kRegister.D1;
+			var register = index == 0 ? M68kRegister.D0 : isLongMultiply || isLongShift ? M68kRegister.D2 : M68kRegister.D1;
 			var fixedValue = function.CreateValue(
 				source.Kind,
 				source.Width,
@@ -3983,6 +4244,10 @@ internal static class CilMachineIrBuilder
 		{
 			fixedClobbers = fixedClobbers.Add(M68kRegister.D1);
 		}
+		if (isLongMultiply)
+			fixedClobbers = fixedClobbers.Add(M68kRegister.D2).Add(M68kRegister.D3)
+				.Add(M68kRegister.D4).Add(M68kRegister.D5).Add(M68kRegister.D6);
+		if (isLongShift) fixedClobbers = fixedClobbers.Add(M68kRegister.D1).Add(M68kRegister.D2);
 		block.Instructions.Add(function.CreateInstruction(
 			operation,
 			instruction.Offset,
@@ -3992,7 +4257,7 @@ internal static class CilMachineIrBuilder
 			MemoryEffectFor(instruction.OpCode),
 			mayThrow: MayThrow(instruction.OpCode),
 			immediate: hasConstantShiftCount
-				? constantShiftCount & 31
+				? constantShiftCount & (isLongShift ? 63 : 31)
 				: null,
 			sourceInstruction: instruction));
 		block.Instructions.Add(function.CreateInstruction(
@@ -4419,9 +4684,33 @@ internal static class CilMachineIrBuilder
 			(int)instruction.Operand!,
 			caller,
 			instruction.Offset);
-		var abiTarget = useDefinitionSignature && target.Definition is not null
+		if (target.IsConstructorFactory && instruction.OpCode != OpCodes.Newobj)
+			throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction, "Target string constructor factories require newobj.", caller.DisplayName, instruction.Offset);
+		var abiTarget = (useDefinitionSignature || target.IsConstructorFactory) && target.Definition is not null
 			? target with { Signature = target.Definition.Signature }
 			: target;
+		if (target.ImportName is "intrinsic:corelib-char-span-data" or "intrinsic:corelib-byte-span-data")
+		{
+			if (uses.Count != 1 || definitions.Count != 1)
+				throw new InvalidOperationException($"Span data projection at IL_{instruction.Offset:X4} has invalid arity.");
+			var spanUses = uses.ToList();
+			_ = RewriteMultiwordCallArguments(function, block, caller, module, instruction, target, spanUses, false);
+			// Loading the retained owner separately gives byref rooting an SSA
+			// edge even when the original span is overwritten before collection.
+			var owner = function.CreateValue(CilStackValueKind.Reference,
+				M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true);
+			block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Load,
+				instruction.Offset, uses: spanUses, definitions: [owner.Id],
+				memoryEffect: M68kMachineMemoryEffect.Read,
+				sourceInstruction: instruction with { OpCode = OpCodes.Ldind_Ref, Operand = null },
+				memoryOffset: 8, memorySize: 4));
+			block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Load,
+				instruction.Offset, uses: [spanUses[0], owner.Id], definitions: definitions,
+				memoryEffect: M68kMachineMemoryEffect.Read,
+				sourceInstruction: instruction with { OpCode = OpCodes.Ldind_I, Operand = null },
+				memorySize: 4) with { ManagedByrefProjection = M68kManagedByrefProjection.SpanData });
+			return;
+		}
 		if (target.ImportName == "intrinsic:aptr-null")
 		{
 			if (uses.Count != 0 || definitions.Count != 1)
@@ -4496,6 +4785,52 @@ internal static class CilMachineIrBuilder
 						constrainedTypeToken,
 						instruction.Offset,
 						constrainedDeclaration);
+				if (constrainedType.IsEnum && constrainedImplementation.ModuleName == "CopperSharp.Runtime.Managed" &&
+					constrainedImplementation.DisplayName == "CopperSharp.Runtime.ShadowBoxedEnum::ToString")
+				{
+					// Enum.ToString inherits a reference receiver; constrained. must
+					// box the exact narrow/pair value before calling the enum adapter.
+					var pair = constrainedType.Size == 8;
+					var bits = function.CreateValue(pair ? CilStackValueKind.Int64 : CilStackValueKind.Int32,
+						pair ? M68kMachineValueWidth.LongPair : M68kMachineValueWidth.Long,
+						pair ? M68kRegisterSet.DataPairStarts : M68kRegisterSet.Data);
+					var address = AddRegisterClassCopy(function, block, instruction, uses[0], M68kRegisterSet.Address);
+					var signed = constrainedType.Kind == CilTypeKind.SignedInteger;
+					var load = pair ? OpCodes.Ldind_I8 : constrainedType.Size == 1 ? (signed ? OpCodes.Ldind_I1 : OpCodes.Ldind_U1) :
+						constrainedType.Size == 2 ? (signed ? OpCodes.Ldind_I2 : OpCodes.Ldind_U2) : OpCodes.Ldind_I4;
+					block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Load, instruction.Offset,
+						uses: [address], definitions: [bits.Id], memoryEffect: M68kMachineMemoryEffect.Read, memorySize: constrainedType.Size,
+						sourceInstruction: instruction with { OpCode = load, Operand = null, ConstrainedTypeToken = null }));
+					var box = function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true);
+					AddConstrainedBox(function, block, caller, module,
+						instruction with { OpCode = OpCodes.Box, Operand = constrainedTypeToken, ConstrainedTypeToken = null }, [bits.Id], [box.Id]);
+					var boxedUses = uses.ToArray(); boxedUses[0] = box.Id; uses = boxedUses;
+				}
+				if (constrainedImplementation.ModuleName == "System.Private.CoreLib" &&
+					constrainedImplementation.DisplayName == "System.ValueType::ToString")
+				{
+					var receiver = uses[0];
+					if (module.TryGetReferenceFreeStructLayout(constrainedType, caller.ModuleName, out var boxedLayout) &&
+						!boxedLayout.UsesAggregateTransport)
+					{
+						var bits = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long, M68kRegisterSet.Data);
+						receiver = AddRegisterClassCopy(function, block, instruction, receiver, M68kRegisterSet.Address);
+						block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Load, instruction.Offset,
+							uses: [receiver], definitions: [bits.Id], memoryEffect: M68kMachineMemoryEffect.Read, memorySize: 4,
+							sourceInstruction: instruction with { OpCode = OpCodes.Ldind_I4, Operand = null, ConstrainedTypeToken = null }));
+						receiver = bits.Id;
+					}
+					else
+					{
+						var payload = function.CreateValue(CilStackValueKind.AggregateAddress, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+						block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, instruction.Offset, uses: [receiver], definitions: [payload.Id]));
+						receiver = payload.Id;
+					}
+					var box = function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true);
+					AddConstrainedBox(function, block, caller, module,
+						instruction with { OpCode = OpCodes.Box, Operand = constrainedTypeToken, ConstrainedTypeToken = null }, [receiver], [box.Id]);
+					var boxedUses = uses.ToArray(); boxedUses[0] = box.Id; uses = boxedUses;
+				}
 				target = MethodReference.ForDefinition(constrainedImplementation);
 				abiTarget = target;
 			}
@@ -4569,11 +4904,10 @@ internal static class CilMachineIrBuilder
 			? target.ConstructedDeclaringType ??
 				throw new InvalidOperationException(
 					"Aggregate intrinsic constructor has no constructed declaring type.")
-			: target.Signature.ReturnType;
+			: abiTarget.Signature.ReturnType;
 		if (definitions.Count == 1 &&
 			target.Definition?.ExternalCall is not null &&
-			effectiveReturnType.NullableElementType is { } nullableElement &&
-			module.IsTransparentScalarType(nullableElement))
+			module.IsCompactNullableType(effectiveReturnType))
 		{
 			// Transparent one-word values, including their compact nullable form,
 			// are raw bits rather than dereferenceable managed addresses. Preserve
@@ -4596,10 +4930,12 @@ internal static class CilMachineIrBuilder
 				effectiveReturnType,
 				target.Definition?.ModuleName ?? caller.ModuleName,
 				out multiwordReturnLayout) &&
-			multiwordReturnLayout.Size > 4;
+			multiwordReturnLayout.UsesAggregateTransport;
 		var isSpanAggregateReturn =
 			constructsSpanValue ||
 			constructsMemoryValue ||
+			target.ImportName == "intrinsic:initialized-data-span" ||
+			target.ImportName is "intrinsic:span-from-array-range-value:char" or "intrinsic:span-from-array-start:char" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:span-from-array:",
 				StringComparison.Ordinal) == true ||
@@ -4624,20 +4960,33 @@ internal static class CilMachineIrBuilder
 			target.ImportName?.StartsWith(
 				"intrinsic:readonly-span-from-memory:",
 				StringComparison.Ordinal) == true;
+		// Parameterless managed interface calls share the direct call's hidden
+		// stack return pointer. Explicit interface arguments can require boxed
+		// receiver stack adaptation, which is not yet supported for these returns.
 		if (hasMultiwordReturn &&
 			(target.Definition is not { } returnDefinition ||
 			 returnDefinition.IsImport ||
 			 returnDefinition.ExternalCall is not null ||
-			 returnDefinition.DeclaringTypeIsInterface) &&
+			 returnDefinition.DeclaringTypeIsInterface && returnDefinition.Signature.ParameterTypes.Length != 0) &&
 			!isSpanAggregateReturn)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.UnsupportedInstruction,
-				$"Multiword return '{target.Signature.ReturnType.DisplayName}' requires a direct managed target; imported and interface return adapters are not implemented yet.",
+				$"Multiword return '{target.Signature.ReturnType.DisplayName}' requires a managed target; imported returns and interface returns with explicit arguments require unimplemented adapters.",
 				caller.DisplayName,
 				instruction.Offset);
 		}
 		var sourceUses = uses.ToList();
+		int? spanConstructorDestination = null;
+		if (constructsSpanValue && instruction.OpCode != OpCodes.Newobj && target.Signature.Header.IsInstance)
+		{
+			// C# may initialize a span local with ldloca; call .ctor instead of
+			// newobj. Use that receiver as the hidden buffer, with the same source
+			// argument and owner transport shape as a value-producing constructor.
+			spanConstructorDestination = sourceUses[0];
+			sourceUses.RemoveAt(0);
+			hasInstanceArgumentOverride = false;
+		}
 		if (dereferencesConstrainedReference)
 		{
 			if (sourceUses.Count == 0)
@@ -4706,6 +5055,21 @@ internal static class CilMachineIrBuilder
 					 target.ImportName?.StartsWith(
 						"intrinsic:nullable-ctor:",
 						StringComparison.Ordinal) == true)));
+		int? spanElementOwner = null;
+		if (target.ImportName?.StartsWith("intrinsic:span-get-item:", StringComparison.Ordinal) == true ||
+			target.ImportName?.StartsWith("intrinsic:readonly-span-get-item:", StringComparison.Ordinal) == true)
+		{
+			// The returned element reference outlives the getter call and may
+			// outlive the span itself. Capture the owner before ABI staging.
+			var owner = function.CreateValue(CilStackValueKind.Reference,
+				M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true);
+			block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Load,
+				instruction.Offset, uses: [sourceUses[0]], definitions: [owner.Id],
+				memoryEffect: M68kMachineMemoryEffect.Read,
+				sourceInstruction: instruction with { OpCode = OpCodes.Ldind_Ref, Operand = null },
+				memoryOffset: 8, memorySize: 4));
+			spanElementOwner = owner.Id;
+		}
 		var argumentConstraints = (stackVarargsRegister is not null
 			? GetStackVarargsArgumentRegisters(target, uses.Count)
 			: GetCallArgumentRegisters(
@@ -4790,28 +5154,35 @@ internal static class CilMachineIrBuilder
 		var stackArgumentBytes = 0;
 		if (hasMultiwordReturn)
 		{
-			aggregateReturnHome = AllocateAggregateTemporaryHome(
-				function,
-				caller,
-				multiwordReturnLayout.Size,
-				GcReferenceOffsets(
-					module,
-					effectiveReturnType,
-					target.Definition?.ModuleName ?? caller.ModuleName),
-				reusableDirectReturn: IsDirectAggregateReturn(caller, instruction));
-			var returnAddress = function.CreateValue(
-				CilStackValueKind.AggregateAddress,
-				M68kMachineValueWidth.Long,
-				M68kRegisterSet.Address);
-			block.Instructions.Add(function.CreateInstruction(
-				M68kMachineOperation.LocalAddress,
-				instruction.Offset,
-				definitions: [returnAddress.Id],
-				argumentIndex: aggregateReturnHome));
+			int returnAddressId;
+			if (spanConstructorDestination is { } destination)
+				returnAddressId = destination;
+			else
+			{
+				aggregateReturnHome = AllocateAggregateTemporaryHome(
+					function,
+					caller,
+					multiwordReturnLayout.Size,
+					GcReferenceOffsets(
+						module,
+						effectiveReturnType,
+						target.Definition?.ModuleName ?? caller.ModuleName),
+					reusableDirectReturn: IsDirectAggregateReturn(caller, instruction));
+				var returnAddress = function.CreateValue(
+					CilStackValueKind.AggregateAddress,
+					M68kMachineValueWidth.Long,
+					M68kRegisterSet.Address);
+				block.Instructions.Add(function.CreateInstruction(
+					M68kMachineOperation.LocalAddress,
+					instruction.Offset,
+					definitions: [returnAddress.Id],
+					argumentIndex: aggregateReturnHome));
+				returnAddressId = returnAddress.Id;
+			}
 			block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.OutgoingArgumentPush,
 				instruction.Offset,
-				uses: [returnAddress.Id],
+				uses: [returnAddressId],
 				memoryEffect: M68kMachineMemoryEffect.Write,
 				argumentIndex: 4));
 			stackArgumentBytes = 4;
@@ -4875,7 +5246,7 @@ internal static class CilMachineIrBuilder
 				instruction.Offset,
 				uses: [source.Id],
 				memoryEffect: M68kMachineMemoryEffect.Write,
-				argumentIndex: bytes));
+				argumentIndex: bytes) with { CopiesAggregateArgument = multiwordArgumentBytes.ContainsKey(index) });
 			stackArgumentBytes = checked(stackArgumentBytes + bytes);
 		}
 		for (var index = 0;
@@ -4957,9 +5328,14 @@ internal static class CilMachineIrBuilder
 			}
 		}
 		var isNonThrowingAddressIntrinsic =
-			transportsManagedByrefOwner ||
+			(transportsManagedByrefOwner && !IsLengthCheckedSpanByrefConstructor(target.ImportName)) ||
+			target.ImportName == "intrinsic:span-from-array-ctor:char" ||
 			IsNonThrowingMemoryIntrinsic(target.ImportName) ||
 				target.ImportName is
+				"intrinsic:corelib-memmove-char" or "intrinsic:corelib-memmove-uint32" or "intrinsic:corelib-memmove-bytes" or
+				"intrinsic:corelib-fill-char" or
+				"intrinsic:corelib-null-char-ref" or
+				"intrinsic:corelib-add-char-ref" or "intrinsic:corelib-add-int32-ref" or "intrinsic:corelib-add-byte-ref" or
 				"intrinsic:copperstart-probe-cpu" or
 				"intrinsic:m68k-read-stack-pointer" or
 				"intrinsic:copperstart-disable-rom-overlay" or
@@ -4970,7 +5346,8 @@ internal static class CilMachineIrBuilder
 				"intrinsic:string-equality" or
 				"intrinsic:string-inequality" or
 				"intrinsic:runtime-string-hash" or
-				"intrinsic:runtime-nullable-integral-hash:32" ||
+				"intrinsic:runtime-nullable-integral-hash:32" or
+				"intrinsic:runtime-type-from-handle" or "intrinsic:runtime-type-not-equals" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:runtime-integral-equals:",
 				StringComparison.Ordinal) == true ||
@@ -4986,9 +5363,8 @@ internal static class CilMachineIrBuilder
 			target.ImportName?.StartsWith(
 				"intrinsic:span-from-array:",
 				StringComparison.Ordinal) == true ||
-			target.ImportName?.StartsWith(
-				"intrinsic:readonly-span-from-",
-				StringComparison.Ordinal) == true ||
+			(!IsLengthCheckedSpanByrefConstructor(target.ImportName) &&
+			 target.ImportName?.StartsWith("intrinsic:readonly-span-from-", StringComparison.Ordinal) == true) ||
 			target.ImportName?.StartsWith(
 				"intrinsic:span-length:",
 				StringComparison.Ordinal) == true ||
@@ -5026,6 +5402,10 @@ internal static class CilMachineIrBuilder
 			"intrinsic:hook-address-of" or
 			"intrinsic:boopsi-message-address-of";
 		var isNonGcIntrinsic = isNonThrowingAddressIntrinsic ||
+			target.ImportName is "intrinsic:span-from-array-ctor:object" or "intrinsic:span-from-array-ctor:string" ||
+			IsLengthCheckedSpanByrefConstructor(target.ImportName) ||
+			target.ImportName is "intrinsic:corelib-char-array-data" or "intrinsic:corelib-reference-array-data" or "intrinsic:corelib-string-data" ||
+			target.ImportName is "intrinsic:span-from-array-range:char" or "intrinsic:span-from-array-range:string" or "intrinsic:span-from-array-range:object" or "intrinsic:span-from-array-range-mutable:object" or "intrinsic:span-from-array-range-mutable:string" or "intrinsic:span-from-array-range-value:char" or "intrinsic:span-from-array-start:char" ||
 			IsMemoryIntrinsic(target.ImportName) ||
 			target.ImportName?.StartsWith(
 				"intrinsic:span-copy-to:",
@@ -5063,7 +5443,33 @@ internal static class CilMachineIrBuilder
 			transportsManagedByrefOwner: transportsManagedByrefOwner,
 			logicalCall: logicalCall,
 			platformBaseConvention: platformBaseConvention,
-			hasExplicitPlatformBase: hasExplicitPlatformBase));
+			hasExplicitPlatformBase: hasExplicitPlatformBase) with
+		{
+			ManagedByrefSourceArgumentCount = IsLengthCheckedSpanByrefConstructor(target.ImportName) ? 2 : 1,
+			// These private void methods consume the span synchronously in CopyTo.
+			// The source remains rooted in the caller for the complete operation;
+			// the span cannot be returned or stored in StringBuilder's heap fields.
+			BorrowsSpanOwnerFromCaller = target.ImportName == "intrinsic:readonly-span-from-ref-length:char" &&
+				(module.FrameworkImplementationPack?.EnableUnlistedManagedBodies == true ||
+				 module.FrameworkImplementationPack?.IsPinnedStringBuilderInput == true) &&
+				caller.ModuleName == "System.Private.CoreLib" &&
+				caller.Signature.Header.IsInstance && caller.Signature.ReturnType.IsVoid &&
+				(caller.DisplayName == "System.Text.StringBuilder::AppendWithExpansion" && caller.Signature.ParameterTypes is
+					[{ Kind: CilTypeKind.ManagedPointer, ElementType.Kind: CilTypeKind.Character }, { Kind: CilTypeKind.SignedInteger, Size: 4 }] ||
+				 caller.DisplayName == "System.Text.StringBuilder::ReplaceInPlaceAtChunk" && caller.Signature.ParameterTypes is
+					[{ Kind: CilTypeKind.ManagedPointer, ElementType.DisplayName: "System.Text.StringBuilder" },
+					 { Kind: CilTypeKind.ManagedPointer, ElementType.Kind: CilTypeKind.SignedInteger, ElementType.Size: 4 },
+					 { Kind: CilTypeKind.ManagedPointer, ElementType.Kind: CilTypeKind.Character }, { Kind: CilTypeKind.SignedInteger, Size: 4 }]),
+			ManagedByrefProjection = target.ImportName switch
+			{
+				"intrinsic:corelib-null-char-ref" => M68kManagedByrefProjection.Null,
+				"intrinsic:corelib-string-data" => M68kManagedByrefProjection.ObjectData,
+				"intrinsic:corelib-char-array-data" or "intrinsic:corelib-reference-array-data" => M68kManagedByrefProjection.ArrayData,
+				"intrinsic:corelib-add-char-ref" or "intrinsic:corelib-add-int32-ref" or "intrinsic:corelib-add-byte-ref" => M68kManagedByrefProjection.ElementOffset,
+				"intrinsic:ref-cast" or "intrinsic:address-of-ref" or "intrinsic:address-to-ref" => M68kManagedByrefProjection.Identity,
+				_ => M68kManagedByrefProjection.None
+			}
+		});
 		if (stackArgumentBytes != 0)
 		{
 			block.Instructions.Add(function.CreateInstruction(
@@ -5088,8 +5494,13 @@ internal static class CilMachineIrBuilder
 			block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.Copy,
 				instruction.Offset,
-				uses: [returnedValue],
-				definitions: definitions));
+				// The second operand transports ownership without changing the
+				// native copy, which uses only the returned address in Uses[0].
+				uses: spanElementOwner is { } retainedOwner ? [returnedValue, retainedOwner] : [returnedValue],
+				definitions: definitions) with
+			{
+				ManagedByrefProjection = spanElementOwner is not null ? M68kManagedByrefProjection.SpanData : M68kManagedByrefProjection.None
+			});
 		}
 		else if (aggregateReturnHome is { } returnHome && definitions.Count != 0)
 		{
@@ -5394,6 +5805,7 @@ internal static class CilMachineIrBuilder
 	{
 		var result = new Dictionary<int, int>();
 		var admitsImportedSpanValue =
+			target.ImportName is "intrinsic:corelib-char-span-data" or "intrinsic:corelib-byte-span-data" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:readonly-span-from-span:",
 				StringComparison.Ordinal) == true ||
@@ -5428,7 +5840,7 @@ internal static class CilMachineIrBuilder
 					parameter,
 					parameterModuleName,
 					out var layout) ||
-				layout.Size <= 4)
+				!layout.UsesAggregateTransport)
 			{
 				continue;
 			}
@@ -5484,7 +5896,11 @@ internal static class CilMachineIrBuilder
 			"intrinsic:amiga-vararg-from-literal" or
 			"intrinsic:aptr-export-address";
 
+	private static bool IsLengthCheckedSpanByrefConstructor(string? name) =>
+		name is "intrinsic:readonly-span-from-ref-length:char" or "intrinsic:span-from-ref-length:char" or "intrinsic:readonly-span-from-ref-length:object";
+
 	private static bool IsSpanByrefConstructor(string? name) =>
+		IsLengthCheckedSpanByrefConstructor(name) ||
 		name?.StartsWith(
 			"intrinsic:span-from-ref:",
 			StringComparison.Ordinal) == true ||
@@ -5494,6 +5910,8 @@ internal static class CilMachineIrBuilder
 
 	private static bool IsSpanValueConstructor(string? name) =>
 		IsSpanByrefConstructor(name) ||
+		name is "intrinsic:span-from-array-ctor:char" or "intrinsic:span-from-array-ctor:object" or "intrinsic:span-from-array-ctor:string" or "intrinsic:readonly-span-from-array-ctor:char" or "intrinsic:readonly-span-from-array-ctor:string" or "intrinsic:readonly-span-from-array-ctor:object" ||
+		name is "intrinsic:span-from-array-range:char" or "intrinsic:span-from-array-range:string" or "intrinsic:span-from-array-range:object" or "intrinsic:span-from-array-range-mutable:object" or "intrinsic:span-from-array-range-mutable:string" ||
 		name?.StartsWith(
 			"intrinsic:span-from-pointer:",
 			StringComparison.Ordinal) == true;
@@ -5527,6 +5945,7 @@ internal static class CilMachineIrBuilder
 	private static bool IsNonThrowingMemoryIntrinsic(string? name) =>
 		IsMemoryIntrinsic(name) &&
 		name?.Contains("-range:", StringComparison.Ordinal) != true &&
+		name?.Contains("-start:", StringComparison.Ordinal) != true &&
 		name?.Contains("-slice-", StringComparison.Ordinal) != true &&
 		name?.Contains("memory-copy-to:", StringComparison.Ordinal) != true;
 
@@ -5664,6 +6083,33 @@ internal static class CilMachineIrBuilder
 			// the emitter to reuse the exact requested length after allocation.
 			return [CallArgumentConstraint.Fixed(M68kRegister.D2)];
 		}
+		if (target.ImportName == "intrinsic:initialize-array")
+			return [CallArgumentConstraint.Fixed(M68kRegister.A1), CallArgumentConstraint.Fixed(M68kRegister.A2)];
+		if (target.ImportName == "intrinsic:initialized-data-span")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.D0)];
+		}
+		if (target.ImportName is "intrinsic:corelib-memmove-char" or "intrinsic:corelib-memmove-uint32" or "intrinsic:corelib-memmove-bytes")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A1),
+				CallArgumentConstraint.Fixed(M68kRegister.A2),
+				CallArgumentConstraint.Fixed(M68kRegister.D2)];
+		}
+		if (target.ImportName == "intrinsic:corelib-fill-char")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A1),
+				CallArgumentConstraint.Fixed(M68kRegister.D2),
+				CallArgumentConstraint.Fixed(M68kRegister.D3)];
+		}
+		if (target.ImportName is "intrinsic:corelib-add-char-ref" or "intrinsic:corelib-add-int32-ref" or "intrinsic:corelib-add-byte-ref")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A0),
+				CallArgumentConstraint.Fixed(M68kRegister.D0)];
+		}
+		if (target.ImportName is "intrinsic:corelib-string-data" or "intrinsic:corelib-char-array-data" or "intrinsic:corelib-reference-array-data")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A0)];
+		}
 		if (target.ImportName == "intrinsic:runtime-set-string-char")
 		{
 			return
@@ -5745,6 +6191,12 @@ internal static class CilMachineIrBuilder
 					CallArgumentConstraint.Fixed(M68kRegister.A3)
 				];
 		}
+		if (target.ImportName == "intrinsic:memory-from-array-start:char")
+		{
+			return hasInstanceArgument
+				? [CallArgumentConstraint.Fixed(M68kRegister.A0), CallArgumentConstraint.Fixed(M68kRegister.A1), CallArgumentConstraint.Fixed(M68kRegister.D0)]
+				: [CallArgumentConstraint.Fixed(M68kRegister.A0), CallArgumentConstraint.Fixed(M68kRegister.D0)];
+		}
 		if (target.ImportName?.Contains(
 				"memory-from-array-range:",
 				StringComparison.Ordinal) == true)
@@ -5807,6 +6259,20 @@ internal static class CilMachineIrBuilder
 		{
 			return [CallArgumentConstraint.Fixed(M68kRegister.A0)];
 		}
+		if (target.ImportName is "intrinsic:span-from-array-range:char" or "intrinsic:span-from-array-range:string" or "intrinsic:span-from-array-range:object" or "intrinsic:span-from-array-range-mutable:object" or "intrinsic:span-from-array-range-mutable:string" or "intrinsic:span-from-array-range-value:char")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A0),
+				CallArgumentConstraint.Fixed(M68kRegister.D0),
+				CallArgumentConstraint.Fixed(M68kRegister.D1)];
+		}
+		if (target.ImportName == "intrinsic:span-from-array-start:char")
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A0), CallArgumentConstraint.Fixed(M68kRegister.D0)];
+		}
+		if (IsLengthCheckedSpanByrefConstructor(target.ImportName))
+		{
+			return [CallArgumentConstraint.Fixed(M68kRegister.A0), CallArgumentConstraint.Fixed(M68kRegister.D0)];
+		}
 		if (target.ImportName?.StartsWith(
 				"intrinsic:span-from-pointer:",
 				StringComparison.Ordinal) == true)
@@ -5831,6 +6297,7 @@ internal static class CilMachineIrBuilder
 			];
 		}
 		if (IsSpanByrefConstructor(target.ImportName) ||
+			target.ImportName is "intrinsic:span-from-array-ctor:char" or "intrinsic:span-from-array-ctor:object" or "intrinsic:span-from-array-ctor:string" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:span-from-array:",
 				StringComparison.Ordinal) == true ||
@@ -6198,6 +6665,12 @@ internal static class CilMachineIrBuilder
 					}
 					((Dictionary<int, int>)phi.Inputs).Add(predecessorId, input);
 				}
+				foreach (var (argumentIndex, phi) in state.ArgumentPhis)
+				{
+					var input = predecessor.ExitArguments[argumentIndex] ??
+						throw new InvalidOperationException($"Machine IR edge {predecessorId}->{state.Block.Id} has no value for argument {argumentIndex}.");
+					((Dictionary<int, int>)phi.Inputs).Add(predecessorId, input);
+				}
 			}
 		}
 	}
@@ -6208,8 +6681,7 @@ internal static class CilMachineIrBuilder
 		CompilationModule module)
 	{
 		var kind = module.IsTransparentScalarType(type) ||
-			type.NullableElementType is { } nullableElement &&
-			module.IsTransparentScalarType(nullableElement)
+			module.IsCompactNullableType(type)
 			? CilStackValueKind.ManagedPointer
 			: CilStackAnalyzer.StackKindForType(type);
 		return CreateValue(
@@ -6323,7 +6795,7 @@ internal static class CilMachineIrBuilder
 		{
 			return M68kMachineOperation.Constant;
 		}
-		if (op == OpCodes.Ldstr)
+		if (op == OpCodes.Ldstr || op == OpCodes.Ldtoken)
 		{
 			return M68kMachineOperation.Address;
 		}
@@ -6470,6 +6942,14 @@ internal static class CilMachineIrBuilder
 		{
 			var type = module.ResolveTypeToken(
 				(int)instruction.Operand!, method, instruction.Offset);
+			// CIL sizeof on a reference type measures its reference slot, not
+			// the instance payload. Generic CoreLib copies use this byte stride.
+			if (type is { Kind: CilTypeKind.ManagedReference, Size: 4 })
+				return M68kMachineConstant.Int32(4);
+			if (type.Kind is CilTypeKind.Boolean or CilTypeKind.Character or CilTypeKind.SignedInteger or
+				CilTypeKind.UnsignedInteger or CilTypeKind.NativeInteger or CilTypeKind.FloatingPoint or
+				CilTypeKind.UnmanagedPointer or CilTypeKind.FunctionPointer)
+				return M68kMachineConstant.Int32(type.Size);
 			if (!module.TryGetReferenceFreeStructLayout(
 				type, method.ModuleName, out var layout))
 			{
@@ -6504,6 +6984,8 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Ldelem_I4 ||
 		op == OpCodes.Ldelem_U4 ||
 		op == OpCodes.Ldelem_I8 ||
+		op == OpCodes.Ldelem_R4 ||
+		op == OpCodes.Ldelem_R8 ||
 		op == OpCodes.Ldelem_I ||
 		op == OpCodes.Ldelem_Ref;
 
@@ -6513,6 +6995,8 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Stelem_I2 ||
 		op == OpCodes.Stelem_I4 ||
 		op == OpCodes.Stelem_I8 ||
+		op == OpCodes.Stelem_R4 ||
+		op == OpCodes.Stelem_R8 ||
 		op == OpCodes.Stelem_I ||
 		op == OpCodes.Stelem_Ref;
 
@@ -6561,7 +7045,7 @@ internal static class CilMachineIrBuilder
 				field.Type,
 				field.ModuleName,
 				out var fieldLayout) &&
-			fieldLayout.Size > 4)
+			fieldLayout.UsesAggregateTransport)
 		{
 			var result = M68kRegisterSet.From(M68kRegister.D0);
 			return field.IsStatic
@@ -6573,13 +7057,13 @@ internal static class CilMachineIrBuilder
 				method.Locals[storedLocal],
 				method.ModuleName,
 				out var localLayout) &&
-			localLayout.Size > 4) ||
+			localLayout.UsesAggregateTransport) ||
 			TryGetStoreArgumentIndex(instruction, out var storedArgument) &&
 			module.TryGetReferenceFreeStructLayout(
-				ArgumentType(method, storedArgument),
+				ArgumentType(method, storedArgument, module),
 				method.ModuleName,
 				out var argumentLayout) &&
-			argumentLayout.Size > 4)
+			argumentLayout.UsesAggregateTransport)
 		{
 			return M68kRegisterSet.From(M68kRegister.D0);
 		}
@@ -6592,7 +7076,6 @@ internal static class CilMachineIrBuilder
 				instruction.Offset);
 			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken &&
 				target.Definition is { } declaration &&
-				declaration.DeclaringTypeIsInterface &&
 				module.TryResolveConstrainedValueInterfaceImplementation(
 					method, constrainedTypeToken, instruction.Offset, declaration,
 					out var implementation))
@@ -6642,6 +7125,8 @@ internal static class CilMachineIrBuilder
 			{
 				return M68kRegisterSet.None;
 			}
+			if (target.ImportName == "intrinsic:runtime-object-memberwise-clone")
+				return M68kRegisterSet.From(M68kRegister.D0, M68kRegister.D1, M68kRegister.D2, M68kRegister.A0, M68kRegister.A1, M68kRegister.A2);
 			if (target.Definition is null &&
 				target.ImportName is
 					"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
@@ -6649,7 +7134,9 @@ internal static class CilMachineIrBuilder
 					"intrinsic:aptr-raw" or
 					"intrinsic:iff-handle-stream" or
 					"intrinsic:iff-handle-set-stream" or
-					"intrinsic:object-reference-equals" or
+					"intrinsic:object-reference-equals" or "intrinsic:runtime-type-from-handle" or "intrinsic:runtime-type-not-equals" or "intrinsic:runtime-type-is-enum" or
+					"intrinsic:runtime-enum-data" or "intrinsic:runtime-enum-low" or "intrinsic:runtime-enum-high" or
+					"intrinsic:corelib-null-char-ref" or
 					"intrinsic:string-char" or
 					"intrinsic:string-length")
 			{
@@ -6781,9 +7268,23 @@ internal static class CilMachineIrBuilder
 					.Add(M68kRegister.A2)
 					.Add(M68kRegister.A3);
 			}
+			if (target.ImportName is "intrinsic:corelib-memmove-char" or "intrinsic:corelib-memmove-uint32" or "intrinsic:corelib-memmove-bytes")
+			{
+				return clobbers.Add(M68kRegister.D2).Add(M68kRegister.D3)
+					.Add(M68kRegister.A2).Add(M68kRegister.A3);
+			}
+			if (target.ImportName is "intrinsic:span-from-array-ctor:object" or "intrinsic:span-from-array-ctor:string")
+				return clobbers.Add(M68kRegister.D3);
+			if (target.ImportName == "intrinsic:initialized-data-span") return clobbers.Add(M68kRegister.D3);
+			if (target.ImportName == "intrinsic:initialize-array") return clobbers.Add(M68kRegister.A2).Add(M68kRegister.D2).Add(M68kRegister.D3);
+			if (target.ImportName == "intrinsic:corelib-fill-char")
+			{
+				return clobbers.Add(M68kRegister.D2);
+			}
 			if (target.ImportName?.StartsWith(
 					"intrinsic:span-slice-",
 					StringComparison.Ordinal) == true ||
+				target.ImportName is "intrinsic:span-from-array-range:char" or "intrinsic:span-from-array-range:string" or "intrinsic:span-from-array-range:object" or "intrinsic:span-from-array-range-mutable:object" or "intrinsic:span-from-array-range-mutable:string" or "intrinsic:span-from-array-range-value:char" or "intrinsic:span-from-array-start:char" ||
 				target.ImportName?.StartsWith(
 					"intrinsic:readonly-span-slice-",
 					StringComparison.Ordinal) == true)
@@ -6968,6 +7469,7 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Ldind_I ||
 		op == OpCodes.Ldind_I8 ||
 		op == OpCodes.Ldind_R4 ||
+		op == OpCodes.Ldind_R8 ||
 		op == OpCodes.Ldind_Ref ||
 		op == OpCodes.Ldobj;
 
@@ -6978,6 +7480,7 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Stind_I ||
 		op == OpCodes.Stind_I8 ||
 		op == OpCodes.Stind_R4 ||
+		op == OpCodes.Stind_R8 ||
 		op == OpCodes.Stind_Ref ||
 		op == OpCodes.Stobj;
 

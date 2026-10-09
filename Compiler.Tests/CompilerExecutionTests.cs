@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Reflection;
 using System.Reflection.Metadata;
-	using System.Reflection.Metadata.Ecma335;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text.RegularExpressions;
 using CopperSharp.Compiler.Backend;
@@ -14,6 +14,382 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed partial class CompilerExecutionTests
 {
+	[Fact]
+	public void EnumHandlersDoNotImportHostGlobalizationDependencies()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var analysis = M68kCompiler.AnalyzeFramework(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInterpolatedEnumsEntry",
+			ExceptionMode = M68kExceptionMode.Full,
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true },
+			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowEnumFormatting).Assembly.Location]
+		});
+		Assert.DoesNotContain(analysis.ManagedAllocationSites, site => site.AllocatedType == "System.Globalization.CultureInfo");
+		Assert.DoesNotContain(analysis.Members, member => member.Member.TypeName.StartsWith("System.Reflection.", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible, string.Join("\n", analysis.ManagedAllocationSites.Where(site => site.AllocatedType == "System.Globalization.CultureInfo")
+			.Select(site => "ALLOC: " + string.Join(" -> ", site.RootPath)).Concat(analysis.Members.Where(member => member.Status == M68kFrameworkCompatibilityStatus.Unsupported)
+			.Select(member => $"{member.Member.TypeName}::{member.Member.Name}: {string.Join(" -> ", member.CallSites[0].RootPath)}"))));
+	}
+
+	[Fact]
+	public void ExperimentalEnumFormattingBindsItsConstructedRuntimeHelper()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var catalog = CopperSharp.Compiler.Framework.FrameworkImplementationPackLoader.Load(
+			new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		using var module = new CompilationModule(FixtureAssembly,
+			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowEnumFormatting).Assembly.Location], frameworkImplementationPack: catalog);
+		var entry = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInterpolatedEnumsEntry");
+		var call = entry.Instructions.First(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Call &&
+			module.DescribeMethodToken((int)instruction.Operand!, entry, instruction.Offset)?.Name == "AppendFormatted");
+		var handler = module.ResolveMethodToken((int)call.Operand!, entry, call.Offset).Definition!;
+		var enumCall = handler.Instructions.First(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Call &&
+			module.DescribeMethodToken((int)instruction.Operand!, handler, instruction.Offset)?.Name == "TryFormatUnconstrained");
+		var member = module.DescribeFrameworkMethodToken((int)enumCall.Operand!, handler, enumCall.Offset);
+		Assert.True(CopperSharp.Compiler.Framework.FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(member, true, out var binding), member.DisplayName);
+		var resolved = module.ResolveMethodToken((int)enumCall.Operand!, handler, enumCall.Offset);
+		Assert.Equal("CopperSharp.Runtime.ShadowEnumFormatting::TryFormat<System.DayOfWeek>", resolved.Definition!.DisplayName);
+		Assert.Equal(4, resolved.Signature.ParameterTypes[0].Size);
+		Assert.False(CopperSharp.Compiler.Framework.FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(member, false, out _));
+	}
+
+	[Fact]
+	public void ExperimentalCoreLibObjectSlotsReachApplicationOverrides()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var catalog = CopperSharp.Compiler.Framework.FrameworkImplementationPackLoader.Load(
+			new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		using var module = new CompilationModule(FixtureAssembly, frameworkImplementationPack: catalog);
+		var declaration = module.ResolveManagedMethod("System.Private.CoreLib", "System.Object::ToString");
+		var slot = module.GetVirtualSlot(declaration);
+		var strings = module.RegisterStringDispatchLayout()!;
+		Assert.Equal("System.String::ToString", module.TryGetVirtualImplementation(strings, declaration)!.DisplayName);
+		var entry = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCustomObjectJoinEntry");
+		foreach (var allocation in entry.Instructions.Where(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Newobj))
+		{
+			var constructor = module.ResolveMethodToken((int)allocation.Operand!, entry, allocation.Offset).Definition!;
+			module.RegisterReachableDispatchLayout(module.GetTypeLayout(constructor));
+		}
+		var implementations = module.GetVirtualImplementations(declaration);
+		Assert.Contains(implementations, method => method.DisplayName == "System.String::ToString");
+		Assert.Contains(implementations, method => method.DisplayName.Contains("BaseObjectJoinValue::ToString", StringComparison.Ordinal));
+		Assert.DoesNotContain(implementations, method => method.DisplayName.Contains("UnallocatedObjectJoinValue", StringComparison.Ordinal));
+		foreach (var name in new[] { "InheritedObjectJoinValue", "HidingObjectJoinValue", "OverrideHidingObjectJoinValue" })
+		{
+			var constructor = entry.Instructions.Where(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Newobj)
+				.Select(instruction => module.ResolveMethodToken((int)instruction.Operand!, entry, instruction.Offset).Definition!)
+				.Single(method => method.DisplayName == name + "::.ctor");
+			var layout = module.GetTypeLayout(constructor);
+			var implementation = module.TryGetVirtualImplementation(layout, declaration)!;
+			Assert.Contains("BaseObjectJoinValue::ToString", implementation.DisplayName, StringComparison.Ordinal);
+			Assert.Equal(implementation.Identity, module.GetVirtualTable(layout).Slots[slot].Identity);
+		}
+		var stableCatalog = CopperSharp.Compiler.Framework.FrameworkImplementationPackLoader.Load(new M68kFrameworkImplementationPackOptions(pack.ManifestPath));
+		using var stable = new CompilationModule(FixtureAssembly, frameworkImplementationPack: stableCatalog);
+		Assert.Null(stable.RegisterStringDispatchLayout());
+	}
+
+	[Fact]
+	public void CoreLibDirectSpanDataReadsRetainTheirOwner()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var catalog = CopperSharp.Compiler.Framework.FrameworkImplementationPackLoader.Load(new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		using var module = new CompilationModule(FixtureAssembly, frameworkImplementationPack: catalog);
+		var caller = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::HandlerCopyStringSpan");
+		var call = caller.Instructions.Single(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Callvirt);
+		var method = module.ResolveMethodToken((int)call.Operand!, caller, call.Offset).Definition!;
+		var machine = CilMachineIrBuilder.Build(method, module);
+		var provenance = M68kByrefProvenanceAnalyzer.Analyze(machine, true, out var owners);
+		var projection = Assert.Single(machine.Blocks.SelectMany(block => block.Instructions),
+			instruction => instruction.ManagedByrefProjection == M68kManagedByrefProjection.SpanData);
+		Assert.Equal(2, projection.Uses.Length);
+		Assert.True(machine.Values[projection.Uses[1]].IsGcReference);
+		Assert.Equal(M68kByrefProvenanceKind.ObjectInterior, provenance[projection.Definitions[0]].Kind);
+		Assert.Equal(owners[projection.Uses[1]], provenance[projection.Definitions[0]].OwnerValue);
+	}
+	[Fact]
+	public void GenericIntegerHandlersDoNotImportUnreachableEnumOrCultureDependencies()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var analysis = M68kCompiler.AnalyzeFramework(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInterpolatedIntegerEntry",
+			ExceptionMode = M68kExceptionMode.Full,
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true },
+			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowNumberFormatting).Assembly.Location]
+		});
+		Assert.DoesNotContain(analysis.ManagedAllocationSites, site => site.AllocatedType == "System.Globalization.CultureInfo");
+		Assert.DoesNotContain(analysis.Members, member => member.Member.TypeName.Contains("SharedArrayPool", StringComparison.Ordinal));
+		Assert.True(analysis.IsCompatible, string.Join("\n", analysis.Members.Where(member => member.Status == M68kFrameworkCompatibilityStatus.Unsupported)
+			.Take(12).Select(member => $"{member.Member.TypeName}::{member.Member.Name}: {string.Join(" -> ", member.CallSites[0].RootPath)}")));
+	}
+
+	[Fact]
+	public void ExperimentalHandlerMetadataResolvesForwardedEnumsAndAggregateIdentities()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var catalog = CopperSharp.Compiler.Framework.FrameworkImplementationPackLoader.Load(
+			new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		using var module = new CompilationModule(FixtureAssembly, frameworkImplementationPack: catalog);
+		var method = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibHandlerTypeClassificationEntry");
+		var types = method.Instructions.Where(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Ldtoken)
+			.Select(instruction => module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset)).ToArray();
+		Assert.True(Assert.Single(types, type => type.DisplayName == "System.DayOfWeek").IsEnum);
+		Assert.False(Assert.Single(types, type => type.DisplayName.EndsWith("HandlerSignedEnum[]", StringComparison.Ordinal)).IsEnum);
+		Assert.False(Assert.Single(types, type => type.DisplayName.StartsWith("System.Nullable<", StringComparison.Ordinal)).IsEnum);
+		foreach (var (name, kind, size, alias) in new[]
+		{
+			("System.Object", CilTypeKind.ManagedReference, 4, "object"),
+			("System.String", CilTypeKind.ManagedReference, 4, "string"),
+			("System.Int32", CilTypeKind.SignedInteger, 4, "int")
+		})
+		{
+			var named = module.ResolveRuntimeTypeIdentity(new CilType(kind, size, name), "System.Runtime");
+			var primitive = module.ResolveRuntimeTypeIdentity(new CilType(kind, size, alias), "System.Runtime");
+			Assert.Equal(primitive, named); Assert.False(named.Handle.IsNil);
+		}
+		var factory = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CreateRootedTextHandler");
+		var identity = module.ResolveRuntimeTypeIdentity(factory.Signature.ReturnType, "System.Runtime");
+		Assert.Equal("System.Private.CoreLib", identity.ModuleName);
+		Assert.False(identity.Handle.IsNil);
+		Assert.True(module.TryGetReferenceFreeStructLayout(factory.Signature.ReturnType, factory.ModuleName, out var layout));
+		Assert.Equal(12, layout.Size);
+		Assert.Equal(3u, layout.ReferenceBitmap);
+		// Independently decoded Memory<char> signatures can be stored through
+		// the out parameter. Equal-sized Memory<int> must still be rejected.
+		CilStackAnalyzer.AnalyzeTypes(factory, module);
+		var integerMemoryToken = Enumerable.Range(1, module.Reader.GetTableRowCount(TableIndex.TypeSpec))
+			.Select(row => MetadataTokens.GetToken(MetadataTokens.TypeSpecificationHandle(row)))
+			.First(token => module.ResolveTypeToken(token, factory, 0).DisplayName == "System.ReadOnlyMemory`1<int>");
+		var invalid = factory with { Instructions = factory.Instructions.Select(instruction =>
+			instruction.OpCode == System.Reflection.Emit.OpCodes.Stobj ? instruction with { Operand = integerMemoryToken } : instruction).ToArray() };
+		var error = Assert.Throws<M68kCompilationException>(() => CilStackAnalyzer.AnalyzeTypes(invalid, module));
+		Assert.Contains("stobj source does not match", error.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void InterpolatedHandlerFixtureOraclesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedSpanMatrixEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedHandlerRootsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedSpanValidationEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibHandlerTypeClassificationEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibHandlerObjectTypeIdentityEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedProviderDiscoveryEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedIntegerEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedGrowthEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibHandlerStringCopyLifetimeEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibHandlerGenericEnumBranchEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibHandlerTemporaryBufferEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedStringsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedObjectsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedCustomEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedNullObjectEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedFaultsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedNullFallbackEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedBoundaryCountsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInterpolatedEnumsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderEnumMatrixEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderEnumContractsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureExactEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureInvariantEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureNumberCloneEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureReadOnlyEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderMemberwiseCloneEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureDerivedEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureStateEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCultureInterfacesEntry());
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> InterpolatedHandlerCases
+	{
+		get
+		{
+			var data = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderInterpolatedTextEntry", "CoreLibStringBuilderInterpolatedSpanMatrixEntry",
+				"CoreLibStringBuilderInterpolatedHandlerRootsEntry", "CoreLibHandlerTypeClassificationEntry", "CoreLibStringBuilderInterpolatedSpanValidationEntry",
+				"CoreLibStringBuilderInterpolatedProviderDiscoveryEntry", "CoreLibHandlerObjectTypeIdentityEntry", "CoreLibStringBuilderInterpolatedIntegerEntry",
+				"CoreLibStringBuilderInterpolatedGrowthEntry", "CoreLibHandlerStringCopyLifetimeEntry", "CoreLibHandlerGenericEnumBranchEntry", "CoreLibHandlerTemporaryBufferEntry",
+				"CoreLibStringBuilderInterpolatedStringsEntry", "CoreLibStringBuilderInterpolatedObjectsEntry", "CoreLibStringBuilderInterpolatedCustomEntry",
+				"CoreLibStringBuilderInterpolatedNullObjectEntry", "CoreLibStringBuilderInterpolatedFaultsEntry", "CoreLibStringBuilderInterpolatedNullFallbackEntry",
+				"CoreLibStringBuilderInterpolatedBoundaryCountsEntry", "CoreLibStringBuilderInterpolatedEnumsEntry",
+				"CoreLibStringBuilderEnumSignedByteEntry", "CoreLibStringBuilderEnumUnsignedByteEntry",
+				"CoreLibStringBuilderEnumSignedShortEntry", "CoreLibStringBuilderEnumUnsignedShortEntry",
+				"CoreLibStringBuilderEnumSignedIntEntry", "CoreLibStringBuilderEnumUnsignedIntEntry",
+				"CoreLibStringBuilderEnumSignedLongEntry", "CoreLibStringBuilderEnumUnsignedLongEntry", "CoreLibStringBuilderEnumContractsEntry",
+				"CoreLibStringBuilderCultureExactEntry", "CoreLibStringBuilderCultureDerivedEntry", "CoreLibStringBuilderCultureStateEntry", "CoreLibStringBuilderCultureInterfacesEntry",
+				"CoreLibStringBuilderCultureInvariantEntry", "CoreLibStringBuilderCultureNumberCloneEntry", "CoreLibStringBuilderCultureReadOnlyEntry", "CoreLibStringBuilderMemberwiseCloneEntry" })
+			foreach (var cpu in CpuTargets) data.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return data;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(InterpolatedHandlerCases))]
+	public void CoreLibStringBuilderInterpolatedHandlersRun(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = entry.StartsWith("CoreLibStringBuilderEnum", StringComparison.Ordinal) ? 0x0010_0000u : 0x0004_0000u, Size = 0x0000_8000 },
+				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowNumberFormatting).Assembly.Location,
+					typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var bus = CreateHunkBus(result);
+			if (entry == "CoreLibStringBuilderEnumContractsEntry")
+				Assert.Contains(result.Relocations, relocation => relocation.Target.Contains("HandlerHighFlags", StringComparison.Ordinal) && relocation.Target.EndsWith(":interfaces", StringComparison.Ordinal));
+			Assert.True(HunkLoadAddress + result.Code.Length < StackPointer, "Handler image overlaps its test stack.");
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint,
+				maxInstructions: entry.EndsWith("CustomEntry", StringComparison.Ordinal) ? 300_000_000 : 100_000_000));
+			if (entry == "CoreLibStringBuilderInterpolatedObjectsEntry")
+			{
+				Assert.Contains(result.Symbols, symbol => symbol.Name == "System.String::ToString");
+				var stringPointer = result.Relocations.First(relocation => relocation.Target == "runtime:string-descriptor");
+				var descriptor = bus.ReadLong(HunkLoadAddress + (uint)stringPointer.Offset);
+				Assert.Equal(0u, bus.ReadLong(descriptor)); // Variable-size object.
+				Assert.Equal(0u, bus.ReadLong(descriptor + 4)); // No managed fields.
+				Assert.NotEqual(0u, bus.ReadLong(descriptor + 12)); // String virtual table.
+			}
+			Assert.DoesNotContain(result.Symbols, symbol => symbol.Name.StartsWith("System.Reflection.", StringComparison.Ordinal));
+			if (entry.StartsWith("CoreLibStringBuilderCulture", StringComparison.Ordinal))
+			{
+				Assert.DoesNotContain(result.Symbols, symbol => symbol.Name.StartsWith("Interop/Globalization::", StringComparison.Ordinal));
+				Assert.DoesNotContain(result.Symbols, symbol => symbol.Name == "System.Globalization.CultureInfo::.cctor");
+			}
+			if (entry is "CoreLibHandlerTypeClassificationEntry" or "CoreLibHandlerObjectTypeIdentityEntry" or "CoreLibHandlerGenericEnumBranchEntry")
+				Assert.DoesNotContain(result.Symbols, symbol => symbol.Name == "System.Type::get_IsEnum");
+			else if (entry == "CoreLibHandlerStringCopyLifetimeEntry")
+				Assert.Contains(result.Symbols, symbol => symbol.Name == "System.String::TryCopyTo");
+			else if (entry == "CoreLibHandlerTemporaryBufferEntry")
+				Assert.Contains(result.Symbols, symbol => symbol.Name == "CopperSharp.Runtime.ShadowInterpolatedStringHandlerBuffer::GrowCore");
+			else Assert.Contains(result.Symbols, symbol => symbol.Name == "AppendInterpolatedStringHandler::AppendFormatted");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void PlainObjectConstructionAllocatesDistinctRootedInstances(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PlainObjectConstructionEntry",
+				Cpu = target, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+			Assert.DoesNotContain(result.Relocations, relocation => relocation.Target == "runtime:object-type-map");
+			var failure = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::PlainObjectAllocationFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode);
+			var bus = CreateHunkBus(failure);
+			var armed = false; var attempts = 0;
+			bus.RegisterGateway(0x2A00, state => armed = state.D[0] != 0);
+			bus.RegisterGateway(0x2800, state =>
+			{
+				Assert.Equal(8u, state.D[0]);
+				attempts++;
+				state.D[0] = armed ? 0u : 0x0010_0000u;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + failure.EntryPoint));
+			Assert.Equal(2, attempts); Assert.False(armed);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void NumberProviderCloneAllocationFailuresLeaveSourceUsableAndPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibNumberProviderCloneAllocationFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var armed = false; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2A00, state => { armed = state.D[0] != 0; if (armed) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (armed) { attempts++; failures++; state.D[0] = 0; return; }
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.Equal(3, regions); Assert.Equal(2, attempts); Assert.Equal(2, failures); Assert.False(armed);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void InterpolatedSpanHandlersHonorAllocationFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInterpolatedSpanAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.Equal(18, regions); Assert.Equal(29, attempts); Assert.Equal(14, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void InterpolatedGenericHandlersHonorAllocationFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInterpolatedGenericAllocationEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00,
+					[M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2C00, _ => { });
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 50_000_000));
+			Assert.Equal(5, regions); Assert.Equal(10, attempts); Assert.Equal(4, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void TransparentOutStructFieldDistinguishesValueAndReferenceReceivers(
@@ -479,6 +855,25 @@ public sealed partial class CompilerExecutionTests
 				symbol.Name.EndsWith("::SparseSwitch", StringComparison.Ordinal));
 			Assert.True(sparse.Size <= 400,
 				$"Sparse switch emitted {sparse.Size} bytes.");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void PrivateCoreLibProcessorCountUsesTheAmigaPalOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var path = PrivateEnvironmentFixtureBuilder.Create(pack.Directory);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = path, EntryPoint = "PrivateEnvironmentProbe::Entry", Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+				PeepholeOptimization = mode, ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+			Assert.DoesNotContain(result.Symbols, symbol => symbol.Name == "System.Environment::.cctor");
 		}
 	}
 
@@ -1048,15 +1443,18 @@ public sealed partial class CompilerExecutionTests
 			$"code={result.Code.Length} cycles={cycles}");
 	}
 
-	[Fact]
-	public void ExperimentalCoreLibExceptionToStringCutPointRunsThroughBackend()
+	[Theory]
+	[InlineData("CoreLibExceptionToStringCutPointEntry", "ShadowException")]
+	[InlineData("CoreLibExternalExceptionToStringCutPointEntry", "ShadowExternalException")]
+	public void ExperimentalCoreLibExceptionToStringCutPointRunsThroughBackend(
+		string entry, string shadowType)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		const uint allocatorAddress = 0x0000_2800;
 		var result = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Hunk,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibExceptionToStringCutPointEntry",
+			$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
 			imports: new Dictionary<string, uint>
 			{
 				[M68kRuntimeImports.Allocate] = allocatorAddress
@@ -1072,8 +1470,8 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(
 			42u,
 			Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
-		Assert.Contains(result.Symbols, static symbol =>
-			symbol.Name.Contains("ShadowException::ToString", StringComparison.Ordinal));
+		Assert.Contains(result.Symbols, symbol =>
+			symbol.Name.Contains($"{shadowType}::ToString", StringComparison.Ordinal));
 		Assert.DoesNotContain(result.Symbols, static symbol =>
 			symbol.Name.Contains("Exception::get_StackTrace", StringComparison.Ordinal) ||
 			symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
@@ -1137,15 +1535,17 @@ public sealed partial class CompilerExecutionTests
 			symbol.Name.Contains("ManifestBasedResourceGroveler", StringComparison.Ordinal));
 	}
 
-	[Fact]
-	public void CoreLibStringBuilderTraversalClearsResourceLookupAndReachesDerivedExceptionBoundary()
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderConstructorAndPropertiesRunOnEveryCpu(
+		M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		const uint allocatorAddress = 0x0000_2800;
-		var exception = Assert.Throws<M68kCompilationException>(() => Compile(
-			M68kCpuTarget.M68000,
+		var result = Compile(
+			target,
 			M68kOutputFormat.Hunk,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendIntEntry",
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderConstructorEntry",
 			imports: new Dictionary<string, uint>
 			{
 				[M68kRuntimeImports.Allocate] = allocatorAddress
@@ -1154,12 +1554,4761 @@ public sealed partial class CompilerExecutionTests
 				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
 				{
 					EnableUnlistedManagedBodies = true
-				}));
+				});
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, allocatorAddress);
 
-		Assert.Equal(M68kDiagnosticIds.UnsupportedSignature, exception.DiagnosticId);
-		Assert.Contains("RuntimeTypeCache/MemberInfoCache`1", exception.Message);
-		Assert.Contains("System.Reflection.CerHashtable`2", exception.Message);
-		Assert.DoesNotContain("System.OperationCanceledException::_cancellationToken", exception.Message);
+		Assert.Equal(
+			42u,
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Contains(result.Symbols, static symbol =>
+			symbol.Name == "System.Text.StringBuilder::.ctor");
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal) ||
+			symbol.Name.Contains("ResourceManager::GetString", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderIntegerAppendRunsOnEveryCpu(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendIntEntry",
+			imports: new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = 0x0000_2800
+			},
+			frameworkImplementationPack:
+				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+				{
+					EnableUnlistedManagedBodies = true
+				});
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, 0x0000_2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowNumberFormatting::TryFormatInt32");
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("GetLocaleInfo", StringComparison.Ordinal) ||
+			symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderIntegerCasesSurviveCollectionOnEveryAllocation(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderIntegerCasesEntry",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+			{
+				EnableUnlistedManagedBodies = true
+			}
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 2_000_000));
+	}
+
+	[Theory]
+	[InlineData("CoreLibStringBuilderIntegerLoopEntry")]
+	[InlineData("CoreLibStringBuilderIntegerSwitchLoopEntry")]
+	[InlineData("CoreLibCharacterSpansEntry")]
+	public void CoreLibIntegerAppendLoopsAndCharacterSpansSurviveCollection(string entry)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var request = new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		};
+		var result = M68kCompiler.Compile(request);
+		Assert.Equal(42u, Execute(CreateHunkBus(result), M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCharacterAppendRunsOnEveryCpu(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		const uint allocatorAddress = 0x0000_2800;
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderChunkGrowthEntry",
+			imports: new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = allocatorAddress
+			},
+			frameworkImplementationPack:
+				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+				{
+					EnableUnlistedManagedBodies = true
+				});
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, allocatorAddress);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderToStringRunsOnEveryCpu(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		const uint allocatorAddress = 0x0000_2800;
+		var result = Compile(
+			target,
+			M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderToStringEntry",
+			imports: new Dictionary<string, uint>
+			{
+				[M68kRuntimeImports.Allocate] = allocatorAddress
+			},
+			frameworkImplementationPack:
+				new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+				{
+					EnableUnlistedManagedBodies = true
+				});
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, allocatorAddress);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::ToString");
+		Assert.DoesNotContain(result.Symbols, static symbol =>
+			symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal) ||
+			symbol.Name.Contains("GetMessageFromNativeResources", StringComparison.Ordinal) ||
+			symbol.Name.Contains("System.Buffer::BulkMoveWithWriteBarrier", StringComparison.Ordinal));
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderTextAppendCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderStringAppendEntry",
+				"CoreLibStringBuilderArrayAndSpanAppendEntry", "CoreLibStringBuilderAppendLineEntry",
+				"CoreLibCharacterSpanReferenceEntry", "CoreLibStringBuilderTextValidationEntry",
+				"CoreLibStringBuilderTextCapacityLimitEntry", "CoreLibStringBuilderWholeBuilderAppendEntry",
+				"CoreLibStringBuilderRangedBuilderAppendEntry", "CoreLibStringBuilderSelfBuilderAppendEntry",
+				"CoreLibStringBuilderBuilderAppendValidationEntry" })
+			foreach (var cpu in CpuTargets)
+				result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderTextAppendCases))]
+	public void CoreLibStringBuilderTextAppendsSurviveCollectionOnEveryCpu(
+		string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+			{
+				EnableUnlistedManagedBodies = true
+			}
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: entry == "CoreLibStringBuilderRangedBuilderAppendEntry" ? 100_000_000 : entry is "CoreLibStringBuilderWholeBuilderAppendEntry" or
+				"CoreLibStringBuilderSelfBuilderAppendEntry" ? 50_000_000 : 2_000_000));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		if (entry is "CoreLibStringBuilderWholeBuilderAppendEntry" or "CoreLibStringBuilderRangedBuilderAppendEntry" or "CoreLibStringBuilderSelfBuilderAppendEntry")
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::AppendCore");
+		if (entry == "CoreLibStringBuilderAppendLineEntry")
+			Assert.Contains(result.Symbols, static symbol => symbol.Name.EndsWith("EnvironmentPal::GetNewLine", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderBuilderAppendValidationMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderBuilderAppendValidationEntry());
+
+	[Fact]
+	public void CoreLibStringBuilderEqualsMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderEqualsContractEntry());
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderEqualsCases
+	{
+		get
+		{
+			var data = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderBuilderEqualsEntry", "CoreLibStringBuilderSpanEqualsEntry", "CoreLibStringBuilderEqualsContractEntry" })
+			foreach (var cpu in CpuTargets) data.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return data;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderEqualsCases))]
+	public void CoreLibStringBuilderEqualsSurvivesCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 50_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::Equals");
+		if (entry != "CoreLibStringBuilderBuilderEqualsEntry")
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowCharacterSpans::EqualsOrdinal");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Runtime.Intrinsics.Vector", StringComparison.Ordinal) ||
+			symbol.Name.Contains("System.Numerics.Vector", StringComparison.Ordinal) ||
+			symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibSpanElementReferencesRetainOwnersAcrossCollection(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibSpanElementOwnersEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibOrdinalCharacterEqualityRetainsOwnersAndBounds(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibOrdinalCharacterEqualityEntry",
+			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowCharacterSpans).Assembly.Location],
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderEqualsDoesNotAllocateOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		const uint allocatorAddress = 0x2800;
+		const uint failureControlAddress = 0x2A00;
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderEqualsWithoutAllocationEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = allocatorAddress, ["fixture.string-builder-allocation-failure"] = failureControlAddress },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u;
+		var allocationDisabled = false;
+		var guardedRegions = 0;
+		var allocationAttempts = 0;
+		bus.RegisterGateway(failureControlAddress, state => { allocationDisabled = state.D[0] != 0; if (allocationDisabled) guardedRegions++; });
+		bus.RegisterGateway(allocatorAddress, state =>
+		{
+			if (allocationDisabled) { allocationAttempts++; state.D[0] = 0; return; }
+			var size = state.D[0];
+			var address = heap;
+			heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size));
+			state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(8, guardedRegions);
+		Assert.Equal(0, allocationAttempts);
+		Assert.False(allocationDisabled);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ReferenceArrayStorePreservesCountdownIndex(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.ReferenceArrayCountdownEntry());
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::ReferenceArrayCountdownEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 }, peepholeOptimization: mode);
+			var bus = CreateHunkBus(result);
+			_ = RegisterBumpAllocator(bus, 0x2800);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ClosedReferenceBoxingPreservesIdentityWithoutAllocation(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::ClosedReferenceBoxIdentityEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u;
+		var disabled = false;
+		var attempts = 0;
+		var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { disabled = state.D[0] != 0; if (disabled) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (disabled) { attempts++; state.D[0] = 0; return; }
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.Equal(1, regions); Assert.Equal(0, attempts); Assert.False(disabled);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ClosedReferenceBoxingRetainsGcOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ClosedReferenceBoxGcEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinMatchesContractAndPreservesNullChecks(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAppendJoinContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var probe = CoreLibCharacterFixtureBuilder.Create(directory);
+		foreach (var entry in new[] { "CoreLibStringBuilderAppendJoinContractEntry", "ConstrainedStringEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				entry == "ConstrainedStringEntry" ? "CoreLibCharacterProbe::ConstrainedStringEntry" : $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+				assemblyPath: entry == "ConstrainedStringEntry" ? probe : FixtureAssembly,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			_ = RegisterBumpAllocator(bus, 0x2800);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinFailuresRetainCompletedPrefixes(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendJoinAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u;
+		var countdown = 0u;
+		var failures = 0;
+		var attempts = 0;
+		var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(16, regions); Assert.Equal(21, attempts); Assert.Equal(14, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinSurvivesCollectionOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var request = new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendJoinEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		};
+		var result = M68kCompiler.Compile(request);
+		// The full snapshot checks and collection on every allocation take
+		// about 51 million instructions on the 68020 for this 108-case matrix.
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::AppendJoin");
+		Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::AppendJoinCore<string>", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinSpanMatchesContract(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAppendJoinSpanContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendJoinSpanContractEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		_ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinSpanFailuresRetainCompletedPrefixes(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendJoinSpanAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u;
+		var countdown = 0u;
+		var failures = 0;
+		var attempts = 0;
+		var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(16, regions); Assert.Equal(21, attempts); Assert.Equal(14, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinSpanSurvivesCollectionOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendJoinSpanEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		// Like the array matrix, this exercises 108 cases with full snapshot checks
+		// and collection on every allocation, plus retention of the sliced array.
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::AppendJoin");
+		Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::AppendJoinCore<string>", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendJoinSpanRetainsOwnersAcrossManagedCalls(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendJoinSpanLifetimeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectJoinRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderObjectArrayJoinEntry", "CoreLibStringBuilderObjectSpanJoinEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var actual = Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000);
+			Assert.True(actual == 42u, $"{entry} returned {actual}.");
+			Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::AppendJoinCore<object>", StringComparison.Ordinal));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowObjectJoinText::ToString");
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCustomObjectJoinRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCustomObjectJoinEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("HidingObjectJoinValue::ToString", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("UnallocatedObjectJoinValue::ToString", StringComparison.Ordinal));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("NestedOnlyObjectJoinValue::ToString", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCustomObjectJoinPropagatesExceptionsAndPermitsRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCustomObjectJoinExceptionEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCustomObjectJoinExceptionEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCustomObjectJoinRetainsOwnersAcrossManagedCalls(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCustomObjectJoinLifetimeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendObjectFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendObjectAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u; var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(11, regions); Assert.Equal(17, attempts); Assert.Equal(10, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCustomObjectJoinFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCustomObjectJoinAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u; var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(20, regions); Assert.Equal(28, attempts); Assert.Equal(16, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectJoinMatchesContract(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderObjectJoinContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectJoinContractEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInsertObjectRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInsertObjectEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 240_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::Insert", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInsertObjectMatchesContractAndRejectsUnknownInputs(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInsertObjectContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderInsertObjectContractEntry", "CoreLibStringBuilderInsertObjectRejectsUnknownEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("UnsupportedObjectJoinValue::ToString", StringComparison.Ordinal) ||
+				symbol.Name.Contains("RuntimeDerivedObjectJoinValue::ToString", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInsertObjectRetainsOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInsertObjectMutationEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		foreach (var entry in new[] { "CoreLibStringBuilderInsertObjectLifetimeEntry", "CoreLibStringBuilderInsertObjectMutationEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInsertObjectFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInsertObjectAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u; var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(31, regions); Assert.Equal(51, attempts); Assert.Equal(30, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendObjectRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendObjectEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 80_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::Append", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendObjectMatchesContractAndRejectsUnknownInputs(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAppendObjectContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderAppendObjectContractEntry", "CoreLibStringBuilderAppendObjectRejectsUnknownEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("UnsupportedObjectJoinValue::ToString", StringComparison.Ordinal) ||
+				symbol.Name.Contains("RuntimeDerivedObjectJoinValue::ToString", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderAppendObjectRetainsOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderAppendObjectLifetimeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectEnumerableJoinRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderObjectEnumerableJoinEntry", "CoreLibStringBuilderObjectListJoinEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 400_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::AppendJoin<object>", StringComparison.Ordinal));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInt32EnumerableJoinRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderInt32EnumerableJoinEntry", "CoreLibStringBuilderInt32ListJoinEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 400_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::AppendJoin<int>", StringComparison.Ordinal));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectEnumerableJoinMatchesContract(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderObjectEnumerableJoinContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectEnumerableJoinContractEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInt32EnumerableJoinMatchesContract(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderInt32EnumerableJoinContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInt32EnumerableJoinContractEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibMemoryAlgorithmsSurviveCollectionOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibInt32ArrayCopyEntry", "CoreLibMemoryZeroEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibMemoryAlgorithmsMatchContractsAndRejectUnknownArrays(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibInt32ArrayCopyContractEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibMemoryZeroContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibRawZeroSmokeEntry", "CoreLibInt32ArrayCopyContractEntry", "CoreLibMemoryZeroContractEntry", "CoreLibInt32ArrayCopyRejectsUnknownEntry", "CoreLibMemoryClearRejectsUnknownEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+			try
+			{
+				var returned = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000);
+				Assert.True(returned == 42, $"Memory fixture '{entry}' returned {returned}.");
+			}
+			catch (Exception error) { throw new InvalidOperationException($"Memory fixture '{entry}' failed.", error); }
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibMemoryAlgorithmsNeedNoAllocationForValidRanges(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibMemoryAlgorithmsAllocationFreeEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); var heap = 0x0010_0000u; var guarded = false; var attempts = 0; var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { guarded = state.D[0] != 0; if (guarded) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (guarded) { attempts++; state.D[0] = 0; return; }
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(1, regions); Assert.Equal(0, attempts); Assert.False(guarded);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibMemoryReferenceOffsetsRetainOwnersOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibMemoryReferenceOffsetsRetainOwnersEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibPrivateMemoryZeroHelpersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = CoreLibCharacterFixtureBuilder.Create(directory);
+		foreach (var entry in new[] { "ZeroMemoryEntry", "ClearBytesEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = assembly, EntryPoint = $"CoreLibCharacterProbe::{entry}", Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				ExceptionMode = M68kExceptionMode.Full, MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowBuffer::ZeroMemoryInternal");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectEnumerableJoinRetainsOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectEnumerableJoinLifetimeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInt32EnumerableJoinRetainsOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInt32EnumerableJoinLifetimeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectEnumerableJoinPreservesExceptionsAndRejectsUnknownInputs(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderObjectEnumerableJoinExceptionEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderObjectEnumerableJoinExceptionEntry", "CoreLibStringBuilderObjectEnumerableJoinRejectsUnknownEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+			if (entry == "CoreLibStringBuilderObjectEnumerableJoinRejectsUnknownEntry")
+				Assert.Contains(result.Symbols, static s => s.Name.Contains("ThrowingObjectJoinEnumerable::GetEnumerator", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInt32EnumerableJoinPreservesExceptionsAndRejectsUnknownInputs(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderInt32EnumerableJoinMutationEntry", "CoreLibStringBuilderInt32EnumerableJoinRejectsUnknownEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+			if (entry == "CoreLibStringBuilderInt32EnumerableJoinRejectsUnknownEntry")
+				Assert.Contains(result.Symbols, static s => s.Name.Contains("ThrowingInt32JoinEnumerable::GetEnumerator", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectEnumerableJoinFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectEnumerableJoinAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u; var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 30_000_000));
+		Assert.Equal(52, regions); Assert.Equal(108, attempts); Assert.Equal(48, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderInt32EnumerableJoinFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderInt32EnumerableJoinAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u; var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 30_000_000));
+		Assert.Equal(44, regions); Assert.Equal(124, attempts); Assert.Equal(40, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectJoinRejectsUnknownValues(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectJoinRejectsUnknownValueEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("UnsupportedObjectJoinValue::ToString", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("RuntimeDerivedObjectJoinValue::ToString", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectJoinRetainsOwnersAcrossManagedCalls(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectJoinLifetimeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderObjectJoinFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderObjectJoinAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u;
+		var countdown = 0u;
+		var failures = 0;
+		var attempts = 0;
+		var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Equal(24, regions); Assert.Equal(32, attempts); Assert.Equal(20, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderEnumerableJoinRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderEnumerableArrayJoinEntry", "CoreLibStringBuilderEnumerableListJoinEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			// Each input kind covers 108 cases, with collection on every allocation.
+			var actual = Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000);
+			Assert.True(actual == 42u, $"{entry} returned {actual}.");
+			Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("StringBuilder::AppendJoin<string>", StringComparison.Ordinal));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal) || symbol.Name.Contains("TaskAsyncEnumerableExtensions", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderEnumerableJoinMatchesContract(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderEnumerableJoinContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderEnumerableJoinContractEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderEnumerableJoinPropagatesProducerFailure(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderEnumerableJoinPropagatesProducerFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result); _ = RegisterBumpAllocator(bus, 0x2800);
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name.Contains("ThrowingStringJoinEnumerable::GetEnumerator", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderEnumerableJoinRetainsOwnersAcrossManagedCalls(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		foreach (var entry in new[] { "CoreLibStringBuilderEnumerableJoinLifetimeEntry", "CoreLibStringJoinEnumeratorLifetimeAndMutationEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var actual = Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 30_000_000);
+			Assert.True(actual == 42u, $"{entry}, {mode} returned {actual}.");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderEnumerableJoinFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderEnumerableJoinAllocationFailureEntry",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		var bus = CreateHunkBus(result);
+		var heap = 0x0010_0000u;
+		var countdown = 0u;
+		var failures = 0;
+		var attempts = 0;
+		var regions = 0;
+		bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		Assert.Equal(46, regions); Assert.Equal(88, attempts); Assert.Equal(42, failures); Assert.Equal(0u, countdown);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderChunksSurviveCollectionOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var request = new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderChunksEntry",
+				IncludedExportNames = [], Cpu = target, OutputFormat = M68kOutputFormat.Hunk, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			};
+			var result = M68kCompiler.Compile(request);
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x0010_0000);
+			File.WriteAllText(Path.Combine(AppContext.BaseDirectory, $"stringbuilder-pinned-chunks-{target}-{mode}.map"), result.Map);
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, initialStackPointer: 0x0020_0000, maxInstructions: 50_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::GetChunks");
+			Assert.Contains(result.Symbols, static symbol => symbol.Name.EndsWith("ManyChunkInfo::MoveNext", StringComparison.Ordinal));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderChunkViewsAndEnumeratorsRetainOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderChunksContractEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		foreach (var entry in new[] { "CoreLibStringBuilderChunksLifetimeEntry", "CoreLibStringBuilderChunksContractEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				IncludedExportNames = [], Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x0010_0000);
+			File.WriteAllText(Path.Combine(AppContext.BaseDirectory, $"stringbuilder-pinned-{entry}-{target}-{mode}.map"), result.Map);
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, initialStackPointer: 0x0020_0000, maxInstructions: 10_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderChunkIndexFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		const uint allocatorAddress = 0x2800;
+		const uint failureControlAddress = 0x2A00;
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderChunksAllocationFailureEntry",
+				imports: new Dictionary<string, uint> {
+					[M68kRuntimeImports.Allocate] = allocatorAddress,
+					["fixture.string-builder-allocation-failure"] = failureControlAddress },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x0010_0000);
+			File.WriteAllText(Path.Combine(AppContext.BaseDirectory, $"stringbuilder-pinned-chunk-failures-{target}-{mode}.map"), result.Map);
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u;
+			var failCountdown = 0u;
+			var failures = 0;
+			var guardedAttempts = 0;
+			var guardedRegions = 0;
+			bus.RegisterGateway(failureControlAddress, state => { failCountdown = state.D[0]; if (failCountdown != 0) guardedRegions++; });
+			bus.RegisterGateway(allocatorAddress, state =>
+			{
+				if (failCountdown != 0) guardedAttempts++;
+				if (failCountdown == 1) { failures++; state.D[0] = 0; return; }
+				if (failCountdown > 1) failCountdown--;
+				var size = state.D[0];
+				var address = heap;
+				heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size));
+				state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, initialStackPointer: 0x0020_0000, maxInstructions: 10_000_000));
+			Assert.Equal(6, guardedRegions);
+			Assert.Equal(3, guardedAttempts);
+			Assert.Equal(2, failures);
+			Assert.Equal(0u, failCountdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderSurvivesCollectionOnEveryAllocation(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderGcEntry",
+				Cpu = target,
+				OutputFormat = M68kOutputFormat.Hunk,
+				PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+				{
+					EnableUnlistedManagedBodies = true
+				}
+			});
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			File.WriteAllText(Path.Combine(AppContext.BaseDirectory, $"stringbuilder-pinned-gc-{target}-{mode}.map"), result.Map);
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+				maxInstructions: 2_000_000));
+		}
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibFormattingContractCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderCompositeFormatContractEntry", "CoreLibFormattingReferenceOwnerEntry", "CoreLibTwoCharacterSearchEntry" })
+			foreach (var cpu in CpuTargets)
+				result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibFormattingContractCases))]
+	public void CoreLibFormattingContractsAndOwnersSurviveCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			File.WriteAllText(Path.Combine(AppContext.BaseDirectory, $"stringbuilder-pinned-contract-{entry}-{target}-{mode}.map"), result.Map);
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCustomFormattingRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibRuntimeTypeIdentityEntry", "CoreLibStringBuilderCustomFormattingEntry" })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCompositeFormattingRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCompositeFormatEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibNumberFormatInfoStateRetainsSignsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibNumberFormatInfoStateEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibGroupedProviderContractsRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibGroupedProviderContractsEntry",
+				Imports = new Dictionary<string, uint> { ["fixture.grouped-progress"] = 0x3000 },
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var bus = CreateHunkBus(result); var progress = 0u; var checkpoints = 0;
+			bus.RegisterGateway(0x3000, state => { progress = state.D[0]; checkpoints++; });
+			try { Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 400_000_000)); }
+			catch (Exception error) { throw new Xunit.Sdk.XunitException($"{error.Message}; progress={progress}, checkpoints={checkpoints}, mode={mode}"); }
+			Assert.Equal(123, checkpoints); Assert.Equal(1002u, progress);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DuplicateLongAssignmentsPreserveBothCopiesOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::DuplicateLongAssignmentEntry", peepholeOptimization: mode);
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+		}
+	}
+
+	[Theory]
+	[InlineData("DuplicateLongAssignment", false)]
+	[InlineData("DuplicateDoubleAssignment", true)]
+	public void DuplicateMultiwordValuesKeepTypedAndAggregateStacksAligned(string name, bool floatingPoint)
+	{
+		var kind = floatingPoint ? CilStackValueKind.Float64 : CilStackValueKind.Int64;
+		using var module = new CompilationModule(FixtureAssembly);
+		var method = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::" + name);
+		var duplicate = method.Instructions.Single(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Dup);
+		var states = CilStackAnalyzer.AnalyzeTypes(method, module);
+		Assert.Equal(new[] { kind, kind }, states[duplicate.Offset]);
+		Assert.Equal(new[] { kind, kind, kind, kind }, states[duplicate.NextOffset]);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibPercentSmokeRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibPercentSmokeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderPercentIntegersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderPercentIntegersEntry", "CoreLibPercentIntegerSpanHelpersEntry", "CoreLibPercentProviderContractsEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			try { Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 240_000_000)); }
+			catch (Exception error) { throw new Xunit.Sdk.XunitException($"{entry}/{target}/{mode}: {error.Message}"); }
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void PercentIntegerFormattingHonorsAllocationAndFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibPercentIntegerAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(101, regions); Assert.Equal(64, attempts); Assert.Equal(26, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibCurrencySmokeRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibCurrencySmokeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderCurrencyIntegersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderCurrencyIntegersEntry", "CoreLibCurrencyIntegerSpanHelpersEntry", "CoreLibCurrencyProviderContractsEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			try { Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 240_000_000)); }
+			catch (Exception error) { throw new Xunit.Sdk.XunitException($"{entry}/{target}/{mode}: {error.Message}"); }
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CurrencyIntegerFormattingHonorsAllocationAndFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibCurrencyIntegerAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(111, regions); Assert.Equal(79, attempts); Assert.Equal(36, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibGroupedSmokeRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibGroupedSmokeEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderGroupedIntegersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderGroupedIntegersEntry", "CoreLibGroupedIntegerSpanHelpersEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 80_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GroupedIntegerFormattingHonorsAllocationAndFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibGroupedIntegerAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			// This allocator probe keeps every allocation alive. Real collection
+			// inside provider callbacks is exercised by the managed-pool matrix.
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(107, regions); Assert.Equal(73, attempts); Assert.Equal(32, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibScientificProviderContractsRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibScientificProviderContractsEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderScientificIntegersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderScientificIntegersEntry", "CoreLibScientificIntegerSpanHelpersEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 60_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibFixedPointProviderContractsRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibFixedPointProviderContractsEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderFixedPointIntegersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderFixedPointIntegersEntry", "CoreLibFixedPointIntegerSpanHelpersEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 60_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderDecimalProvidersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderDecimalProvidersEntry", "CoreLibDecimalProviderContractsEntry", "CoreLibDecimalProviderSpanHelpersEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			try { Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 120_000_000)); }
+			catch (Exception error) { throw new Xunit.Sdk.XunitException($"{entry}/{target}/{mode}: {error.Message}"); }
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ScientificIntegerFormattingHonorsAllocationAndFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibScientificIntegerAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			// This allocator probe keeps every allocation alive. Real collection
+			// inside provider callbacks is exercised by the managed-pool matrix.
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(97, regions); Assert.Equal(60, attempts); Assert.Equal(24, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FixedPointIntegerFormattingHonorsAllocationAndFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibFixedPointIntegerAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			// This allocator probe keeps every allocation alive. Real collection
+			// inside provider callbacks is exercised by the managed-pool matrix.
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(79, regions); Assert.Equal(33, attempts); Assert.Equal(6, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalProviderFormattingHonorsAllocationAndFailureContracts(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibDecimalProviderAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			// This allocator probe keeps every allocation alive. Real collection
+			// inside provider callbacks is exercised by the managed-pool matrix.
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(40, regions); Assert.Equal(28, attempts); Assert.Equal(8, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ExternalCollectWithExtendedMetadataPreservesA2AndTheOriginalRootCursor(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::ExplicitCollectWithDynamicFrameEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.GcCollect] = 0x2C00 }, peepholeOptimization: mode);
+			var bus = CreateHunkBus(result);
+			var calls = 0;
+			bus.RegisterGateway(0x2C00, state =>
+			{
+				Assert.Equal(state.A[7] + 8, state.D[0]);
+				Assert.Equal(bus.ReadLong(state.D[0]), state.D[1]);
+				Assert.Equal(state.A[5], state.A[2]);
+				state.A[2] = 0x1234_5678;
+				calls++;
+			});
+			// Runtime helper labels are absent from the public method symbols.
+			// Locate the unique root-walk entry that captures SP and its return PC.
+			var adapterOffset = Enumerable.Range(0, result.Code.Length / 2 - 1).Select(index => index * 2)
+				.Single(offset => result.Code[offset] == 0x20 && result.Code[offset + 1] == 0x0F &&
+					result.Code[offset + 2] == 0x22 && result.Code[offset + 3] == 0x17);
+			Execute(bus, model, HunkLoadAddress + (uint)adapterOffset, initialize: InitializeClassicCalleeSavedRegisters,
+				afterReturn: state => AssertClassicCalleeSavedRegisters(state, "external GC adapter"));
+			Assert.Equal(1, calls);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+			Assert.Equal(2, calls);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStandardIntegerFormattingRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderStandardIntegerFormatsEntry", "CoreLibStandardIntegerFormattingHelpersEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowNumberFormatting).Assembly.Location],
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000));
+		}
+	}
+
+	[Fact]
+	public void StandardIntegerFixtureOraclesMatchCoreLib()
+	{
+		var flags = BindingFlags.NonPublic | BindingFlags.Static;
+		var value = typeof(CompilerFixtures).GetMethod("StandardIntegerValue", flags)!;
+		var format = typeof(CompilerFixtures).GetMethod("StandardIntegerCompositeFormat", flags)!;
+		var expected = typeof(CompilerFixtures).GetMethod("StandardIntegerText", flags)!;
+		for (var scenario = 0; scenario < 32; scenario++)
+		{
+			var text = new System.Text.StringBuilder().AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
+				(string)format.Invoke(null, [scenario])!, value.Invoke(null, [scenario])).ToString();
+			Assert.Equal((string)expected.Invoke(null, [scenario])!, text);
+		}
+	}
+
+	private delegate bool FixedPointFixtureCheck(ReadOnlySpan<char> text, int width, bool custom, int precision);
+	private delegate bool ScientificFixtureCheck(ReadOnlySpan<char> text, string expected, bool custom);
+
+	[Fact]
+	public void PercentIntegerFixtureOraclesMatchCoreLib()
+	{
+		var flags = BindingFlags.NonPublic | BindingFlags.Static;
+		var fixtures = typeof(CompilerFixtures);
+		object? Call(string name, params object[] arguments) => fixtures.GetMethod(name, flags)!.Invoke(null, arguments);
+		for (var custom = 0; custom < 2; custom++)
+		for (var width = 0; width < 8; width++)
+		for (var scenario = 0; scenario < 4; scenario++)
+		{
+			IFormatProvider provider = custom == 0 ? System.Globalization.CultureInfo.InvariantCulture : (IFormatProvider)Call("PercentInfo", 1, 10)!;
+			var value = Call("StandardIntegerValue", width * 4)!;
+			var expected = (string)Call("PercentExpected", Call("PercentMagnitude", width, custom != 0)!, (width & 1) == 0, custom != 0,
+				custom != 0 ? (width & 1) == 0 ? 10 : 2 : 0, Call("GroupedPrecision", scenario, custom != 0)!)!;
+			Assert.Equal(expected, new System.Text.StringBuilder().AppendFormat(provider, (string)Call("PercentComposite", scenario)!, value).ToString());
+		}
+		for (var pattern = 0; pattern < 12; pattern++)
+		for (var valueCase = 0; valueCase < 3; valueCase++)
+		{
+			var style = pattern % 8;
+			var info = (System.Globalization.NumberFormatInfo)Call("PercentInfo", style, pattern)!;
+			object value = valueCase == 0 ? 0 : valueCase == 1 ? (object)long.MinValue : ulong.MaxValue;
+			var magnitude = valueCase == 0 ? "0" : (string)Call("PercentContractMagnitude", style, valueCase == 2)!;
+			var expected = (string)Call("PercentExpected", magnitude, valueCase == 1, true, valueCase == 1 ? pattern : pattern % 4, 3)!;
+			Assert.Equal(expected, ((IFormattable)value).ToString("P3", info));
+		}
+	}
+
+	[Fact]
+	public void CurrencyIntegerFixtureOraclesMatchCoreLib()
+	{
+		var flags = BindingFlags.NonPublic | BindingFlags.Static;
+		var fixtures = typeof(CompilerFixtures);
+		object? Call(string name, params object[] arguments) => fixtures.GetMethod(name, flags)!.Invoke(null, arguments);
+		for (var custom = 0; custom < 2; custom++)
+		for (var width = 0; width < 8; width++)
+		for (var scenario = 0; scenario < 4; scenario++)
+		{
+			IFormatProvider provider = custom == 0 ? System.Globalization.CultureInfo.InvariantCulture : (IFormatProvider)Call("CurrencyInfo", 1, 12)!;
+			var value = Call("StandardIntegerValue", width * 4)!;
+			var expected = (string)Call("CurrencyExpected", Call("GroupedMagnitude", width, custom != 0)!, (width & 1) == 0, custom != 0,
+				custom != 0 && (width & 1) == 0 ? 12 : 0, Call("GroupedPrecision", scenario, custom != 0)!)!;
+			Assert.Equal(expected, new System.Text.StringBuilder().AppendFormat(provider, (string)Call("CurrencyComposite", scenario)!, value).ToString());
+		}
+		for (var pattern = 0; pattern < 17; pattern++)
+		for (var valueCase = 0; valueCase < 3; valueCase++)
+		{
+			var style = pattern % 8;
+			var info = (System.Globalization.NumberFormatInfo)Call("CurrencyInfo", style, pattern)!;
+			object value = valueCase == 0 ? 0 : valueCase == 1 ? (object)long.MinValue : ulong.MaxValue;
+			var magnitude = valueCase == 0 ? "0" : (string)Call("GroupingContractMagnitude", style, valueCase == 2)!;
+			var expected = (string)Call("CurrencyExpected", magnitude, valueCase == 1, true, valueCase == 1 ? pattern : pattern % 4, 3)!;
+			Assert.Equal(expected, ((IFormattable)value).ToString("C3", info));
+		}
+	}
+
+	[Fact]
+	public void GroupedIntegerFixtureOraclesMatchCoreLib()
+	{
+		var flags = BindingFlags.NonPublic | BindingFlags.Static;
+		var fixtures = typeof(CompilerFixtures);
+		object? Call(string name, params object[] arguments) => fixtures.GetMethod(name, flags)!.Invoke(null, arguments);
+		for (var custom = 0; custom < 2; custom++)
+		for (var width = 0; width < 8; width++)
+		for (var scenario = 0; scenario < 4; scenario++)
+		{
+			IFormatProvider provider = custom == 0 ? System.Globalization.CultureInfo.InvariantCulture : (IFormatProvider)Call("GroupedInfo", 1, 2)!;
+			var value = Call("StandardIntegerValue", width * 4)!;
+			var text = new System.Text.StringBuilder().AppendFormat(provider, (string)Call("GroupedComposite", scenario)!, value).ToString();
+			var expected = (string)Call("GroupedExpected", Call("GroupedMagnitude", width, custom != 0)!, (width & 1) == 0, custom != 0,
+				custom == 0 ? 1 : 2, Call("GroupedPrecision", scenario, custom != 0)!)!;
+			Assert.Equal(expected, text);
+		}
+		for (var style = 0; style < 8; style++)
+		for (var pattern = 0; pattern < 5; pattern++)
+		for (var valueCase = 0; valueCase < 3; valueCase++)
+		{
+			var info = (System.Globalization.NumberFormatInfo)Call("GroupedInfo", style, pattern)!;
+			object value = valueCase == 0 ? 0 : valueCase == 1 ? (object)long.MinValue : ulong.MaxValue;
+			var magnitude = valueCase == 0 ? "0" : (string)Call("GroupingContractMagnitude", style, valueCase == 2)!;
+			var expected = (string)Call("GroupedExpected", magnitude, valueCase == 1, true, pattern, 3)!;
+			Assert.Equal(expected, ((IFormattable)value).ToString("N3", info));
+		}
+	}
+
+	[Fact]
+	public void ScientificIntegerFixtureOraclesMatchCoreLib()
+	{
+		var flags = BindingFlags.NonPublic | BindingFlags.Static;
+		var value = typeof(CompilerFixtures).GetMethod("StandardIntegerValue", flags)!;
+		var format = typeof(CompilerFixtures).GetMethod("ScientificCompositeFormat", flags)!;
+		var expected = typeof(CompilerFixtures).GetMethod("ScientificText", flags)!;
+		var info = typeof(CompilerFixtures).GetMethod("ScientificInfo", flags)!;
+		var check = typeof(CompilerFixtures).GetMethod("CheckScientificText", flags)!.CreateDelegate<ScientificFixtureCheck>();
+		for (var custom = 0; custom < 2; custom++)
+		for (var scenario = 0; scenario < 32; scenario++)
+		{
+			IFormatProvider provider = custom == 0 ? System.Globalization.CultureInfo.InvariantCulture : (IFormatProvider)info.Invoke(null, null)!;
+			var text = new System.Text.StringBuilder().AppendFormat(provider, (string)format.Invoke(null, [scenario])!, value.Invoke(null, [scenario])).ToString();
+			Assert.True(check(text, (string)expected.Invoke(null, [scenario])!, custom != 0), $"scenario={scenario}, custom={custom}");
+		}
+	}
+
+	[Fact]
+	public void FixedPointIntegerFixtureOraclesMatchCoreLib()
+	{
+		var flags = BindingFlags.NonPublic | BindingFlags.Static;
+		var value = typeof(CompilerFixtures).GetMethod("StandardIntegerValue", flags)!;
+		var format = typeof(CompilerFixtures).GetMethod("FixedPointFormat", flags)!;
+		var precision = typeof(CompilerFixtures).GetMethod("FixedPointPrecision", flags)!;
+		var info = typeof(CompilerFixtures).GetMethod("FixedPointInfo", flags)!;
+		var check = typeof(CompilerFixtures).GetMethod("CheckFixedPoint", flags)!.CreateDelegate<FixedPointFixtureCheck>();
+		for (var custom = 0; custom < 2; custom++)
+		for (var width = 0; width < 8; width++)
+		for (var formatCase = 0; formatCase < 4; formatCase++)
+		{
+			IFormatProvider provider = custom == 0 ? System.Globalization.CultureInfo.InvariantCulture : (IFormatProvider)info.Invoke(null, null)!;
+			var text = ((IFormattable)value.Invoke(null, [width * 4])!).ToString((string)format.Invoke(null, [formatCase])!, provider);
+			Assert.True(check(text, width, custom != 0, (int)precision.Invoke(null, [formatCase, custom != 0])!));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StandardIntegerFormattingAvoidsSpanAllocationsAndPreservesFailurePrefixes(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStandardIntegerFormattingAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 30_000_000));
+			Assert.Equal(76, regions); Assert.Equal(44, attempts); Assert.Equal(6, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibPointerStringConstructionCopiesTerminatedUtf16OnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibPointerStringConstructionEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowStringData::FromNullTerminatedCharacters");
+		}
+	}
+
+	[Fact]
+	public void PointerStringConstructionFixtureMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibPointerStringConstructionEntry());
+
+	[Fact]
+	public void PointerAppendFixtureMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderPointerAppendEntry());
+
+	[Fact]
+	public void StringBuilderMemoryFixturesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderArrayMemoryAppendEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderStringMemoryAppendEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderManagerMemoryAppendEntry());
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> StringBuilderMemoryAppendCases
+	{
+		get
+		{
+			var cases = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderArrayMemoryAppendEntry", "CoreLibStringBuilderStringMemoryAppendEntry", "CoreLibStringBuilderManagerMemoryAppendEntry" })
+			foreach (var cpu in CpuTargets) cases.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return cases;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(StringBuilderMemoryAppendCases))]
+	public void CoreLibStringBuilderMemoryAppendPreservesOwnersAndCallbacks(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				Imports = new Dictionary<string, uint> { [M68kRuntimeImports.UnhandledException] = 0x2E00 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var bus = CreateHunkBus(result);
+			var reason = -1;
+			bus.RegisterGateway(0x2E00, state => reason = (int)state.D[0]);
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000);
+			Assert.True(reason == -1, $"Unhandled exception reason {reason}; {entry}; {mode}");
+			Assert.Equal(42u, actual);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CharacterMemoryAppendAllocationFailuresPreserveSourcesAndPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderMemoryAllocationFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2C00, _ => { });
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+			Assert.Equal(9, regions); Assert.Equal(9, attempts); Assert.Equal(6, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Fact]
+	public void StringBuilderStringConstructorFixturesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderStringConstructorsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderStringConstructorValidationEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderStringConstructorsCopyUtf16AndValidateOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var entry in new[] { "CoreLibStringBuilderStringConstructorsEntry", "CoreLibStringBuilderStringConstructorValidationEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderStringConstructorAllocationFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderStringConstructorAllocationFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+			Assert.Equal(18, regions); Assert.Equal(27, attempts); Assert.Equal(18, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderPointerAppendPreservesCountedUtf16OnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderPointerAppendEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void PointerInputAllocationFailuresPreserveSourcesAndPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibPointerInputAllocationFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.Equal(4, regions); Assert.Equal(4, attempts); Assert.Equal(3, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibSpanStringConstructionRetainsOwnersOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibSpanStringConstructionEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowStringData::FromCharacters");
+		}
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderLengthCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderClearEntry", "CoreLibStringBuilderLengthTruncationEntry",
+				"CoreLibStringBuilderLengthGrowthEntry", "CoreLibStringBuilderLengthValidationEntry", "CoreLibCharacterArrayCopyEntry" })
+			foreach (var cpu in CpuTargets)
+				result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderLengthCases))]
+	public void CoreLibStringBuilderClearAndLengthSurviveCollectionOnEveryCpu(
+		string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+			{
+				EnableUnlistedManagedBodies = true
+			}
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 2_000_000));
+		if (entry != "CoreLibCharacterArrayCopyEntry")
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::set_Length");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderEditCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderStringInsertionEntry", "CoreLibStringBuilderRemovalEntry",
+				"CoreLibStringBuilderInsertionOverloadsEntry", "CoreLibStringBuilderRepeatedInsertionEntry",
+				"CoreLibStringBuilderEditValidationEntry", "CoreLibReadOnlyCharacterArrayRangeEntry" })
+			foreach (var cpu in CpuTargets) result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderEditCases))]
+	public void CoreLibStringBuilderInsertionAndRemovalSurviveCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 10_000_000));
+		if (entry is "CoreLibStringBuilderStringInsertionEntry" or "CoreLibStringBuilderRepeatedInsertionEntry" or "CoreLibStringBuilderRemovalEntry")
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::Remove");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderEditValidationMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderEditValidationEntry());
+
+	[Fact]
+	public void ParsedCompositeFormatFixtureMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderParsedCompositeFormatEntry());
+
+	[Fact]
+	public void StringBuilderCustomValueFormattingMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCustomValueFormattingEntry());
+
+	[Fact]
+	public void StringBuilderReferencedValueFormattingMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderReferencedValueFormattingEntry());
+
+	[Fact]
+	public void StringBuilderDefaultValueNamesMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDefaultValueNamesEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void PrimitiveGenericSizesExecuteOnEveryCpu(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibPrimitiveGenericSizesEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ByteSpanProjectionsRetainOwnersAcrossCollection(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibByteSpanProjectionOwnersEntry");
+
+	[Fact]
+	public void CustomNumberEngineMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibCustomNumberEngineEntry());
+
+	[Fact]
+	public void AmbientIntegerFormattingFixtureMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAmbientCultureEntry());
+
+	[Fact]
+	public void AmbientInsertAndJoinFixtureMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAmbientInsertJoinEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AmbientCultureControlsTypedInsertionAndIntegerJoining(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderAmbientInsertJoinEntry");
+
+	[Fact]
+	public void AmbientFallbackFixtureMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAmbientFallbackEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AmbientCultureChangesAreObservedByFormattingFallbacks(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderAmbientFallbackEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AmbientCultureDefaultsExecuteOnEveryCpu(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibAmbientCultureDefaultsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AmbientCultureControlsStringBuilderAndIntegerFormatting(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderAmbientCultureEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomIntegerAllocationsPreserveDestinationsPrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibCustomIntegerAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800,
+					["fixture.string-builder-allocation-failure"] = 0x2A00 }, peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); var heap = 0x0010_0000u;
+			var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0; var regionStart = 0;
+			var regionAttempts = new List<int>();
+			bus.RegisterGateway(0x2A00, state =>
+			{
+				if (state.D[0] != 0) { regions++; regionStart = attempts; }
+				else if (countdown != 0) regionAttempts.Add(attempts - regionStart);
+				countdown = state.D[0];
+			});
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000);
+			Assert.True(actual == 42, $"Custom allocation contracts failed with {actual}; {mode}.");
+			Assert.Equal(new[] { 0, 1, 1 }, regionAttempts.Take(3));
+			Assert.True(failures > 8 && attempts > failures && regions > failures);
+			Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Fact]
+	public void CustomIntegerProviderContractsMatchTheManagedAdapters() => Assert.Equal(42, CompilerFixtures.CoreLibCustomIntegerProviderContractsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomIntegerProvidersPreserveOwnersAndFailureContracts(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibCustomIntegerProviderContractsEntry");
+
+	[Fact]
+	public void CustomIntegerStringBuilderFixtureMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCustomIntegersEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomIntegersUsePublicStringBuilderFormattingOnEveryCpu(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderCustomIntegersEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomNumberEngineExecutesOnTarget(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibCustomNumberEngineEntry");
+
+	[Fact]
+	public void DefaultRuntimeTypeNamesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibDefaultRuntimeTypeNamesEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDefaultTypedValueEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DefaultRuntimeTypeNamesAndImplicitBoxesPreserveOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		RunStringBuilderValueFormatting(target, model, "CoreLibDefaultRuntimeTypeNamesEntry");
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDefaultTypedValueEntry");
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderDefaultImplicitBoxFailurePermitsRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderDefaultBoxFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800,
+					["fixture.string-builder-allocation-failure"] = 0x2A00 }, peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); var heap = 0x0010_0000u; var fail = false; var failures = 0;
+			bus.RegisterGateway(0x2A00, state => fail = state.D[0] != 0);
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (fail) { failures++; state.D[0] = 0; return; }
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+			Assert.Equal(1, failures); Assert.False(fail);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderDefaultValueNamesPreserveDispatchAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDefaultValueNamesEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderReferencedValuesPreserveDispatchAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderReferencedValueFormattingEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderCustomValuesPreserveDispatchAndBoxedCopies(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderCustomValueFormattingEntry");
+
+	[Fact]
+	public void DecimalFormattingSmokeMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDecimalSmokeEntry());
+
+	[Fact]
+	public void BoxedDecimalFormattingMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderBoxedDecimalEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void BoxedDecimalsPreserveAmbientFormattingAndJoinDispatch(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderBoxedDecimalEntry");
+
+	[Fact]
+	public void DecimalEnumerableJoinsMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDecimalEnumerableJoinEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalEnumerableJoinsPreserveAmbientFormatting(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDecimalEnumerableJoinEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalJoinsRetainAggregateValuesAndRejectMutatedLists(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDecimalJoinLifetimeEntry");
+
+	[Fact]
+	public void DecimalValueProviderContractsMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibDecimalValueProviderContractsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalProvidersPreserveCallbackOrderOwnersAndFailurePrefixes(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibDecimalValueProviderContractsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalAllocationsPreserveDestinationsPrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibDecimalAllocationContractsEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode, frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result); var heap = 0x0010_0000u;
+			var countdown = 0u; var failures = 0; var attempts = 0; var regions = 0; var regionStart = 0;
+			var regionAttempts = new List<int>();
+			bus.RegisterGateway(0x2A00, state => {
+				if (state.D[0] != 0) { regions++; regionStart = attempts; }
+				else if (countdown != 0) regionAttempts.Add(attempts - regionStart);
+				countdown = state.D[0];
+			});
+			bus.RegisterGateway(0x2800, state => {
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000);
+			Assert.True(actual == 42, $"Decimal allocation contracts failed with {actual}; {mode}.");
+			Assert.Equal(new[] { 0, 1, 1 }, regionAttempts.Take(3));
+			Assert.True(failures > 32 && attempts > failures && regions > failures);
+			Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderDecimalSmokeRunsOnEveryCpu(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDecimalSmokeEntry");
+
+	[Fact]
+	public void DecimalFormattingMatrixMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDecimalMatrixEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderDecimalFormatsPreserveScaleRoundingAndSpanGuards(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDecimalMatrixEntry");
+
+	[Fact]
+	public void FloatingPointStringBuilderSmokeMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderFloatingPointSmokeEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void UInt32MemmovePreservesOverlapDirectionAndGuardWords(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		// Host reflection retains generated assemblies; keep them in test output.
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "UInt32MemmoveProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = UInt32MemmoveFixtureBuilder.Create(directory);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "UInt32MemmoveProbe::Entry",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0006_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void NumericConversionsPreserveIeeeBitsRoundingAndIntegerLimits(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "NumericConversionProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = NumericConversionFixtureBuilder.Create(directory);
+		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("NumericConversionProbe")!;
+		Assert.Equal(42, (int)host.GetMethod("Entry")!.Invoke(null, null)!);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "NumericConversionProbe::Entry",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
+				OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo, PeepholeOptimization = mode
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingNegationPreservesSignedZerosInfinitiesAndNaNPayloads(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingNegationProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = NumericConversionFixtureBuilder.Create(directory);
+		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("NumericConversionProbe")!;
+		Assert.Equal(42, (int)host.GetMethod("NegationEntry")!.Invoke(null, null)!);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "NumericConversionProbe::NegationEntry",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
+				OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo, PeepholeOptimization = mode
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CompareZeroPeepholePreservesOpcodeLookingImmediateData(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var literal in new uint[] { 0x0c000000, 0x0c400000, 0x0c800000 })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.Disabled, M68kPeepholeOptimizationMode.FixedPoint })
+		{
+			var assembler = new CopperSharp.Compiler.Backend.M68kAssembler();
+			assembler.EmitWord(0x7400); // MOVEQ #0,D2
+			assembler.EmitWord(0x223c); assembler.EmitLong(literal); // MOVE.L #literal,D1
+			assembler.EmitWord(0xb082); // CMP.L D2,D0
+			assembler.EmitBranch(CopperSharp.Compiler.Backend.M68kCondition.Equal, "equal");
+			assembler.EmitWord(0x70ff); assembler.EmitWord(0x4e75);
+			assembler.Mark("equal"); assembler.EmitWord(0x2001); assembler.EmitWord(0x4e75);
+			assembler.OptimizeForCpu(target, peepholeOptimization: mode);
+			var linked = assembler.Link(0, new Dictionary<string, uint>());
+			var bus = new TestBus(); linked.Bytes.CopyTo(bus.Memory.AsSpan((int)HunkLoadAddress));
+			var actual = Execute(bus, model, HunkLoadAddress);
+			Assert.True(literal == actual, $"Immediate {literal:X8} became {actual:X8}; {target}/{mode}.");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibBitOperationsLog2UsesSoftwareFallbackAndForeignGatesReturnFalse(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "HardwareSupportProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory); var assembly = HardwareSupportFixtureBuilder.Create(directory);
+		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("HardwareSupportProbe")!;
+		Assert.Equal(42, (int)host.GetMethod("Log2Entry")!.Invoke(null, null)!);
+		foreach (var entry in new[] { "Log2Entry", "Gates", "ProtectedGate", "ApplicationGate" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "HardwareSupportProbe::" + entry,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, RuntimeProfile = M68kRuntimeProfile.Freestanding,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x60000, Size = 0x8000 }, OutputFormat = M68kOutputFormat.Hunk,
+				ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var bus = CreateHunkBus(result);
+			var codeBefore = bus.Memory.AsSpan((int)HunkLoadAddress, result.Code.Length).ToArray();
+			bus.Memory.AsSpan((int)StackPointer + 4, 128).Fill(0xa5);
+			Assert.Equal(entry == "ProtectedGate" ? 0u : entry == "ApplicationGate" ? 1u : 42u,
+				Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000,
+					afterReturn: state => Assert.Equal(StackPointer + 4, state.A[7])));
+			Assert.Equal(codeBefore, bus.Memory.AsSpan((int)HunkLoadAddress, result.Code.Length).ToArray());
+			Assert.All(bus.Memory.AsSpan((int)StackPointer + 4, 128).ToArray(), value => Assert.Equal((byte)0xa5, value));
+			Assert.DoesNotContain(result.Symbols, symbol => symbol.Name is not null && (symbol.Name.EndsWith("::LeadingZeroCount", StringComparison.Ordinal) || symbol.Name.EndsWith("::BitScanReverse", StringComparison.Ordinal)));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingSubnormalSubtractionPreservesEveryFractionBit(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingSubnormalProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = FloatingPointArithmeticFixtureBuilder.Create(directory);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "FloatingPointArithmeticProbe::SubnormalSubtractBits",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
+				OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo, PeepholeOptimization = mode
+			});
+			var bus = CreateHunkBus(result); uint low = 0;
+			var high = Execute(bus, model, HunkLoadAddress + result.EntryPoint, afterReturn: state => low = state.D[1]);
+			var bits = ((ulong)high << 32) | low;
+			Assert.True(bits == 0x0c000000, $"Subnormal subtraction returned {bits:X16}; {target}/{mode}; {directory}.");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingBinaryArithmeticPreservesIeeeResultsAndCallerGuards(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingArithmeticProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = FloatingPointArithmeticFixtureBuilder.Create(directory);
+		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("FloatingPointArithmeticProbe")!;
+		Assert.Equal(42, (int)host.GetMethod("Entry")!.Invoke(null, null)!);
+		foreach (var operation in new[] { "Add", "Subtract", "Multiply", "Divide", "Remainder" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "FloatingPointArithmeticProbe::" + operation + "Entry",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
+				OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo, PeepholeOptimization = mode
+			});
+			var bus = CreateHunkBus(result);
+			var codeBefore = bus.Memory.AsSpan((int)HunkLoadAddress, result.Code.Length).ToArray();
+			bus.Memory.AsSpan((int)StackPointer + 4, 128).Fill(0xa5);
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint,
+				initialize: InitializeClassicCalleeSavedRegisters,
+				afterReturn: state => { Assert.Equal(StackPointer + 4, state.A[7]); AssertClassicCalleeSavedRegisters(state, "software floating " + operation); },
+				maxInstructions: 100_000_000);
+			Assert.True(actual == 42, $"{operation}/{mode} returned {actual}.");
+			Assert.Equal(codeBefore, bus.Memory.AsSpan((int)HunkLoadAddress, result.Code.Length).ToArray());
+			Assert.All(bus.Memory.AsSpan((int)StackPointer + 4, 128).ToArray(), value => Assert.Equal((byte)0xa5, value));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingComparisonsPreserveUnorderedBranchesSignedZerosAndExceptionOffsets(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingComparisonProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = FloatingPointComparisonFixtureBuilder.Create(directory);
+		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("FloatingPointComparisonProbe")!;
+		foreach (var entry in new[] { "Entry", "ProtectedEntry" })
+		{
+			Assert.Equal(42, (int)host.GetMethod(entry)!.Invoke(null, null)!);
+			foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+			{
+				var result = M68kCompiler.Compile(new M68kCompilationRequest {
+					AssemblyPath = assembly, EntryPoint = "FloatingPointComparisonProbe::" + entry,
+					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+					Cpu = target, FloatingPoint = M68kFloatingPointMode.SoftFloat,
+					RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
+					OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode
+				});
+				Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000,
+					afterReturn: state => Assert.Equal(StackPointer + 4, state.A[7])));
+			}
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibBigIntegerThreeBufferAddPreservesBothInputs(M68kCpuTarget target, M68kCpuModel model)
+		=> RunCoreLibBigIntegerProbe(target, model, "ThreeBufferAddEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibDragon4PreservesSubnormalDigits(M68kCpuTarget target, M68kCpuModel model)
+		=> RunCoreLibBigIntegerProbe(target, model, "SubnormalDragon4Entry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibGrisuPreservesSubnormalDigits(M68kCpuTarget target, M68kCpuModel model)
+		=> RunCoreLibBigIntegerProbe(target, model, "SubnormalGrisuEntry");
+
+	private static void RunCoreLibBigIntegerProbe(M68kCpuTarget target, M68kCpuModel model, string entry)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "BigIntegerAddProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory); var assembly = CoreLibBigIntegerFixtureBuilder.Create(directory);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "CoreLibBigIntegerProbe::" + entry,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				Heap = new M68kHeapOptions { StartAddress = 0x60000, Size = 0x8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var probeBus = CreateHunkBus(result);
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x60000, "Numeric probe image overlaps its test heap.");
+			// CoreLib type initialization legitimately updates writable image slots.
+			var readOnlyMetrics = System.Text.RegularExpressions.Regex.Match(result.Map, @"rom-code-bytes=(\d+) rom-rodata-bytes=(\d+)");
+			Assert.True(readOnlyMetrics.Success);
+			var readOnlyLength = int.Parse(readOnlyMetrics.Groups[1].Value) + int.Parse(readOnlyMetrics.Groups[2].Value);
+			var codeBefore = probeBus.Memory.AsSpan((int)HunkLoadAddress, readOnlyLength).ToArray();
+			probeBus.WriteLong(0x70000, 0xaabbccdd);
+			var actual = Execute(probeBus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000,
+				afterReturn: state => Assert.Equal(StackPointer + 4, state.A[7]));
+			Assert.Equal(0xaabbccddu, probeBus.ReadLong(0x70000));
+			Assert.Equal(codeBefore, probeBus.Memory.AsSpan((int)HunkLoadAddress, readOnlyLength).ToArray());
+			Assert.True(actual == 42, $"{entry} returned {actual}; {target}/{mode}; {directory}.");
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibBigIntegerFixedBuffersPreserveEveryWordAndStackGuards(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibBigIntegerProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = CoreLibBigIntegerFixtureBuilder.Create(directory);
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "CoreLibBigIntegerProbe::Entry",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0006_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var bus = CreateHunkBus(result);
+			var codeBefore = bus.Memory.AsSpan((int)HunkLoadAddress, result.Code.Length).ToArray();
+			bus.Memory.AsSpan((int)StackPointer + 4, 128).Fill(0xa5);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint,
+				initialize: InitializeClassicCalleeSavedRegisters,
+				afterReturn: state => { Assert.True(StackPointer + 4 == state.A[7], $"CoreLib BigInteger returned D0={state.D[0]}, SP={state.A[7]:X8}, A6={state.A[6]:X8}; expected SP={StackPointer+4:X8}."); AssertClassicCalleeSavedRegisters(state, "CoreLib BigInteger"); },
+				maxInstructions: 2_000_000));
+			Assert.Equal(codeBefore, bus.Memory.AsSpan((int)HunkLoadAddress, result.Code.Length).ToArray());
+			Assert.All(bus.Memory.AsSpan((int)StackPointer + 4, 128).ToArray(), value => Assert.Equal((byte)0xa5, value));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void NativeUInt32SpanPointerKeepsItsOwnerAfterSpanResetAndCollection(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "NativeSpanPointerProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = CoreLibBigIntegerFixtureBuilder.Create(directory);
+		foreach (var entry in new[] { "OwnedPointerEntry", "ConvertedPointerEntry" })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = assembly, EntryPoint = "CoreLibBigIntegerProbe::" + entry,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0006_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+		}
+	}
+
+	[Fact]
+	public void FloatingPointPrerequisitesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibFloatingPointInitializedTablesEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibFloatingPointBitProjectionEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibFloatingPointArgumentStoresEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingPointInitializedTablesPreserveTargetWords(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingPointInitializedTablesEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingPointBitProjectionsPreserveTargetWords(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingPointBitProjectionEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingPointArgumentStoresPreserveTargetWords(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingPointArgumentStoresEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingPointFormatsPreserveSpecialValuesAndSpanGuards(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderFloatingPointSmokeEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderParsedFloatingProviderGrowthPreservesTextAndQueries(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibFloatingProviderTwoArgumentGrowthEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x70000, Size = 0x8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x70000, "Floating provider image overlaps its test heap.");
+			var bus = CreateHunkBus(result); uint address = 0;
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 50_000_000,
+				afterReturn: state => { address = state.A[0]; Assert.Equal(StackPointer + 4, state.A[7]); });
+			Assert.NotEqual(0u, address);
+			var length = bus.ReadLong(address + (uint)M68kRuntimeAbi.StringLengthOffset); Assert.InRange(length, 0u, 256u);
+			var characters = new char[length];
+			for (var index = 0; index < characters.Length; index++) characters[index] = (char)bus.ReadWord(address + (uint)M68kRuntimeAbi.StringDataOffset + (uint)(index * 2));
+			Assert.Equal("seedAnew123:50|2|2|valid\nseedAnew123:50|2|2|valid", new string(characters));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingPointProviderContractsPreserveCallbacksAndFailures(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingValueProviderContractsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingPointStandardFormatsPreservePrecisionAndProviderSettings(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingPointStandardFormatsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingPointCustomFormatsPreserveSectionsScalingAndLiterals(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingPointCustomFormatsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingExplicitFormatsPreserveBoxedHandlerAndParsedPaths(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderFloatingExplicitFormatsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderBoxedFloatingFormatUsesTheNumericInterfaces(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingBoxedFormatProbeEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingHandlersPreserveAlignment(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingHandlerFormatProbeEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderParsedFloatingFormatsPreserveBothPrecisions(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingParsedFormatProbeEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibSubnormalFloatingTextPreservesTheSmallestValues(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal("1E-45|5E-324", CompilerFixtures.CoreLibFloatingPointSubnormalTextEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibFloatingPointSubnormalTextEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				FloatingPoint = M68kFloatingPointMode.SoftFloat,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x60000, Size = 0x8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x60000, "Subnormal formatter image overlaps its test heap.");
+			var bus = CreateHunkBus(result); uint address = 0;
+			Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 50_000_000,
+				afterReturn: state => { address = state.A[0]; Assert.Equal(StackPointer + 4, state.A[7]); });
+			Assert.NotEqual(0u, address);
+			var length = bus.ReadLong(address + (uint)M68kRuntimeAbi.StringLengthOffset); Assert.InRange(length, 0u, 128u);
+			var characters = new char[length];
+			for (var index = 0; index < characters.Length; index++) characters[index] = (char)bus.ReadWord(address + (uint)M68kRuntimeAbi.StringDataOffset + (uint)(index * 2));
+			Assert.Equal("1E-45|5E-324", new string(characters));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingObjectsPreserveAmbientTextAndLifetime(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderFloatingObjectsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingEnumerableJoinsPreserveValuesAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderFloatingEnumerableEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingArrayAccessPreservesBitsAndBounds(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingPointArrayBitsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingJoinEnumeratorsPreserveMutationAndDisposalContracts(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingJoinEnumeratorContractsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingListPrefixCopiesPreserveBitsReferencesAndCapacityFailures(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingListPrefixCopyContractsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingCapacityFailuresPreservePrefixesAndReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderFloatingCapacityEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingLeafAllocationFailuresPreserveDestinationsAndRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingAllocationLeafContractsEntry", true);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingLargeAllocationFailuresPreserveDestinationsAndRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingLargeAllocationContractsEntry", false);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingAllocationFailuresPreservePrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibStringBuilderFloatingAllocationContractsEntry", false, 64);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomFloatingAdaptersRetainSoleOwnersAcrossCollectionAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibFloatingCustomAdapterOwnershipEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderCustomFloatingEnumerableJoinsPreserveOwnersAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderCustomFloatingEnumerableEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomFloatingCallbacksPreserveFailurePrefixesAndExceptionIdentity(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibFloatingCustomCallbackContractsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DistinctFloatingIteratorsRetainOwnersThroughEveryCallback(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibFloatingDistinctIteratorOwnershipEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingAdapterAllocationFailuresDisposeCreatedIterators(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingAdapterAllocationCleanupEntry", false, 2);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomFloatingEnumerableAllocationFailuresPreservePrefixesAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingCustomEnumerableAllocationEntry", false, 8);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomStringCallbacksPreservePrefixesAndExceptionIdentity(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibStringCustomCallbackContractsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomStringIteratorsRetainPrivateOwnersThroughCollection(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibStringCustomIteratorOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringAdapterAllocationFailuresDisposeCreatedIterators(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibStringAdapterAllocationCleanupEntry", false, 2);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomStringEnumerableAllocationFailuresPreservePrefixesAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibStringCustomEnumerableAllocationEntry", false, 4);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomObjectCallbacksPreservePrefixesAndExceptionIdentity(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibObjectCustomCallbackContractsEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomObjectIteratorsRetainPrivateOwnersThroughCollection(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibObjectCustomIteratorOwnershipEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ObjectAdapterAllocationFailuresDisposeCreatedIterators(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibObjectAdapterAllocationCleanupEntry", false, 2);
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomObjectEnumerableAllocationFailuresPreservePrefixesAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibObjectCustomEnumerableAllocationEntry", false, 4);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomInt32CallbacksPreservePrefixesAndExceptionIdentity(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibInt32CustomCallbackContractsEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomInt32IteratorsRetainPrivateOwnersThroughCollection(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibInt32CustomIteratorOwnershipEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void Int32AdapterAllocationFailuresDisposeCreatedIterators(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibInt32AdapterAllocationCleanupEntry", false, 2);
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomInt32EnumerableAllocationFailuresPreservePrefixesAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibInt32CustomEnumerableAllocationEntry", false, 4);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AggregateInterfaceReturnsPreserveWordsAndExceptions(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "AggregateInterfaceReturnsPreserveWordsAndExceptionsEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AggregateInterfaceReferenceReturnsPreserveOwners(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "AggregateInterfaceReferenceReturnsPreserveOwnersEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomDecimalCallbacksPreservePrefixesAndExceptionIdentity(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibDecimalCustomCallbackContractsEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomDecimalIteratorsRetainPrivateOwnersThroughCollection(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibDecimalCustomIteratorOwnershipEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibDecimalListIteratorsRetainAggregateWordsAndOwners(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibDecimalListIteratorOwnershipEntry");
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalAdapterAllocationFailuresDisposeCreatedIterators(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibDecimalAdapterAllocationCleanupEntry", false, 2);
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CustomDecimalEnumerableAllocationFailuresPreservePrefixesAndDispose(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibDecimalCustomEnumerableAllocationEntry", false, 4);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingHandlerConsumersPreserveSnapshotsAndReuseAcrossCollection(M68kCpuTarget target, M68kCpuModel model)
+		=> RunStringBuilderValueFormatting(target, model, "CoreLibFloatingHandlerConsumersOracleEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingHandlerConsumerAllocationFailuresPreservePrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingHandlerConsumerAllocationContractsEntry", false, 64);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingLeftAllocationFailuresPreservePrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibStringBuilderFloatingLeftAllocationContractsEntry", false, 64);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingCrossChunkInsertAllocationFailuresMatchCoreLibPartialStateAndPermitClear(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingCrossChunkInsertAllocationContractsEntry", false, 8);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingFirstUseAllocationFailureIsMemoizedAndPreservesBuilderLiterals(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingFirstUseAllocationFailureEntry", false, 2);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingIndexedInsertAndSpanJoinAllocationFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingIndexedAllocationContractsEntry", false, 32);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingSymbolsReuseProviderStringsWithoutAllocating(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibFloatingSymbolAllocationContractsEntry", false);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderFloatingDefaultAllocationFailuresPreservePrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model)
+		=> RunFloatingAllocationContracts(target, model, "CoreLibStringBuilderFloatingDefaultAllocationContractsEntry", false, 32);
+
+	private static void RunFloatingAllocationContracts(M68kCpuTarget target, M68kCpuModel model, string entry, bool shortLeaf, int groups = 12, bool enableUnlistedManagedBodies = true)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		var imports = new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800,
+			["fixture.string-builder-allocation-failure"] = 0x2A00, ["fixture.floating-allocation-case"] = 0x2B00 };
+		if (entry is "CoreLibFloatingAdapterAllocationCleanupEntry" or "CoreLibFloatingCustomEnumerableAllocationEntry" or "CoreLibStringAdapterAllocationCleanupEntry" or "CoreLibStringCustomEnumerableAllocationEntry" or "CoreLibObjectAdapterAllocationCleanupEntry" or "CoreLibObjectCustomEnumerableAllocationEntry" or "CoreLibInt32AdapterAllocationCleanupEntry" or "CoreLibInt32CustomEnumerableAllocationEntry" or "CoreLibDecimalAdapterAllocationCleanupEntry" or "CoreLibDecimalCustomEnumerableAllocationEntry" or "CoreLibGenericJoinAdapterAllocationCleanupEntry" or "CoreLibGenericJoinEnumerableAllocationEntry" or "CoreLibGenericBooleanCharAllocationEntry" or "CoreLibGenericApplicationValueAllocationEntry" or "CoreLibGenericNullableAllocationEntry" or "CoreLibGenericSmallNullableAllocationEntry" or "CoreLibGenericWideNullableAllocationEntry" or "CoreLibGenericFloatingNullableAllocationEntry" or "CoreLibGenericDecimalNullableAllocationEntry" or "CoreLibGenericApplicationNullableAllocationEntry" or "CoreLibGenericApplicationReferenceAllocationEntry" or "CoreLibStringBuilderProviderArrayFormatAllocationEntry")
+			imports[M68kRuntimeImports.GcCollect] = 0x2C00;
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				FloatingPoint = M68kFloatingPointMode.SoftFloat, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ExternalAllocator,
+				Imports = imports,
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = enableUnlistedManagedBodies }
+			});
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			Assert.True(HunkLoadAddress + result.Code.Length < StackPointer - 0x10000u,
+				$"Allocation image overlaps its reserved test stack region; {entry}; {mode}.");
+			var profile = enableUnlistedManagedBodies ? "pinned" : "stable";
+			var artifact = Path.Combine(AppContext.BaseDirectory, $"stringbuilder-{profile}-allocation-{entry}-{target}-{mode}");
+			File.WriteAllText(artifact + ".map", result.Map);
+			var caseCount = groups == 64 ? 64 : 1;
+			var totalFailures = 0;
+			long totalInstructions = 0;
+			var maximumCaseInstructions = 0;
+			for (var selectedCase = 0; selectedCase < caseCount; selectedCase++)
+			{
+				totalFailures += ExecuteFloatingAllocationImage(result, model, entry, mode, shortLeaf, groups / caseCount, selectedCase, out var instructions);
+				totalInstructions += instructions;
+				maximumCaseInstructions = Math.Max(maximumCaseInstructions, instructions);
+			}
+			if (entry == "CoreLibFloatingSymbolAllocationContractsEntry") Assert.Equal(0, totalFailures);
+			else if (entry == "CoreLibFloatingFirstUseAllocationFailureEntry") Assert.Equal(1, totalFailures);
+			else if (!shortLeaf) Assert.True(totalFailures >= 4, "The allocation corpus must exercise at least four injected failures.");
+			File.WriteAllText(artifact + ".json", System.Text.Json.JsonSerializer.Serialize(new {
+				EntryPoint = entry, CoreLibSha256 = pack.Sha256, ImplementationPackVersion = "10.0.9",
+				Cpu = target.ToString(), Emulator = model.ToString(), Optimization = mode.ToString(),
+				Cases = caseCount, Groups = groups, Failures = totalFailures, Result = 42,
+				EnableUnlistedManagedBodies = enableUnlistedManagedBodies, TotalInstructions = totalInstructions, MaximumCaseInstructions = maximumCaseInstructions,
+				InstructionLimitPerCase = shortLeaf ? 100_000_000 : groups / caseCount == 12 ? 500_000_000 : 2_000_000_000,
+				MemoryManagement = "ExternalAllocator", CollectionCallback = "AccountingOnly",
+				InitialStackPointer = StackPointer, ArenaStart = 0x0010_0000,
+				FixtureAssemblySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(FixtureAssembly)))
+			}, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+		}
+	}
+
+	private static int ExecuteFloatingAllocationImage(M68kCompilationResult result, M68kCpuModel model, string entry,
+		M68kPeepholeOptimizationMode mode, bool shortLeaf, int groups, int selectedCase, out int executedInstructions)
+	{
+		var bus = CreateHunkBus(result); var heap = 0x0010_0000u;
+		var callbackCollections = 0;
+		if (entry is "CoreLibFloatingAdapterAllocationCleanupEntry" or "CoreLibFloatingCustomEnumerableAllocationEntry" or "CoreLibStringAdapterAllocationCleanupEntry" or "CoreLibStringCustomEnumerableAllocationEntry" or "CoreLibObjectAdapterAllocationCleanupEntry" or "CoreLibObjectCustomEnumerableAllocationEntry" or "CoreLibInt32AdapterAllocationCleanupEntry" or "CoreLibInt32CustomEnumerableAllocationEntry" or "CoreLibDecimalAdapterAllocationCleanupEntry" or "CoreLibDecimalCustomEnumerableAllocationEntry" or "CoreLibGenericJoinAdapterAllocationCleanupEntry" or "CoreLibGenericJoinEnumerableAllocationEntry" or "CoreLibGenericBooleanCharAllocationEntry" or "CoreLibGenericApplicationValueAllocationEntry" or "CoreLibGenericNullableAllocationEntry" or "CoreLibGenericSmallNullableAllocationEntry" or "CoreLibGenericWideNullableAllocationEntry" or "CoreLibGenericFloatingNullableAllocationEntry" or "CoreLibGenericDecimalNullableAllocationEntry" or "CoreLibGenericApplicationNullableAllocationEntry" or "CoreLibGenericApplicationReferenceAllocationEntry" or "CoreLibStringBuilderProviderArrayFormatAllocationEntry")
+			// Allocation accounting uses a monotonic arena. Real collection is
+			// exercised separately by the callback and sole-owner lifetime corpora.
+			bus.RegisterGateway(0x2C00, _ => callbackCollections++);
+		bus.RegisterGateway(0x2B00, state => state.D[0] = checked((uint)selectedCase));
+		Assert.True(HunkLoadAddress + result.Code.Length < heap);
+		var countdown = 0u; var failures = 0; var attempts = 0; var start = 0;
+		var regions = new List<int>();
+		bus.RegisterGateway(0x2A00, state =>
+		{
+			if (state.D[0] != 0) start = attempts;
+			else if (countdown != 0) regions.Add(attempts - start);
+			countdown = state.D[0];
+		});
+		bus.RegisterGateway(0x2800, state =>
+		{
+			if (countdown != 0) attempts++;
+			if (countdown == 1) { failures++; state.D[0] = 0; return; }
+			if (countdown > 1) countdown--;
+			var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+			Assert.True(heap <= bus.Memory.Length, $"Floating allocation case {selectedCase} exhausted its external test arena; regions=[{string.Join(',', regions)}].");
+			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+		});
+		var instructions = 0;
+		var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint,
+			beforeInstruction: (_, _) => instructions++,
+			maxInstructions: shortLeaf ? 100_000_000 : groups == 12 ? 500_000_000 : 2_000_000_000,
+			afterReturn: state => Assert.True(state.A[7] == StackPointer + 4,
+				$"{entry} case {selectedCase}; {mode}; return D0={state.D[0]}, SP=${state.A[7]:X8} expected ${StackPointer + 4:X8}; failures={failures}, regions=[{string.Join(',', regions)}]."));
+		Assert.True(actual == 42, $"{entry} case {selectedCase} failed with {actual}; {mode}; failures={failures}, allocation attempts per armed region=[{string.Join(',', regions)}].");
+		if (entry is "CoreLibFloatingAdapterAllocationCleanupEntry" or "CoreLibFloatingCustomEnumerableAllocationEntry" or "CoreLibStringAdapterAllocationCleanupEntry" or "CoreLibStringCustomEnumerableAllocationEntry" or "CoreLibObjectAdapterAllocationCleanupEntry" or "CoreLibObjectCustomEnumerableAllocationEntry" or "CoreLibInt32AdapterAllocationCleanupEntry" or "CoreLibInt32CustomEnumerableAllocationEntry" or "CoreLibDecimalAdapterAllocationCleanupEntry" or "CoreLibDecimalCustomEnumerableAllocationEntry" or "CoreLibGenericJoinAdapterAllocationCleanupEntry" or "CoreLibGenericJoinEnumerableAllocationEntry" or "CoreLibGenericBooleanCharAllocationEntry" or "CoreLibGenericApplicationValueAllocationEntry" or "CoreLibGenericNullableAllocationEntry" or "CoreLibGenericSmallNullableAllocationEntry" or "CoreLibGenericWideNullableAllocationEntry" or "CoreLibGenericFloatingNullableAllocationEntry" or "CoreLibGenericDecimalNullableAllocationEntry" or "CoreLibGenericApplicationNullableAllocationEntry" or "CoreLibGenericApplicationReferenceAllocationEntry" or "CoreLibStringBuilderProviderArrayFormatAllocationEntry")
+			Assert.True(callbackCollections > 0);
+		if (shortLeaf)
+		{
+			Assert.Equal(new[] { 0, 1, 1, 0, 1, 1 }, regions);
+			Assert.Equal(2, failures);
+		}
+		else if (entry == "CoreLibFloatingFirstUseAllocationFailureEntry")
+		{
+			Assert.Equal(new[] { 1, 0 }, regions);
+			Assert.Equal(1, failures);
+		}
+		else
+		{
+			Assert.Equal(failures + groups, regions.Count);
+			if (entry == "CoreLibFloatingSymbolAllocationContractsEntry") Assert.All(regions, count => Assert.Equal(0, count));
+			if (entry == "CoreLibFloatingCrossChunkInsertAllocationContractsEntry")
+				Assert.Equal(Enumerable.Range(0, 8).SelectMany(_ => new[] { 1, 2, 3, 3 }), regions);
+			if (entry is "CoreLibFloatingAdapterAllocationCleanupEntry" or "CoreLibStringAdapterAllocationCleanupEntry" or "CoreLibObjectAdapterAllocationCleanupEntry" or "CoreLibInt32AdapterAllocationCleanupEntry" or "CoreLibDecimalAdapterAllocationCleanupEntry" or "CoreLibGenericJoinAdapterAllocationCleanupEntry")
+			{
+				Assert.Equal(new[] { 1, 2, 2, 1, 2, 2 }, regions);
+				Assert.Equal(4, failures);
+			}
+		}
+		Assert.Equal(0u, countdown);
+		executedInstructions = instructions;
+		return failures;
+	}
+
+	[Fact]
+	public void StringBuilderDefaultClassNamesMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDefaultClassNamesEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderDefaultClassNamesPreserveSlotsAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDefaultClassNamesEntry");
+
+	[Fact]
+	public void GenericIntegralAndEnumJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderGenericIntegralJoinsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderGenericEnumJoinsEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericIntegralJoinsPreserveValuesAndCallbacks(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderGenericIntegralJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericEnumJoinsPreserveValuesAndCallbacks(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderGenericEnumJoinsEntry");
+
+	[Fact]
+	public void GenericJoinCallbacksAndOwnershipMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericJoinCallbackContractsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericJoinIteratorOwnershipEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericJoinCallbacksPreserveExceptionIdentityAndDisposal(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericJoinCallbackContractsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericJoinIteratorsRetainPrivateValues(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericJoinIteratorOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericJoinAdapterAllocationFailuresDisposeCreatedIterators(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericJoinAdapterAllocationCleanupEntry", false, 2);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericJoinEnumerableAllocationFailuresPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericJoinEnumerableAllocationEntry", false, 4);
+
+	[Fact]
+	public void GenericJoinBoxedIteratorContractsMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericJoinBoxedIteratorContractsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericJoinBoxedIteratorsPreserveValuesOwnersAndExceptions(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericJoinBoxedIteratorContractsEntry");
+
+	[Fact]
+	public void GenericEnumJoinCapacityContractsMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericEnumJoinCapacityContractsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericEnumJoinCapacityFailuresPreservePrefixesAndDisposal(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericEnumJoinCapacityContractsEntry");
+
+	[Fact]
+	public void GenericFrameworkEnumJoinsMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericFrameworkEnumJoinsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericFrameworkEnumJoinsPreserveVerifiedIdentityAndCallbacks(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericFrameworkEnumJoinsEntry");
+
+	[Fact]
+	public void StringBuilderObjectEnumCorpusMatchesCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderObjectEnumsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderObjectEnumOwnershipEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderObjectEnumsPreserveNamesAndBits(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderObjectEnumsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderObjectEnumViewsRetainBoxes(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderObjectEnumOwnershipEntry");
+
+	[Fact]
+	public void StringBuilderObjectEnumCapacityMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderObjectEnumCapacityEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderObjectEnumCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderObjectEnumCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderObjectEnumAllocationFailuresPreservePrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibStringBuilderObjectEnumAllocationEntry", false, 40);
+
+	[Fact]
+	public void GenericBooleanCharJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderGenericBooleanCharJoinsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericBooleanCharCallbackContractsEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericBooleanCharJoinsPreserveText(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderGenericBooleanCharJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericBooleanCharCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericBooleanCharCallbackContractsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericBooleanCharIteratorsRetainOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericBooleanCharOwnershipEntry");
+
+	[Fact]
+	public void GenericBooleanCharCapacityMatchesCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericBooleanCharCapacityEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericBooleanCharCapacityFailuresDisposeAndPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericBooleanCharCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericBooleanCharAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericBooleanCharAllocationEntry", false, 16);
+
+	[Fact]
+	public void GenericApplicationValueJoinsMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationValueJoinsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueJoinsPreservePayloadsAndText(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationValueJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericWideValueTransportRetainsIndependentCopies(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericWideValueTransportEntry");
+
+	[Fact]
+	public void GenericApplicationValueSnapshotsMatchCoreLib() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationValueSnapshotEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueSnapshotsRetainValuesAndRoots(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationValueSnapshotEntry");
+
+	[Fact]
+	public void GenericApplicationValueContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationValueCallbackEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationValueCapacityEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationValueFormatterContractsEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationValueCallbackEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueOwnersRetainIndependentFields(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationValueOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationValueCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueFormatterFailuresAndMutationsPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationValueFormatterContractsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationValueAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericApplicationValueAllocationEntry", false, 16);
+
+	[Fact]
+	public void GenericNullableIntJoinsMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibGenericNullableIntJoinsEntry());
+
+	[Fact]
+	public void GenericNullableContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericNullableCallbackEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericNullableCapacityEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericNullableOwnershipEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericNullableIntJoinsPreserveEmptyValuesAndPayloads(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericNullableIntJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericNullableCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericNullableCallbackEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericNullableOwnersRetainCopiesAndBoxing(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericNullableOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericNullableCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericNullableCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericNullableAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericNullableAllocationEntry", false, 17);
+
+	[Fact]
+	public void GenericSmallNullableJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericSmallNullablePrimitiveJoinsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericSmallNullableEnumJoinsEntry());
+	}
+
+	[Fact]
+	public void GenericSmallNullableContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericSmallNullableCallbacksEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericSmallNullableOwnershipEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericSmallNullableCapacityEntry());
+	}
+
+	[Fact]
+	public void WideNullableJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibWideNullableTransportEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericWideNullableJoinsEntry());
+	}
+
+	[Fact]
+	public void FloatingNullableJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibFloatingNullableTransportEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericSingleNullableJoinsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericDoubleNullableJoinsEntry());
+	}
+
+	[Fact]
+	public void DecimalNullableJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibDecimalNullableTransportEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericDecimalNullableJoinsEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalNullableTransportPreservesAllWords(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibDecimalNullableTransportEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDecimalNullableJoinsPreserveScaleAndLimits(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericDecimalNullableJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalNullableJoinReuseRetainsSourceAndSnapshot(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibDecimalNullableReuseEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ManagedByrefFrameHomesPreservePayloadAndRetainOwner(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "ManagedByrefFrameHomesPreservePayloadEntry");
+
+	[Fact]
+	public void DecimalNullableContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericDecimalNullableCallbacksEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericDecimalNullableOwnershipEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericDecimalNullableCapacityEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericDecimalNullableCultureEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDecimalNullableCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericDecimalNullableCallbacksEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDecimalNullableOwnershipPreservesAllWords(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericDecimalNullableOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDecimalNullableCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericDecimalNullableCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDecimalNullableJoinsUseAmbientCulture(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericDecimalNullableCultureEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDecimalNullableAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericDecimalNullableAllocationEntry", false, 16);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void FloatingNullableTransportPreservesIeeeBits(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibFloatingNullableTransportEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Fact]
+	public void FloatingNullableContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericFloatingNullableCallbacksEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericFloatingNullableOwnershipEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericFloatingNullableCapacityEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericFloatingNullableCultureEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericFloatingNullableJoinsUseAmbientCulture(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericFloatingNullableCultureEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericFloatingNullableCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericFloatingNullableCallbacksEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericFloatingNullableOwnershipPreservesIeeeBits(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericFloatingNullableOwnershipEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericFloatingNullableCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericFloatingNullableCapacityEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericFloatingNullableAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericFloatingNullableAllocationEntry", false, 16);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSingleNullableJoinsPreserveSpecialValues(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericSingleNullableJoinsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericDoubleNullableJoinsPreserveSpecialValues(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericDoubleNullableJoinsEntry", M68kFloatingPointMode.SoftFloat);
+
+	[Fact]
+	public void WideNullableContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericWideNullableCallbacksEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericWideNullableOwnershipEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericWideNullableCapacityEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericWideNullableCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericWideNullableCallbacksEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericWideNullableOwnersPreserveBothWordsAndBoxing(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericWideNullableOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericWideNullableCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericWideNullableCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericWideNullableAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericWideNullableAllocationEntry", false, 16);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void WideNullableTransportRetainsBothWords(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibWideNullableTransportEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericWideNullableJoinsPreserveNamesAndBits(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericWideNullableJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void SmallNullableEnumTransportRetainsPayload(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibSmallNullableEnumTransportEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSmallNullablePrimitiveJoinsPreserveBytes(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericSmallNullablePrimitiveJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSmallNullableEnumJoinsPreserveNamesAndBits(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericSmallNullableEnumJoinsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSmallNullableCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericSmallNullableCallbacksEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSmallNullableOwnersPreserveBitsAndBoxing(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericSmallNullableOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSmallNullableCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericSmallNullableCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericSmallNullableAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericSmallNullableAllocationEntry", false, 16);
+
+	[Fact]
+	public void ValueTypePredicatesMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibValueTypePredicateEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ValueTypePredicatesFoldClosedValueAndReferenceTypes(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibValueTypePredicateEntry");
+
+	[Fact]
+	public void ReferenceCopiesMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibReferenceCopyOwnershipEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ReferenceCopiesPreserveOverlapIdentityAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibReferenceCopyOwnershipEntry");
+
+	[Fact]
+	public void DecimalPublicConstantsMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibDecimalPublicConstantsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void DecimalPublicConstantsRetainLogicalBitsAndInitialization(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibDecimalPublicConstantsEntry");
+
+	[Fact]
+	public void DecimalCapacityFailuresMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderDecimalCapacityEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderDecimalCapacityFailuresPreservePrefixesAndReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderDecimalCapacityEntry");
+
+	[Fact]
+	public void ProviderObjectArrayFormattingMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderProviderArrayFormatEntry());
+
+	[Fact]
+	public void ProviderObjectArrayFormattingContractsMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderProviderArrayFormatContractsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ProviderObjectArrayFormattingPreservesTextAndSnapshots(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderProviderArrayFormatEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ProviderObjectArrayFormattingPreservesValidationCallbacksAndCapacity(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderProviderArrayFormatContractsEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ProviderObjectArrayFormattingAllocationFailuresPreservePrefixesAndRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibStringBuilderProviderArrayFormatAllocationEntry", false, 4);
+
+	[Fact]
+	public void StringBuilderPublicAcceptanceMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderPublicAcceptanceEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void StringBuilderPublicAcceptanceExecutesEveryOverloadAndAccessor(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibStringBuilderPublicAcceptanceEntry", M68kFloatingPointMode.SoftFloat);
+
+	private static void RunStringBuilderValueFormatting(M68kCpuTarget target, M68kCpuModel model, string entry,
+		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled)
+	{
+		// Broad formatting images need a separate ROM region, including when
+		// optimizer-disabled code extends beyond the older $70000 test heap.
+		const uint heapStart = 0x0010_0000;
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				FloatingPoint = floatingPoint,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = heapStart, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.True(HunkLoadAddress + result.Code.Length < heapStart, $"Formatter image ({result.Code.Length} bytes) overlaps its test heap at ${heapStart:X8}; {mode}.");
+			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
+			// Keep every formatting corpus stack separate from its image and heap.
+			const uint initialStackPointer = 0x0020_0000;
+			Assert.True(heapStart + 0x8000u < initialStackPointer - 0x10000u, "Formatter heap overlaps the reserved 64 KiB test stack region.");
+			var artifact = Path.Combine(AppContext.BaseDirectory, $"stringbuilder-pinned-{entry}-{target}-{mode}");
+			File.WriteAllText(artifact + ".map", result.Map);
+			if (target == M68kCpuTarget.M68000 && mode == M68kPeepholeOptimizationMode.FixedPoint)
+				File.WriteAllText(artifact + ".framework.json", System.Text.Json.JsonSerializer.Serialize(result.FrameworkAnalysis,
+					new System.Text.Json.JsonSerializerOptions { WriteIndented = true,
+						Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } }));
+			long measuredCycles = 0;
+			var bus = CreateHunkBus(result);
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint,
+				initialStackPointer: initialStackPointer,
+				afterReturn: state => measuredCycles = state.Cycles,
+				maxInstructions: entry is "CoreLibGenericSmallNullablePrimitiveJoinsEntry" or "CoreLibGenericSmallNullableEnumJoinsEntry" or "CoreLibGenericApplicationNullableJoinsEntry" or "CoreLibGenericApplicationReferenceJoinsEntry" ? 2_000_000_000 :
+					entry is "CoreLibStringBuilderFloatingExplicitFormatsEntry" or "CoreLibFloatingValueProviderContractsEntry" or "CoreLibStringBuilderFloatingCapacityEntry" ? 2_000_000_000 :
+					entry is "CoreLibFloatingBoxedFormatProbeEntry" or "CoreLibFloatingHandlerFormatProbeEntry" or "CoreLibFloatingParsedFormatProbeEntry" ? 5_000_000 :
+					entry.Contains("CustomIntegers", StringComparison.Ordinal) ? 2_000_000_000 :
+					entry.Contains("Referenced", StringComparison.Ordinal) ? 2_000_000_000 :
+					entry == "CoreLibStringBuilderAmbientCultureEntry" ? 2_000_000_000 :
+					entry == "CoreLibStringBuilderDefaultValueNamesEntry" ? 1_000_000_000 : 500_000_000);
+			Assert.True(actual == 42, $"{entry} failed with {actual}; {mode}.");
+			File.WriteAllText(artifact + ".json", System.Text.Json.JsonSerializer.Serialize(new {
+					EntryPoint = entry, CoreLibSha256 = pack.Sha256, ImplementationPackVersion = "10.0.9",
+					Cpu = target.ToString(), Emulator = model.ToString(), Optimization = mode.ToString(),
+					FloatingPoint = floatingPoint.ToString(), ImageBytes = result.Code.Length,
+					Symbols = result.Symbols.Count, Cycles = measuredCycles, Result = actual,
+					HeapStart = heapStart, HeapBytes = 0x8000, InitialStackPointer = initialStackPointer, EveryAllocationCollection = true,
+					FixtureAssemblySha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(FixtureAssembly)))
+				}, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void NormalFinallyCollectionClearsStaleExceptionRoots(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::NormalFinallyCollectionPreservesPayloadEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				PeepholeOptimization = mode, MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0006_0000, Size = 0x8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			var probe = HunkLoadAddress + result.Symbols.Single(symbol => symbol.Name == "CopperSharp.Compiler.Tests.CompilerFixtures::CollectInNormalFinally").Address;
+			var poisoned = false;
+			var actual = Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+				beforeInstruction: (cpu, memory) => {
+					if (cpu.State.ProgramCounter != probe) return;
+					// Seed unused stack before the prologue. A normal finally must
+					// publish a null active exception, regardless of earlier stack use.
+					var interior = cpu.State.A[0] + 16;
+					for (var address = cpu.State.A[7] - 256; address < cpu.State.A[7]; address += 4) memory.WriteLong(address, interior);
+					poisoned = true;
+				}, maxInstructions: 5_000_000);
+			Assert.True(poisoned);
+			Assert.True(actual == 42, $"Normal finally corrupted its owner's payload; {mode}.");
+		}
+	}
+
+	[Fact]
+	public void ApplicationReferenceJoinsMatchCoreLib() => Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationReferenceJoinsEntry());
+
+	[Fact]
+	public void ApplicationReferenceContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationReferenceCallbacksEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationReferenceCapacityEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationReferenceFormatterEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationReferenceOwnershipPreservesIdentityAndFields(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationReferenceOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationReferenceCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationReferenceCallbacksEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationReferenceCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationReferenceCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationReferenceAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericApplicationReferenceAllocationEntry", false, 8);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationReferenceFormatterExceptionsAndNullResults(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationReferenceFormatterEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationReferenceJoinsPreserveDispatchNullsAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationReferenceJoinsEntry");
+
+	[Fact]
+	public void ApplicationNullableJoinsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibApplicationNullableTransportEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationNullableJoinsEntry());
+	}
+
+	[Fact]
+	public void ApplicationNullableContractsMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationNullableCallbacksEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibApplicationNullablePublicOwnershipEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibGenericApplicationNullableCapacityEntry());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationNullableCallbacksPreserveProtocol(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationNullableCallbacksEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationNullableOwnershipRetainsPayloadReferences(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationNullableOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ApplicationNullablePublicListCurrentRetainsPayloadReferences(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibApplicationNullablePublicOwnershipEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationNullableCapacityFailuresPermitReuse(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationNullableCapacityEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationNullableAllocationFailuresDisposeAndPermitRetry(M68kCpuTarget target, M68kCpuModel model) =>
+		RunFloatingAllocationContracts(target, model, "CoreLibGenericApplicationNullableAllocationEntry", false, 8);
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ApplicationNullableTransportPreservesValuesAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibApplicationNullableTransportEntry");
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericApplicationNullableJoinsPreserveValuesAndOwners(M68kCpuTarget target, M68kCpuModel model) =>
+		RunStringBuilderValueFormatting(target, model, "CoreLibGenericApplicationNullableJoinsEntry");
+
+	[Fact]
+	public void ParsedCompositeFormatContractFixturesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibParsedCompositeFormatValidationEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibParsedCompositeFormatProviderContractsEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibParsedCompositeFormatCapacityFailuresEntry());
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> ParsedCompositeContractCases
+	{
+		get
+		{
+			var data = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibParsedCompositeFormatValidationEntry", "CoreLibParsedCompositeFormatProviderContractsEntry", "CoreLibParsedCompositeFormatCapacityFailuresEntry" })
+			foreach (var cpu in CpuTargets) data.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return data;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(ParsedCompositeContractCases))]
+	public void ParsedCompositeFormatContractsPreserveValidationAndCallbacks(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			// The provider matrix forces collection in every query/formatter callback as well as on allocation.
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+				maxInstructions: entry == "CoreLibParsedCompositeFormatProviderContractsEntry" ? 500_000_000 : 200_000_000));
+		}
+	}
+
+	[Fact]
+	public void CompositeFormatSegmentArrayGcFixtureMatchesCoreLib() => Assert.Equal(42, CompilerFixtures.CompositeFormatSegmentArrayGcEntry());
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> ParsedCompositeAllocationCases
+	{
+		get
+		{
+			var data = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibParsedCompositeFormatParseAllocationFailuresEntry", "CoreLibParsedCompositeFormatAppendAllocationFailuresEntry" })
+			foreach (var cpu in CpuTargets) data.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return data;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(ParsedCompositeAllocationCases))]
+	public void ParsedCompositeFormatAllocationFailuresPermitRetry(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00,
+					[M68kRuntimeImports.GcCollect] = 0x2C00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0; var armedTotal = 0;
+			// Fault injection uses a bump heap; the separate callback matrix exercises the real collector.
+			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
+			bus.RegisterGateway(0x2A00, state =>
+			{
+				countdown = state.D[0];
+				if (countdown != 0) { regions++; armedTotal += checked((int)countdown); }
+			});
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 80_000_000);
+			Assert.True(actual == 42u, $"{entry} returned {actual}; {failures} failures, {regions} regions, {attempts} allocation attempts; {mode}.");
+			Assert.True(failures > 0);
+			var groups = entry == "CoreLibParsedCompositeFormatParseAllocationFailuresEntry" ? 1 : 10;
+			Assert.Equal(failures + groups, regions);
+			Assert.Equal(armedTotal - groups, attempts);
+			Assert.Equal(0u, countdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CompositeFormatSegmentArraysRetainBothReferencesAcrossCollection(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CompositeFormatSegmentArrayGcEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibParsedCompositeFormatUsesAllFiveAppendOverloads(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderParsedCompositeFormatEntry",
+				Imports = new Dictionary<string, uint> { [M68kRuntimeImports.UnhandledException] = 0x2E00 },
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0006_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x60000, $"Parsed formatter image ends at {HunkLoadAddress + result.Code.Length:X}; overlaps its heap.");
+			var bus = CreateHunkBus(result);
+			var reason = -1;
+			bus.RegisterGateway(0x2E00, state => reason = (int)state.D[0]);
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 100_000_000);
+			Assert.True(reason == -1, $"Unhandled exception reason {reason}; {mode}");
+			Assert.Equal(42u, actual);
+		}
+	}
+
+	[Fact]
+	public void SpanReplacementFixturesMatchCoreLib()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderSpanReplacementMatrixEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderSpanReplacementValidationEntry());
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderSpanReplacementAliasingEntry());
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> SpanReplacementCases
+	{
+		get
+		{
+			var cases = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderSpanReplacementMatrixEntry", "CoreLibStringBuilderSpanReplacementValidationEntry", "CoreLibStringBuilderSpanReplacementAliasingEntry" })
+			foreach (var cpu in CpuTargets) cases.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return cases;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(SpanReplacementCases))]
+	public void CoreLibSpanReplacementPreservesInputsAndChunkContentOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			// The full matrix churns the GC heap even between allocation-free edits.
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 250_000_000));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void SpanReplacementAllocationFailuresPreserveStateAndPermitRetry(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk,
+				"CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderSpanReplacementAllocationFailureEntry",
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00 },
+				peepholeOptimization: mode,
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
+			bus.RegisterGateway(0x2800, state =>
+			{
+				if (countdown != 0) attempts++;
+				if (countdown == 1) { failures++; state.D[0] = 0; return; }
+				if (countdown > 1) countdown--;
+				var size = state.D[0]; var address = heap; heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
+			});
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 40_000_000));
+			Assert.Equal(33, regions); Assert.Equal(75, attempts); Assert.Equal(27, failures); Assert.Equal(0u, countdown);
+		}
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderReplacementCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderCharacterReplacementEntry", "CoreLibStringBuilderStringReplacementEntry",
+				"CoreLibStringBuilderReplacementMatchGrowthEntry", "CoreLibStringBuilderReplacementValidationEntry" })
+			foreach (var cpu in CpuTargets) result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderReplacementCases))]
+	public void CoreLibStringBuilderReplacementSurvivesCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 10_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::Replace");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderReplacementValidationMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderReplacementValidationEntry());
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderExtractionCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderRangedToStringEntry", "CoreLibStringBuilderArrayCopyToEntry",
+				"CoreLibStringBuilderSpanCopyToEntry", "CoreLibStringBuilderExtractionValidationEntry" })
+			foreach (var cpu in CpuTargets) result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderExtractionCases))]
+	public void CoreLibStringBuilderExtractionSurvivesCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Contains(result.Symbols, symbol => symbol.Name == $"System.Text.StringBuilder::{(entry == "CoreLibStringBuilderRangedToStringEntry" ? "ToString" : "CopyTo")}");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderExtractionValidationMatchesHostContract()
+	{
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderExtractionValidationEntry());
+		Assert.NotSame(string.Empty, new System.Text.StringBuilder("seed").ToString(4, 0));
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderCapacityManagementCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderEnsureCapacityEntry", "CoreLibStringBuilderCapacitySetterEntry",
+				"CoreLibStringBuilderCapacityManagementValidationEntry" })
+			foreach (var cpu in CpuTargets) result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CoreLibStringBuilderPrimitiveCases
+	{
+		get
+		{
+			var result = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CoreLibStringBuilderBooleanAppendEntry", "CoreLibStringBuilderBooleanInsertionEntry",
+				"CoreLibStringBuilderUnsignedAppendEntry", "CoreLibStringBuilderUnsignedInsertionEntry",
+				"CoreLibStringBuilderPrimitiveValidationEntry", "CoreLibConstrainedIntegerToStringEntry", "CoreLibUnsignedFormattingHelpersEntry",
+				"CoreLib64BitFormattingHelpersEntry",
+				"CoreLibStringBuilder64BitAppendEntry", "CoreLibStringBuilder64BitInsertionEntry",
+				"CoreLibStringBuilderSmallIntegerAppendEntry", "CoreLibStringBuilderSmallIntegerInsertionEntry",
+				"CoreLibStringBuilderSmallIntegerValidationEntry" })
+			foreach (var cpu in CpuTargets) result.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return result;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderPrimitiveCases))]
+	public void CoreLibStringBuilderPrimitiveOverloadsSurviveCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowNumberFormatting).Assembly.Location],
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: entry.Contains("64Bit", StringComparison.Ordinal) || entry.Contains("SmallInteger", StringComparison.Ordinal) ? 50_000_000 : 10_000_000));
+		if (entry.StartsWith("CoreLibStringBuilder", StringComparison.Ordinal))
+			Assert.Contains(result.Symbols, symbol => symbol.Name == $"System.Text.StringBuilder::{(entry.Contains("Insertion", StringComparison.Ordinal) ? "Insert" : "Append")}");
+		if (entry.Contains("Unsigned", StringComparison.Ordinal))
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowNumberFormatting::TryFormatUInt32");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("GetLocaleInfo", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderPrimitiveValidationMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderPrimitiveValidationEntry());
+
+	[Fact]
+	public void CoreLibStringBuilderSmallIntegerValidationMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderSmallIntegerValidationEntry());
+
+	[Theory]
+	[InlineData("CoreLibConstrainedBooleanToStringEntry")]
+	[InlineData("CoreLibConstrainedCharacterToStringEntry")]
+	[InlineData("CoreLibConstrainedEnumToStringEntry")]
+	public void CoreLibConstrainedIntegerToStringAdmissionRejectsOtherValueTypes(string entry)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var error = Assert.Throws<M68kCompilationException>(() => M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = M68kCpuTarget.M68000,
+			OutputFormat = M68kOutputFormat.Hunk,
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		}));
+		Assert.Equal(M68kDiagnosticIds.UnsupportedPolymorphism, error.DiagnosticId);
+	}
+
+	[Theory]
+	[MemberData(nameof(CoreLibStringBuilderCapacityManagementCases))]
+	public void CoreLibStringBuilderCapacityManagementSurvivesCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000));
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::EnsureCapacity");
+		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::set_Capacity");
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public void CoreLibStringBuilderCapacityManagementValidationMatchesHostContract() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderCapacityManagementValidationEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void UninitializedSpanOwnersAreClearedBeforeCollection(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibUninitializedSpanOwnerEntry",
+			Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		var helper = Assert.Single(result.Symbols.Where(symbol => symbol.Name == "CopperSharp.Compiler.Tests.CompilerFixtures::ReadSpanAfterCollection"));
+		var poisoned = false;
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			beforeInstruction: (cpu, memory) =>
+			{
+				if (cpu.State.ProgramCounter != HunkLoadAddress + helper.Address) return;
+				// Leave a pointer into character data in the unused callee stack.
+				// A stale span owner must never publish it as an object root.
+				for (var offset = 4u; offset <= 128; offset += 4)
+					memory.WriteLong(cpu.State.A[7] - offset, cpu.State.A[0] + 16);
+				poisoned = true;
+			}));
+		Assert.True(poisoned);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibIntegerMatchListGrowthRetainsOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var result = M68kCompiler.Compile(new M68kCompilationRequest {
+			AssemblyPath = CoreLibCharacterFixtureBuilder.Create(directory),
+			ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+			EntryPoint = "CoreLibCharacterProbe::ValueListEntry", Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 2_000_000));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Buffers.ArrayPool", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ByrefArgumentReassignmentsPreserveBorrowedAndAllocatedOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ByrefArgumentReassignmentEntry",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void Int64MultiplicationPreservesAllProductBitsAndWrappingSemantics(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::Int64MultiplicationEntry");
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibCharacterHelpersPreserveOverlapAndByrefOwnersAcrossCollection(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		// Reflection resolution retains the generated assembly in the host load context.
+		// Keep it with the other test output rather than in the disposable pack.
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var request = new M68kCompilationRequest
+		{
+			AssemblyPath = CoreLibCharacterFixtureBuilder.Create(directory),
+			ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+			EntryPoint = "CoreLibCharacterProbe::Entry",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+			{
+				EnableUnlistedManagedBodies = true
+			}
+		};
+		var result = M68kCompiler.Compile(request);
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 2_000_000));
+		foreach (var spanEntry in new[] { "OwnedSpanEntry", "WritableOwnedSpanEntry" })
+		{
+			var span = M68kCompiler.Compile(request with { EntryPoint = $"CoreLibCharacterProbe::{spanEntry}" });
+			Assert.Equal(42u, Execute(CreateHunkBus(span), model, HunkLoadAddress + span.EntryPoint,
+				maxInstructions: 2_000_000));
+		}
+		var overflow = M68kCompiler.Compile(request with
+		{
+			EntryPoint = "CoreLibCharacterProbe::OverflowEntry",
+			MemoryManagement = M68kMemoryManagement.ExternalAllocator,
+			GcSweepStrategy = null,
+			Heap = new M68kHeapOptions(),
+			Imports = new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800 }
+		});
+		var overflowBus = CreateHunkBus(overflow);
+		overflowBus.RegisterGateway(0x2800, _ => Assert.Fail("An overflowing string allocation reached the allocator."));
+		Assert.Equal(42u, Execute(overflowBus, model, HunkLoadAddress + overflow.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibCharacterFillPreservesFullCountBoundsAndOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = CoreLibCharacterFixtureBuilder.Create(directory),
+			ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
+			EntryPoint = "CoreLibCharacterProbe::FillEntry",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0004_0000 },
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 2_000_000));
+		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Numerics.Vector", StringComparison.Ordinal));
+	}
+
+	[Theory]
+	[InlineData("CoreLibStringBuilderCapacityLimitEntry", false)]
+	[InlineData("CoreLibStringBuilderCapacityValidationEntry", false)]
+	[InlineData("CoreLibStringBuilderAllocationFailureEntry", true)]
+	[InlineData("CoreLibStringBuilderToStringAllocationFailureEntry", true)]
+	[InlineData("CoreLibStringBuilderIntegerCapacityLimitEntry", false)]
+	[InlineData("CoreLibStringBuilderIntegerAllocationFailureEntry", true)]
+	[InlineData("CoreLibStringBuilderTextAllocationFailureEntry", true)]
+	[InlineData("CoreLibStringBuilderLengthAllocationFailureEntry", true)]
+	[InlineData("CoreLibOutOfMemoryConstructorEntry", false)]
+	public void CoreLibStringBuilderPreservesFailureExceptions(string entry, bool failGrowthAllocation)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		const uint allocatorAddress = 0x0000_2800;
+		var result = Compile(M68kCpuTarget.M68000, M68kOutputFormat.Hunk,
+			$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = allocatorAddress },
+			frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
+			{
+				EnableUnlistedManagedBodies = true
+			});
+		var bus = CreateHunkBus(result);
+		if (failGrowthAllocation)
+		{
+			var heap = 0x0000_4000u;
+			var allocations = 0;
+			bus.RegisterGateway(allocatorAddress, state =>
+			{
+				if (allocations++ >= 2)
+				{
+					state.D[0] = 0;
+					return;
+				}
+				var size = state.D[0];
+				var address = heap;
+				heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size));
+				state.D[0] = address;
+			});
+		}
+		else
+		{
+			_ = RegisterBumpAllocator(bus, allocatorAddress);
+		}
+		Assert.Equal(42u, Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibStringBuilderChunkRebuildFailuresPreserveStateOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		const uint allocatorAddress = 0x2800;
+		const uint failureControlAddress = 0x2A00;
+		foreach (var entry in new[] { "CoreLibStringBuilderClearAllocationFailureEntry", "CoreLibStringBuilderTruncationAllocationFailureEntry",
+			"CoreLibStringBuilderInsertionAllocationFailureEntry", "CoreLibStringBuilderReplacementAllocationFailureEntry",
+			"CoreLibStringBuilderExtractionAllocationFailureEntry", "CoreLibStringBuilderCapacityManagementAllocationFailureEntry",
+			"CoreLibStringBuilderPrimitiveAllocationFailureEntry", "CoreLibStringBuilder64BitAllocationFailureEntry",
+			"CoreLibStringBuilderSmallIntegerAllocationFailureEntry", "CoreLibStringBuilderBuilderAppendAllocationFailureEntry" })
+		{
+			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				imports: new Dictionary<string, uint> {
+					[M68kRuntimeImports.Allocate] = allocatorAddress,
+					["fixture.string-builder-allocation-failure"] = failureControlAddress },
+				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+			var bus = CreateHunkBus(result);
+			// Keep the bump heap above both the loaded program and its stack.
+			var heap = 0x0010_0000u;
+			var failCountdown = 0u;
+			var failures = 0;
+			bus.RegisterGateway(failureControlAddress, state => failCountdown = state.D[0]);
+			bus.RegisterGateway(allocatorAddress, state =>
+			{
+				if (failCountdown == 1) { failures++; state.D[0] = 0; return; }
+				if (failCountdown > 1) failCountdown--;
+				var size = state.D[0];
+				var address = heap;
+				heap += (size + 3u) & ~3u;
+				Array.Clear(bus.Memory, checked((int)address), checked((int)size));
+				state.D[0] = address;
+			});
+			var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 10_000_000);
+			Assert.True(actual == 42u, $"{entry} returned {actual} after {failures} injected allocation failures.");
+			Assert.True(failures > 0, "The StringBuilder operation did not reach the injected allocation failure.");
+			if (entry == "CoreLibStringBuilderExtractionAllocationFailureEntry") Assert.Equal(2, failures);
+			if (entry == "CoreLibStringBuilderCapacityManagementAllocationFailureEntry") Assert.Equal(6, failures);
+			if (entry == "CoreLibStringBuilderPrimitiveAllocationFailureEntry") Assert.Equal(22, failures);
+			if (entry == "CoreLibStringBuilder64BitAllocationFailureEntry") Assert.Equal(28, failures);
+			if (entry == "CoreLibStringBuilderSmallIntegerAllocationFailureEntry") Assert.Equal(56, failures);
+			if (entry == "CoreLibStringBuilderBuilderAppendAllocationFailureEntry") Assert.Equal(40, failures);
+			Assert.Equal(0u, failCountdown);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void ScalarArgumentAssignmentsSurviveControlFlowAndCollection(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		{
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ScalarArgumentAssignmentEntry",
+			Cpu = target,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+			maxInstructions: 2_000_000));
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void AddressTaken64BitArgumentsPreserveBothWordsAndByrefWrites(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::AddressTaken64BitArgumentsEntry",
+				Cpu = target,
+				OutputFormat = M68kOutputFormat.Hunk,
+				PeepholeOptimization = mode
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+		}
 	}
 
 	[Fact]
@@ -2467,6 +7616,23 @@ public sealed partial class CompilerExecutionTests
 		Assert.Contains(
 			result.Symbols,
 			symbol => symbol.Name == "CopperSharp.Runtime.ManagedPool::Dispose");
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void GenericExceptionSpecializationsKeepDistinctFinallyAndCatchStates(M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, CompilerFixtures.GenericExceptionSpecializationsEntry());
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::GenericExceptionSpecializationsEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, ExecuteHunk(result, model));
+		}
 	}
 
 	[Fact]
@@ -6381,6 +11547,7 @@ public sealed partial class CompilerExecutionTests
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CallExecLibrary",
+			IncludedExportNames = ["fixture.add"],
 			Cpu = target,
 			OutputFormat = M68kOutputFormat.Assembly
 		});
@@ -7342,6 +12509,8 @@ public sealed partial class CompilerExecutionTests
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ManagedArrayEntry",
+			// Keep the expected entry/export setup count independent of other fixtures.
+			IncludedExportNames = ["fixture.add"],
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
 			Heap = new M68kHeapOptions
 			{
@@ -7376,6 +12545,7 @@ public sealed partial class CompilerExecutionTests
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::ManagedArrayEntry",
+			IncludedExportNames = ["fixture.add"],
 			OutputFormat = M68kOutputFormat.Assembly,
 			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
 			Heap = new M68kHeapOptions
@@ -11016,7 +16186,8 @@ public sealed partial class CompilerExecutionTests
 	{
 		var result = CompileWithAllocator(
 			M68kCpuTarget.M68000,
-			$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}");
+			$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			includedExports: ["fixture.add"]);
 		var bus = CreateHunkBus(result);
 		var heap = 0x0000_4000u;
 		var allocationCalls = 0;
@@ -11448,6 +16619,41 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(42u, ExecuteHunkWithAllocator(result, model));
 	}
 
+	public static TheoryData<string, M68kCpuTarget, M68kCpuModel> CollectorFrameAnchorCases
+	{
+		get
+		{
+			var data = new TheoryData<string, M68kCpuTarget, M68kCpuModel>();
+			foreach (var entry in new[] { "CollectorFrameAnchorRetainsCallerArrayEntry", "FinalizableCollectorFrameAnchorRetainsCallerArrayEntry" })
+			foreach (var cpu in CpuTargets) data.Add(entry, (M68kCpuTarget)cpu[0], (M68kCpuModel)cpu[1]);
+			return data;
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CollectorFrameAnchorCases))]
+	public void CollectorFrameAnchorRetainsCallerRoots(string entry, M68kCpuTarget target, M68kCpuModel model)
+	{
+		Assert.Equal(42, entry.StartsWith("Finalizable", StringComparison.Ordinal) ? CompilerFixtures.FinalizableCollectorFrameAnchorRetainsCallerArrayEntry() : CompilerFixtures.CollectorFrameAnchorRetainsCallerArrayEntry());
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x60000, Size = 0x8000 }
+			});
+			Assert.True(HunkLoadAddress + result.Code.Length < 0x60000);
+			Assert.Contains(result.Symbols, symbol => symbol.Name.EndsWith("::CollectUnderDynamicFrame", StringComparison.Ordinal));
+			if (entry.StartsWith("Finalizable", StringComparison.Ordinal)) Assert.Contains(result.Symbols, symbol => symbol.Name.EndsWith("::CollectFinalizableWithRootsExtended", StringComparison.Ordinal));
+			var bus = CreateHunkBus(result); bus.WriteLong(0x68000, 0x5A17C0DE);
+			Assert.Equal(42u, Execute(bus, model, HunkLoadAddress + result.EntryPoint, maxInstructions: 5_000_000,
+				initialize: InitializeClassicCalleeSavedRegisters,
+				afterReturn: state => { Assert.Equal(StackPointer + 4, state.A[7]); AssertClassicCalleeSavedRegisters(state, "collector frame-anchor adapter"); }));
+			Assert.Equal(0x5A17C0DEu, bus.ReadLong(0x68000));
+		}
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void DynamicStackallocFrameRemainsGcWalkable(
@@ -11487,6 +16693,31 @@ public sealed partial class CompilerExecutionTests
 		Assert.Contains("movea.l\ta7,a5", dynamicAssembly.Text, StringComparison.Ordinal);
 		Assert.Contains("movea.l\ta5,a7", dynamicAssembly.Text, StringComparison.Ordinal);
 		Assert.DoesNotContain("movea.l\ta7,a5", constantAssembly.Text, StringComparison.Ordinal);
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void BoxedNarrowScalarReferencesUseTheSamePayloadAndRetainOwners(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var directory = Path.Combine(Path.GetTempPath(), "CopperSharp68k.Tests", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directory);
+		var assembly = CoreLibCharacterFixtureBuilder.Create(directory);
+		foreach (var optimization in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = assembly,
+				EntryPoint = "CoreLibCharacterProbe::NarrowBoxReferences",
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location, typeof(M68kCompiler).Assembly.Location],
+				Cpu = target,
+				OutputFormat = M68kOutputFormat.Hunk,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_4000 },
+				PeepholeOptimization = optimization
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint));
+		}
 	}
 
 	[Theory]
@@ -12812,7 +18043,8 @@ public sealed partial class CompilerExecutionTests
 	{
 		var result = CompileWithAllocator(
 			M68kCpuTarget.M68000,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry");
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
+			includedExports: ["fixture.add"]);
 		var bus = CreateHunkBus(result);
 		var heap = 0x0000_4000u;
 		var allocations = 0;
@@ -12852,7 +18084,8 @@ public sealed partial class CompilerExecutionTests
 	{
 		var result = CompileWithAllocator(
 			M68kCpuTarget.M68000,
-			"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryReferenceFreeStructValueEntry");
+			"CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryReferenceFreeStructValueEntry",
+			includedExports: ["fixture.add"]);
 		var bus = CreateHunkBus(result);
 		var heap = 0x0000_4000u;
 		var allocations = 0;
@@ -14670,6 +19903,7 @@ public sealed partial class CompilerExecutionTests
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PortableConsoleReadLineEntry",
+			IncludedExportNames = ["fixture.add"],
 			Cpu = target,
 			OutputFormat = M68kOutputFormat.Hunk,
 			RuntimeProfile = M68kRuntimeProfile.Application,
@@ -19459,6 +24693,7 @@ public sealed partial class CompilerExecutionTests
 		{
 			AssemblyPath = assemblyPath ?? FixtureAssembly,
 			EntryPoint = entry,
+			IncludedExportNames = assemblyPath is null ? ["fixture.add"] : null,
 			Cpu = cpu,
 			FloatingPoint = floatingPoint,
 			ClrPolicy = clrPolicy,
@@ -19513,7 +24748,8 @@ public sealed partial class CompilerExecutionTests
 		M68kCpuTarget cpu,
 		string entry,
 		M68kClrPolicy clrPolicy = M68kClrPolicy.Auto,
-		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled) =>
+		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled,
+		IReadOnlyList<string>? includedExports = null) =>
 		M68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
@@ -19521,6 +24757,7 @@ public sealed partial class CompilerExecutionTests
 			Cpu = cpu,
 			FloatingPoint = floatingPoint,
 			ClrPolicy = clrPolicy,
+			IncludedExportNames = includedExports ?? ["fixture.add"],
 			Imports = new Dictionary<string, uint>
 			{
 				[M68kRuntimeImports.Allocate] = 0x0000_2800
@@ -19734,11 +24971,12 @@ public sealed partial class CompilerExecutionTests
 		Action<IM68kCore, TestBus>? beforeInstruction = null,
 		Action<M68kCpuState>? initialize = null,
 		Action<M68kCpuState>? afterReturn = null,
-		int maxInstructions = 200_000)
+		int maxInstructions = 200_000,
+		uint initialStackPointer = StackPointer)
 	{
-		bus.WriteLong(StackPointer, ReturnSentinel);
+		bus.WriteLong(initialStackPointer, ReturnSentinel);
 		using var cpu = M68kCoreFactory.Default.Create(model, bus);
-		cpu.Reset(entryPoint, StackPointer);
+		cpu.Reset(entryPoint, initialStackPointer);
 		initialize?.Invoke(cpu.State);
 		for (var instruction = 0; instruction < maxInstructions; instruction++)
 		{

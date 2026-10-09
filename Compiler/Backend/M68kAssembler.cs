@@ -59,6 +59,8 @@ internal sealed class M68kAssembler
 	private List<AddressFixup> _addresses => _buffer.Addresses;
 	private List<PcRelativeFixup> _pcRelative => _buffer.PcRelative;
 	private readonly HashSet<string> _longAlignmentLabels = new(StringComparer.Ordinal);
+	private readonly HashSet<string> _longAlignmentPaddingLabels = new(StringComparer.Ordinal);
+	private readonly HashSet<string> _returnAddressLabels = new(StringComparer.Ordinal);
 
 	internal IReadOnlySet<int> AddressFixupOffsets =>
 		_addresses.Select(static address => address.Offset).ToHashSet();
@@ -230,6 +232,14 @@ internal sealed class M68kAssembler
 	public void RequestLongAlignment(string label) =>
 		_longAlignmentLabels.Add(label);
 
+	public void MarkReturnAddress(string label)
+	{
+		// Alignment padding belongs to the following block. Stack walkers match
+		// the address pushed by the preceding call, before that padding.
+		Mark(label);
+		_returnAddressLabels.Add(label);
+	}
+
 	internal bool EnableRepeatedCallResultTestOptimization { get; set; }
 
 	internal bool EnableMethodLocalTerminalReuse { get; set; }
@@ -259,14 +269,25 @@ internal sealed class M68kAssembler
 			{
 				continue;
 			}
+			// A later relaxation can make an existing alignment NOP redundant.
+			// Remove that word instead of accumulating padding on every pass.
+			var paddingOwner = _longAlignmentPaddingLabels.FirstOrDefault(
+				label => _labels[label] == offset);
+			if (paddingOwner is not null)
+			{
+				_buffer.RemoveBytes(offset - 2, 2);
+				_longAlignmentPaddingLabels.Remove(paddingOwner);
+				continue;
+			}
 			_buffer.InsertBytes(offset, 2);
 			_buffer.WriteWord(offset, 0x4E71); // NOP before aligned label
 			foreach (var label in _labels.Keys
-				.Where(label => _labels[label] == offset)
+				.Where(label => _labels[label] == offset && !_returnAddressLabels.Contains(label))
 				.ToArray())
 			{
 				_labels[label] += 2;
 			}
+			_longAlignmentPaddingLabels.Add(requestedLabel);
 		}
 	}
 
@@ -895,9 +916,10 @@ internal sealed class M68kAssembler
 			return targetOffset;
 		}
 
-		// Removing two bytes before an aligned loop header makes that header
-		// misaligned. Re-applying its padding absorbs the size reduction, so a
-		// forward target at or beyond the first such header does not move.
+		// Removing two bytes before an aligned header can add or remove its
+		// padding word. Keeping the current forward target is a conservative
+		// range bound: realignment either absorbs the reduction or shrinks the
+		// layout further. Short branches stay within one alignment region.
 		var alignmentAbsorbsReduction = HasAlignmentInRange(
 			alignmentOffsets,
 			instructionEndOffset,
@@ -1648,6 +1670,7 @@ internal sealed class M68kAssembler
 				_ when (opcode & 0xF1FF) == 0x203C => $"move.l\t#{target},d{(opcode >> 9) & 7}",
 				_ when (opcode & 0xF1FF) == 0x207C => $"movea.l\t#{target},a{(opcode >> 9) & 7}",
 				_ when (opcode & 0xF1FF) == 0xB0BC => $"cmp.l\t#{target},d{(opcode >> 9) & 7}",
+				_ when (opcode & 0xF1FF) == 0xB1FC => $"cmpa.l\t#{target},a{(opcode >> 9) & 7}",
 				_ => null
 			};
 			if (text is not null)

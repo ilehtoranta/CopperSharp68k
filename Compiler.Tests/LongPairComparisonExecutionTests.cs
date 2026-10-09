@@ -100,6 +100,113 @@ public sealed class LongPairComparisonExecutionTests
 		}
 	}
 
+	[Theory]
+	[MemberData(nameof(ComparisonCases))]
+	public void DirectLongPairBranchesPreserveSignedAndUnsignedOrdering(
+		bool unsigned, M68kCpuTarget target, M68kCpuModel model, M68kPeepholeOptimizationMode mode)
+	{
+		var entry = unsigned ? nameof(LongPairComparisonFixtures.UnsignedBranchEntry) : nameof(LongPairComparisonFixtures.SignedBranchEntry);
+		var scenario = unsigned ? nameof(LongPairComparisonFixtures.UnsignedBranchScenario) : nameof(LongPairComparisonFixtures.SignedBranchScenario);
+		var compilation = Compile(entry, target, mode);
+		foreach (var pair in ComparisonPairs())
+		foreach (var directCallee in new[] { false, true })
+		{
+			var words = Execute(compilation, scenario, model, 0, directCallee, pair.Left, pair.Right, outputBytes: 52);
+			Assert.Equal(ExpectedOperators(pair.Left, pair.Right, unsigned), words[..6]);
+			Assert.Equal(new[] { LongPairComparisonFixtures.Before, LongPairComparisonFixtures.Middle, LongPairComparisonFixtures.After }, words[6..9]);
+			Assert.Equal(new[] { (uint)(pair.Left >> 32), (uint)pair.Left, (uint)(pair.Right >> 32), (uint)pair.Right }, words[9..]);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(TimeSpanCases))]
+	public void UncheckedLongPairMultiplicationPreservesProductInputsAndCallerAbi(
+		M68kCpuTarget target, M68kCpuModel model, M68kPeepholeOptimizationMode mode)
+	{
+		var compilation = Compile(nameof(LongPairComparisonFixtures.MultiplyEntry), target, mode);
+		foreach (var pair in ComparisonPairs().Concat(new (string Name, ulong Left, ulong Right)[] {
+			("mixed bits", 0x123456789abcdefUL, unchecked((ulong)-0x1020304050607L)),
+			("cross products", 0x100000001UL, 0x100000001UL),
+			("all low bits", 0xffffffffUL, 0xffffffffUL)
+		}))
+		foreach (var stackRemainder in new uint[] { 0, 2 })
+		foreach (var directCallee in new[] { false, true })
+		{
+			var words = Execute(compilation, nameof(LongPairComparisonFixtures.MultiplyScenario), model,
+				stackRemainder, directCallee, pair.Left, pair.Right, outputBytes: 36);
+			var expected = unchecked(pair.Left * pair.Right);
+			Assert.Equal(new[] { (uint)(expected >> 32), (uint)expected }, words[..2]);
+			Assert.Equal(new[] { LongPairComparisonFixtures.Before, LongPairComparisonFixtures.Middle, LongPairComparisonFixtures.After }, words[2..5]);
+			Assert.Equal(new[] { (uint)(pair.Left >> 32), (uint)pair.Left, (uint)(pair.Right >> 32), (uint)pair.Right }, words[5..]);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(TimeSpanCases))]
+	public void LongPairShiftsMaskCountsAndPreserveSignAndCallerAbi(
+		M68kCpuTarget target, M68kCpuModel model, M68kPeepholeOptimizationMode mode)
+	{
+		var compilation = Compile(nameof(LongPairComparisonFixtures.ShiftEntry), target, mode);
+		foreach (var bits in new ulong[] { 0, 1, ulong.MaxValue, 0x8000000000000000, 0x89abcdef01234567, 0x0123456789abcdef })
+		foreach (var count in new[] { -65, -1, 0, 1, 7, 8, 15, 16, 31, 32, 33, 63, 64, 65, 127 })
+		foreach (var direct in new[] { false, true })
+		{
+			var words = Execute(compilation, nameof(LongPairComparisonFixtures.ShiftScenario), model, 2, direct,
+				bits, unchecked((uint)count), outputBytes: 52);
+			ulong[] results = [bits << count, unchecked((ulong)((long)bits >> count)), bits >> count, bits << 32, bits >> 32];
+			Assert.Equal(results.SelectMany(value => new[] { (uint)(value >> 32), (uint)value }), words[..10]);
+			Assert.Equal(new[] { LongPairComparisonFixtures.Before, LongPairComparisonFixtures.Middle, LongPairComparisonFixtures.After }, words[10..]);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(ComparisonCases))]
+	public void FullWidthDivisionAndRemainderPreserveResultsGuardsAndCallerAbi(
+		bool unsigned, M68kCpuTarget target, M68kCpuModel model, M68kPeepholeOptimizationMode mode)
+	{
+		var entry = unsigned ? nameof(LongPairComparisonFixtures.UnsignedDivideEntry) : nameof(LongPairComparisonFixtures.SignedDivideEntry);
+		var scenario = unsigned ? nameof(LongPairComparisonFixtures.UnsignedDivideScenario) : nameof(LongPairComparisonFixtures.SignedDivideScenario);
+		var compilation = Compile(entry, target, mode);
+		foreach (var pair in ComparisonPairs().Concat(new (string Name, ulong Left, ulong Right)[] {
+			("high divisor", ulong.MaxValue, 0x8000000000000001),
+			("low quotient bits", ulong.MaxValue, 3),
+			("power of ten", 12345678901234567890, 1000000000),
+			("signed small divisor", 0x8000000000000000, 7)
+		}).Where(pair => pair.Right != 0 && (unsigned || pair.Left != 0x8000000000000000 || pair.Right != ulong.MaxValue)))
+		foreach (var stackRemainder in new uint[] { 0, 2 })
+		foreach (var direct in new[] { false, true })
+		{
+			var words = Execute(compilation, scenario, model, stackRemainder, direct, pair.Left, pair.Right, 28, 200_000);
+			var quotient = unsigned ? pair.Left / pair.Right : unchecked((ulong)((long)pair.Left / (long)pair.Right));
+			var remainder = unsigned ? pair.Left % pair.Right : unchecked((ulong)((long)pair.Left % (long)pair.Right));
+			Assert.Equal(new[] { (uint)(quotient >> 32), (uint)quotient, (uint)(remainder >> 32), (uint)remainder }, words[..4]);
+			Assert.Equal(new[] { LongPairComparisonFixtures.Before, LongPairComparisonFixtures.Middle, LongPairComparisonFixtures.After }, words[4..]);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(TimeSpanCases))]
+	public void LongDivisionExceptionsKeepCanonicalTypesAndSignedRemainderBoundary(
+		M68kCpuTarget target, M68kCpuModel model, M68kPeepholeOptimizationMode mode)
+	{
+		var compilation = Compile(nameof(LongPairComparisonFixtures.DivideExceptionEntry), target, mode, exceptionMode: M68kExceptionMode.Full);
+		foreach (var pair in new (ulong Left, ulong Right)[] {
+			(0, 0), (ulong.MaxValue, 0), (0x8000000000000000, ulong.MaxValue),
+			(unchecked((ulong)-85L), 6), (85, unchecked((ulong)-6L)) })
+		{
+			var words = Execute(compilation, nameof(LongPairComparisonFixtures.DivideExceptionScenario), model, 2, true, pair.Left, pair.Right, 44, 200_000);
+			var quotient = pair.Right == 0 ? 0xdec0deUL : pair.Left == 0x8000000000000000 && pair.Right == ulong.MaxValue ? 0x0f10UL :
+				unchecked((ulong)((long)pair.Left / (long)pair.Right));
+			var remainder = pair.Right == 0 ? 0xdec0deUL : pair.Left == 0x8000000000000000 && pair.Right == ulong.MaxValue ? 0UL :
+				unchecked((ulong)((long)pair.Left % (long)pair.Right));
+			var unsignedQuotient = pair.Right == 0 ? 0xdec0deUL : pair.Left / pair.Right;
+			var unsignedRemainder = pair.Right == 0 ? 0xdec0deUL : pair.Left % pair.Right;
+			Assert.Equal(new[] { (uint)(quotient >> 32), (uint)quotient, (uint)(remainder >> 32), (uint)remainder,
+				(uint)(unsignedQuotient >> 32), (uint)unsignedQuotient, (uint)(unsignedRemainder >> 32), (uint)unsignedRemainder }, words[..8]);
+			Assert.Equal(new[] { LongPairComparisonFixtures.Before, LongPairComparisonFixtures.Middle, LongPairComparisonFixtures.After }, words[8..]);
+		}
+	}
+
 	private static IEnumerable<(string Name, ulong Left, ulong Right)> ComparisonPairs()
 	{
 		foreach (var pair in new (string Name, ulong Left, ulong Right)[]
@@ -138,7 +245,7 @@ public sealed class LongPairComparisonExecutionTests
 	private static uint Word(bool value) => value ? 1u : 0;
 
 	private static M68kCompilationResult Compile(string entry, M68kCpuTarget cpu,
-		M68kPeepholeOptimizationMode mode, string? manifestPath = null) =>
+		M68kPeepholeOptimizationMode mode, string? manifestPath = null, M68kExceptionMode? exceptionMode = null) =>
 		AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = typeof(LongPairComparisonFixtures).Assembly.Location,
@@ -147,7 +254,7 @@ public sealed class LongPairComparisonExecutionTests
 			OutputFormat = M68kOutputFormat.Assembly,
 			RuntimeProfile = manifestPath is null ? M68kRuntimeProfile.Freestanding : M68kRuntimeProfile.Application,
 			MemoryManagement = manifestPath is null ? M68kMemoryManagement.None : null,
-			ExceptionMode = manifestPath is null ? M68kExceptionMode.Yolo : M68kExceptionMode.Full,
+			ExceptionMode = exceptionMode ?? (manifestPath is null ? M68kExceptionMode.Yolo : M68kExceptionMode.Full),
 			PeepholeOptimization = mode,
 			IncludedExportNames = [],
 			Imports = new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = AllocatorAddress },
@@ -155,7 +262,7 @@ public sealed class LongPairComparisonExecutionTests
 		});
 
 	private static uint[] Execute(M68kCompilationResult compilation, string scenario, M68kCpuModel model,
-		uint stackRemainder, bool directCallee, ulong left, ulong right, int outputBytes)
+		uint stackRemainder, bool directCallee, ulong left, ulong right, int outputBytes, int maxSteps = 20_000)
 	{
 		var bus = new TestBus(0x100000);
 		var stack = StackAddress + stackRemainder;
@@ -197,7 +304,7 @@ public sealed class LongPairComparisonExecutionTests
 			cpu.State.D[1] = LongPairComparisonFixtures.Middle;
 			cpu.State.A[1] = LongPairComparisonFixtures.After;
 		}
-		for (var step = 0; step < 20_000 && cpu.State.ProgramCounter != ReturnSentinel; step++)
+		for (var step = 0; step < maxSteps && cpu.State.ProgramCounter != ReturnSentinel; step++)
 		{
 			cpu.ExecuteInstruction();
 			Assert.False(cpu.State.Halted, $"{scenario}/{model}: halted at {cpu.State.ProgramCounter:X8}.");
@@ -302,6 +409,170 @@ public static class LongPairComparisonFixtures
 		APTR.WriteUInt32(output, 24, after);
 		return 42;
 	}
+
+	public static uint SignedBranchEntry() => SignedBranchScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+	public static uint UnsignedBranchEntry() => UnsignedBranchScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+	public static uint MultiplyEntry() => MultiplyScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+	public static uint ShiftEntry() => ShiftScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+	public static uint DivideExceptionEntry() => DivideExceptionScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint DivideExceptionScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var left = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4));
+		var right = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 8), APTR.ReadUInt32(input, 12));
+		var output = APTR.FromPointer(OutputAddress);
+		long quotient;
+		try { quotient = left / right; }
+		catch (DivideByZeroException) { quotient = 0xdec0de; }
+		catch (OverflowException) { quotient = 0x0f10; }
+		WritePair(output, 0, quotient);
+		long remainder;
+		try { remainder = left % right; }
+		catch (DivideByZeroException) { remainder = 0xdec0de; }
+		WritePair(output, 8, remainder);
+		ulong unsignedQuotient;
+		try { unsignedQuotient = (ulong)left / (ulong)right; }
+		catch (DivideByZeroException) { unsignedQuotient = 0xdec0de; }
+		WritePair(output, 16, unchecked((long)unsignedQuotient));
+		ulong unsignedRemainder;
+		try { unsignedRemainder = (ulong)left % (ulong)right; }
+		catch (DivideByZeroException) { unsignedRemainder = 0xdec0de; }
+		WritePair(output, 24, unchecked((long)unsignedRemainder));
+		APTR.WriteUInt32(output, 32, before);
+		APTR.WriteUInt32(output, 36, middle);
+		APTR.WriteUInt32(output, 40, after);
+		return 42;
+	}
+
+	public static uint SignedDivideEntry() => SignedDivideScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+	public static uint UnsignedDivideEntry() => UnsignedDivideScenario(Before, APTR.FromPointer(InputAddress), Middle, After);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint SignedDivideScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var left = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4));
+		var right = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 8), APTR.ReadUInt32(input, 12));
+		var output = APTR.FromPointer(OutputAddress);
+		WritePair(output, 0, left / right);
+		WritePair(output, 8, left % right);
+		APTR.WriteUInt32(output, 16, before);
+		APTR.WriteUInt32(output, 20, middle);
+		APTR.WriteUInt32(output, 24, after);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint UnsignedDivideScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var left = unchecked((ulong)M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4)));
+		var right = unchecked((ulong)M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 8), APTR.ReadUInt32(input, 12)));
+		var output = APTR.FromPointer(OutputAddress);
+		WritePair(output, 0, unchecked((long)(left / right)));
+		WritePair(output, 8, unchecked((long)(left % right)));
+		APTR.WriteUInt32(output, 16, before);
+		APTR.WriteUInt32(output, 20, middle);
+		APTR.WriteUInt32(output, 24, after);
+		return 42;
+	}
+
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ShiftScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var value = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4));
+		var count = (int)APTR.ReadUInt32(input, 12);
+		var output = APTR.FromPointer(OutputAddress);
+		WritePair(output, 0, value << count);
+		WritePair(output, 8, value >> count);
+		WritePair(output, 16, unchecked((long)((ulong)value >> count)));
+		WritePair(output, 24, value << 32);
+		WritePair(output, 32, unchecked((long)((ulong)value >> 32)));
+		APTR.WriteUInt32(output, 40, before);
+		APTR.WriteUInt32(output, 44, middle);
+		APTR.WriteUInt32(output, 48, after);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void WritePair(APTR output, int offset, long value)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		APTR.WriteUInt32(output, offset, high);
+		APTR.WriteUInt32(output, offset + 4, low);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint SignedBranchScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var left = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4));
+		var right = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 8), APTR.ReadUInt32(input, 12));
+		var output = APTR.FromPointer(OutputAddress);
+		if (left == right) APTR.WriteUInt32(output, 0, 1); else APTR.WriteUInt32(output, 0, 0);
+		if (left != right) APTR.WriteUInt32(output, 4, 1); else APTR.WriteUInt32(output, 4, 0);
+		if (left < right) APTR.WriteUInt32(output, 8, 1); else APTR.WriteUInt32(output, 8, 0);
+		if (left <= right) APTR.WriteUInt32(output, 12, 1); else APTR.WriteUInt32(output, 12, 0);
+		if (left > right) APTR.WriteUInt32(output, 16, 1); else APTR.WriteUInt32(output, 16, 0);
+		if (left >= right) APTR.WriteUInt32(output, 20, 1); else APTR.WriteUInt32(output, 20, 0);
+		APTR.WriteUInt32(output, 24, before);
+		APTR.WriteUInt32(output, 28, middle);
+		APTR.WriteUInt32(output, 32, after);
+		var leftLow = M68kRuntime.SplitInt64(left, out var leftHigh);
+		var rightLow = M68kRuntime.SplitInt64(right, out var rightHigh);
+		APTR.WriteUInt32(output, 36, leftHigh);
+		APTR.WriteUInt32(output, 40, leftLow);
+		APTR.WriteUInt32(output, 44, rightHigh);
+		APTR.WriteUInt32(output, 48, rightLow);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint UnsignedBranchScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var left = unchecked((ulong)M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4)));
+		var right = unchecked((ulong)M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 8), APTR.ReadUInt32(input, 12)));
+		var output = APTR.FromPointer(OutputAddress);
+		if (left == right) APTR.WriteUInt32(output, 0, 1); else APTR.WriteUInt32(output, 0, 0);
+		if (left != right) APTR.WriteUInt32(output, 4, 1); else APTR.WriteUInt32(output, 4, 0);
+		if (left < right) APTR.WriteUInt32(output, 8, 1); else APTR.WriteUInt32(output, 8, 0);
+		if (left <= right) APTR.WriteUInt32(output, 12, 1); else APTR.WriteUInt32(output, 12, 0);
+		if (left > right) APTR.WriteUInt32(output, 16, 1); else APTR.WriteUInt32(output, 16, 0);
+		if (left >= right) APTR.WriteUInt32(output, 20, 1); else APTR.WriteUInt32(output, 20, 0);
+		APTR.WriteUInt32(output, 24, before);
+		APTR.WriteUInt32(output, 28, middle);
+		APTR.WriteUInt32(output, 32, after);
+		var leftLow = M68kRuntime.SplitInt64(unchecked((long)left), out var leftHigh);
+		var rightLow = M68kRuntime.SplitInt64(unchecked((long)right), out var rightHigh);
+		APTR.WriteUInt32(output, 36, leftHigh);
+		APTR.WriteUInt32(output, 40, leftLow);
+		APTR.WriteUInt32(output, 44, rightHigh);
+		APTR.WriteUInt32(output, 48, rightLow);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint MultiplyScenario(uint before, APTR input, uint middle, uint after)
+	{
+		var left = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 0), APTR.ReadUInt32(input, 4));
+		var right = M68kRuntime.CombineInt64(APTR.ReadUInt32(input, 8), APTR.ReadUInt32(input, 12));
+		var productLow = M68kRuntime.SplitInt64(Multiply(left, right), out var productHigh);
+		var leftLow = M68kRuntime.SplitInt64(left, out var leftHigh);
+		var rightLow = M68kRuntime.SplitInt64(right, out var rightHigh);
+		var output = APTR.FromPointer(OutputAddress);
+		APTR.WriteUInt32(output, 0, productHigh);
+		APTR.WriteUInt32(output, 4, productLow);
+		APTR.WriteUInt32(output, 8, before);
+		APTR.WriteUInt32(output, 12, middle);
+		APTR.WriteUInt32(output, 16, after);
+		APTR.WriteUInt32(output, 20, leftHigh);
+		APTR.WriteUInt32(output, 24, leftLow);
+		APTR.WriteUInt32(output, 28, rightHigh);
+		APTR.WriteUInt32(output, 32, rightLow);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static long Multiply(long left, long right) => unchecked(left * right);
 
 	// Returning Boolean values keeps these as materialized Compare operations.
 	// NoInlining also makes both the register and stack long-argument ABI real.

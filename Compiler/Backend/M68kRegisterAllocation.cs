@@ -451,6 +451,8 @@ internal sealed class M68kInterferenceGraph
 {
 	private readonly Dictionary<int, HashSet<int>> _neighbors;
 	private readonly HashSet<(int Left, int Right)> _coalescableCopies = new();
+	private readonly HashSet<(int Left, int Right)> _equivalentCopies = new();
+	private readonly HashSet<(int Left, int Right)> _wholePairOverlaps = new();
 
 	public M68kInterferenceGraph(IEnumerable<int> values)
 	{
@@ -462,6 +464,13 @@ internal sealed class M68kInterferenceGraph
 	public Dictionary<int, M68kRegisterSet> ForbiddenRegisters { get; } = new();
 
 	public HashSet<(int Left, int Right)> CopyPreferences { get; } = new();
+	public IReadOnlySet<(int Left, int Right)> EquivalentCopies => _equivalentCopies;
+	public IReadOnlySet<(int Left, int Right)> WholePairOverlaps => _wholePairOverlaps;
+
+	public void RequireWholePairOverlap(int left, int right)
+	{
+		if (left != right) _wholePairOverlaps.Add(Order(left, right));
+	}
 
 	public IReadOnlySet<int> Neighbors(int value) => _neighbors[value];
 
@@ -539,6 +548,7 @@ internal sealed class M68kInterferenceGraph
 				foreach (var right in component)
 				{
 					_neighbors[left].Remove(right);
+					if (left != right) _equivalentCopies.Add(Order(left, right));
 				}
 			}
 		}
@@ -638,6 +648,16 @@ internal static class M68kInterferenceBuilder
 					graph.AddCopyPreference(
 						instruction.Definitions[0],
 						instruction.Uses[0]);
+					if (instruction.Operation != M68kMachineOperation.Subtract &&
+						instruction.Uses.Length == 2 &&
+						function.Values[instruction.Definitions[0]].IsRegisterPair &&
+						function.Values[instruction.Uses[1]].IsRegisterPair)
+					{
+						// The result may reuse the entire right pair (the emitter swaps
+						// commutative operands), but a shifted overlap destroys a word
+						// when the left pair is copied into the result first.
+						graph.RequireWholePairOverlap(instruction.Definitions[0], instruction.Uses[1]);
+					}
 				}
 				live.ExceptWith(instruction.Definitions);
 				live.UnionWith(instruction.Uses);
@@ -1101,6 +1121,18 @@ internal static class M68kGraphColoringAllocator
 			}
 		}
 
+		// Equivalent pairs may share their complete location. A shifted overlap
+		// corrupts one word of the original when the copy is materialized.
+		var pairAliases = groups.Keys.ToDictionary(id => id, _ => new HashSet<int>());
+		foreach (var (left, right) in graph.EquivalentCopies.Concat(graph.WholePairOverlaps))
+		{
+			var leftGroup = groupForValue[left]; var rightGroup = groupForValue[right];
+			if (leftGroup != rightGroup && groups[leftGroup].IsPair && groups[rightGroup].IsPair)
+			{
+				pairAliases[leftGroup].Add(rightGroup);
+				pairAliases[rightGroup].Add(leftGroup);
+			}
+		}
 		var remaining = groups.Values
 			.Where(static group => group.PrecoloredRegister is null)
 			.Select(static group => group.Id)
@@ -1184,16 +1216,61 @@ internal static class M68kGraphColoringAllocator
 				.Concat(CandidateRegisters(group))
 				.Distinct()
 				.FirstOrDefault(register =>
-					CandidateIsAvailable(group, register, forbidden));
-			if (!CandidateIsAvailable(group, selected, forbidden) ||
+					CandidateIsAvailable(group, register, forbidden) && PairAliasesAllow(register));
+			if (!CandidateIsAvailable(group, selected, forbidden) || !PairAliasesAllow(selected) ||
 				!group.AllowedRegisters.Contains(selected))
 			{
+				// A spill reload must get a location to make progress. Pair locations
+				// can be fragmented even when the graph's color count looks sufficient.
+				// Evict ordinary live-through values instead of spilling the reload again.
+				var eviction = group.IsSpillTemporary
+					? CandidateRegisters(group)
+						.Where(register => CandidateIsAvailable(group, register, group.ForbiddenRegisters))
+						.Select(register =>
+						{
+							var occupied = new M68kAllocatedLocation(register, group.IsPair).OccupiedRegisters;
+							var conflicts = groupNeighbors[groupId]
+								.Concat(pairAliases[groupId].Where(alias =>
+									allocatedGroups.TryGetValue(alias, out var aliasLocation) &&
+									aliasLocation.Register != register))
+								.Distinct()
+								.Where(neighbor => allocatedGroups.TryGetValue(neighbor, out var location) &&
+									location.OccupiedRegisters.Overlaps(occupied))
+								.ToArray();
+							return (Register: register, Conflicts: conflicts);
+						})
+						.Where(candidate => candidate.Conflicts.Length != 0 &&
+							candidate.Conflicts.All(neighbor =>
+								!groups[neighbor].IsSpillTemporary && groups[neighbor].PrecoloredRegister is null))
+						.OrderBy(candidate => candidate.Conflicts.Length)
+						.ThenBy(candidate => candidate.Conflicts.Sum(neighbor => (double)groups[neighbor].SpillWeight))
+						.ThenBy(candidate => candidate.Register)
+						.FirstOrDefault()
+					: default;
+				if (eviction.Conflicts is not null)
+				{
+					foreach (var neighbor in eviction.Conflicts)
+					{
+						allocatedGroups.Remove(neighbor);
+						spilledGroups.Add(neighbor);
+					}
+					allocatedGroups.Add(groupId, new M68kAllocatedLocation(eviction.Register, group.IsPair));
+					continue;
+				}
 				spilledGroups.Add(groupId);
 				continue;
 			}
 			allocatedGroups.Add(
 				groupId,
 				new M68kAllocatedLocation(selected, group.IsPair));
+
+			bool PairAliasesAllow(M68kRegister register)
+			{
+				var candidate = new M68kAllocatedLocation(register, group.IsPair);
+				return pairAliases[groupId].All(alias =>
+					!allocatedGroups.TryGetValue(alias, out var location) ||
+					location.Register == register || !location.OccupiedRegisters.Overlaps(candidate.OccupiedRegisters));
+			}
 		}
 
 		var allocated = new Dictionary<int, M68kAllocatedLocation>();
@@ -1357,15 +1434,6 @@ internal static class M68kGraphColoringAllocator
 				return false;
 			}
 		}
-		if (left.AllowedRegisters == M68kRegisterSet.Address ||
-			right.AllowedRegisters == M68kRegisterSet.Address)
-		{
-			// Address constraints are short-lived machine requirements, not
-			// independent values. Coalescing them with an already-addressable
-			// source removes the otherwise unavoidable An-to-A0 base copy.
-			return true;
-		}
-
 		var neighborGroups = left.Members
 			.Concat(right.Members)
 			.SelectMany(graph.Neighbors)
@@ -1373,6 +1441,27 @@ internal static class M68kGraphColoringAllocator
 			.Where(group => group != left.Id && group != right.Id)
 			.Distinct()
 			.ToArray();
+		if (fixedRegister is { } fixedColor)
+		{
+			var occupied = left.IsPair
+				? M68kRegisterSet.From(fixedColor, fixedColor + 1)
+				: M68kRegisterSet.From(fixedColor);
+			if (neighborGroups.Any(id =>
+				groups[id].PrecoloredRegister is { } neighborColor &&
+				occupied.Overlaps(groups[id].IsPair
+					? M68kRegisterSet.From(neighborColor, neighborColor + 1)
+					: M68kRegisterSet.From(neighborColor))))
+			{
+				return false;
+			}
+		}
+		if (left.AllowedRegisters == M68kRegisterSet.Address ||
+			right.AllowedRegisters == M68kRegisterSet.Address)
+		{
+			// Account for colors acquired by neighboring groups through earlier
+			// coalescing before merging an address copy into a fixed ABI register.
+			return true;
+		}
 		var highDegree = neighborGroups.Count(groupId =>
 		{
 			var neighbor = groups[groupId];
@@ -1446,6 +1535,15 @@ internal static class M68kGraphColoringAllocator
 						$"v{valueId} sites={leftSites}; v{neighbor} sites={rightSites}.");
 				}
 			}
+		}
+
+		foreach (var (left, right) in graph.WholePairOverlaps)
+		{
+			if (allocation.Registers.TryGetValue(left, out var leftLocation) &&
+				allocation.Registers.TryGetValue(right, out var rightLocation) &&
+				leftLocation.Register != rightLocation.Register &&
+				leftLocation.OccupiedRegisters.Overlaps(rightLocation.OccupiedRegisters))
+				throw new InvalidOperationException($"{function.DisplayName}: pair result v{left} partially overlaps operand v{right}.");
 		}
 
 		VerifySimultaneouslyLiveLocations(
@@ -1548,7 +1646,7 @@ internal static class M68kGraphColoringAllocator
 				{
 					var right = allocated[rightIndex];
 					var rightLocation = allocation.Registers[right];
-					if (Find(left) == Find(right) ||
+					if ((Find(left) == Find(right) && leftLocation == rightLocation) ||
 						!leftLocation.OccupiedRegisters.Overlaps(
 							rightLocation.OccupiedRegisters))
 					{

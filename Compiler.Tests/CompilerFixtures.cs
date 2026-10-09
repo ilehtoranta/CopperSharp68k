@@ -6,7 +6,7 @@ using CopperSharp.Compiler.Tests.MultiModule;
 
 namespace CopperSharp.Compiler.Tests;
 
-public static class CompilerFixtures
+public static partial class CompilerFixtures
 {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static uint AggressiveGuestRead(APTR address, int offset) =>
@@ -107,6 +107,12 @@ public static class CompilerFixtures
 	}
 
 	private sealed class FixtureException : Exception
+	{
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public string FormatBase() => base.ToString();
+	}
+
+	private sealed class FixtureExternalException : System.Runtime.InteropServices.ExternalException
 	{
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		public string FormatBase() => base.ToString();
@@ -2943,6 +2949,38 @@ public static class CompilerFixtures
 	private static uint ReadUInt64Low(ulong value) => unchecked((uint)value);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int AddressTaken64BitArgumentsEntry() =>
+		CheckAddressTaken64BitArguments(unchecked((long)0xFEDCBA9876543210UL), 0x1234567887654321UL);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CheckAddressTaken64BitArguments(long signed, ulong unsigned)
+	{
+		if (!CheckAndReplaceSigned64BitArgument(ref signed) || !CheckAndReplaceUnsigned64BitArgument(ref unsigned)) return 1;
+		var signedLow = M68kRuntime.SplitInt64(signed, out var signedHigh);
+		var unsignedLow = M68kRuntime.SplitUInt64(unsigned, out var unsignedHigh);
+		return signedHigh == 0x87654321u && signedLow == 0x12345678u &&
+			unsignedHigh == 0xABCDEF01u && unsignedLow == 0xFEDCBA98u ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool CheckAndReplaceSigned64BitArgument(ref long value)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		if (high != 0xFEDCBA98u || low != 0x76543210u) return false;
+		value = unchecked((long)0x8765432112345678UL);
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool CheckAndReplaceUnsigned64BitArgument(ref ulong value)
+	{
+		var low = M68kRuntime.SplitUInt64(value, out var high);
+		if (high != 0x12345678u || low != 0x87654321u) return false;
+		value = 0xABCDEF01FEDCBA98UL;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int SplitInt64IntrinsicEntry()
 	{
 		var signedLow = M68kRuntime.SplitInt64(-42L, out var signedHigh);
@@ -4301,12 +4339,6041 @@ public static class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderConstructorEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		return builder.Length == 0 && builder.Capacity == 16 && builder.MaxCapacity == int.MaxValue ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibStringBuilderAppendIntEntry()
 	{
 		var builder = new System.Text.StringBuilder();
 		builder.Append(4);
 		builder.Append(2);
 		return builder.Length == 2 && builder[0] == '4' && builder[1] == '2' ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderIntegerCasesEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		AppendIntegerCase(builder, 0);
+		AppendIntegerCase(builder, 1);
+		AppendIntegerCase(builder, -1);
+		AppendIntegerCase(builder, 9);
+		AppendIntegerCase(builder, 10);
+		AppendIntegerCase(builder, -10);
+		AppendIntegerCase(builder, 99);
+		AppendIntegerCase(builder, 100);
+		AppendIntegerCase(builder, -100);
+		AppendIntegerCase(builder, int.MinValue);
+		AppendIntegerCase(builder, int.MaxValue);
+		var snapshot = builder.ToString();
+		const string expected = "0|1|-1|9|10|-10|99|100|-100|-2147483648|2147483647|";
+		if (snapshot.Length != expected.Length) return 1000 + snapshot.Length;
+		for (var index = 0; index < expected.Length; index++)
+			if (snapshot[index] != expected[index]) return 2000 + index * 65536 + snapshot[index];
+		builder.Append(int.MinValue);
+		return snapshot == expected &&
+			builder.ToString() == "0|1|-1|9|10|-10|99|100|-100|-2147483648|2147483647|-2147483648" ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void AppendIntegerCase(System.Text.StringBuilder builder, int value)
+	{
+		builder.Append(value);
+		builder.Append('|');
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderIntegerLoopEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 20; index++)
+		{
+			if (builder.Append(index) != builder) return 1;
+			builder.Append('|');
+		}
+		return builder.ToString() == "0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|" ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderIntegerSwitchLoopEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 11; index++)
+		{
+			var value = index switch
+			{
+				0 => 0, 1 => 1, 2 => -1, 3 => 9, 4 => 10, 5 => -10,
+				6 => 99, 7 => 100, 8 => -100, 9 => int.MinValue, _ => int.MaxValue
+			};
+			if (builder.Append(value) != builder) return 1;
+			builder.Append('|');
+		}
+		return builder.ToString() == "0|1|-1|9|10|-10|99|100|-100|-2147483648|2147483647|" ? 42 : 1000 + builder.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibCharacterSpansEntry()
+	{
+		char[]? data = new char[3];
+		data[0] = 'X'; data[1] = '\u03A9'; data[2] = '\uFFFF';
+		var range = new Span<char>(data, 1, 2);
+		if (range.Length != 2 || range[0] != '\u03A9' || range[1] != '\uFFFF') return 1;
+		data = null;
+		M68kRuntime.Collect();
+		var replacement = new char[3];
+		replacement[1] = 'Y';
+		if (range[0] != '\u03A9' || range[1] != '\uFFFF') return 2;
+		if (new Span<char>((char[]?)null, 0, 0).Length != 0) return 3;
+		if (replacement.AsSpan(3).Length != 0 || replacement.AsSpan(1, 2).Length != 2) return 4;
+		try { _ = new Span<char>(replacement, -1, 0); return 5; } catch (ArgumentOutOfRangeException) { }
+		try { _ = replacement.AsSpan(2, 2); return 6; } catch (ArgumentOutOfRangeException) { }
+		try { _ = new Span<char>((char[]?)null, 0, 1); return 7; } catch (ArgumentOutOfRangeException) { }
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderStringAppendEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		if (builder.Append((string?)null) != builder || builder.Append(string.Empty) != builder || builder.Length != 0) return 1;
+		if (builder.Append("A") != builder || builder.Append("BC") != builder || builder.Append("\u03A9") != builder) return 2;
+		const string unit = "A\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var repeat = 0; repeat < 12; repeat++)
+			if (builder.Append(unit) != builder) return 3;
+		if (builder.Append(unit, 1, 4) != builder || builder.Append((string?)null, 0, 0) != builder) return 4;
+		var snapshot = builder.ToString();
+		if (snapshot.Length != 80 || snapshot[0] != 'A' || snapshot[1] != 'B' || snapshot[2] != 'C' || snapshot[3] != '\u03A9') return 5;
+		for (var index = 0; index < 72; index++)
+			if (snapshot[index + 4] != unit[index % unit.Length]) return 6;
+		for (var index = 0; index < 4; index++)
+			if (snapshot[index + 76] != unit[index + 1]) return 7;
+		M68kRuntime.Collect();
+		builder.Append(snapshot);
+		builder[0] = 'X';
+		var updated = builder.ToString();
+		if (snapshot[0] != 'A' || updated.Length != 160 || updated[0] != 'X') return 8;
+		for (var index = 0; index < snapshot.Length; index++)
+			if (updated[index + snapshot.Length] != snapshot[index]) return 9;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderArrayAndSpanAppendEntry()
+	{
+		char[]? source = new char[257];
+		for (var index = 0; index < source.Length; index++) source[index] = (char)(index * 251);
+		var builder = new System.Text.StringBuilder(1);
+		if (builder.Append((char[]?)null) != builder || builder.Append((char[]?)null, 0, 0) != builder ||
+			builder.Append(default(ReadOnlySpan<char>)) != builder || builder.Length != 0) return 1;
+		if (builder.Append(source, 3, 97) != builder || builder.Append(source) != builder) return 2;
+		var view = new ReadOnlySpan<char>(source).Slice(100, 157);
+		source[3] = 'Z';
+		source = null;
+		M68kRuntime.Collect();
+		if (builder.Append(view) != builder) return 3;
+		var snapshot = builder.ToString();
+		if (snapshot.Length != 511) return 4;
+		for (var index = 0; index < snapshot.Length; index++)
+		{
+			var originalIndex = index < 97 ? index + 3 : index < 354 ? index - 97 : index - 254;
+			if (snapshot[index] != (char)(originalIndex * 251) || builder[index] != snapshot[index]) return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder CreatePatternStringBuilder(int capacity, int length, int phase)
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		var builder = new System.Text.StringBuilder(capacity);
+		for (var index = 0; index < length; index++) builder.Append(pattern[(index + phase) % 8]);
+		return builder;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderWholeBuilderAppendEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var sourceLayout = 0; sourceLayout < 2; sourceLayout++)
+		for (var destinationLayout = 0; destinationLayout < 3; destinationLayout++)
+		for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+		{
+			var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 1 : sizeCase == 2 ? 65 : 257;
+			System.Text.StringBuilder? source = CreatePatternStringBuilder(sourceLayout == 0 ? 4 : 512, length, 0);
+			var destination = CreatePatternStringBuilder(destinationLayout == 0 ? 1 : destinationLayout == 1 ? 9 : 512, 9, 3);
+			var sourceBefore = source.ToString();
+			var destinationBefore = destination.ToString();
+			var capacity = destination.Capacity;
+			if (destination.Append((System.Text.StringBuilder?)null) != destination || destination.Capacity != capacity) return 1;
+			if (destination.Append(source) != destination) return 2;
+			M68kRuntime.Collect();
+			if (destination.Length != 9 + length || source.Length != length) return 3;
+			if (length == 0 && destination.Capacity != capacity) return 4;
+			for (var index = 0; index < destination.Length; index++)
+				if (destination[index] != (index < 9 ? pattern[(index + 3) % 8] : pattern[(index - 9) % 8])) return 5;
+			var copied = destination.ToString();
+			source.Clear().Append('X');
+			M68kRuntime.Collect();
+			if (destination.ToString() != copied || destinationBefore.Length != 9 || sourceBefore.Length != length) return 6;
+			for (var index = 0; index < length; index++) if (sourceBefore[index] != pattern[index % 8]) return 7;
+			destination[0] = 'Z';
+			if (copied[0] != pattern[3] || destinationBefore[0] != pattern[3] || source.ToString() != "X") return 8;
+			destination.Clear();
+			if (destination.Append(source) != destination) return 9;
+			source = null;
+			M68kRuntime.Collect();
+			if (destination.ToString() != "X" || copied.Length != 9 + length) return 10;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderRangedBuilderAppendEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var sourceLayout = 0; sourceLayout < 2; sourceLayout++)
+		for (var destinationLayout = 0; destinationLayout < 2; destinationLayout++)
+		for (var position = 0; position < 11; position++)
+		for (var countCase = 0; countCase < 4; countCase++)
+		{
+			System.Text.StringBuilder? source = CreatePatternStringBuilder(sourceLayout == 0 ? 4 : 128, 65, 0);
+			var destination = CreatePatternStringBuilder(destinationLayout == 0 ? 4 : 128, 17, 3);
+			var start = StringBuilderEditPosition(position);
+			var remaining = 65 - start;
+			var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+				: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+			var sourceBefore = source.ToString();
+			var destinationBefore = destination.ToString();
+			var capacity = destination.Capacity;
+			if (destination.Append(source, start, count) != destination) return 1;
+			M68kRuntime.Collect();
+			if (destination.Length != 17 + count || source.Length != 65 || (count == 0 && destination.Capacity != capacity)) return 2;
+			for (var index = 0; index < destination.Length; index++)
+				if (destination[index] != (index < 17 ? pattern[(index + 3) % 8] : pattern[(start + index - 17) % 8])) return 3;
+			var copied = destination.ToString();
+			source[0] = 'Z';
+			source.Clear().Append('X');
+			source = null;
+			M68kRuntime.Collect();
+			if (destination.ToString() != copied || sourceBefore.Length != 65) return 4;
+			for (var index = 0; index < 65; index++) if (sourceBefore[index] != pattern[index % 8]) return 5;
+			for (var index = 0; index < 17; index++) if (destinationBefore[index] != pattern[(index + 3) % 8]) return 6;
+			destination.Clear().Append(CreatePatternStringBuilder(4, 1, 3), 0, 1);
+			if (destination.ToString() != "\0" || copied.Length != 17 + count) return 7;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSelfBuilderAppendEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+			{
+				var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 1 : sizeCase == 2 ? 65 : 257;
+				var builder = CreatePatternStringBuilder(layout == 0 ? 4 : 1024, length, 0);
+				var before = builder.ToString();
+				if (builder.Append(builder) != builder) return 1;
+				M68kRuntime.Collect();
+				if (builder.Length != 2 * length || before.Length != length) return 2;
+				for (var index = 0; index < builder.Length; index++) if (builder[index] != pattern[(index % length) % 8]) return 3;
+				for (var index = 0; index < length; index++) if (before[index] != pattern[index % 8]) return 4;
+			}
+			for (var position = 0; position < 11; position++)
+			for (var countCase = 0; countCase < 4; countCase++)
+			{
+				var builder = CreatePatternStringBuilder(layout == 0 ? 4 : 256, 65, 0);
+				var before = builder.ToString();
+				var start = StringBuilderEditPosition(position);
+				var remaining = 65 - start;
+				var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+					: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+				var capacity = builder.Capacity;
+				if (builder.Append(builder, start, count) != builder) return 5;
+				M68kRuntime.Collect();
+				if (builder.Length != 65 + count || (count == 0 && builder.Capacity != capacity)) return 6;
+				for (var index = 0; index < builder.Length; index++)
+					if (builder[index] != pattern[(index < 65 ? index : start + index - 65) % 8]) return 7;
+				for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 8;
+				builder.Clear().Append(builder).Append(builder, 0, 0).Append('X');
+				if (builder.ToString() != "X" || before.Length != 65) return 9;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder AppendBuilderSource(System.Text.StringBuilder destination,
+		System.Text.StringBuilder? source, int start, int count, bool ranged) => ranged
+		? destination.Append(source, start, count) : destination.Append(source);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderBuilderAppendValidationEntry()
+	{
+		var destination = new System.Text.StringBuilder(8, 16).Append("seed");
+		var source = new System.Text.StringBuilder(4).Append("text");
+		var empty = new System.Text.StringBuilder(4);
+		var before = destination.ToString();
+		var sourceBefore = source.ToString();
+		try { destination.Append(source, -1, 0); return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 2; }
+		try { destination.Append(source, 0, -1); return 3; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "count") return 4; }
+		try { destination.Append(source, 3, 2); return 5; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 6; }
+		try { destination.Append(source, int.MaxValue, 1); return 7; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 8; }
+		try { destination.Append(source, 1, int.MaxValue); return 9; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 10; }
+		try { destination.Append((System.Text.StringBuilder?)null, 1, 0); return 11; }
+		catch (ArgumentNullException error) { if (error.ParamName != "value") return 12; }
+		try { destination.Append((System.Text.StringBuilder?)null, 0, 1); return 13; }
+		catch (ArgumentNullException error) { if (error.ParamName != "value") return 14; }
+		try { destination.Append((System.Text.StringBuilder?)null, -1, 0); return 15; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 16; }
+		try { destination.Append((System.Text.StringBuilder?)null, 0, -1); return 17; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "count") return 18; }
+		try { destination.Append(empty, 0, 1); return 19; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 20; }
+		if (destination.Append((System.Text.StringBuilder?)null) != destination || destination.Append(empty) != destination ||
+			destination.Append((System.Text.StringBuilder?)null, 0, 0) != destination || destination.Append(source, 5, 0) != destination ||
+			destination.Append(source, int.MaxValue, 0) != destination || destination.Append(empty, int.MaxValue, 0) != destination ||
+			destination.Append(destination, int.MaxValue, 0) != destination) return 21;
+		if (destination.Length != 4 || destination.Capacity != 8 || destination.ToString() != before || source.ToString() != sourceBefore) return 22;
+		for (var operation = 0; operation < 4; operation++)
+		{
+			var limited = new System.Text.StringBuilder(4, 4).Append("seed");
+			try { AppendBuilderSource(limited, operation < 2 ? source : limited, 0, 1, (operation & 1) != 0); return 23; }
+			catch (ArgumentOutOfRangeException error)
+			{
+				if (error.ParamName != (operation < 2 ? "Capacity" : "valueCount") || error.ActualValue is not null) return 24;
+			}
+			if (limited.Length != 4 || limited.Capacity != 4 || limited.MaxCapacity != 4 || limited.ToString() != "seed") return 25;
+			if (limited.Append(source, int.MaxValue, 0) != limited || limited.Append(limited, int.MaxValue, 0) != limited) return 26;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderBuilderEqualsEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var leftLayout = 0; leftLayout < 3; leftLayout++)
+		for (var rightLayout = 0; rightLayout < 3; rightLayout++)
+		for (var sizeCase = 0; sizeCase < 5; sizeCase++)
+		{
+			var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 1 : sizeCase == 2 ? 16 : sizeCase == 3 ? 65 : 257;
+			var left = CreatePatternStringBuilder(leftLayout == 0 ? 1 : leftLayout == 1 ? 4 : 512, length, 0);
+			var right = CreatePatternStringBuilder(rightLayout == 0 ? 1 : rightLayout == 1 ? 4 : 512, length, 0);
+			// Keep an empty final chunk in some layouts; comparisons must still traverse earlier chunks.
+			if (leftLayout == 1) { left.Append('X'); left.Length = length; }
+			if (rightLayout == 1) { right.Append('X'); right.Length = length; }
+			var before = left.ToString();
+			var leftCapacity = left.Capacity;
+			var rightCapacity = right.Capacity;
+			M68kRuntime.Collect();
+			if (!left.Equals(left) || left.Equals((System.Text.StringBuilder?)null) || !left.Equals(right) || !right.Equals(left)) return 1;
+			for (var position = 0; position < 12; position++)
+			{
+				var index = position == 11 ? length - 1 : StringBuilderEditPosition(position);
+				if (index < 0 || index >= length) continue;
+				right[index] = 'Z';
+				M68kRuntime.Collect();
+				if (left.Equals(right) || right.Equals(left) || !right.Equals(right) || left[index] != pattern[index % 8]) return 2;
+				right[index] = pattern[index % 8];
+				if (!left.Equals(right) || !right.Equals(left)) return 3;
+			}
+			if (left.Capacity != leftCapacity || right.Capacity != rightCapacity || left.Length != length || right.Length != length) return 4;
+			right.Append('X');
+			if (left.Equals(right) || right.Equals(left)) return 5;
+			right.Length = length;
+			M68kRuntime.Collect();
+			if (!left.Equals(right) || left.ToString() != before) return 6;
+			for (var index = 0; index < length; index++) if (before[index] != pattern[index % 8]) return 7;
+			left.Clear().Append('X'); right.Clear().Append('X');
+			M68kRuntime.Collect();
+			if (!left.Equals(right) || !right.Equals(left) || before.Length != length) return 8;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSpanEqualsEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		Span<char> frame = stackalloc char[257];
+		for (var layout = 0; layout < 3; layout++)
+		for (var sizeCase = 0; sizeCase < 7; sizeCase++)
+		{
+			var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 1 : sizeCase == 2 ? 4 : sizeCase == 3 ? 16
+				: sizeCase == 4 ? 32 : sizeCase == 5 ? 65 : 257;
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, length, 0);
+			if (layout == 1) { builder.Append('X'); builder.Length = length; }
+			var before = builder.ToString();
+			var capacity = builder.Capacity;
+			char[]? storage = new char[length + 2];
+			storage[0] = 'L'; storage[length + 1] = 'R';
+			for (var index = 0; index < length; index++) storage[index + 1] = pattern[index % 8];
+			var writable = new Span<char>(storage, 1, length);
+			var retained = new ReadOnlySpan<char>(storage, 1, length);
+			storage = null;
+			M68kRuntime.Collect();
+			var pressure = new char[length + 2];
+			pressure[0] = 'P';
+			if (!builder.Equals(retained) || !builder.Equals(before.AsSpan()) || builder.Equals(default(ReadOnlySpan<char>)) != (length == 0)) return 1;
+			for (var index = 0; index < length; index++) frame[index] = pattern[index % 8];
+			M68kRuntime.Collect();
+			if (!builder.Equals((ReadOnlySpan<char>)frame.Slice(0, length)) || builder.Equals((ReadOnlySpan<char>)pressure)) return 2;
+			for (var position = 0; position < 12; position++)
+			{
+				var index = position == 11 ? length - 1 : StringBuilderEditPosition(position);
+				if (index < 0 || index >= length) continue;
+				writable[index] = 'Z';
+				M68kRuntime.Collect();
+				if (builder.Equals(retained) || !builder.Equals(before.AsSpan()) || builder[index] != pattern[index % 8]) return 3;
+				writable[index] = pattern[index % 8];
+				if (!builder.Equals(retained)) return 4;
+			}
+			if (length > 0 && builder.Equals(retained.Slice(0, length - 1))) return 5;
+			if (builder.Length != length || builder.Capacity != capacity || builder.ToString() != before || pressure[0] != 'P') return 6;
+			builder.Clear().Append('X');
+			M68kRuntime.Collect();
+			if (!builder.Equals("X".AsSpan()) || builder.Equals(before.AsSpan()) || before.Length != length) return 7;
+			for (var index = 0; index < length; index++) if (retained[index] != pattern[index % 8]) return 8;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEqualsContractEntry()
+	{
+		var limited = new System.Text.StringBuilder(4, 4).Append("text");
+		var roomy = new System.Text.StringBuilder(128, 256).Append("text");
+		if (!limited.Equals(roomy) || !roomy.Equals(limited) || !limited.Equals("text".AsSpan())) return 1;
+		if (limited.Equals((System.Text.StringBuilder?)null) || limited.Equals("Text".AsSpan()) || limited.Equals("text\0".AsSpan())) return 2;
+		if (!limited.Equals(limited) || limited.Equals((object)roomy) || !limited.Equals((object)limited) || limited.Equals((object)"text")) return 3;
+		var empty = new System.Text.StringBuilder(0);
+		if (!empty.Equals(new System.Text.StringBuilder(128)) || !empty.Equals(default(ReadOnlySpan<char>)) || !empty.Equals(string.Empty.AsSpan())) return 4;
+		var unicode = new System.Text.StringBuilder(1).Append("\0\u03A9\uD83D\uDE00\uD800\uFFFF");
+		if (!unicode.Equals("\0\u03A9\uD83D\uDE00\uD800\uFFFF".AsSpan()) || unicode.Equals("\0\u03C9\uD83D\uDE00\uD800\uFFFF".AsSpan()) ||
+			unicode.Equals("\0\u03A9\uDE00\uD83D\uD800\uFFFF".AsSpan())) return 5;
+		if (new System.Text.StringBuilder().Append("\u00E9").Equals("e\u0301".AsSpan())) return 6;
+		return limited.Length == 4 && limited.Capacity == 4 && limited.MaxCapacity == 4 && roomy.Capacity == 128 && roomy.MaxCapacity == 256 ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEqualsWithoutAllocationEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var leftLayout = 0; leftLayout < 2; leftLayout++)
+		for (var rightLayout = 0; rightLayout < 2; rightLayout++)
+		{
+			var left = CreatePatternStringBuilder(leftLayout == 0 ? 4 : 128, 65, 0);
+			var right = CreatePatternStringBuilder(rightLayout == 0 ? 4 : 128, 65, 0);
+			var empty = new System.Text.StringBuilder();
+			var before = left.ToString();
+			var capacity = left.Capacity;
+			var chars = new char[67];
+			chars[0] = 'L'; chars[66] = 'R';
+			for (var index = 0; index < 65; index++) chars[index + 1] = pattern[index % 8];
+			var span = new ReadOnlySpan<char>(chars, 1, 65);
+			SetStringBuilderAllocationFailure(1);
+			if (!left.Equals(right) || !right.Equals(left) || !left.Equals(left) || !left.Equals(span) || !left.Equals(before.AsSpan()) ||
+				left.Equals(empty) || left.Equals((System.Text.StringBuilder?)null) || left.Equals(default(ReadOnlySpan<char>)) ||
+				!empty.Equals(default(ReadOnlySpan<char>))) { SetStringBuilderAllocationFailure(0); return 1; }
+			for (var position = 0; position < 11; position++)
+			{
+				var index = StringBuilderEditPosition(position);
+				if (index >= 65) continue;
+				right[index] = 'Z'; chars[index + 1] = 'Z';
+				if (left.Equals(right) || right.Equals(left) || left.Equals(span)) { SetStringBuilderAllocationFailure(0); return 2; }
+				right[index] = pattern[index % 8]; chars[index + 1] = pattern[index % 8];
+				if (!left.Equals(right) || !left.Equals(span)) { SetStringBuilderAllocationFailure(0); return 3; }
+			}
+			SetStringBuilderAllocationFailure(0);
+			if (left.Length != 65 || left.Capacity != capacity || left.ToString() != before || right.ToString() != before || chars[0] != 'L' || chars[66] != 'R') return 4;
+			left.Clear().Append('X'); right.Clear().Append('X');
+			SetStringBuilderAllocationFailure(1);
+			if (!left.Equals(right) || !left.Equals("X".AsSpan())) { SetStringBuilderAllocationFailure(0); return 5; }
+			SetStringBuilderAllocationFailure(0);
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibSpanElementOwnersEntry()
+	{
+		char[]? storage = new char[3];
+		storage[0] = '\0'; storage[1] = '\u03A9'; storage[2] = '\uD800';
+		var writable = new Span<char>(storage);
+		var readOnly = new ReadOnlySpan<char>(storage).Slice(1);
+		ref var first = ref writable[0];
+		ref readonly var second = ref readOnly[0];
+		ref var third = ref writable[2];
+		writable = default; readOnly = default; storage = null;
+		M68kRuntime.Collect();
+		var pressure = new char[3]; pressure[1] = 'P';
+		if (first != '\0' || second != '\u03A9' || third != '\uD800') return 1;
+		first = 'X'; third = '\uFFFF';
+		M68kRuntime.Collect();
+		if (first != 'X' || second != '\u03A9' || third != '\uFFFF' || pressure[1] != 'P') return 2;
+		var stringSpan = new System.Text.StringBuilder(1).Append("\0\u03A9\uD800").ToString().AsSpan();
+		ref readonly var stringCharacter = ref stringSpan[2];
+		stringSpan = default;
+		M68kRuntime.Collect();
+		if (stringCharacter != '\uD800') return 3;
+		Span<char> frame = stackalloc char[2];
+		frame[0] = 'A'; frame[1] = '\uD800';
+		ref var frameCharacter = ref frame[1];
+		frame = default;
+		M68kRuntime.Collect();
+		if (frameCharacter != '\uD800') return 4;
+		frameCharacter = 'Z';
+		M68kRuntime.Collect();
+		if (frameCharacter != 'Z') return 5;
+		int[]? integers = new int[2]; integers[0] = 0x12345678; integers[1] = -17;
+		Span<int> integerSpan = integers;
+		ref var number = ref integerSpan[1];
+		integerSpan = default; integers = null;
+		M68kRuntime.Collect();
+		if (number != -17) return 6;
+		number = 42;
+		M68kRuntime.Collect();
+		return number == 42 && first == 'X' && second == '\u03A9' && third == '\uFFFF' && stringCharacter == '\uD800' ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibOrdinalCharacterEqualityEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uD800\uFFFF";
+		for (var sizeCase = 0; sizeCase < 7; sizeCase++)
+		{
+			var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 1 : sizeCase == 2 ? 4 : sizeCase == 3 ? 16 : sizeCase == 4 ? 32 : sizeCase == 5 ? 65 : 257;
+			char[]? left = new char[length + 2];
+			char[]? right = new char[length + 4];
+			left[0] = 'L'; left[length + 1] = 'L'; right[0] = 'R'; right[length + 3] = 'R';
+			for (var index = 0; index < length; index++) left[index + 1] = right[index + 2] = pattern[index % 9];
+			var first = new ReadOnlySpan<char>(left, 1, length);
+			var second = new Span<char>(right, 2, length);
+			var longer = new ReadOnlySpan<char>(right, 1, length + 1);
+			left = null; right = null;
+			M68kRuntime.Collect();
+			if (!CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal(first, second) ||
+				!CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal(first, first) ||
+				CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal(first, default) != (length == 0) ||
+				CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal(first, longer)) return 1;
+			for (var index = 0; index < length; index++)
+			{
+				second[index] = 'Z';
+				if (CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal(first, second) || CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal(second, first)) return 2;
+				second[index] = pattern[index % 9];
+			}
+			M68kRuntime.Collect();
+			for (var index = 0; index < length; index++) if (first[index] != pattern[index % 9] || second[index] != pattern[index % 9]) return 3;
+		}
+		return !CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal("A", "a") &&
+			!CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal("\u00E9", "e\u0301") &&
+			!CopperSharp.Runtime.ShadowCharacterSpans.EqualsOrdinal("\uD83D\uDE00", "\uDE00\uD83D") ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderChunksEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 3; layout++)
+		for (var sizeCase = 0; sizeCase < 7; sizeCase++)
+		{
+			var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 1 : sizeCase == 2 ? 16 : sizeCase == 3 ? 65
+				: sizeCase == 4 ? 128 : sizeCase == 5 ? 129 : 257;
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, length, 0);
+			var before = builder.ToString(0, builder.Length);
+			var capacity = builder.Capacity;
+			var position = 0;
+			var chunks = 0;
+			foreach (var chunk in builder.GetChunks())
+			{
+				M68kRuntime.Collect();
+				var span = chunk.Span;
+				for (var index = 0; index < span.Length; index++)
+					if (span[index] != pattern[(position + index) % 8]) return 1;
+				position += span.Length;
+				chunks++;
+			}
+			if (position != length) return 100 + layout * 10 + sizeCase;
+			if (chunks < 1) return 200 + layout * 10 + sizeCase;
+			if (builder.Length != length) return 300 + layout * 10 + sizeCase;
+			if (builder.Capacity != capacity) return 400 + layout * 10 + sizeCase;
+			if (builder.ToString(0, builder.Length) != before) return 500 + layout * 10 + sizeCase;
+			if (layout == 2 && chunks != 1 || layout == 0 && length == 65 && chunks != 8 || layout == 0 && length == 129 && chunks != 9) return 3;
+			var enumerator = builder.GetChunks();
+			position = 0;
+			while (enumerator.MoveNext())
+			{
+				var current = enumerator.Current;
+				var copied = current;
+				current = default;
+				M68kRuntime.Collect();
+				var span = copied.Span;
+				for (var index = 0; index < span.Length; index++) if (span[index] != before[position + index]) return 4;
+				position += span.Length;
+			}
+			if (position != length || enumerator.MoveNext() || enumerator.MoveNext()) return 5;
+			builder.Clear().Append('X');
+			var reused = builder.GetChunks();
+			if (!reused.MoveNext() || reused.Current.Length != 1 || reused.Current.Span[0] != 'X' || reused.MoveNext()) return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinEntry()
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var valueCase = 0; valueCase < 6; valueCase++)
+		for (var separatorCase = 0; separatorCase < 6; separatorCase++)
+		{
+			var values = CreateAppendJoinValues(valueCase);
+			var separator = separatorCase == 0 ? null : separatorCase == 1 ? "" : separatorCase == 2 ? "|"
+				: separatorCase == 3 ? new System.Text.StringBuilder(5).Append("\u03A9\0\uD83D\uDE00\uFFFF").ToString(0, 5)
+				: separatorCase == 4 ? "\0" : "\u03A9";
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			var result = separatorCase < 4 ? builder.AppendJoin(separator, values) : builder.AppendJoin(separator![0], values);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinMatches(builder, before, values, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (separatorCase < 4) builder.AppendJoin(separator, values); else builder.AppendJoin(separator![0], values);
+			M68kRuntime.Collect();
+			if (!AppendJoinMatches(builder, "", values, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != before.Length + builder.Length - 1 || builder[builder.Length - 1] != 'X') return 3;
+			for (var index = 0; index < before.Length; index++) if (snapshot[index] != before[index]) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[before.Length + index] != builder[index]) return 3;
+			if (valueCase == 5)
+			{
+				const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+				for (var index = 0; index < 65; index++) if (values[0]![index] != pattern[index % 8]) return 4;
+				for (var index = 0; index < 129; index++) if (values[3]![index] != pattern[index % 8]) return 5;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinSpanEntry()
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var valueCase = 0; valueCase < 6; valueCase++)
+		for (var separatorCase = 0; separatorCase < 6; separatorCase++)
+		{
+			string?[]? original = CreateAppendJoinValues(valueCase);
+			string?[]? storage = new string?[original.Length + 2];
+			storage[0] = "excluded-left"; storage[storage.Length - 1] = "excluded-right";
+			for (var index = 0; index < original.Length; index++) storage[index + 1] = original[index];
+			var values = new ReadOnlySpan<string?>(storage).Slice(1, original.Length);
+			original = null; storage = null;
+			M68kRuntime.Collect();
+			var separator = separatorCase == 0 ? null : separatorCase == 1 ? "" : separatorCase == 2 ? "|"
+				: separatorCase == 3 ? new System.Text.StringBuilder(5).Append("\u03A9\0\uD83D\uDE00\uFFFF").ToString(0, 5)
+				: separatorCase == 4 ? "\0" : "\u03A9";
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			var result = separatorCase < 4 ? builder.AppendJoin(separator, values) : builder.AppendJoin(separator![0], values);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinSpanMatches(builder, before, values, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (separatorCase < 4) builder.AppendJoin(separator, values); else builder.AppendJoin(separator![0], values);
+			M68kRuntime.Collect();
+			if (!AppendJoinSpanMatches(builder, "", values, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != before.Length + builder.Length - 1 || builder[builder.Length - 1] != 'X') return 3;
+			for (var index = 0; index < before.Length; index++) if (snapshot[index] != before[index]) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[before.Length + index] != builder[index]) return 3;
+			if (valueCase == 5)
+			{
+				const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+				for (var index = 0; index < 65; index++) if (values[0]![index] != pattern[index % 8]) return 4;
+				for (var index = 0; index < 129; index++) if (values[3]![index] != pattern[index % 8]) return 5;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool AppendJoinSpanMatches(System.Text.StringBuilder builder, string prefix, ReadOnlySpan<string?> values, string? separator)
+	{
+		var position = 0;
+		for (var index = 0; index < prefix.Length; index++) if (position >= builder.Length || builder[position++] != prefix[index]) return false;
+		for (var item = 0; item < values.Length; item++)
+		{
+			if (item != 0 && separator != null)
+				for (var index = 0; index < separator.Length; index++) if (position >= builder.Length || builder[position++] != separator[index]) return false;
+			var value = values[item];
+			if (value != null)
+				for (var index = 0; index < value.Length; index++) if (position >= builder.Length || builder[position++] != value[index]) return false;
+		}
+		return position == builder.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinSpanLifetimeEntry()
+	{
+		var returned = CreateRetainedAppendJoinSpan();
+		var copied = CopyAppendJoinSpan(returned);
+		returned = default;
+		M68kRuntime.Collect();
+		var pressure = new string?[64]; pressure[0] = "pressure";
+		var builder = new System.Text.StringBuilder(1).Append("seed");
+		if (AppendRetainedJoinSpan(builder, copied, false) != builder || !AppendJoinSpanMatches(builder, "seed", copied, "|")) return 1;
+		builder.Clear();
+		if (AppendRetainedJoinSpan(builder, copied, true) != builder || !AppendJoinSpanMatches(builder, "", copied, "|")) return 2;
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		if (copied.Length != 4 || copied[1] != null || copied[2] != "" || copied[0]!.Length != 65 || copied[3]!.Length != 129) return 3;
+		for (var index = 0; index < 65; index++) if (copied[0]![index] != pattern[index % 8]) return 4;
+		for (var index = 0; index < 129; index++) if (copied[3]![index] != pattern[index % 8]) return 5;
+		return pressure[0] == "pressure" ? 42 : 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<string?> CreateRetainedAppendJoinSpan()
+	{
+		var storage = new[] { "excluded-left", CreatePatternStringBuilder(1, 65, 0).ToString(0, 65), null, "",
+			CreatePatternStringBuilder(1, 129, 0).ToString(0, 129), "excluded-right" };
+		return new ReadOnlySpan<string?>(storage, 1, 4);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<string?> CopyAppendJoinSpan(ReadOnlySpan<string?> value)
+	{
+		M68kRuntime.Collect();
+		return value.Slice(0, value.Length);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder AppendRetainedJoinSpan(System.Text.StringBuilder builder, ReadOnlySpan<string?> values, bool character)
+	{
+		M68kRuntime.Collect();
+		return character ? builder.AppendJoin('|', values) : builder.AppendJoin("|", values);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinSpanContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		var empty = default(ReadOnlySpan<string?>);
+		if (builder.AppendJoin("|", empty) != builder || builder.AppendJoin('|', empty) != builder) return 1;
+		string?[]? missing = null;
+		if (builder.AppendJoin("|", new ReadOnlySpan<string?>(missing)) != builder) return 2;
+		if (builder.AppendJoin('|', new ReadOnlySpan<string?>(missing, 0, 0)) != builder) return 2;
+		var storage = new[] { "excluded-left", null, "", "A", null, "excluded-right" };
+		var values = new ReadOnlySpan<string?>(storage, 1, 4);
+		if (builder.AppendJoin('\0', values.Slice(values.Length, 0)) != builder || builder.ToString(0, builder.Length) != "seed") return 3;
+		if (builder.AppendJoin((string?)null, values) != builder || builder.ToString(0, builder.Length) != "seedA") return 4;
+		builder.Length = 4;
+		if (builder.AppendJoin("", values) != builder || builder.ToString(0, builder.Length) != "seedA") return 5;
+		builder.Length = 4;
+		if (builder.AppendJoin('\0', values) != builder || builder.ToString(0, builder.Length) != "seed\0\0A\0") return 6;
+		if (storage[0] != "excluded-left" || storage[1] != null || storage[2] != "" || storage[3] != "A" || storage[4] != null || storage[5] != "excluded-right") return 7;
+		for (var invalid = 0; invalid < 6; invalid++)
+		{
+			var start = invalid == 0 ? -1 : invalid == 1 ? int.MaxValue : invalid == 2 ? storage.Length + 1 : invalid == 3 ? 1 : 0;
+			var length = invalid == 3 ? storage.Length : invalid == 4 ? -1 : invalid == 5 ? int.MaxValue : 0;
+			try { builder.AppendJoin('|', new ReadOnlySpan<string?>(storage, start, length)); return 12; }
+			catch (ArgumentOutOfRangeException) { }
+			if (builder.ToString(0, builder.Length) != "seed\0\0A\0") return 13;
+		}
+		try { builder.AppendJoin('|', new ReadOnlySpan<string?>(missing, 1, 0)); return 14; }
+		catch (ArgumentOutOfRangeException) { }
+		try { builder.AppendJoin('|', new ReadOnlySpan<string?>(missing, 0, 1)); return 15; }
+		catch (ArgumentOutOfRangeException) { }
+		for (var character = 0; character < 2; character++)
+		{
+			var limited = new System.Text.StringBuilder(4, 8).Append("seed");
+			var parts = new ReadOnlySpan<string?>(new[] { "excluded-left", "a", "bc", "def", "excluded-right" }, 1, 3);
+			try
+			{
+				if (character == 0) limited.AppendJoin("|", parts); else limited.AppendJoin('|', parts);
+				return 8;
+			}
+			catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 9; }
+			if (limited.Length != 8 || limited.Capacity != 8 || limited.MaxCapacity != 8 || limited.ToString(0, 8) != "seeda|bc") return 10;
+			limited.Clear().AppendJoin('|', parts.Slice(0, 2));
+			if (limited.ToString(0, limited.Length) != "a|bc") return 11;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinSpanAllocationFailureEntry()
+	{
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(512).Append("seed");
+			var values = CreateRetainedAppendJoinSpan();
+			var separator = "\u03A9\0\uD83D\uDE00\uFFFF";
+			SetStringBuilderAllocationFailure(1);
+			if (character == 0) available.AppendJoin(separator, values); else available.AppendJoin('\u03A9', values);
+			available.AppendJoin((string?)null, default(ReadOnlySpan<string?>));
+			available.AppendJoin('\0', values.Slice(values.Length, 0));
+			SetStringBuilderAllocationFailure(0);
+			if (!AppendJoinSpanMatches(available, "seed", values, character == 0 ? separator : "\u03A9")) return 1;
+			for (var scenario = 0; scenario < (character == 0 ? 4 : 3); scenario++)
+			for (var failAt = 1; failAt <= 2; failAt++)
+			{
+				var capacity = scenario == 0 ? 4 : scenario == 2 ? 6 : 8;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var storage = new[] { "excluded-left", "AB", "CD", "excluded-right" };
+				var parts = new ReadOnlySpan<string?>(storage, 1, 2);
+				var delimiter = scenario == 3 ? separator : "|";
+				var retained = scenario == 0 ? "seed" : scenario == 1 ? "seedAB|C" : scenario == 2 ? "seedAB" : "seedAB\u03A9\0";
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (character == 0) builder.AppendJoin(delimiter, parts); else builder.AppendJoin('|', parts);
+					SetStringBuilderAllocationFailure(0); return 2;
+				}
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				if (builder.Capacity != capacity || builder.Length != retained.Length || builder.ToString(0, builder.Length) != retained) return 3;
+				if (storage[0] != "excluded-left" || storage[1] != "AB" || storage[2] != "CD" || storage[3] != "excluded-right") return 4;
+				builder.Length = 4;
+				if (character == 0) builder.AppendJoin(delimiter, parts); else builder.AppendJoin('|', parts);
+				if (!AppendJoinSpanMatches(builder, "seed", parts, delimiter)) return 5;
+				builder.Clear().AppendJoin('|', parts);
+				if (builder.ToString(0, builder.Length) != "AB|CD") return 6;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnumerableArrayJoinEntry()
+		=> CoreLibStringBuilderEnumerableJoinMatrix(false);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectArrayJoinEntry()
+		=> CoreLibStringBuilderObjectJoinMatrix(false);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectSpanJoinEntry()
+		=> CoreLibStringBuilderObjectJoinMatrix(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool ObjectInsertionMatches(System.Text.StringBuilder builder, string before, string?[] expected, int position)
+	{
+		var offset = 0;
+		for (var index = 0; index < position; index++) if (offset >= builder.Length || builder[offset++] != before[index]) return false;
+		for (var part = 0; part < expected.Length; part++)
+		{
+			var text = expected[part];
+			if (text == null) continue;
+			for (var index = 0; index < text.Length; index++) if (offset >= builder.Length || builder[offset++] != text[index]) return false;
+		}
+		for (var index = position; index < before.Length; index++) if (offset >= builder.Length || builder[offset++] != before[index]) return false;
+		return offset == builder.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertObjectEntry()
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var positionCase = 0; positionCase < 3; positionCase++)
+		for (var scenario = 0; scenario < 7; scenario++)
+		{
+			var values = scenario < 6 ? CreateObjectJoinValues(scenario) : new object?[] {
+				new CustomObjectJoinValue(CreatePatternStringBuilder(1, 65, 0).ToString(0, 65)),
+				new DerivedObjectJoinValue(), new InheritedObjectJoinValue(), new HidingObjectJoinValue(),
+				new OverrideHidingObjectJoinValue(), new GenericObjectJoinValue<int>("G1"),
+				new GenericObjectJoinValue<string>("G2"), new NullObjectJoinValue(), new ReentrantObjectJoinValue() };
+			var expected = scenario < 6 ? CreateObjectJoinExpected(scenario) : new string?[] {
+				CreatePatternStringBuilder(1, 65, 0).ToString(0, 65), "BD", "I", "H", "H", "G1", "G2", null, "N|7" };
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			var position = positionCase == 0 ? 0 : positionCase == 1 ? 9 : before.Length;
+			var offset = position;
+			M68kRuntime.Collect();
+			for (var index = 0; index < values.Length; index++)
+			{
+				if (builder.Insert(offset, values[index]) != builder) return 1;
+				offset += expected[index]?.Length ?? 0;
+			}
+			M68kRuntime.Collect();
+			if (!ObjectInsertionMatches(builder, before, expected, position)) return 2;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Remove(position, offset - position);
+			if (builder.ToString(0, builder.Length) != before) return 3;
+			builder.Clear(); offset = 0;
+			for (var index = 0; index < values.Length; index++)
+			{
+				builder.Insert(offset, values[index]); offset += expected[index]?.Length ?? 0;
+			}
+			M68kRuntime.Collect();
+			if (!ObjectInsertionMatches(builder, "", expected, 0) || snapshot.Length != before.Length + builder.Length) return 4;
+			for (var index = 0; index < position; index++) if (snapshot[index] != before[index]) return 5;
+			for (var index = 0; index < builder.Length; index++) if (snapshot[position + index] != builder[index]) return 6;
+			for (var index = position; index < before.Length; index++) if (snapshot[builder.Length + index] != before[index]) return 7;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertObjectContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		var throwing = new ThrowingObjectJoinValue();
+		for (var scenario = 0; scenario < 3; scenario++)
+		{
+			var position = scenario == 0 ? -1 : scenario == 1 ? builder.Length + 1 : int.MaxValue;
+			if (builder.Insert(position, (object?)null) != builder) return 1;
+			try { builder.Insert(position, (object)throwing); return 2; }
+			catch (InvalidOperationException error) { if (error != throwing.Error) return 3; }
+			if (throwing.Calls != scenario + 1 || builder.ToString(0, builder.Length) != "seed") return 4;
+			for (var kind = 0; kind < 2; kind++)
+			{
+				object value = kind == 0 ? "" : new NullObjectJoinValue();
+				try { builder.Insert(position, value); return 5; }
+				catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 6; }
+			}
+		}
+		throwing.Fail = false;
+		try { builder.Insert(-1, (object)throwing); return 7; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 8; }
+		if (throwing.Calls != 4 || builder.ToString(0, builder.Length) != "seed") return 9;
+		if (builder.Insert(2, (object)throwing) != builder || throwing.Calls != 5 || builder.ToString(0, builder.Length) != "seBed") return 10;
+		builder.Remove(2, 1);
+		if (builder.Insert(4, (object?)null) != builder || builder.Insert(0, (object)"") != builder ||
+			builder.Insert(2, (object)new NullObjectJoinValue()) != builder || builder.ToString(0, builder.Length) != "seed") return 11;
+		try { builder.Insert(2, (object)"ABCDE"); return 12; } catch (OutOfMemoryException) { }
+		if (builder.ToString(0, builder.Length) != "seed" || builder.Capacity != 8) return 13;
+		builder.Clear().Insert(0, (object)throwing);
+		return throwing.Calls == 6 && builder.ToString(0, builder.Length) == "B" ? 42 : 14;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder InsertRetainedObject(System.Text.StringBuilder builder, object value)
+	{
+		M68kRuntime.Collect();
+		return builder.Insert(9, value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertObjectLifetimeEntry()
+	{
+		for (var scenario = 0; scenario < 2; scenario++)
+		{
+			var value = CreateRetainedAppendObject(scenario);
+			var builder = CreatePatternStringBuilder(1, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			M68kRuntime.Collect();
+			var pressure = new object?[64]; pressure[0] = "pressure";
+			if (InsertRetainedObject(builder, value) != builder) return 1;
+			M68kRuntime.Collect();
+			var expected = scenario == 0 ? ((CustomObjectJoinValue)value).Text : ((GenericObjectJoinValue<string>)value).Text;
+			if (!ObjectInsertionMatches(builder, before, new[] { expected }, 9) || pressure[0] != (object)"pressure") return 2;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertObjectMutationEntry()
+	{
+		var builder = new System.Text.StringBuilder(1).Append("seed");
+		var value = new MutatingObjectInsertionValue(builder);
+		try { builder.Insert(4, (object)value); return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 2; }
+		if (value.Calls != 1 || builder.ToString(0, builder.Length) != "Q") return 3;
+		value.Grow = true;
+		if (builder.Insert(4, (object)value) != builder || value.Calls != 2 || builder.ToString(0, builder.Length) != "wideBr") return 4;
+		builder.Clear().Insert(0, (object)value);
+		return value.Calls == 3 && builder.ToString(0, builder.Length) == "Bwider" ? 42 : 5;
+	}
+
+	public sealed class MutatingObjectInsertionValue
+	{
+		private readonly System.Text.StringBuilder _builder;
+		public int Calls;
+		public bool Grow;
+		public MutatingObjectInsertionValue(System.Text.StringBuilder builder) => _builder = builder;
+		public override string ToString()
+		{
+			Calls++;
+			_builder.Clear().Append(Grow ? "wider" : "Q");
+			return new System.Text.StringBuilder(1).Append("B").ToString(0, 1);
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertObjectRejectsUnknownEntry()
+	{
+		{
+			var builder = new System.Text.StringBuilder(64).Append("seed");
+			object value = new RuntimeDerivedObjectJoinValue();
+			try { builder.Insert(-1, value); return 1; } catch (NotSupportedException) { }
+			try { builder.Insert(2, value); return 2; } catch (NotSupportedException) { }
+			if (builder.ToString(0, builder.Length) != "seed") return 3;
+			builder.Insert(2, (object)42);
+			if (builder.ToString(0, builder.Length) != "se42ed") return 4;
+			builder.Clear().Insert(0, (object)true);
+			if (builder.ToString(0, builder.Length) != "True") return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertObjectAllocationFailureEntry()
+	{
+		var available = new System.Text.StringBuilder(64).Append("seed");
+		object literal = "A", yes = true, no = false, custom = new BaseObjectJoinValue("BC");
+		SetStringBuilderAllocationFailure(1);
+		available.Insert(2, literal).Insert(3, yes).Insert(-1, (object?)null).Insert(7, no).Insert(12, custom);
+		SetStringBuilderAllocationFailure(0);
+		if (available.ToString(0, available.Length) != "seATrueFalseBCed") return 1;
+		for (var positionCase = 0; positionCase < 3; positionCase++)
+		for (var scenario = 0; scenario < 5; scenario++)
+		for (var failAt = 1; failAt <= (scenario < 2 ? 3 : scenario == 4 ? 2 : 1); failAt++)
+		{
+			var position = positionCase * 2;
+			var capacity = scenario < 2 || scenario == 4 ? 4 : 64;
+			var builder = new System.Text.StringBuilder(capacity).Append("seed");
+			var allocating = new AllocatingObjectJoinValue();
+			object value = scenario == 0 || scenario == 3 ? allocating : scenario == 1 ? (object)12 : scenario == 2 ? (object)'B' : "BC";
+			var expected = scenario == 1 ? "12" : scenario == 2 ? "B" : "BC";
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.Insert(position, value); SetStringBuilderAllocationFailure(0); return 2; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.Capacity != capacity || builder.ToString(0, builder.Length) != "seed" ||
+				allocating.Calls != (scenario == 0 || scenario == 3 ? 1 : 0)) return 3;
+			if (builder.Insert(position, value) != builder || !ObjectInsertionMatches(builder, "seed", new[] { expected }, position)) return 4;
+			builder.Clear().Insert(0, value);
+			if (builder.ToString(0, builder.Length) != expected || allocating.Calls != (scenario == 0 || scenario == 3 ? 3 : 0)) return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendObjectEntry()
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var scenario = 0; scenario < 7; scenario++)
+		{
+			var values = scenario < 6 ? CreateObjectJoinValues(scenario) : new object?[] {
+				new CustomObjectJoinValue(CreatePatternStringBuilder(1, 65, 0).ToString(0, 65)),
+				new DerivedObjectJoinValue(), new InheritedObjectJoinValue(), new HidingObjectJoinValue(),
+				new OverrideHidingObjectJoinValue(), new GenericObjectJoinValue<int>("G1"),
+				new GenericObjectJoinValue<string>("G2"), new NullObjectJoinValue(), new ReentrantObjectJoinValue() };
+			var expected = scenario < 6 ? CreateObjectJoinExpected(scenario) : new string?[] {
+				CreatePatternStringBuilder(1, 65, 0).ToString(0, 65), "BD", "I", "H", "H", "G1", "G2", null, "N|7" };
+			var builder = new System.Text.StringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512).Append("seed");
+			M68kRuntime.Collect();
+			for (var index = 0; index < values.Length; index++) if (builder.Append(values[index]) != builder) return 1;
+			M68kRuntime.Collect();
+			if (!AppendJoinMatches(builder, "seed", expected, "")) return 2;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			for (var index = 0; index < values.Length; index++) builder.Append(values[index]);
+			builder.Append('X'); M68kRuntime.Collect();
+			if (snapshot.Length != builder.Length + 3) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[index + 4] != builder[index]) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendObjectContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		if (builder.Append((object?)null) != builder || builder.Append((object)"") != builder ||
+			builder.Append((object)new NullObjectJoinValue()) != builder || builder.ToString(0, builder.Length) != "seed") return 1;
+		var throwing = new ThrowingObjectJoinValue();
+		try { builder.Append((object)throwing); return 2; }
+		catch (InvalidOperationException error) { if (error != throwing.Error) return 3; }
+		if (throwing.Calls != 1 || builder.ToString(0, builder.Length) != "seed") return 4;
+		throwing.Fail = false;
+		if (builder.Append((object)throwing) != builder || throwing.Calls != 2 || builder.ToString(0, builder.Length) != "seedB") return 5;
+		builder.Length = 4;
+		try { builder.Append((object)"ABCDE"); return 6; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 7; }
+		if (builder.ToString(0, builder.Length) != "seed" || builder.Capacity != 8) return 8;
+		builder.Clear().Append((object)throwing);
+		return throwing.Calls == 3 && builder.ToString(0, builder.Length) == "B" ? 42 : 9;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static object CreateRetainedAppendObject(int scenario)
+	{
+		var text = CreatePatternStringBuilder(1, scenario == 0 ? 65 : 129, 0).ToString(0, scenario == 0 ? 65 : 129);
+		return scenario == 0 ? new CustomObjectJoinValue(text) : new GenericObjectJoinValue<string>(text);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder AppendRetainedObject(System.Text.StringBuilder builder, object value)
+	{
+		M68kRuntime.Collect();
+		return builder.Append(value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendObjectLifetimeEntry()
+	{
+		for (var scenario = 0; scenario < 2; scenario++)
+		{
+			var value = CreateRetainedAppendObject(scenario);
+			var builder = new System.Text.StringBuilder(1).Append("seed");
+			M68kRuntime.Collect();
+			var pressure = new object?[64]; pressure[0] = "pressure";
+			if (AppendRetainedObject(builder, value) != builder) return 1;
+			M68kRuntime.Collect();
+			var expected = scenario == 0 ? ((CustomObjectJoinValue)value).Text : ((GenericObjectJoinValue<string>)value).Text;
+			if (builder.Length != expected.Length + 4 || pressure[0] != (object)"pressure") return 2;
+			for (var index = 0; index < expected.Length; index++) if (builder[index + 4] != expected[index]) return 3;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendObjectRejectsUnknownEntry()
+	{
+		{
+			var builder = new System.Text.StringBuilder(64).Append("seed");
+			object value = new RuntimeDerivedObjectJoinValue();
+			try { builder.Append(value); return 1; } catch (NotSupportedException) { }
+			if (builder.ToString(0, builder.Length) != "seed") return 2;
+			builder.Append((object)42);
+			if (builder.ToString(0, builder.Length) != "seed42") return 3;
+			builder.Clear().Append((object)true);
+			if (builder.ToString(0, builder.Length) != "True") return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendObjectAllocationFailureEntry()
+	{
+		var available = new System.Text.StringBuilder(64).Append("seed");
+		object literal = "A", yes = true, no = false, custom = new BaseObjectJoinValue("BC");
+		SetStringBuilderAllocationFailure(1);
+		available.Append(literal).Append(yes).Append((object?)null).Append(no).Append(custom);
+		SetStringBuilderAllocationFailure(0);
+		if (available.ToString(0, available.Length) != "seedATrueFalseBC") return 1;
+		for (var scenario = 0; scenario < 5; scenario++)
+		for (var failAt = 1; failAt <= (scenario < 2 ? 3 : scenario == 4 ? 2 : 1); failAt++)
+		{
+			var capacity = scenario < 2 || scenario == 4 ? 4 : 64;
+			var builder = new System.Text.StringBuilder(capacity).Append("seed");
+			var allocating = new AllocatingObjectJoinValue();
+			object value = scenario == 0 || scenario == 3 ? allocating : scenario == 1 ? (object)12 : scenario == 2 ? (object)'B' : "BC";
+			var expected = scenario == 1 ? "12" : scenario == 2 ? "B" : "BC";
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.Append(value); SetStringBuilderAllocationFailure(0); return 2; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.Capacity != capacity || builder.ToString(0, builder.Length) != "seed" ||
+				allocating.Calls != (scenario == 0 || scenario == 3 ? 1 : 0)) return 3;
+			if (builder.Append(value) != builder || builder.Length != 4 + expected.Length) return 4;
+			for (var index = 0; index < expected.Length; index++) if (builder[4 + index] != expected[index]) return 5;
+			builder.Clear().Append(value);
+			if (builder.ToString(0, builder.Length) != expected || allocating.Calls != (scenario == 0 || scenario == 3 ? 3 : 0)) return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static object?[] CreateObjectJoinValues(int scenario)
+	{
+		if (scenario == 0) return new object?[0];
+		if (scenario == 1) return new object?[] { null };
+		if (scenario == 2) return new object?[] { null, "", null };
+		if (scenario == 3) return new object?[] { "\u03A9\0\uD83D\uDE00\uFFFF", '\uD800', '\0', true, false };
+		if (scenario == 5) return new object?[] { CreatePatternStringBuilder(1, 65, 0).ToString(0, 65),
+			null, 42, CreatePatternStringBuilder(1, 129, 0).ToString(0, 129) };
+		return new object?[] { "A", null, "", "\u03A9\0", true, false, '\uFFFF', '\0',
+			sbyte.MinValue, sbyte.MaxValue, byte.MaxValue, short.MinValue, short.MaxValue, ushort.MaxValue,
+			int.MinValue, int.MaxValue, uint.MaxValue, long.MinValue, long.MaxValue, ulong.MaxValue, 0L, 0UL };
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string?[] CreateObjectJoinExpected(int scenario)
+	{
+		if (scenario == 0) return new string?[0];
+		if (scenario == 1) return new string?[] { null };
+		if (scenario == 2) return new string?[] { null, "", null };
+		if (scenario == 3) return new[] { "\u03A9\0\uD83D\uDE00\uFFFF", "\uD800", "\0", "True", "False" };
+		if (scenario == 5) return new[] { CreatePatternStringBuilder(1, 65, 0).ToString(0, 65),
+			null, "42", CreatePatternStringBuilder(1, 129, 0).ToString(0, 129) };
+		return new[] { "A", null, "", "\u03A9\0", "True", "False", "\uFFFF", "\0", "-128", "127", "255",
+			"-32768", "32767", "65535", "-2147483648", "2147483647", "4294967295", "-9223372036854775808",
+			"9223372036854775807", "18446744073709551615", "0", "0" };
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CoreLibStringBuilderObjectJoinMatrix(bool span)
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var valueCase = 0; valueCase < 6; valueCase++)
+		for (var separatorCase = 0; separatorCase < 6; separatorCase++)
+		{
+			var values = CreateObjectJoinValues(valueCase);
+			var expected = CreateObjectJoinExpected(valueCase);
+			var storage = new object?[values.Length + 2];
+			storage[0] = "excluded-left"; storage[storage.Length - 1] = "excluded-right";
+			for (var index = 0; index < values.Length; index++) storage[index + 1] = values[index];
+			var view = new ReadOnlySpan<object?>(storage, 1, values.Length);
+			storage = null;
+			var separator = separatorCase == 0 ? null : separatorCase == 1 ? "" : separatorCase == 2 ? "|"
+				: separatorCase == 3 ? CreatePatternStringBuilder(1, 5, 3).ToString(0, 5) : separatorCase == 4 ? "\0" : "\u03A9";
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			M68kRuntime.Collect();
+			var result = span ? separatorCase < 4 ? builder.AppendJoin(separator, view) : builder.AppendJoin(separator![0], view)
+				: separatorCase < 4 ? builder.AppendJoin(separator, values) : builder.AppendJoin(separator![0], values);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinMatches(builder, before, expected, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (span) { if (separatorCase < 4) builder.AppendJoin(separator, view); else builder.AppendJoin(separator![0], view); }
+			else { if (separatorCase < 4) builder.AppendJoin(separator, values); else builder.AppendJoin(separator![0], values); }
+			M68kRuntime.Collect();
+			if (!AppendJoinMatches(builder, "", expected, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != before.Length + builder.Length - 1) return 3;
+			for (var index = 0; index < before.Length; index++) if (snapshot[index] != before[index]) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[before.Length + index] != builder[index]) return 3;
+			for (var index = 0; index < values.Length; index++) if (view[index] != values[index]) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectJoinLifetimeEntry()
+	{
+		var view = CopyObjectJoinSpan(CreateRetainedObjectJoinSpan());
+		var copied = CopyObjectJoinSpan(view);
+		M68kRuntime.Collect();
+		var pressure = new object?[64]; pressure[0] = "pressure";
+		for (var character = 0; character < 2; character++)
+		{
+			var builder = new System.Text.StringBuilder(1).Append("seed");
+			if (AppendRetainedObjectJoinSpan(builder, copied, character != 0) != builder) return 1;
+			M68kRuntime.Collect();
+			if (!AppendJoinMatches(builder, "seed", CreateObjectJoinExpected(5), "|")) return 2;
+		}
+		return pressure[0] == (object)"pressure" && view[2] == copied[2] ? 42 : 3;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<object?> CreateRetainedObjectJoinSpan()
+	{
+		var values = CreateObjectJoinValues(5);
+		var storage = new object?[values.Length + 2];
+		storage[0] = "excluded-left"; storage[storage.Length - 1] = "excluded-right";
+		for (var index = 0; index < values.Length; index++) storage[index + 1] = values[index];
+		return new ReadOnlySpan<object?>(storage, 1, values.Length);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<object?> CopyObjectJoinSpan(ReadOnlySpan<object?> values)
+	{
+		M68kRuntime.Collect();
+		return values.Slice(0, values.Length);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder AppendRetainedObjectJoinSpan(System.Text.StringBuilder builder, ReadOnlySpan<object?> values, bool character)
+	{
+		M68kRuntime.Collect();
+		return character ? builder.AppendJoin('|', values) : builder.AppendJoin("|", values);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectJoinContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		object?[]? missing = null;
+		try { builder.AppendJoin("|", missing!); return 1; } catch (ArgumentNullException error) { if (error.ParamName != "values") return 2; }
+		try { builder.AppendJoin('|', missing!); return 1; } catch (ArgumentNullException error) { if (error.ParamName != "values") return 2; }
+		if (builder.AppendJoin("|", default(ReadOnlySpan<object?>)) != builder) return 3;
+		if (builder.AppendJoin('|', new ReadOnlySpan<object?>(missing)) != builder) return 3;
+		if (builder.AppendJoin('|', new ReadOnlySpan<object?>(missing, 0, 0)) != builder) return 3;
+		var storage = new object?[] { "excluded-left", null, "", 'A', null, "excluded-right" };
+		var view = new ReadOnlySpan<object?>(storage, 1, 4);
+		if (builder.AppendJoin('\0', view.Slice(view.Length, 0)) != builder) return 3;
+		if (builder.AppendJoin((string?)null, view) != builder || builder.ToString(0, builder.Length) != "seedA") return 4;
+		builder.Length = 4;
+		if (builder.AppendJoin("", view) != builder || builder.ToString(0, builder.Length) != "seedA") return 4;
+		builder.Length = 4;
+		if (builder.AppendJoin('\0', view) != builder || builder.ToString(0, builder.Length) != "seed\0\0A\0") return 5;
+		for (var invalid = 0; invalid < 6; invalid++)
+		{
+			var start = invalid == 0 ? -1 : invalid == 1 ? int.MaxValue : invalid == 2 ? storage.Length + 1 : invalid == 3 ? 1 : 0;
+			var length = invalid == 3 ? storage.Length : invalid == 4 ? -1 : invalid == 5 ? int.MaxValue : 0;
+			try { builder.AppendJoin('|', new ReadOnlySpan<object?>(storage, start, length)); return 6; } catch (ArgumentOutOfRangeException) { }
+			if (builder.ToString(0, builder.Length) != "seed\0\0A\0") return 7;
+		}
+		try { builder.AppendJoin('|', new ReadOnlySpan<object?>(missing, 1, 0)); return 8; } catch (ArgumentOutOfRangeException) { }
+		try { builder.AppendJoin('|', new ReadOnlySpan<object?>(missing, 0, 1)); return 8; } catch (ArgumentOutOfRangeException) { }
+		for (var span = 0; span < 2; span++)
+		for (var character = 0; character < 2; character++)
+		{
+			var limited = new System.Text.StringBuilder(4, 8).Append("seed");
+			var parts = new object?[] { 'a', "bc", "def" };
+			try
+			{
+				if (span != 0) { if (character == 0) limited.AppendJoin("|", new ReadOnlySpan<object?>(parts)); else limited.AppendJoin('|', new ReadOnlySpan<object?>(parts)); }
+				else { if (character == 0) limited.AppendJoin("|", parts); else limited.AppendJoin('|', parts); }
+				return 9;
+			}
+			catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 10; }
+			if (limited.ToString(0, limited.Length) != "seeda|bc") return 11;
+			limited.Clear().AppendJoin('|', parts);
+			if (limited.ToString(0, limited.Length) != "a|bc|def") return 12;
+		}
+		return 42;
+	}
+
+	public class UnsupportedObjectJoinValue
+	{
+		public new virtual string ToString() => throw new InvalidOperationException("A hiding method must not replace Object.ToString.");
+	}
+	public sealed class RuntimeDerivedObjectJoinValue : CopperSharp.Runtime.ShadowObject
+	{
+		public override string ToString() => throw new InvalidOperationException("Runtime implementation inheritance is outside the application bridge.");
+	}
+
+	public sealed class CustomObjectJoinValue
+	{
+		private readonly string _text;
+		public CustomObjectJoinValue(string text) => _text = text;
+		public string Text => _text;
+		public override string ToString()
+		{
+			M68kRuntime.Collect();
+			return new System.Text.StringBuilder(1).Append(_text).ToString(0, _text.Length);
+		}
+	}
+
+	public class BaseObjectJoinValue
+	{
+		private readonly string _text;
+		public BaseObjectJoinValue(string text) => _text = text;
+		public virtual int Marker() => 17;
+		public override string ToString() => _text;
+	}
+	public sealed class DerivedObjectJoinValue : BaseObjectJoinValue
+	{
+		public DerivedObjectJoinValue() : base("B") { }
+		public override string ToString() => new System.Text.StringBuilder(1).Append(base.ToString()).Append('D').ToString(0, 2);
+	}
+	public sealed class InheritedObjectJoinValue : BaseObjectJoinValue
+	{
+		public InheritedObjectJoinValue() : base("I") { }
+	}
+	public class HidingObjectJoinValue : BaseObjectJoinValue
+	{
+		public HidingObjectJoinValue() : base("H") { }
+		public new virtual string ToString() => throw new InvalidOperationException("The hiding slot must not run.");
+	}
+	public sealed class OverrideHidingObjectJoinValue : HidingObjectJoinValue
+	{
+		public override string ToString() => throw new InvalidOperationException("An override of the hiding slot must not run.");
+	}
+	public sealed class GenericObjectJoinValue<T>
+	{
+		private readonly string _text;
+		public GenericObjectJoinValue(string text) => _text = text;
+		public string Text => _text;
+		public override string ToString() => _text;
+	}
+	public sealed class NullObjectJoinValue
+	{
+		public override string? ToString() => null;
+	}
+	public sealed class ReentrantObjectJoinValue
+	{
+		public override string ToString()
+		{
+			var builder = new System.Text.StringBuilder(1);
+			builder.AppendJoin('|', new object?[] { new NestedOnlyObjectJoinValue(), 7 });
+			return builder.ToString(0, builder.Length);
+		}
+	}
+	public sealed class NestedOnlyObjectJoinValue
+	{
+		public override string ToString() => "N";
+	}
+	public sealed class UnallocatedObjectJoinValue
+	{
+		public override string ToString() => throw new InvalidOperationException("Unallocated overrides must remain unlinked.");
+	}
+	public sealed class ThrowingObjectJoinValue
+	{
+		public bool Fail = true;
+		public int Calls;
+		public readonly InvalidOperationException Error = new InvalidOperationException("custom");
+		public override string ToString()
+		{
+			Calls++;
+			if (Fail) throw Error;
+			return "B";
+		}
+	}
+	public sealed class AllocatingObjectJoinValue
+	{
+		public int Calls;
+		public override string ToString()
+		{
+			Calls++;
+			var text = M68kRuntime.AllocateString(2);
+			M68kRuntime.SetStringChar(text, 0, 'B'); M68kRuntime.SetStringChar(text, 1, 'C');
+			return text;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCustomObjectJoinLifetimeEntry()
+	{
+		var view = CopyObjectJoinSpan(CreateRetainedCustomObjectJoinSpan());
+		var copy = CopyObjectJoinSpan(view);
+		M68kRuntime.Collect();
+		var pressure = new object?[64]; pressure[0] = "pressure";
+		for (var character = 0; character < 2; character++)
+		{
+			var builder = new System.Text.StringBuilder(1).Append("seed");
+			if (AppendRetainedObjectJoinSpan(builder, copy, character != 0) != builder) return 1;
+			M68kRuntime.Collect();
+			if (builder.Length != 199 || builder[69] != '|') return 2;
+			const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+			for (var index = 0; index < 65; index++) if (builder[4 + index] != pattern[index % 8]) return 3;
+			for (var index = 0; index < 129; index++) if (builder[70 + index] != pattern[index % 8]) return 4;
+		}
+		return pressure[0] == (object)"pressure" && view[0] == copy[0] ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<object?> CreateRetainedCustomObjectJoinSpan()
+	{
+		var values = new object?[] { "excluded-left", new CustomObjectJoinValue(CreatePatternStringBuilder(1, 65, 0).ToString(0, 65)),
+			new GenericObjectJoinValue<string>(CreatePatternStringBuilder(1, 129, 0).ToString(0, 129)), "excluded-right" };
+		return new ReadOnlySpan<object?>(values, 1, 2);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCustomObjectJoinExceptionEntry()
+	{
+		for (var span = 0; span < 2; span++)
+		for (var character = 0; character < 2; character++)
+		{
+			var throwing = new ThrowingObjectJoinValue();
+			var values = new object?[] { "A", throwing, "C" };
+			var builder = new System.Text.StringBuilder(64).Append("seed");
+			try
+			{
+				if (span != 0) { if (character == 0) builder.AppendJoin("|", new ReadOnlySpan<object?>(values)); else builder.AppendJoin('|', new ReadOnlySpan<object?>(values)); }
+				else { if (character == 0) builder.AppendJoin("|", values); else builder.AppendJoin('|', values); }
+				return 1;
+			}
+			catch (InvalidOperationException error) { if (error != throwing.Error) return 2; }
+			if (builder.ToString(0, builder.Length) != "seedA|" || throwing.Calls != 1) return 3;
+			throwing.Fail = false; builder.Length = 4;
+			builder.AppendJoin('|', values);
+			if (builder.ToString(0, builder.Length) != "seedA|B|C" || throwing.Calls != 2) return 4;
+			builder.Clear().AppendJoin('|', values);
+			if (builder.ToString(0, builder.Length) != "A|B|C" || throwing.Calls != 3) return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCustomObjectJoinAllocationFailureEntry()
+	{
+		for (var span = 0; span < 2; span++)
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(64).Append("seed");
+			var noAllocation = new object?[] { new BaseObjectJoinValue("BC") };
+			SetStringBuilderAllocationFailure(1);
+			if (span != 0) { if (character == 0) available.AppendJoin("|", new ReadOnlySpan<object?>(noAllocation)); else available.AppendJoin('|', new ReadOnlySpan<object?>(noAllocation)); }
+			else { if (character == 0) available.AppendJoin("|", noAllocation); else available.AppendJoin('|', noAllocation); }
+			SetStringBuilderAllocationFailure(0);
+			if (available.ToString(0, available.Length) != "seedBC") return 1;
+			for (var scenario = 0; scenario < 2; scenario++)
+			for (var failAt = 1; failAt <= (scenario == 0 ? 3 : 1); failAt++)
+			{
+				var capacity = scenario == 0 ? 4 : 64;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var value = new AllocatingObjectJoinValue();
+				var parts = scenario == 0 ? new object?[] { value } : new object?[] { "A", value };
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (span != 0) { if (character == 0) builder.AppendJoin("|", new ReadOnlySpan<object?>(parts)); else builder.AppendJoin('|', new ReadOnlySpan<object?>(parts)); }
+					else { if (character == 0) builder.AppendJoin("|", parts); else builder.AppendJoin('|', parts); }
+					SetStringBuilderAllocationFailure(0); return 2;
+				}
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				if (value.Calls != 1 || builder.Capacity != capacity || builder.ToString(0, builder.Length) != (scenario == 0 ? "seed" : "seedA|")) return 3;
+				builder.Length = 4; builder.AppendJoin('|', parts);
+				if (value.Calls != 2 || builder.ToString(0, builder.Length) != (scenario == 0 ? "seedBC" : "seedA|BC")) return 4;
+				builder.Clear().AppendJoin('|', parts);
+				if (value.Calls != 3 || builder.ToString(0, builder.Length) != (scenario == 0 ? "BC" : "A|BC")) return 5;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCustomObjectJoinEntry()
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var span = 0; span < 2; span++)
+		for (var delimiter = 0; delimiter < 4; delimiter++)
+		{
+			var dynamicText = CreatePatternStringBuilder(1, 65, 0).ToString(0, 65);
+			var values = new object?[] { new CustomObjectJoinValue(dynamicText), null, 42, new DerivedObjectJoinValue(),
+				new InheritedObjectJoinValue(), new HidingObjectJoinValue(), new OverrideHidingObjectJoinValue(),
+				new GenericObjectJoinValue<int>("G1"), new GenericObjectJoinValue<string>("G2"), new NullObjectJoinValue(), new ReentrantObjectJoinValue() };
+			var expected = new string?[] { dynamicText, null, "42", "BD", "I", "H", "H", "G1", "G2", null, "N|7" };
+			var separator = delimiter == 0 ? null : delimiter == 1 ? "" : delimiter == 2 ? "|" : "\u03A9\0";
+			var builder = new System.Text.StringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512).Append("seed");
+			var storage = new object?[values.Length + 2]; storage[0] = "excluded-left"; storage[storage.Length - 1] = "excluded-right";
+			for (var index = 0; index < values.Length; index++) storage[index + 1] = values[index];
+			var view = new ReadOnlySpan<object?>(storage, 1, values.Length); storage = null;
+			M68kRuntime.Collect();
+			var result = span != 0 ? delimiter == 2 ? builder.AppendJoin('|', view) : builder.AppendJoin(separator, view)
+				: delimiter == 2 ? builder.AppendJoin('|', values) : builder.AppendJoin(separator, values);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinMatches(builder, "seed", expected, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (span != 0) { if (delimiter == 2) builder.AppendJoin('|', view); else builder.AppendJoin(separator, view); }
+			else { if (delimiter == 2) builder.AppendJoin('|', values); else builder.AppendJoin(separator, values); }
+			if (!AppendJoinMatches(builder, "", expected, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != builder.Length + 3) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[index + 4] != builder[index]) return 3;
+			for (var index = 0; index < values.Length; index++) if (view[index] != values[index]) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectJoinRejectsUnknownValueEntry()
+	{
+		for (var span = 0; span < 2; span++)
+		for (var character = 0; character < 2; character++)
+		{
+			var builder = new System.Text.StringBuilder(64).Append("seed");
+			var values = new object?[] { 42, new RuntimeDerivedObjectJoinValue(), "unreached" };
+			try
+			{
+				if (span != 0) { if (character == 0) builder.AppendJoin("|", new ReadOnlySpan<object?>(values)); else builder.AppendJoin('|', new ReadOnlySpan<object?>(values)); }
+				else { if (character == 0) builder.AppendJoin("|", values); else builder.AppendJoin('|', values); }
+				return 1;
+			}
+			catch (NotSupportedException) { }
+			if (builder.ToString(0, builder.Length) != "seed42|") return 2;
+			builder.Length = 4; values[1] = true;
+			builder.AppendJoin('|', values);
+			if (builder.ToString(0, builder.Length) != "seed42|True|unreached") return 3;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectJoinAllocationFailureEntry()
+	{
+		for (var span = 0; span < 2; span++)
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(64).Append("seed");
+			var noConversion = new object?[] { "A", true, null, false };
+			SetStringBuilderAllocationFailure(1);
+			if (span != 0) { if (character == 0) available.AppendJoin("|", new ReadOnlySpan<object?>(noConversion)); else available.AppendJoin('|', new ReadOnlySpan<object?>(noConversion)); }
+			else { if (character == 0) available.AppendJoin("|", noConversion); else available.AppendJoin('|', noConversion); }
+			SetStringBuilderAllocationFailure(0);
+			if (available.ToString(0, available.Length) != "seedA|True||False") return 1;
+			for (var scenario = 0; scenario < 3; scenario++)
+			for (var failAt = 1; failAt <= (scenario == 0 ? 3 : 1); failAt++)
+			{
+				var capacity = scenario == 0 ? 4 : 64;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var parts = scenario == 2 ? new object?[] { "A", 'B' } : new object?[] { 12 };
+				var retained = scenario == 2 ? "seedA|" : "seed";
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (span != 0) { if (character == 0) builder.AppendJoin("|", new ReadOnlySpan<object?>(parts)); else builder.AppendJoin('|', new ReadOnlySpan<object?>(parts)); }
+					else { if (character == 0) builder.AppendJoin("|", parts); else builder.AppendJoin('|', parts); }
+					SetStringBuilderAllocationFailure(0); return 2;
+				}
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				if (builder.Capacity != capacity || builder.ToString(0, builder.Length) != retained) return 3;
+				builder.Length = 4; builder.AppendJoin('|', parts);
+				if (builder.ToString(0, builder.Length) != (scenario == 2 ? "seedA|B" : "seed12")) return 4;
+				builder.Clear().AppendJoin('|', parts);
+				if (builder.ToString(0, builder.Length) != (scenario == 2 ? "A|B" : "12")) return 5;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnumerableListJoinEntry()
+		=> CoreLibStringBuilderEnumerableJoinMatrix(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CoreLibStringBuilderEnumerableJoinMatrix(bool list)
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var valueCase = 0; valueCase < 6; valueCase++)
+		for (var separatorCase = 0; separatorCase < 6; separatorCase++)
+		{
+			var values = CreateAppendJoinValues(valueCase);
+			var input = list ? CreateStringJoinList(values) : null;
+			IEnumerable<string?> source = input != null ? input : values;
+			var separator = separatorCase == 0 ? null : separatorCase == 1 ? "" : separatorCase == 2 ? "|"
+				: separatorCase == 3 ? new System.Text.StringBuilder(5).Append("\u03A9\0\uD83D\uDE00\uFFFF").ToString(0, 5)
+				: separatorCase == 4 ? "\0" : "\u03A9";
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			M68kRuntime.Collect();
+			var result = separatorCase < 4 ? builder.AppendJoin<string?>(separator, source) : builder.AppendJoin<string?>(separator![0], source);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinMatches(builder, before, values, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (separatorCase < 4) builder.AppendJoin<string?>(separator, source); else builder.AppendJoin<string?>(separator![0], source);
+			M68kRuntime.Collect();
+			if (!AppendJoinMatches(builder, "", values, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != before.Length + builder.Length - 1 || builder[builder.Length - 1] != 'X') return 3;
+			for (var index = 0; index < before.Length; index++) if (snapshot[index] != before[index]) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[before.Length + index] != builder[index]) return 3;
+			if (input != null)
+			{
+				if (input.Count != values.Length) return 4;
+				for (var index = 0; index < values.Length; index++) if (input[index] != values[index]) return 4;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static IEnumerable<string?> CreateStringJoinEnumerable(bool list, string?[] values)
+	{
+		if (!list) return values;
+		return CreateStringJoinList(values);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static List<string?> CreateStringJoinList(string?[] values)
+	{
+		var result = new List<string?>(values.Length);
+		for (var index = 0; index < values.Length; index++) result.Add(values[index]);
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnumerableJoinContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		try { builder.AppendJoin<string?>("|", null!); return 1; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 2; }
+		try { builder.AppendJoin<string?>('|', null!); return 3; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 4; }
+		for (var list = 0; list < 2; list++)
+		{
+			builder.Length = 4;
+			var source = CreateStringJoinEnumerable(list != 0, new[] { null, "", "A", null });
+			if (builder.AppendJoin<string?>((string?)null, source) != builder || builder.ToString(0, builder.Length) != "seedA") return 5;
+			builder.Length = 4;
+			if (builder.AppendJoin<string?>("", source) != builder || builder.ToString(0, builder.Length) != "seedA") return 6;
+			builder.Length = 4;
+			if (builder.AppendJoin<string?>('\0', source) != builder || builder.ToString(0, builder.Length) != "seed\0\0A\0") return 7;
+			for (var character = 0; character < 2; character++)
+			{
+				var limited = new System.Text.StringBuilder(4, 8).Append("seed");
+				var parts = CreateStringJoinEnumerable(list != 0, new[] { "a", "bc", "def" });
+				try { if (character == 0) limited.AppendJoin<string?>("|", parts); else limited.AppendJoin<string?>('|', parts); return 8; }
+				catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 9; }
+				if (limited.Length != 8 || limited.Capacity != 8 || limited.ToString(0, 8) != "seeda|bc") return 10;
+				limited.Clear().AppendJoin<string?>('|', parts);
+				if (limited.ToString(0, limited.Length) != "a|bc|def") return 11;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnumerableJoinLifetimeEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var builder = new System.Text.StringBuilder(1).Append("seed");
+			var result = character == 0 ? builder.AppendJoin<string?>("|", CreateRetainedStringJoinEnumerable(list != 0))
+				: builder.AppendJoin<string?>('|', CreateRetainedStringJoinEnumerable(list != 0));
+			M68kRuntime.Collect();
+			if (result != builder || builder.Length != 201) return 1;
+			const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+			for (var index = 0; index < 65; index++) if (builder[4 + index] != pattern[index % 8]) return 2;
+			if (builder[69] != '|' || builder[70] != '|' || builder[71] != '|') return 3;
+			for (var index = 0; index < 129; index++) if (builder[72 + index] != pattern[index % 8]) return 4;
+			builder.Clear().Append('X');
+			if (builder.ToString(0, builder.Length) != "X") return 5;
+		}
+		return 42;
+	}
+
+	public sealed class ThrowingStringJoinEnumerable : IEnumerable<string?>
+	{
+		public IEnumerator<string?> GetEnumerator() => throw new InvalidOperationException("Producer failure.");
+		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnumerableJoinPropagatesProducerFailureEntry()
+	{
+		IEnumerable<string?> source = new ThrowingStringJoinEnumerable();
+		var builder = new System.Text.StringBuilder(32).Append("seed");
+		try { builder.AppendJoin<string?>("|", source); return 1; } catch (InvalidOperationException) { }
+		if (builder.ToString(0, builder.Length) != "seed") return 2;
+		try { builder.AppendJoin<string?>('|', source); return 3; } catch (InvalidOperationException) { }
+		if (builder.ToString(0, builder.Length) != "seed") return 4;
+		builder.AppendJoin<string?>('|', CreateStringJoinEnumerable(false, new[] { "A", "B" }));
+		return builder.ToString(0, builder.Length) == "seedA|B" ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static IEnumerable<string?> CreateRetainedStringJoinEnumerable(bool list) => CreateStringJoinEnumerable(list, CreateAppendJoinValues(5));
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnumerableJoinAllocationFailureEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(512).Append("seed");
+			var values = CreateAppendJoinValues(5);
+			var source = CreateStringJoinEnumerable(list != 0, values);
+			// Each join owns one bridge enumerator, even when no chunk grows.
+			SetStringBuilderAllocationFailure(2);
+			if (character == 0) available.AppendJoin<string?>("|", source); else available.AppendJoin<string?>('|', source);
+			SetStringBuilderAllocationFailure(0);
+			if (!AppendJoinMatches(available, "seed", values, "|")) return 1;
+			for (var scenario = 0; scenario < (character == 0 ? 4 : 3); scenario++)
+			for (var failAt = 1; failAt <= 3; failAt++)
+			{
+				var capacity = scenario == 0 ? 4 : scenario == 2 ? 6 : 8;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var parts = new[] { "AB", "CD" };
+				var input = CreateStringJoinEnumerable(list != 0, parts);
+				var delimiter = scenario == 3 ? "\u03A9\0\uD83D\uDE00\uFFFF" : "|";
+				var retained = failAt == 1 || scenario == 0 ? "seed" : scenario == 1 ? "seedAB|C" : scenario == 2 ? "seedAB" : "seedAB\u03A9\0";
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (character == 0) builder.AppendJoin<string?>(delimiter, input); else builder.AppendJoin<string?>('|', input);
+					SetStringBuilderAllocationFailure(0); return 2;
+				}
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				if (builder.Capacity != capacity || builder.Length != retained.Length || builder.ToString(0, builder.Length) != retained) return 3;
+				if (parts[0] != "AB" || parts[1] != "CD") return 4;
+				builder.Length = 4;
+				if (character == 0) builder.AppendJoin<string?>(delimiter, input); else builder.AppendJoin<string?>('|', input);
+				if (!AppendJoinMatches(builder, "seed", parts, delimiter)) return 5;
+				builder.Clear().AppendJoin<string?>('|', input);
+				if (builder.ToString(0, builder.Length) != "AB|CD") return 6;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringJoinEnumeratorLifetimeAndMutationEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		{
+			IEnumerable<string?>? source = CreateRetainedStringJoinEnumerable(list != 0);
+			var enumerator = CopperSharp.Runtime.ShadowStringJoinEnumeration.GetEnumerator(source);
+			source = null;
+			M68kRuntime.Collect();
+			var pressure = new string?[64]; pressure[0] = "pressure";
+			const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+			var item = 0;
+			while (enumerator.MoveNext())
+			{
+				M68kRuntime.Collect();
+				var value = enumerator.Current;
+				if (item == 1 ? value != null : item == 2 ? value != "" : value == null || value.Length != (item == 0 ? 65 : 129)) return 1;
+				if (item == 0 || item == 3)
+					for (var index = 0; index < value!.Length; index++) if (value[index] != pattern[index % 8]) return 2;
+				item++;
+			}
+			if (item != 4 || enumerator.MoveNext() || enumerator.Current != null || pressure[0] != "pressure") return 3;
+			enumerator.Dispose();
+			M68kRuntime.Collect();
+			if (enumerator.MoveNext() || enumerator.Current != null) return 4;
+		}
+		var input = new List<string?>(); input.Add("A"); input.Add("B");
+		var active = CopperSharp.Runtime.ShadowStringJoinEnumeration.GetEnumerator(input);
+		if (!active.MoveNext() || active.Current != "A") return 5;
+		input.Add("C");
+		try { active.MoveNext(); return 6; } catch (InvalidOperationException) { }
+		active.Dispose();
+		if (active.Current != null) return 7;
+		if (active.MoveNext()) return 8;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string?[] CreateAppendJoinValues(int scenario)
+	{
+		if (scenario == 0) return new string?[0];
+		if (scenario == 1) return new string?[] { null };
+		if (scenario == 2) return new[] { "" };
+		if (scenario == 3) return new[] { "\u03A9\0\uD83D\uDE00\uFFFF" };
+		if (scenario == 4) return new[] { "A", null, "", "\u03A9\0\uD83D\uDE00\uFFFF", "Z" };
+		return new[] { CreatePatternStringBuilder(1, 65, 0).ToString(0, 65), null, "", CreatePatternStringBuilder(1, 129, 0).ToString(0, 129) };
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool AppendJoinMatches(System.Text.StringBuilder builder, string prefix, string?[] values, string? separator)
+	{
+		var position = 0;
+		for (var index = 0; index < prefix.Length; index++) if (position >= builder.Length || builder[position++] != prefix[index]) return false;
+		for (var item = 0; item < values.Length; item++)
+		{
+			if (item != 0 && separator != null)
+				for (var index = 0; index < separator.Length; index++) if (position >= builder.Length || builder[position++] != separator[index]) return false;
+			var value = values[item];
+			if (value != null)
+				for (var index = 0; index < value.Length; index++) if (position >= builder.Length || builder[position++] != value[index]) return false;
+		}
+		return position == builder.Length;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static IEnumerable<object?> CreateObjectJoinEnumerable(bool list, object?[] values)
+	{
+		if (!list) return values;
+		var result = new List<object?>(values.Length);
+		for (var index = 0; index < values.Length; index++) result.Add(values[index]);
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectEnumerableJoinEntry()
+		=> CoreLibStringBuilderObjectEnumerableJoinMatrix(false);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectListJoinEntry()
+		=> CoreLibStringBuilderObjectEnumerableJoinMatrix(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CoreLibStringBuilderObjectEnumerableJoinMatrix(bool list)
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var scenario = 0; scenario < 7; scenario++)
+		for (var delimiter = 0; delimiter < 6; delimiter++)
+		{
+			var values = scenario < 6 ? CreateObjectJoinValues(scenario) : new object?[] {
+				new DerivedObjectJoinValue(), new InheritedObjectJoinValue(), new HidingObjectJoinValue(),
+				new OverrideHidingObjectJoinValue(), new GenericObjectJoinValue<int>("G1"),
+				new GenericObjectJoinValue<string>("G2"), new NullObjectJoinValue(), new ReentrantObjectJoinValue() };
+			var expected = scenario < 6 ? CreateObjectJoinExpected(scenario) : new string?[] { "BD", "I", "H", "H", "G1", "G2", null, "N|7" };
+			var source = CreateObjectJoinEnumerable(list, values);
+			var separator = delimiter == 0 ? null : delimiter == 1 ? "" : delimiter == 2 ? "|"
+				: delimiter == 3 ? CreatePatternStringBuilder(1, 5, 3).ToString(0, 5) : delimiter == 4 ? "\0" : "\u03A9";
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			M68kRuntime.Collect();
+			var result = delimiter < 4 ? builder.AppendJoin<object?>(separator, source) : builder.AppendJoin<object?>(separator![0], source);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinMatches(builder, before, expected, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (delimiter < 4) builder.AppendJoin<object?>(separator, source); else builder.AppendJoin<object?>(separator![0], source);
+			if (!AppendJoinMatches(builder, "", expected, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != before.Length + builder.Length - 1) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[before.Length + index] != builder[index]) return 3;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectEnumerableJoinContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		try { builder.AppendJoin<object?>("|", null!); return 1; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 2; }
+		try { builder.AppendJoin<object?>('|', null!); return 3; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 4; }
+		for (var list = 0; list < 2; list++)
+		{
+			builder.Length = 4;
+			var source = CreateObjectJoinEnumerable(list != 0, new object?[] { null, "", "A", null });
+			if (builder.AppendJoin<object?>((string?)null, source) != builder || builder.ToString(0, builder.Length) != "seedA") return 5;
+			builder.Length = 4;
+			if (builder.AppendJoin<object?>("", source) != builder || builder.ToString(0, builder.Length) != "seedA") return 6;
+			builder.Length = 4;
+			if (builder.AppendJoin<object?>('\0', source) != builder || builder.ToString(0, builder.Length) != "seed\0\0A\0") return 7;
+			for (var character = 0; character < 2; character++)
+			{
+				var limited = new System.Text.StringBuilder(4, 8).Append("seed");
+				var parts = CreateObjectJoinEnumerable(list != 0, new object?[] { "a", "bc", "def" });
+				try { if (character == 0) limited.AppendJoin<object?>("|", parts); else limited.AppendJoin<object?>('|', parts); return 8; }
+				catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 9; }
+				if (limited.Length != 8 || limited.Capacity != 8 || limited.ToString(0, 8) != "seeda|bc") return 10;
+				limited.Clear().AppendJoin<object?>('|', parts);
+				if (limited.ToString(0, limited.Length) != "a|bc|def") return 11;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static IEnumerable<object?> CreateRetainedObjectJoinEnumerable(bool list)
+	{
+		var values = new object?[] { new CustomObjectJoinValue(CreatePatternStringBuilder(1, 65, 0).ToString(0, 65)),
+			null, 42, new GenericObjectJoinValue<string>(CreatePatternStringBuilder(1, 129, 0).ToString(0, 129)) };
+		return CreateObjectJoinEnumerable(list, values);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectEnumerableJoinLifetimeEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var builder = new System.Text.StringBuilder(1).Append("seed");
+			var result = character == 0 ? builder.AppendJoin<object?>("|", CreateRetainedObjectJoinEnumerable(list != 0))
+				: builder.AppendJoin<object?>('|', CreateRetainedObjectJoinEnumerable(list != 0));
+			M68kRuntime.Collect();
+			if (result != builder || builder.Length != 203 || builder[69] != '|' || builder[70] != '|' || builder[71] != '4' || builder[72] != '2' || builder[73] != '|') return 1;
+			const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+			for (var index = 0; index < 65; index++) if (builder[4 + index] != pattern[index % 8]) return 2;
+			for (var index = 0; index < 129; index++) if (builder[74 + index] != pattern[index % 8]) return 3;
+		}
+		for (var list = 0; list < 2; list++)
+		{
+			IEnumerable<object?>? source = CreateRetainedObjectJoinEnumerable(list != 0);
+			var enumerator = CopperSharp.Runtime.ShadowObjectJoinEnumeration.GetEnumerator(source);
+			source = null;
+			M68kRuntime.Collect();
+			var pressure = new object?[64]; pressure[0] = "pressure";
+			if (!enumerator.MoveNext() || enumerator.Current is not CustomObjectJoinValue) return 4;
+			M68kRuntime.Collect();
+			var first = ((CustomObjectJoinValue)enumerator.Current!).Text;
+			if (first.Length != 65 || first[0] != 'a' || first[64] != 'a') return 5;
+			if (!enumerator.MoveNext() || enumerator.Current != null) return 6;
+			if (!enumerator.MoveNext() || enumerator.Current is not int value || value != 42) return 7;
+			if (!enumerator.MoveNext() || enumerator.Current is not GenericObjectJoinValue<string>) return 8;
+			M68kRuntime.Collect();
+			var last = ((GenericObjectJoinValue<string>)enumerator.Current!).Text;
+			if (last.Length != 129 || last[128] != 'a' || enumerator.MoveNext() || enumerator.Current != null) return 9;
+			enumerator.Dispose();
+			M68kRuntime.Collect();
+			if (enumerator.Current != null || enumerator.MoveNext() || pressure[0] != (object)"pressure") return 10;
+		}
+		return 42;
+	}
+
+	public sealed class MutatingObjectJoinValue
+	{
+		private readonly List<object?> _list;
+		public bool Mutate = true;
+		public int Calls;
+		public MutatingObjectJoinValue(List<object?> list) => _list = list;
+		public override string ToString()
+		{
+			Calls++;
+			if (Mutate) _list.Add("C");
+			return "B";
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectEnumerableJoinExceptionEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var value = new ThrowingObjectJoinValue();
+			var source = CreateObjectJoinEnumerable(list != 0, new object?[] { "A", value, "C" });
+			var builder = new System.Text.StringBuilder(64).Append("seed");
+			try { if (character == 0) builder.AppendJoin<object?>("|", source); else builder.AppendJoin<object?>('|', source); return 1; }
+			catch (InvalidOperationException error) { if (error != value.Error) return 2; }
+			if (builder.ToString(0, builder.Length) != "seedA|" || value.Calls != 1) return 3;
+			value.Fail = false; builder.Length = 4;
+			builder.AppendJoin<object?>('|', source);
+			if (builder.ToString(0, builder.Length) != "seedA|B|C" || value.Calls != 2) return 4;
+			builder.Clear().AppendJoin<object?>('|', source);
+			if (builder.ToString(0, builder.Length) != "A|B|C" || value.Calls != 3) return 5;
+		}
+		for (var character = 0; character < 2; character++)
+		{
+			var list = new List<object?>(3); list.Add("A");
+			var value = new MutatingObjectJoinValue(list); list.Add(value);
+			var builder = new System.Text.StringBuilder(64).Append("seed");
+			try { if (character == 0) builder.AppendJoin<object?>("|", list); else builder.AppendJoin<object?>('|', list); return 6; }
+			catch (InvalidOperationException) { }
+			if (builder.ToString(0, builder.Length) != "seedA|B" || value.Calls != 1 || list.Count != 3) return 7;
+			value.Mutate = false; builder.Length = 4;
+			builder.AppendJoin<object?>('|', list);
+			if (builder.ToString(0, builder.Length) != "seedA|B|C" || value.Calls != 2) return 8;
+			builder.Clear().AppendJoin<object?>('|', list);
+			if (builder.ToString(0, builder.Length) != "A|B|C" || value.Calls != 3) return 9;
+		}
+		return 42;
+	}
+
+	public sealed class ThrowingObjectJoinEnumerable : IEnumerable<object?>
+	{
+		public IEnumerator<object?> GetEnumerator() => throw new InvalidOperationException("Object producer failure.");
+		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectEnumerableJoinRejectsUnknownEntry()
+	{
+		var builder = new System.Text.StringBuilder(64).Append("seed");
+		IEnumerable<object?> source = new ThrowingObjectJoinEnumerable();
+		for (var character = 0; character < 2; character++)
+		{
+			try { if (character == 0) builder.AppendJoin<object?>("|", source); else builder.AppendJoin<object?>('|', source); return 1; }
+			catch (InvalidOperationException) { }
+			if (builder.ToString(0, builder.Length) != "seed") return 2;
+		}
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			builder.Length = 4;
+			source = CreateObjectJoinEnumerable(list != 0, new object?[] { 42, new RuntimeDerivedObjectJoinValue(), "unreached" });
+			try { if (character == 0) builder.AppendJoin<object?>("|", source); else builder.AppendJoin<object?>('|', source); return 3; }
+			catch (NotSupportedException) { }
+			if (builder.ToString(0, builder.Length) != "seed42|") return 4;
+			builder.Length = 4;
+			builder.AppendJoin<object?>('|', CreateObjectJoinEnumerable(list != 0, new object?[] { 42, true }));
+			if (builder.ToString(0, builder.Length) != "seed42|True") return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderObjectEnumerableJoinAllocationFailureEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(64).Append("seed");
+			var noConversion = CreateObjectJoinEnumerable(list != 0, new object?[] { new BaseObjectJoinValue("BC") });
+			SetStringBuilderAllocationFailure(2);
+			if (character == 0) available.AppendJoin<object?>("|", noConversion); else available.AppendJoin<object?>('|', noConversion);
+			SetStringBuilderAllocationFailure(0);
+			if (available.ToString(0, available.Length) != "seedBC") return 1;
+			for (var scenario = 0; scenario < 4; scenario++)
+			for (var failAt = 1; failAt <= (scenario == 0 || scenario == 2 ? 4 : 2); failAt++)
+			{
+				var capacity = scenario == 0 || scenario == 2 ? 4 : 64;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var value = new AllocatingObjectJoinValue();
+				var values = scenario == 0 ? new object?[] { value } : scenario == 1 ? new object?[] { "A", value }
+					: scenario == 2 ? new object?[] { 12 } : new object?[] { "A", 'B' };
+				var source = CreateObjectJoinEnumerable(list != 0, values);
+				SetStringBuilderAllocationFailure(failAt);
+				try { if (character == 0) builder.AppendJoin<object?>("|", source); else builder.AppendJoin<object?>('|', source); SetStringBuilderAllocationFailure(0); return 2; }
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				var expected = scenario == 0 ? "BC" : scenario == 1 ? "A|BC" : scenario == 2 ? "12" : "A|B";
+				var retained = failAt == 1 || capacity == 4 ? "seed" : "seedA|";
+				if (builder.Capacity != capacity || builder.ToString(0, builder.Length) != retained) return 3;
+				if (value.Calls != (scenario < 2 && failAt > 1 ? 1 : 0)) return 4;
+				builder.Length = 4; builder.AppendJoin<object?>('|', source);
+				if (builder.ToString(0, builder.Length) != "seed" + expected) return 5;
+				builder.Clear().AppendJoin<object?>('|', source);
+				if (builder.ToString(0, builder.Length) != expected || value.Calls != (scenario < 2 ? (failAt > 1 ? 3 : 2) : 0)) return 6;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static IEnumerable<int> CreateInt32JoinEnumerable(bool list, int[] values)
+	{
+		if (!list) return values;
+		var result = new List<int>(values.Length);
+		for (var index = 0; index < values.Length; index++) result.Add(values[index]);
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32EnumerableJoinContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(64).Append("seed");
+		try { builder.AppendJoin<int>("|", null!); return 1; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 2; }
+		try { builder.AppendJoin<int>('|', null!); return 3; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 4; }
+		for (var list = 0; list < 2; list++)
+		{
+			var values = new int[3]; values[0] = int.MinValue; values[2] = int.MaxValue;
+			var source = CreateInt32JoinEnumerable(list != 0, values);
+			builder.Length = 4;
+			if (builder.AppendJoin<int>("|", source) != builder || builder.ToString(0, builder.Length) != "seed-2147483648|0|2147483647") return 5;
+			builder.Length = 4;
+			if (builder.AppendJoin<int>((string?)null, source) != builder || builder.ToString(0, builder.Length) != "seed-214748364802147483647") return 6;
+			builder.Length = 4;
+			if (builder.AppendJoin<int>('\0', source) != builder || builder.ToString(0, builder.Length) != "seed-2147483648\0" + "0\0" + "2147483647") return 7;
+			for (var character = 0; character < 2; character++)
+			{
+				var limited = new System.Text.StringBuilder(4, 8).Append("seed");
+				var numbers = new int[3]; numbers[0] = 1; numbers[1] = 23; numbers[2] = 456;
+				var parts = CreateInt32JoinEnumerable(list != 0, numbers);
+				try { if (character == 0) limited.AppendJoin<int>("|", parts); else limited.AppendJoin<int>('|', parts); return 8; }
+				catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 9; }
+				if (limited.Length != 8 || limited.Capacity != 8 || limited.ToString(0, 8) != "seed1|23") return 10;
+				limited.Clear().AppendJoin<int>('|', parts);
+				if (limited.ToString(0, limited.Length) != "1|23|456") return 11;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int[] CreateInt32JoinValues(int scenario)
+	{
+		if (scenario == 0) return new int[0];
+		if (scenario == 1) { var single = new int[1]; single[0] = int.MinValue; return single; }
+		var values = new int[8];
+		values[0] = int.MinValue; values[1] = -1000000000; values[2] = -12; values[3] = -1;
+		values[4] = 0; values[5] = 1; values[6] = 1000000000; values[7] = int.MaxValue;
+		return values;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32EnumerableJoinEntry() => CoreLibStringBuilderInt32EnumerableJoinMatrix(false);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32ListJoinEntry() => CoreLibStringBuilderInt32EnumerableJoinMatrix(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CoreLibStringBuilderInt32EnumerableJoinMatrix(bool list)
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var scenario = 0; scenario < 3; scenario++)
+		for (var delimiter = 0; delimiter < 6; delimiter++)
+		{
+			var source = CreateInt32JoinEnumerable(list, CreateInt32JoinValues(scenario));
+			var expected = scenario == 0 ? new string[0] : scenario == 1 ? new[] { "-2147483648" }
+				: new[] { "-2147483648", "-1000000000", "-12", "-1", "0", "1", "1000000000", "2147483647" };
+			var separator = delimiter == 0 ? null : delimiter == 1 ? "" : delimiter == 2 ? "|"
+				: delimiter == 3 ? CreatePatternStringBuilder(1, 5, 3).ToString(0, 5) : delimiter == 4 ? "\0" : "\u03A9";
+			var builder = CreatePatternStringBuilder(layout == 0 ? 1 : layout == 1 ? 4 : 512, 17, 3);
+			var before = builder.ToString(0, builder.Length);
+			M68kRuntime.Collect();
+			var result = delimiter < 4 ? builder.AppendJoin<int>(separator, source) : builder.AppendJoin<int>(separator![0], source);
+			M68kRuntime.Collect();
+			if (result != builder || !AppendJoinMatches(builder, before, expected, separator)) return 1;
+			var snapshot = builder.ToString(0, builder.Length);
+			builder.Clear();
+			if (delimiter < 4) builder.AppendJoin<int>(separator, source); else builder.AppendJoin<int>(separator![0], source);
+			if (!AppendJoinMatches(builder, "", expected, separator)) return 2;
+			builder.Append('X');
+			if (snapshot.Length != before.Length + builder.Length - 1) return 3;
+			for (var index = 0; index < builder.Length - 1; index++) if (snapshot[before.Length + index] != builder[index]) return 3;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static IEnumerable<int> CreateRetainedInt32JoinEnumerable(bool list) => CreateInt32JoinEnumerable(list, CreateInt32JoinValues(2));
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32EnumerableJoinLifetimeEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var builder = new System.Text.StringBuilder(1).Append("seed");
+			var result = character == 0 ? builder.AppendJoin<int>("|", CreateRetainedInt32JoinEnumerable(list != 0))
+				: builder.AppendJoin<int>('|', CreateRetainedInt32JoinEnumerable(list != 0));
+			M68kRuntime.Collect();
+			if (result != builder || builder.ToString(0, builder.Length) != "seed-2147483648|-1000000000|-12|-1|0|1|1000000000|2147483647") return 1;
+		}
+		for (var list = 0; list < 2; list++)
+		{
+			IEnumerable<int>? source = CreateRetainedInt32JoinEnumerable(list != 0);
+			var enumerator = CopperSharp.Runtime.ShadowInt32JoinEnumeration.GetEnumerator(source);
+			source = null;
+			M68kRuntime.Collect();
+			var pressure = new int[64]; pressure[0] = 123;
+			for (var index = 0; index < 8; index++)
+			{
+				if (!enumerator.MoveNext()) return 2;
+				M68kRuntime.Collect();
+				var expected = index == 0 ? int.MinValue : index == 1 ? -1000000000 : index == 2 ? -12 : index == 3 ? -1
+					: index == 4 ? 0 : index == 5 ? 1 : index == 6 ? 1000000000 : int.MaxValue;
+				if (enumerator.Current != expected) return 3;
+			}
+			if (enumerator.MoveNext() || enumerator.Current != 0 || enumerator.MoveNext()) return 4;
+			enumerator.Dispose();
+			M68kRuntime.Collect();
+			if (enumerator.Current != 0 || enumerator.MoveNext() || pressure[0] != 123) return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32EnumerableJoinMutationEntry()
+	{
+		for (var mutation = 0; mutation < 5; mutation++)
+		{
+			var list = new List<int>(4); list.Add(12); list.Add(34);
+			var enumerator = CopperSharp.Runtime.ShadowInt32JoinEnumeration.GetEnumerator(list);
+			if (!enumerator.MoveNext() || enumerator.Current != 12) return 1;
+			if (mutation == 2 && (!enumerator.MoveNext() || enumerator.Current != 34 || enumerator.MoveNext() || enumerator.Current != 0)) return 6;
+			if (mutation == 1) list[0] = 78; else if (mutation == 3) list.RemoveAt(0); else if (mutation == 4) list.Clear(); else list.Add(56);
+			try { enumerator.MoveNext(); return 2; } catch (InvalidOperationException) { }
+			enumerator.Dispose();
+			if (enumerator.Current != 0 || enumerator.MoveNext()) return 3;
+			var builder = new System.Text.StringBuilder(1).AppendJoin<int>('|', list);
+			var expected = mutation == 1 ? "78|34" : mutation == 3 ? "34" : mutation == 4 ? "" : "12|34|56";
+			if (builder.ToString(0, builder.Length) != expected) return 4;
+			builder.Clear().Append("seed").AppendJoin<int>("|", list);
+			if (builder.ToString(0, builder.Length) != "seed" + expected) return 5;
+		}
+		return 42;
+	}
+
+	public sealed class ThrowingInt32JoinEnumerable : IEnumerable<int>
+	{
+		public IEnumerator<int> GetEnumerator() => throw new InvalidOperationException("Int32 producer failure.");
+		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32EnumerableJoinRejectsUnknownEntry()
+	{
+		var builder = new System.Text.StringBuilder(64).Append("seed");
+		IEnumerable<int> source = new ThrowingInt32JoinEnumerable();
+		for (var character = 0; character < 2; character++)
+		{
+			try { if (character == 0) builder.AppendJoin<int>("|", source); else builder.AppendJoin<int>('|', source); return 1; }
+			catch (InvalidOperationException) { }
+			if (builder.ToString(0, builder.Length) != "seed") return 2;
+		}
+		builder.AppendJoin<int>('|', CreateInt32JoinValues(1));
+		if (builder.ToString(0, builder.Length) != "seed-2147483648") return 3;
+		builder.Clear().AppendJoin<int>("|", CreateInt32JoinEnumerable(true, CreateInt32JoinValues(1)));
+		return builder.ToString(0, builder.Length) == "-2147483648" ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInt32EnumerableJoinAllocationFailureEntry()
+	{
+		for (var list = 0; list < 2; list++)
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(64).Append("seed");
+			var empty = CreateInt32JoinEnumerable(list != 0, new int[0]);
+			SetStringBuilderAllocationFailure(2);
+			if (character == 0) available.AppendJoin<int>("|", empty); else available.AppendJoin<int>('|', empty);
+			SetStringBuilderAllocationFailure(0);
+			if (available.ToString(0, available.Length) != "seed") return 1;
+			for (var scenario = 0; scenario < 2; scenario++)
+			for (var failAt = 1; failAt <= 5; failAt++)
+			{
+				var capacity = scenario == 0 ? 4 : 64;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var values = new int[scenario == 0 ? 1 : 2]; values[0] = scenario == 0 ? 12 : 1;
+				if (scenario != 0) values[1] = 23;
+				var source = CreateInt32JoinEnumerable(list != 0, values);
+				SetStringBuilderAllocationFailure(failAt);
+				try { if (character == 0) builder.AppendJoin<int>("|", source); else builder.AppendJoin<int>('|', source); SetStringBuilderAllocationFailure(0); return 2; }
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				var expected = scenario == 0 ? "12" : "1|23";
+				var retained = scenario == 0 || failAt <= 3 ? "seed" : "seed1|";
+				if (builder.Capacity != capacity || builder.ToString(0, builder.Length) != retained) return 3;
+				builder.Length = 4; builder.AppendJoin<int>('|', source);
+				if (builder.ToString(0, builder.Length) != "seed" + expected) return 4;
+				builder.Clear().AppendJoin<int>("|", source);
+				if (builder.ToString(0, builder.Length) != expected) return 5;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int Int32CopyPattern(int index) => index == 0 ? int.MinValue : index == 1 ? -1 : index == 2 ? 0 : index == 3 ? int.MaxValue : index * 1234567 - 3456;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCustomFormattingEntry()
+	{
+		var provider = new BuilderFormatProvider();
+		var value = new BuilderFormatValue(provider);
+		var builder = new System.Text.StringBuilder(64);
+		builder.AppendFormat(provider, "[{0:custom}][{1,-6:span}][{2,-8:fallback}]", "text", value, value);
+		if (builder.ToString(0, builder.Length) != "[custom][x\u03A9z   ][formal  ]") return 1;
+		if (provider.Queries != 1 || provider.Calls != 3 || value.SpanCalls != 2 || value.FormatCalls != 1) return 2;
+		builder.Clear().AppendFormat(provider, "{0:custom}/{1}", (object?)null, "tail");
+		if (builder.ToString(0, builder.Length) != "custom/tail" || provider.Queries != 2 || provider.Calls != 5) return 3;
+		builder.Clear().Append("seed");
+		try { builder.AppendFormat(provider, "pre{0:throw}post", "ignored"); return 5; }
+		catch (InvalidOperationException) { }
+		if (builder.ToString(0, builder.Length) != "seedpre" || provider.Queries != 3 || provider.Calls != 6) return 6;
+		provider.ReturnFormatter = false;
+		builder.Clear().AppendFormat(provider, "{0,-8:fallback}", value);
+		if (builder.ToString(0, builder.Length) != "formal  " || provider.Queries != 4 || provider.Calls != 6 || value.FormatCalls != 2) return 7;
+		M68kRuntime.Collect();
+		return provider.ValidType && value.ValidProvider ? 42 : 4;
+	}
+
+	private sealed class BuilderFormatProvider : IFormatProvider, ICustomFormatter
+	{
+		public int Queries, Calls;
+		public bool ValidType = true;
+		public bool ReturnFormatter = true;
+		object? IFormatProvider.GetFormat(Type? formatType)
+		{
+			Queries++;
+			M68kRuntime.Collect();
+			if (formatType != typeof(ICustomFormatter) || !ReferenceEquals(formatType, typeof(ICustomFormatter))) ValidType = false;
+			return ReturnFormatter && formatType == typeof(ICustomFormatter) ? this : null;
+		}
+		string ICustomFormatter.Format(string? format, object? arg, IFormatProvider? provider)
+		{
+			Calls++;
+			M68kRuntime.Collect();
+			if (!ReferenceEquals(provider, this)) ValidType = false;
+			if (format == "throw") M68kRuntime.ThrowInvalidOperationException();
+			return format == "custom" ? "custom" : null!;
+		}
+	}
+
+	private sealed class BuilderFormatValue : ISpanFormattable
+	{
+		private readonly IFormatProvider _provider;
+		public int SpanCalls, FormatCalls;
+		public bool ValidProvider = true;
+		public BuilderFormatValue(IFormatProvider provider) => _provider = provider;
+		bool ISpanFormattable.TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+		{
+			SpanCalls++;
+			M68kRuntime.Collect();
+			if (!ReferenceEquals(provider, _provider)) ValidProvider = false;
+			charsWritten = 0;
+			if (format.Length != 4 || destination.Length < 3) return false;
+			destination[0] = 'x'; destination[1] = '\u03A9'; destination[2] = 'z';
+			charsWritten = 3;
+			return true;
+		}
+		string IFormattable.ToString(string? format, IFormatProvider? provider)
+		{
+			FormatCalls++;
+			M68kRuntime.Collect();
+			if (!ReferenceEquals(provider, _provider)) ValidProvider = false;
+			return format == "fallback" ? "formal" : "failed";
+		}
+		public override string ToString() => "plain";
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibRuntimeTypeIdentityEntry()
+	{
+		Type first = typeof(ICustomFormatter), second = typeof(IFormattable);
+		M68kRuntime.Collect();
+		if (first == second || first != typeof(ICustomFormatter) || !ReferenceEquals(first, typeof(ICustomFormatter))) return 1;
+		if (first == null || null == first || first != CoreLibFormatterType()) return 2;
+		if (Type.GetTypeFromHandle(default) != null) return 3;
+		object erased = first;
+		M68kRuntime.Collect();
+		return erased is Type && ReferenceEquals(erased, first) ? 42 : 4;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static Type CoreLibFormatterType() => typeof(ICustomFormatter);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCompositeFormatContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(1).Append("seed");
+		if (!CoreLibExpectMalformedFormat(builder, "pre{", "seedpre")) return 1;
+		if (!CoreLibExpectMalformedFormat(builder, "pre}", "seedpre")) return 2;
+		if (!CoreLibExpectMalformedFormat(builder, "pre{2}", "seedpre")) return 3;
+		if (!CoreLibExpectMalformedFormat(builder, "pre{0}mid{1", "seedpreamid")) return 4;
+		if (!CoreLibExpectMalformedFormat(builder, "pre{0,+2}", "seedpre")) return 5;
+		if (!CoreLibExpectMalformedFormat(builder, "pre{-1}", "seedpre")) return 6;
+		if (!CoreLibExpectMalformedFormat(builder, "pre{0:{{}}}", "seedpre")) return 7;
+		try { builder.AppendFormat((string)null!, "a"); return 8; }
+		catch (ArgumentNullException exception) { if (exception.ParamName != "format") return 9; }
+		if (builder.ToString(0, builder.Length) != "seed") return 10;
+		builder.AppendFormat("|{0}:{0}|", "ok");
+		M68kRuntime.Collect();
+		if (builder.ToString(0, builder.Length) != "seed|ok:ok|") return 11;
+		builder.Clear();
+		builder.AppendFormat((IFormatProvider?)null, "<{0}|{1}|{2}|{3}>", CoreLibFreshFormatText('a'), CoreLibFreshFormatText('b'), CoreLibFreshFormatText('c'), CoreLibFreshFormatText('d'));
+		var first = builder.ToString(0, builder.Length);
+		if (first != "<a\u03A9|b\u03A9|c\u03A9|d\u03A9>") return 12;
+		builder.Clear().AppendFormat("<{0}|{1}|{2}>", CoreLibFreshFormatText('e'), CoreLibFreshFormatText('f'), CoreLibFreshFormatText('g'));
+		if (builder.ToString(0, builder.Length) != "<e\u03A9|f\u03A9|g\u03A9>") return 13;
+		builder.Clear().AppendFormat("<{0}|{1}>", CoreLibFreshFormatText('h'), CoreLibFreshFormatText('i'));
+		if (builder.ToString(0, builder.Length) != "<h\u03A9|i\u03A9>") return 14;
+		builder.Clear().AppendFormat("<{0}>", CoreLibFreshFormatText('j'));
+		if (builder.ToString(0, builder.Length) != "<j\u03A9>") return 15;
+		object?[] array = new object?[3];
+		array[0] = CoreLibFreshFormatText('k'); array[1] = CoreLibFreshFormatText('l');
+		builder.Clear().AppendFormat("{{{0}}}/{1}/{2}", array);
+		if (builder.ToString(0, builder.Length) != "{k\u03A9}/l\u03A9/") return 16;
+		builder.Clear().AppendFormat((IFormatProvider?)null, "{0}/{1}", new ReadOnlySpan<object?>(array, 1, 2));
+		if (builder.ToString(0, builder.Length) != "l\u03A9/" || (string)array[0]! != "k\u03A9") return 17;
+		builder.Clear().AppendFormat("plain{{}}", new object[0]);
+		if (builder.ToString(0, builder.Length) != "plain{}") return 18;
+		try { builder.AppendFormat("pre", (object?[])null!); return 19; }
+		catch (ArgumentNullException exception) { if (exception.ParamName != "args") return 20; }
+		try { builder.AppendFormat((string)null!, (object?[])null!); return 21; }
+		catch (ArgumentNullException exception) { if (exception.ParamName != "format") return 22; }
+		M68kRuntime.Collect();
+		return builder.ToString(0, builder.Length) == "plain{}" && first == "<a\u03A9|b\u03A9|c\u03A9|d\u03A9>" ? 42 : 23;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool CoreLibExpectMalformedFormat(System.Text.StringBuilder builder, string format, string expected)
+	{
+		try { builder.AppendFormat(format, "a", "b"); return false; }
+		catch (FormatException) { }
+		M68kRuntime.Collect();
+		if (builder.ToString(0, builder.Length) != expected) return false;
+		builder.Clear().Append("seed");
+		return true;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string CoreLibFreshFormatText(char value)
+	{
+		var data = new char[2]; data[0] = value; data[1] = '\u03A9';
+		return new string(data.AsSpan());
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibTwoCharacterSearchEntry()
+	{
+		for (var length = 0; length <= 65; length++)
+		for (var offset = 0; offset <= 3; offset++)
+		{
+			var storage = new char[length + offset + 2];
+			for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+			for (var index = 0; index < length; index++) storage[index + offset] = "ab\0\u03A9\uD800{}"[index % 7];
+			ReadOnlySpan<char> span = new ReadOnlySpan<char>(storage, offset, length);
+			storage = null!;
+			M68kRuntime.Collect();
+			if (span.IndexOfAny('{', '}') != (length > 5 ? 5 : -1)) return 1;
+			if (span.IndexOfAny('}', '{') != (length > 5 ? 5 : -1)) return 2;
+			if (span.IndexOfAny('\0', '\uD800') != (length > 2 ? 2 : -1)) return 3;
+			if (span.IndexOfAny('#', '#') != -1) return 4;
+			if (span.IndexOfAny('a', 'a') != (length > 0 ? 0 : -1)) return 5;
+			if (span.IndexOfAny('z', '\uFFFF') != -1) return 6;
+		}
+		ReadOnlySpan<char> empty = default;
+		return empty.IndexOfAny('\0', '\0') == -1 ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibFormattingReferenceOwnerEntry()
+	{
+		ReadOnlySpan<object> values = CoreLibCreateFormattingReferences();
+		M68kRuntime.Collect();
+		var pressure = new object[8];
+		for (var index = 0; index < pressure.Length; index++) pressure[index] = CoreLibFreshFormatText('p');
+		M68kRuntime.Collect();
+		if ((string)values[0] != "b\u03A9" || (string)values[1] != "c\u03A9" || pressure.Length != 8) return 1;
+		var chars = new char[8];
+		for (var index = 0; index < chars.Length; index++) chars[index] = (char)('a' + index);
+		ref char character = ref System.Runtime.CompilerServices.Unsafe.Add(ref chars[0], (nint)5);
+		character = ref System.Runtime.CompilerServices.Unsafe.Add(ref character, (nuint)1);
+		chars = null!;
+		M68kRuntime.Collect();
+		var charPressure = new char[8];
+		for (var index = 0; index < charPressure.Length; index++) charPressure[index] = '#';
+		return character == 'g' && charPressure[7] == '#' ? 42 : 2;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<object> CoreLibCreateFormattingReferences()
+	{
+		var values = new object[4];
+		for (var index = 0; index < values.Length; index++) values[index] = CoreLibFreshFormatText((char)('a' + index));
+		ref object first = ref System.Runtime.CompilerServices.Unsafe.Add(ref values[0], (nuint)1);
+		ref object same = ref System.Runtime.CompilerServices.Unsafe.As<object, object>(ref first);
+		ref readonly object readonlyFirst = ref same;
+		ref object writable = ref System.Runtime.CompilerServices.Unsafe.AsRef(in readonlyFirst);
+		return System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref writable, 2);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCompositeFormatEntry()
+	{
+		var builder = new System.Text.StringBuilder(4).Append("seed");
+		if (builder.AppendFormat("|{{{0}}}|{1,5}|{2,-4}|", -12, "xy", null) != builder) return 1;
+		var snapshot = builder.ToString(0, builder.Length);
+		if (snapshot != "seed|{-12}|   xy|    |") return 2;
+		M68kRuntime.Collect();
+		builder.Clear().AppendFormat("{1}:{0}:{1}", "value", 42);
+		if (builder.ToString(0, builder.Length) != "42:value:42" || snapshot != "seed|{-12}|   xy|    |") return 3;
+		builder.Clear().AppendFormat("{0}/{1}/{2}", uint.MaxValue, long.MinValue, ulong.MaxValue);
+		if (builder.ToString(0, builder.Length) != "4294967295/-9223372036854775808/18446744073709551615") return 4;
+		builder.Clear().AppendFormat("{0}/{1}/{2}", false, '\u03A9', (short)-32768);
+		if (builder.ToString(0, builder.Length) != "False/\u03A9/-32768") return 5;
+		builder.Clear().AppendFormat("{0}/{1}/{2}", sbyte.MinValue, byte.MaxValue, ushort.MaxValue);
+		return builder.ToString(0, builder.Length) == "-128/255/65535" ? 42 : 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibNumberFormatInfoStateEntry()
+	{
+		var info = new System.Globalization.NumberFormatInfo();
+		if (info.NegativeSign != "-" || info.PositiveSign != "+" || info.IsReadOnly) return 1;
+		var chars = new char[3]; chars[0] = '\u2212'; chars[1] = '\0'; chars[2] = '\u03A9';
+		var sign = new string(new ReadOnlySpan<char>(chars));
+		info.NegativeSign = sign;
+		info.PositiveSign = "plus";
+		chars = null!; sign = null!;
+		M68kRuntime.Collect();
+		var pressure = new char[80]; pressure[0] = 'x';
+		if (info.NegativeSign != "\u2212\0\u03A9" || info.PositiveSign != "plus") return 2;
+		if (!ReferenceEquals(info, info.GetFormat(typeof(System.Globalization.NumberFormatInfo))) || info.GetFormat(typeof(ICustomFormatter)) is not null) return 3;
+		try { info.NegativeSign = null!; return 4; } catch (ArgumentNullException error) { if (error.ParamName != "value") return 5; }
+		if (info.NegativeSign != "\u2212\0\u03A9") return 6;
+		info.NegativeSign = string.Empty;
+		return info.NegativeSign.Length == 0 && pressure[0] == 'x' ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderDecimalProvidersEntry()
+	{
+		for (var signCase = 0; signCase < 4; signCase++)
+		for (var width = 0; width < 4; width++)
+		for (var providerCase = 0; providerCase < 2; providerCase++)
+		for (var capacityCase = 0; capacityCase < 2; capacityCase++)
+		for (var formatCase = 0; formatCase < 3; formatCase++)
+		{
+			var info = new System.Globalization.NumberFormatInfo();
+			info.NegativeSign = new string(DecimalSignText(signCase).AsSpan());
+			var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider provider = providerCase == 0 ? info : supplied;
+			info = null!;
+			M68kRuntime.Collect();
+			var builder = new System.Text.StringBuilder(capacityCase == 0 ? 1 : 80);
+			var value = StandardIntegerValue(width * 8);
+			builder.AppendFormat(provider, formatCase == 0 ? "{0}" : formatCase == 1 ? "{0:D24}" : "{0:g0}", value);
+			var snapshot = builder.ToString(0, builder.Length);
+			var sign = DecimalSignText(signCase);
+			var digits = DecimalMagnitudeText(width);
+			var padding = formatCase == 1 ? 24 - digits.Length : 0;
+			if (snapshot.Length != sign.Length + padding + digits.Length) return 1;
+			for (var index = 0; index < snapshot.Length; index++)
+				if (snapshot[index] != (index < sign.Length ? sign[index] : index < sign.Length + padding ? '0' : digits[index - sign.Length - padding])) return 2;
+			if (providerCase != 0 && (supplied.CustomQueries != 1 || supplied.NumberQueries != (capacityCase == 0 ? 2 : 1))) return 3;
+			supplied.Info!.NegativeSign = "changed";
+			builder.Clear().Append("changed");
+			M68kRuntime.Collect();
+			for (var index = 0; index < snapshot.Length; index++)
+				if (snapshot[index] != (index < sign.Length ? sign[index] : index < sign.Length + padding ? '0' : digits[index - sign.Length - padding])) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibDecimalProviderContractsEntry()
+	{
+		for (var mode = 0; mode < 3; mode++)
+		{
+			var provider = new CoreLibDecimalSignProvider { Info = new System.Globalization.NumberFormatInfo { NegativeSign = "custom" }, Mode = mode };
+			var builder = new System.Text.StringBuilder(80).AppendFormat(provider, "[{0:D4}]", -12);
+			if (builder.ToString(0, builder.Length) != (mode == 0 ? "[custom0012]" : "[-0012]") || provider.NumberQueries != 1 || provider.CustomQueries != 1) return 1;
+		}
+		var throwing = new CoreLibDecimalSignProvider { Mode = 3, Error = new InvalidOperationException("provider") };
+		var text = new System.Text.StringBuilder(80).Append("seed");
+		try { text.AppendFormat(throwing, "pre{0:D4}post", -12); return 2; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || text.ToString(0, text.Length) != "seedpre") return 3; }
+		throwing.NumberQueries = 0; throwing.CustomQueries = 0;
+		text.Clear().AppendFormat(throwing, "{0:D4}/{1:D4}/{2:D4}", 12, uint.MaxValue, 12L);
+		if (text.ToString(0, text.Length) != "0012/4294967295/0012" || throwing.NumberQueries != 0 || throwing.CustomQueries != 1) return 4;
+		text.Clear().AppendFormat(throwing, "{0:X4}/{1:B10}", (sbyte)-1, (short)-1);
+		if (text.ToString(0, text.Length) != "00FF/1111111111111111" || throwing.NumberQueries != 0) return 5;
+		text.Clear().Append("seed");
+		try { text.AppendFormat(throwing, "pre{0:D1000000000}post", -12); return 6; } catch (FormatException) { }
+		if (text.ToString(0, text.Length) != "seedpre" || throwing.NumberQueries != 0) return 7;
+		var changing = new CoreLibDecimalSignProvider { Info = new System.Globalization.NumberFormatInfo(), Mode = 4 };
+		text = new System.Text.StringBuilder(1).AppendFormat(changing, "{0:D2}", -12);
+		return text.ToString(0, text.Length) == "second12" && changing.NumberQueries == 2 && changing.CustomQueries == 1 ? 42 : 8;
+	}
+
+	private static string DecimalSignText(int scenario) => scenario == 0 ? "-" : scenario == 1 ? string.Empty : scenario == 2 ? "minus" : "\u2212\0\u03A9";
+	private static string DecimalMagnitudeText(int width) => width == 0 ? "128" : width == 1 ? "32768" : width == 2 ? "2147483648" : "9223372036854775808";
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibDecimalProviderSpanHelpersEntry()
+	{
+		for (var signCase = 0; signCase < 4; signCase++)
+		for (var width = 0; width < 4; width++)
+		for (var formatCase = 0; formatCase < 3; formatCase++)
+		for (var providerCase = 0; providerCase < 2; providerCase++)
+		{
+			var info = new System.Globalization.NumberFormatInfo { NegativeSign = new string(DecimalSignText(signCase).AsSpan()) };
+			var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider provider = providerCase == 0 ? info : supplied;
+			info = null!;
+			var sign = DecimalSignText(signCase); var digits = DecimalMagnitudeText(width);
+			var padding = formatCase == 1 ? 24 - digits.Length : 0;
+			var length = sign.Length + padding + digits.Length;
+			for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+			{
+				var size = sizeCase == 0 ? 0 : length + sizeCase - 2;
+				var storage = new char[size + 2];
+				for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+				var before = supplied.NumberQueries;
+				M68kRuntime.Collect();
+				var success = TryProvidedSignedDecimal(width, formatCase == 0 ? string.Empty : formatCase == 1 ? "D24" : "G0", provider,
+					new Span<char>(storage, 1, size), out var written);
+				M68kRuntime.Collect();
+				if (success != (size >= length) || written != (success ? length : 0)) return 1;
+				if (providerCase != 0 && (supplied.NumberQueries != before + 1 || supplied.CustomQueries != 0)) return 2;
+				for (var index = 0; index < storage.Length; index++)
+				{
+					var expected = '#'; var offset = index - 1;
+					if (success && offset >= 0 && offset < written)
+						expected = offset < sign.Length ? sign[offset] : offset < sign.Length + padding ? '0' : digits[offset - sign.Length - padding];
+					if (storage[index] != expected) return 3;
+				}
+			}
+		}
+		return 42;
+	}
+
+	private static bool TryProvidedSignedDecimal(int width, ReadOnlySpan<char> format, IFormatProvider provider, Span<char> destination, out int written) =>
+		width == 3 ? CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(long.MinValue, format, provider, destination, out written)
+			: CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(width == 0 ? sbyte.MinValue : width == 1 ? short.MinValue : int.MinValue,
+				width == 0 ? 255 : width == 1 ? 65535 : -1, format, provider, destination, out written);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibDecimalProviderAllocationContractsEntry()
+	{
+		for (var signCase = 0; signCase < 4; signCase++)
+		for (var width = 0; width < 4; width++)
+		{
+			var info = new System.Globalization.NumberFormatInfo { NegativeSign = new string(DecimalSignText(signCase).AsSpan()) };
+			var provider = new CoreLibDecimalSignProvider { Info = info };
+			var buffer = new char[24 + info.NegativeSign.Length];
+			SetStringBuilderAllocationFailure(1);
+			var success = TryProvidedSignedDecimal(width, "D24", provider, buffer, out var written);
+			SetStringBuilderAllocationFailure(0);
+			if (!success || written != buffer.Length || provider.NumberQueries != 1) return 1;
+			SetStringBuilderAllocationFailure(2);
+			var text = width == 3 ? CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(long.MinValue, "D24", provider)
+				: CopperSharp.Runtime.ShadowNumberFormatting.FormatInt32(width == 0 ? sbyte.MinValue : width == 1 ? short.MinValue : int.MinValue,
+					width == 0 ? 255 : width == 1 ? 65535 : -1, "D24", provider);
+			SetStringBuilderAllocationFailure(0);
+			if (text.Length != written || provider.NumberQueries != 2) return 2;
+			for (var index = 0; index < written; index++) if (text[index] != buffer[index]) return 3;
+		}
+		for (var signCase = 0; signCase < 4; signCase++)
+		for (var failAt = 1; failAt <= 2; failAt++)
+		{
+			var provider = new CoreLibDecimalSignProvider { Info = new System.Globalization.NumberFormatInfo { NegativeSign = new string(DecimalSignText(signCase).AsSpan()) } };
+			var builder = new System.Text.StringBuilder(80).Append("seed");
+			object value = long.MinValue;
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.AppendFormat(provider, "pre{0:D100}post", value); SetStringBuilderAllocationFailure(0); return 4; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.ToString(0, builder.Length) != "seedpre" || provider.NumberQueries != failAt || provider.CustomQueries != 1) return 5;
+			builder.Clear().AppendFormat(provider, "{0:D24}", value);
+			var sign = DecimalSignText(signCase); var digits = DecimalMagnitudeText(3);
+			var text = builder.ToString(0, builder.Length);
+			if (text.Length != 24 + sign.Length) return 6;
+			for (var index = 0; index < text.Length; index++)
+				if (text[index] != (index < sign.Length ? sign[index] : index < sign.Length + 5 ? '0' : digits[index - sign.Length - 5])) return 7;
+		}
+		return 42;
+	}
+
+	private sealed class CoreLibDecimalSignProvider : IFormatProvider
+	{
+		public System.Globalization.NumberFormatInfo? Info;
+		public int Mode;
+		public int NumberQueries;
+		public int CustomQueries;
+		public InvalidOperationException? Error;
+		public object? GetFormat(Type? formatType)
+		{
+			M68kRuntime.Collect();
+			if (formatType == typeof(ICustomFormatter)) { CustomQueries++; return null; }
+			if (formatType != typeof(System.Globalization.NumberFormatInfo)) throw new InvalidOperationException("type query");
+			NumberQueries++;
+			if (Mode == 1) return null;
+			if (Mode == 2) return "wrong";
+			if (Mode == 3) throw Error!;
+			if (Mode == 4) Info!.NegativeSign = NumberQueries == 1 ? "first" : "second";
+			if (Mode == 5)
+			{
+				Info!.NegativeSign = NumberQueries == 1 ? "first" : "second";
+				Info.NumberDecimalSeparator = NumberQueries == 1 ? ":" : "::";
+				Info.NumberDecimalDigits = NumberQueries == 1 ? 1 : 3;
+			}
+			if (Mode == 6)
+			{
+				Info!.NegativeSign = NumberQueries == 1 ? "first" : "second";
+				Info.NumberDecimalSeparator = NumberQueries == 1 ? ":" : "::";
+				Info.PositiveSign = NumberQueries == 1 ? "one" : "two";
+			}
+			if (Mode == 7)
+			{
+				Info!.NegativeSign = NumberQueries == 1 ? "first" : "second";
+				Info.NumberDecimalSeparator = NumberQueries == 1 ? ":" : "::";
+				Info.NumberGroupSeparator = NumberQueries == 1 ? "a" : "b";
+				Info.NumberGroupSizes = NumberQueries == 1 ? [3] : [2];
+				Info.NumberNegativePattern = NumberQueries == 1 ? 0 : 4;
+				Info.NumberDecimalDigits = NumberQueries == 1 ? 1 : 3;
+			}
+			return Info;
+		}
+	}
+
+	private static long _duplicatedInteger;
+	private static double _duplicatedDouble;
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static double DuplicateDoubleAssignment(double value) => _duplicatedDouble = value;
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static long DuplicateLongAssignment(long value) => _duplicatedInteger = value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int DuplicateLongAssignmentEntry()
+	{
+		if (DuplicateLongAssignment(0x12345678_76543210L) != 0x12345678_76543210L || _duplicatedInteger != 0x12345678_76543210L) return 1;
+		if (DuplicateLongAssignment(long.MinValue) != long.MinValue || _duplicatedInteger != long.MinValue) return 2;
+		if (DuplicateLongAssignment(long.MaxValue) != long.MaxValue || _duplicatedInteger != long.MaxValue) return 3;
+		if (DuplicateLongAssignment(-1) != -1 || _duplicatedInteger != -1) return 4;
+		return DuplicateLongAssignment(0) == 0 && _duplicatedInteger == 0 ? 42 : 5;
+	}
+
+	private static System.Globalization.NumberFormatInfo GroupedInfo(int style, int pattern) => new()
+	{
+		NegativeSign = new string("\u2212\0\u03A9".AsSpan()),
+		NumberDecimalSeparator = new string("\u03A9\0\uD83D\uDE00".AsSpan()),
+		NumberGroupSeparator = new string("\0\uD800".AsSpan()), NumberDecimalDigits = 4, NumberNegativePattern = pattern,
+		NumberGroupSizes = style switch { 0 => [3], 1 => [3, 2], 2 => [3, 2, 0], 3 => [1, 0], 4 => [], 5 => [0], 6 => [1], _ => [9] }
+	};
+
+	private static string GroupedFormat(int scenario) => scenario == 0 ? "N" : scenario == 1 ? "n0" : scenario == 2 ? "N3" : "n65";
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibGroupedSmokeEntry()
+	{
+		Span<char> storage = stackalloc char[64];
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(-12345, -1, "N3", null, storage, out var count)) return 1;
+		if (count != 11 || new string(storage.Slice(0, count)) != "-12,345.000") return 2;
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatInt32(-12345, -1, "N3", null) != "-12,345.000") return 3;
+		var info = new System.Globalization.NumberFormatInfo { NumberGroupSizes = [2], NumberNegativePattern = 4 };
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(-12345, -1, "N3", info, storage, out count)) return 4;
+		if (count != 13 || new string(storage.Slice(0, count)) != "1,23,45.000 -") return 5;
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatInt32(-12345, -1, "N3", info) != "1,23,45.000 -") return 6;
+		if (!CopperSharp.Runtime.ShadowGroupedIntegerFormatting.TryFormat(0, 12345, false, info, 3, storage, out count)) return 7;
+		if (count != 11 || new string(storage.Slice(0, count)) != "1,23,45.000") return 8;
+		return 42;
+	}
+	private static string GroupedComposite(int scenario) => scenario == 0 ? "{0:N}" : scenario == 1 ? "{0:n0}" : scenario == 2 ? "{0:N3}" : "{0:n65}";
+	private static int GroupedPrecision(int scenario, bool custom) => scenario == 0 ? custom ? 4 : 2 : scenario == 1 ? 0 : scenario == 2 ? 3 : 65;
+	private static string GroupedMagnitude(int width, bool custom) => width switch
+	{
+		0 => "128", 1 => "255", 2 => "32,768", 3 => "65,535",
+		4 => custom ? "2,14,74,83,648" : "2,147,483,648", 5 => custom ? "4,29,49,67,295" : "4,294,967,295",
+		6 => custom ? "92,23,37,20,36,85,47,75,808" : "9,223,372,036,854,775,808",
+		_ => custom ? "1,84,46,74,40,73,70,95,51,615" : "18,446,744,073,709,551,615"
+	};
+
+	private static string GroupingContractMagnitude(int style, bool unsigned) => style switch
+	{
+		0 => unsigned ? "18,446,744,073,709,551,615" : "9,223,372,036,854,775,808",
+		1 => unsigned ? "1,84,46,74,40,73,70,95,51,615" : "92,23,37,20,36,85,47,75,808",
+		2 => unsigned ? "184467440737095,51,615" : "92233720368547,75,808",
+		3 => unsigned ? "1844674407370955161,5" : "922337203685477580,8",
+		4 or 5 => unsigned ? "18446744073709551615" : "9223372036854775808",
+		6 => unsigned ? "1,8,4,4,6,7,4,4,0,7,3,7,0,9,5,5,1,6,1,5" : "9,2,2,3,3,7,2,0,3,6,8,5,4,7,7,5,8,0,8",
+		_ => unsigned ? "18,446744073,709551615" : "9,223372036,854775808"
+	};
+
+	// The group locations are literal oracles; this only expands provider
+	// tokens and adds the five documented negative-pattern decorations.
+	private static string GroupedExpected(string magnitude, bool negative, bool custom, int pattern, int precision)
+	{
+		var sign = custom ? "\u2212\0\u03A9" : "-";
+		var text = new System.Text.StringBuilder(128);
+		if (negative && pattern == 0) text.Append('(');
+		if (negative && (pattern == 1 || pattern == 2)) text.Append(sign);
+		if (negative && pattern == 2) text.Append(' ');
+		for (var index = 0; index < magnitude.Length; index++)
+			if (magnitude[index] == ',') text.Append(custom ? "\0\uD800" : ","); else text.Append(magnitude[index]);
+		if (precision != 0) text.Append(custom ? "\u03A9\0\uD83D\uDE00" : ".").Append('0', precision);
+		if (negative && pattern == 4) text.Append(' ');
+		if (negative && (pattern == 3 || pattern == 4)) text.Append(sign);
+		if (negative && pattern == 0) text.Append(')');
+		return text.ToString(0, text.Length);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderGroupedIntegersEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		{
+			var info = GroupedInfo(1, 2); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			info = null!;
+			for (var width = 0; width < 8; width++)
+			for (var formatCase = 0; formatCase < 4; formatCase++)
+			for (var capacityCase = 0; capacityCase < 2; capacityCase++)
+			{
+				var custom = providerCase != 0;
+				var expected = GroupedExpected(GroupedMagnitude(width, custom), (width & 1) == 0, custom, custom ? 2 : 1, GroupedPrecision(formatCase, custom));
+				var builder = new System.Text.StringBuilder(capacityCase == 0 ? 1 : 128);
+				supplied.NumberQueries = 0; supplied.CustomQueries = 0; M68kRuntime.Collect();
+				if (builder.AppendFormat(provider, GroupedComposite(formatCase), StandardIntegerValue(width * 4)) != builder) return 1;
+				var snapshot = builder.ToString(0, builder.Length);
+				if (snapshot != expected || providerCase == 2 && (supplied.NumberQueries != (capacityCase == 0 ? 2 : 1) || supplied.CustomQueries != 1)) return 2;
+				builder.Clear().Append("changed"); M68kRuntime.Collect();
+				if (snapshot != expected) return 3;
+			}
+		}
+		return 42;
+	}
+
+	private static bool CheckGroupedSpan(object value, string format, string expected, IFormatProvider? provider, int sizeCase)
+	{
+		var size = sizeCase == 0 ? 0 : expected.Length + sizeCase - 2;
+		var storage = new char[size + 2]; for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+		M68kRuntime.Collect();
+		var success = TryStandardInteger(value, format, new Span<char>(storage, 1, size), out var written, provider);
+		M68kRuntime.Collect();
+		if (success != (size >= expected.Length) || written != (success ? expected.Length : 0)) return false;
+		for (var index = 0; index < storage.Length; index++)
+			if (storage[index] != (success && index > 0 && index <= written ? expected[index - 1] : '#')) return false;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibGroupedIntegerSpanHelpersEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		{
+			var info = GroupedInfo(1, 2); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			info = null!;
+			for (var width = 0; width < 8; width++)
+			for (var formatCase = 0; formatCase < 4; formatCase++)
+			{
+				var custom = providerCase != 0;
+				var expected = GroupedExpected(GroupedMagnitude(width, custom), (width & 1) == 0, custom, custom ? 2 : 1, GroupedPrecision(formatCase, custom));
+				var value = StandardIntegerValue(width * 4);
+				for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+				{
+					var before = supplied.NumberQueries;
+					if (!CheckGroupedSpan(value, GroupedFormat(formatCase), expected, provider, sizeCase)) return 1;
+					if (providerCase == 2 && (supplied.NumberQueries != before + 1 || supplied.CustomQueries != 0)) return 2;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibGroupedProviderContractsEntry()
+	{
+		for (var style = 0; style < 8; style++)
+		for (var pattern = 0; pattern < 5; pattern++)
+		for (var valueCase = 0; valueCase < 3; valueCase++)
+		{
+			RecordGroupedProgress(100 + style * 100 + pattern * 10 + valueCase);
+			var info = GroupedInfo(style, pattern); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			var magnitude = valueCase == 0 ? "0" : GroupingContractMagnitude(style, valueCase == 2);
+			var expected = GroupedExpected(magnitude, valueCase == 1, true, pattern, 3);
+			object value = valueCase == 0 ? 0 : valueCase == 1 ? (object)long.MinValue : ulong.MaxValue;
+			info = null!;
+			for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+				if (!CheckGroupedSpan(value, "N3", expected, supplied, sizeCase)) return 1;
+			for (var capacityCase = 0; capacityCase < 2; capacityCase++)
+			{
+				supplied.NumberQueries = 0; supplied.CustomQueries = 0;
+				var builder = new System.Text.StringBuilder(capacityCase == 0 ? 1 : 128);
+				builder.AppendFormat(supplied, "{0:N3}", value);
+				var snapshot = builder.ToString(0, builder.Length);
+				if (snapshot != expected || supplied.NumberQueries != (capacityCase == 0 ? 2 : 1) || supplied.CustomQueries != 1) return 2;
+				supplied.Info!.NumberGroupSizes = [1]; supplied.Info.NumberNegativePattern = 1;
+				builder.Clear(); M68kRuntime.Collect();
+				if (snapshot != expected) return 3;
+				supplied.Info = GroupedInfo(style, pattern);
+			}
+		}
+		RecordGroupedProgress(1000);
+		var state = new System.Globalization.NumberFormatInfo { NegativeSign = "", NumberGroupSeparator = "", NumberDecimalSeparator = "::", NumberDecimalDigits = 0, NumberNegativePattern = 0 };
+		var output = new System.Text.StringBuilder(128).AppendFormat(state, "[{0,8:N}][{1,-8:n3}][{2:N0}]", -12, 0u, 1000);
+		if (output.ToString(0, output.Length) != "[    (12)][0::000  ][1000]") return 4;
+		output.Clear(); state.NegativeSign = "minus"; state.NumberGroupSeparator = "_"; state.NumberDecimalDigits = 3; state.NumberNegativePattern = 3;
+		output.AppendFormat(state, "{0:N}|{1:N\0ignored}|{2:n000000000003}", -1000, -1000, 1000u);
+		if (output.ToString(0, output.Length) != "1_000::000minus|1_000minus|1_000::000") return 5;
+		for (var mode = 1; mode <= 2; mode++)
+		{
+			var provider = new CoreLibDecimalSignProvider { Mode = mode };
+			output.Clear().AppendFormat(provider, "{0:N}/{1:N0}/{2:n3}", -1000, 0u, ulong.MaxValue);
+			if (output.ToString(0, output.Length) != "-1,000.00/0/18,446,744,073,709,551,615.000" || provider.NumberQueries != 3 || provider.CustomQueries != 1) return 6;
+		}
+		RecordGroupedProgress(1001);
+		var changing = new CoreLibDecimalSignProvider { Mode = 7, Info = new System.Globalization.NumberFormatInfo() };
+		output = new System.Text.StringBuilder(1).AppendFormat(changing, "{0:N}", -12345);
+		if (output.ToString(0, output.Length) != "1b23b45::000 second" || changing.NumberQueries != 2 || changing.CustomQueries != 1) return 7;
+		var throwing = new CoreLibDecimalSignProvider { Mode = 3, Error = new InvalidOperationException("provider") };
+		output = new System.Text.StringBuilder(128).Append("seed");
+		try { output.AppendFormat(throwing, "pre{0:N0}post", 0u); return 8; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || output.ToString(0, output.Length) != "seedpre") return 9; }
+		throwing.NumberQueries = 0;
+		try { output.AppendFormat(throwing, "{0:N1000000000}", 12u); return 10; } catch (FormatException) { }
+		if (throwing.NumberQueries != 0) return 11;
+		var written = 37;
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(0, "N0", throwing, Span<char>.Empty, out written); return 12; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || written != 37) return 13; }
+		RecordGroupedProgress(1002);
+		// The public setter and getter must keep their independent-copy contracts.
+		int[] original = [3, 2, 0]; state.NumberGroupSizes = original; original[0] = 1;
+		var copy = state.NumberGroupSizes; copy[0] = 1;
+		if (state.NumberGroupSizes[0] != 3) return 14;
+		try { state.NumberGroupSizes = [0, 3]; return 15; } catch (ArgumentException) { }
+		try { state.NumberGroupSizes = [10]; return 16; } catch (ArgumentException) { }
+		try { state.NumberGroupSizes = null!; return 17; } catch (ArgumentNullException error) { if (error.ParamName != "value") return 18; }
+		try { state.NumberNegativePattern = 5; return 19; } catch (ArgumentOutOfRangeException) { }
+		return state.NumberGroupSizes[0] == 3 && state.NumberNegativePattern == 3 ? 42 : 20;
+	}
+
+	[M68kImport("fixture.grouped-progress")]
+	private static extern void RecordGroupedProgress([M68kRegister(M68kRegister.D0)] int value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibGroupedIntegerAllocationContractsEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		for (var width = 0; width < 8; width++)
+		{
+			var info = GroupedInfo(1, 2); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			var custom = providerCase != 0; var formatCase = width % 4;
+			var value = StandardIntegerValue(width * 4); var format = GroupedFormat(formatCase);
+			var expected = GroupedExpected(GroupedMagnitude(width, custom), (width & 1) == 0, custom, custom ? 2 : 1, GroupedPrecision(formatCase, custom));
+			var storage = new char[expected.Length + 2]; for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+			SetStringBuilderAllocationFailure(1);
+			var shortSuccess = TryStandardInteger(value, format, new Span<char>(storage, 1, expected.Length - 1), out var shortWritten, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (shortSuccess || shortWritten != 0) return 1;
+			for (var index = 0; index < storage.Length; index++) if (storage[index] != '#') return 2;
+			SetStringBuilderAllocationFailure(1);
+			var success = TryStandardInteger(value, format, new Span<char>(storage, 1, expected.Length), out var written, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (!success || written != expected.Length) return 3;
+			for (var index = 0; index < storage.Length; index++) if (storage[index] != (index > 0 && index <= written ? expected[index - 1] : '#')) return 4;
+			SetStringBuilderAllocationFailure(2);
+			var text = FormatStandardInteger(value, format, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (text != expected || providerCase == 2 && supplied.NumberQueries != 3) return 5;
+		}
+		var guard = new char[1]; guard[0] = '#';
+		SetStringBuilderAllocationFailure(1);
+		var hugeSuccess = CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(long.MinValue, "N999999999", null, guard, out var hugeWritten);
+		SetStringBuilderAllocationFailure(0);
+		if (hugeSuccess || hugeWritten != 0 || guard[0] != '#') return 6;
+		for (var style = 0; style < 3; style++)
+		for (var pattern = 0; pattern < 5; pattern++)
+		for (var failAt = 1; failAt <= 2; failAt++)
+		{
+			var supplied = new CoreLibDecimalSignProvider { Info = GroupedInfo(style, pattern) };
+			var expected = GroupedExpected(GroupingContractMagnitude(style, false), true, true, pattern, 0);
+			var builder = new System.Text.StringBuilder(8).Append("seed"); object value = long.MinValue;
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.AppendFormat(supplied, "pre{0:N65}post", value); SetStringBuilderAllocationFailure(0); return 7; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.ToString(0, builder.Length) != "seedpre" || supplied.NumberQueries != failAt || supplied.CustomQueries != 1) return 8;
+			builder.Clear().AppendFormat(supplied, "{0:N0}", value);
+			if (builder.ToString(0, builder.Length) != expected) return 9;
+		}
+		var state = GroupedInfo(1, 1); int[] input = [1, 0];
+		SetStringBuilderAllocationFailure(1);
+		try { state.NumberGroupSizes = input; SetStringBuilderAllocationFailure(0); return 10; }
+		catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+		if (state.NumberGroupSizes[0] != 3 || input[0] != 1) return 11;
+		SetStringBuilderAllocationFailure(2);
+		state.NumberGroupSizes = input;
+		SetStringBuilderAllocationFailure(0);
+		input[0] = 9;
+		if (state.NumberGroupSizes[0] != 1) return 12;
+		SetStringBuilderAllocationFailure(1);
+		try { var failedCopy = state.NumberGroupSizes; SetStringBuilderAllocationFailure(0); return 13; }
+		catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+		SetStringBuilderAllocationFailure(2);
+		var copy = state.NumberGroupSizes;
+		SetStringBuilderAllocationFailure(0);
+		copy[0] = 9;
+		return state.NumberGroupSizes[0] == 1 ? 42 : 14;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderScientificIntegersEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		{
+			var info = ScientificInfo(); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			info = null!; M68kRuntime.Collect();
+			for (var scenario = 0; scenario < 32; scenario++)
+			for (var capacityCase = 0; capacityCase < 2; capacityCase++)
+			{
+				var builder = new System.Text.StringBuilder(capacityCase == 0 ? 1 : 128);
+				supplied.NumberQueries = 0; supplied.CustomQueries = 0;
+				if (builder.AppendFormat(provider, ScientificCompositeFormat(scenario), StandardIntegerValue(scenario)) != builder) return 1;
+				var snapshot = builder.ToString(0, builder.Length);
+				if (!CheckScientificText(snapshot.AsSpan(), ScientificText(scenario), providerCase != 0)) return 2;
+				if (providerCase == 2 && (supplied.NumberQueries != (capacityCase == 0 ? 2 : 1) || supplied.CustomQueries != 1)) return 3;
+				builder.Clear().Append("changed"); M68kRuntime.Collect();
+				if (!CheckScientificText(snapshot.AsSpan(), ScientificText(scenario), providerCase != 0)) return 4;
+			}
+		}
+		return 42;
+	}
+
+	private static System.Globalization.NumberFormatInfo ScientificInfo() => new()
+	{
+		NegativeSign = new string("\u2212\0\u03A9".AsSpan()),
+		PositiveSign = new string("+\0\u03A9".AsSpan()),
+		NumberDecimalSeparator = new string("\u03A9\0\uD83D\uDE00".AsSpan()), NumberDecimalDigits = 99,
+		NumberNegativePattern = 0
+	};
+
+	private static string ScientificCompositeFormat(int scenario) => (scenario % 4) switch
+	{
+		0 => "{0:E0}", 1 => "{0:e3}", 2 => "{0:G3}", _ => "{0:r1}"
+	};
+
+	private static string ScientificText(int scenario) => scenario switch
+	{
+		0 => "-1E+002", 1 => "-1.280e+002", 2 => "-128", 3 => "-1e+02",
+		4 => "3E+002", 5 => "2.550e+002", 6 => "255", 7 => "3e+02",
+		8 => "-3E+004", 9 => "-3.277e+004", 10 => "-3.28E+04", 11 => "-3e+04",
+		12 => "7E+004", 13 => "6.554e+004", 14 => "6.55E+04", 15 => "7e+04",
+		16 => "-2E+009", 17 => "-2.147e+009", 18 => "-2.15E+09", 19 => "-2e+09",
+		20 => "4E+009", 21 => "4.295e+009", 22 => "4.29E+09", 23 => "4e+09",
+		24 => "-9E+018", 25 => "-9.223e+018", 26 => "-9.22E+18", 27 => "-9e+18",
+		28 => "2E+019", 29 => "1.845e+019", 30 => "1.84E+19", _ => "2e+19"
+	};
+
+	private static string ScientificToken(char character) => character == '-' ? "\u2212\0\u03A9" : character == '+' ? "+\0\u03A9" : "\u03A9\0\uD83D\uDE00";
+	private static int ScientificTextLength(string expected, bool custom)
+	{
+		var length = 0;
+		for (var index = 0; index < expected.Length; index++)
+			length += custom && (expected[index] == '-' || expected[index] == '+' || expected[index] == '.') ? ScientificToken(expected[index]).Length : 1;
+		return length;
+	}
+
+	private static bool CheckScientificText(ReadOnlySpan<char> text, string expected, bool custom)
+	{
+		if (text.Length != ScientificTextLength(expected, custom)) return false;
+		var offset = 0;
+		for (var index = 0; index < expected.Length; index++)
+		{
+			var character = expected[index];
+			if (custom && (character == '-' || character == '+' || character == '.'))
+			{
+				var token = ScientificToken(character);
+				for (var codeUnit = 0; codeUnit < token.Length; codeUnit++) if (text[offset++] != token[codeUnit]) return false;
+			}
+			else if (text[offset++] != character) return false;
+		}
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibScientificIntegerSpanHelpersEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		{
+			var info = ScientificInfo(); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			info = null!;
+			for (var scenario = 0; scenario < 32; scenario++)
+			{
+				var expected = ScientificText(scenario); var custom = providerCase != 0;
+				var length = ScientificTextLength(expected, custom);
+				var value = StandardIntegerValue(scenario); var format = ScientificCompositeFormat(scenario);
+				for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+				{
+					var size = sizeCase == 0 ? 0 : length + sizeCase - 2;
+					var storage = new char[size + 2]; for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+					var before = supplied.NumberQueries; M68kRuntime.Collect();
+					var success = TryStandardInteger(value, format.AsSpan(3, format.Length - 4), new Span<char>(storage, 1, size), out var written, provider);
+					M68kRuntime.Collect();
+					if (success != (size >= length) || written != (success ? length : 0)) return 1;
+					if (providerCase == 2 && (supplied.NumberQueries != before + 1 || supplied.CustomQueries != 0)) return 2;
+					if (success && !CheckScientificText(new ReadOnlySpan<char>(storage, 1, written), expected, custom)) return 3;
+					for (var index = 0; index < storage.Length; index++)
+						if ((!success || index == 0 || index > written) && storage[index] != '#') return 4;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibScientificProviderContractsEntry()
+	{
+		var info = new System.Globalization.NumberFormatInfo { NegativeSign = "", PositiveSign = "", NumberDecimalSeparator = "::", NumberDecimalDigits = 0 };
+		var builder = new System.Text.StringBuilder(128).AppendFormat(info, "[{0,12:E1}][{1,-8:r1}][{2:R}]", -25, 250, 0u);
+		if (builder.ToString(0, builder.Length) != "[    2::5E001][3e02    ][0]") return 1;
+		var snapshot = builder.ToString(0, builder.Length);
+		info.NegativeSign = "minus"; info.PositiveSign = "plus"; info.NumberDecimalSeparator = ","; M68kRuntime.Collect();
+		builder.Clear().AppendFormat(info, "{0:E}|{1:E\0ignored}|{2:G2}|{3:r0}", -250, 25, 1250, -1000);
+		if (builder.ToString(0, builder.Length) != "minus2,500000Eplus002|3Eplus001|1,3Eplus03|minus1000" || snapshot != "[    2::5E001][3e02    ][0]") return 2;
+		builder.Clear().AppendFormat("{0:E2}/{1:G3}/{2:g4}/{3:r3}", 9995, 9995, 9995, 12995);
+		if (builder.ToString(0, builder.Length) != "1.00E+004/1E+04/9995/1.3e+04") return 3;
+		for (var mode = 1; mode <= 2; mode++)
+		{
+			var provider = new CoreLibDecimalSignProvider { Mode = mode };
+			builder.Clear().AppendFormat(provider, "{0:E0}/{1:G3}/{2:R}", 0u, 9995, ulong.MaxValue);
+			if (builder.ToString(0, builder.Length) != "0E+000/1E+04/18446744073709551615" || provider.NumberQueries != 3 || provider.CustomQueries != 1) return 4;
+		}
+		var changing = new CoreLibDecimalSignProvider { Mode = 6, Info = new System.Globalization.NumberFormatInfo() };
+		builder = new System.Text.StringBuilder(1).AppendFormat(changing, "{0:E1}", -12);
+		if (builder.ToString(0, builder.Length) != "second1::2Etwo001" || changing.NumberQueries != 2 || changing.CustomQueries != 1) return 5;
+		var throwing = new CoreLibDecimalSignProvider { Mode = 3, Error = new InvalidOperationException("provider") };
+		builder = new System.Text.StringBuilder(128).Append("seed");
+		try { builder.AppendFormat(throwing, "pre{0:G9}post", 12u); return 6; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || builder.ToString(0, builder.Length) != "seedpre") return 7; }
+		throwing.NumberQueries = 0; builder.Clear().Append("seed");
+		try { builder.AppendFormat(throwing, "pre{0:E1000000000}post", -12); return 8; } catch (FormatException) { }
+		if (throwing.NumberQueries != 0 || builder.ToString(0, builder.Length) != "seedpre") return 9;
+		var written = 37;
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(0, "R", throwing, Span<char>.Empty, out written); return 10; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || written != 37) return 11; }
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibScientificIntegerAllocationContractsEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		for (var width = 0; width < 8; width++)
+		{
+			var info = ScientificInfo(); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			var scenario = width * 4 + width % 4; var value = StandardIntegerValue(scenario);
+			var expected = ScientificText(scenario); var custom = providerCase != 0;
+			var composite = ScientificCompositeFormat(scenario); var format = composite.AsSpan(3, composite.Length - 4);
+			var length = ScientificTextLength(expected, custom);
+			var storage = new char[length + 2]; for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+			SetStringBuilderAllocationFailure(1);
+			var shortSuccess = TryStandardInteger(value, format, new Span<char>(storage, 1, length - 1), out var shortWritten, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (shortSuccess || shortWritten != 0) return 1;
+			for (var index = 0; index < storage.Length; index++) if (storage[index] != '#') return 2;
+			SetStringBuilderAllocationFailure(1);
+			var success = TryStandardInteger(value, format, new Span<char>(storage, 1, length), out var written, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (!success || written != length || !CheckScientificText(new ReadOnlySpan<char>(storage, 1, written), expected, custom)) return 3;
+			var formatText = new string(format);
+			SetStringBuilderAllocationFailure(2);
+			var text = FormatStandardInteger(value, formatText, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (!CheckScientificText(text.AsSpan(), expected, custom) || providerCase == 2 && supplied.NumberQueries != 3) return 4;
+		}
+		var guard = new char[1]; guard[0] = '#';
+		SetStringBuilderAllocationFailure(1);
+		var hugeSuccess = CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(long.MinValue, "E999999999", null, guard, out var hugeWritten);
+		SetStringBuilderAllocationFailure(0);
+		if (hugeSuccess || hugeWritten != 0 || guard[0] != '#') return 5;
+		for (var signCase = 0; signCase < 3; signCase++)
+		for (var formatCase = 0; formatCase < 4; formatCase++)
+		for (var failAt = 1; failAt <= 2; failAt++)
+		{
+			var info = signCase == 1 ? ScientificInfo() : new System.Globalization.NumberFormatInfo
+				{ NegativeSign = signCase == 0 ? "-" : "", PositiveSign = signCase == 0 ? "+" : "", NumberDecimalSeparator = signCase == 0 ? "." : "::" };
+			var provider = new CoreLibDecimalSignProvider { Info = info };
+			var builder = new System.Text.StringBuilder(8).Append("seed"); object value = long.MinValue;
+			var format = formatCase == 0 ? "pre{0:E65}post" : formatCase == 1 ? "pre{0:G3}post" : formatCase == 2 ? "pre{0:R}post" : "pre{0:r3}post";
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.AppendFormat(provider, format, value); SetStringBuilderAllocationFailure(0); return 6; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.ToString(0, builder.Length) != "seedpre" || provider.NumberQueries != failAt || provider.CustomQueries != 1) return 7;
+			builder.Clear().AppendFormat(provider, "{0:E0}", value);
+			var text = builder.ToString(0, builder.Length);
+			if (signCase != 2 && !CheckScientificText(text.AsSpan(), "-9E+018", signCase == 1) || signCase == 2 && text != "9E018") return 8;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderFixedPointIntegersEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		{
+			var info = FixedPointInfo(); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			info = null!; M68kRuntime.Collect();
+			for (var width = 0; width < 8; width++)
+			for (var formatCase = 0; formatCase < 4; formatCase++)
+			for (var capacityCase = 0; capacityCase < 2; capacityCase++)
+			{
+				var format = formatCase == 0 ? "{0:F}" : formatCase == 1 ? "{0:F0}" : formatCase == 2 ? "{0:f3}" : "{0:F65}";
+				var builder = new System.Text.StringBuilder(capacityCase == 0 ? 1 : 128);
+				supplied.NumberQueries = 0; supplied.CustomQueries = 0;
+				if (builder.AppendFormat(provider, format, StandardIntegerValue(width * 4)) != builder) return 1;
+				var snapshot = builder.ToString(0, builder.Length);
+				if (!CheckFixedPoint(snapshot.AsSpan(), width, providerCase != 0, FixedPointPrecision(formatCase, providerCase != 0))) return 2;
+				if (providerCase == 2 && (supplied.NumberQueries != (capacityCase == 0 ? 2 : 1) || supplied.CustomQueries != 1)) return 3;
+				builder.Clear().Append("changed"); M68kRuntime.Collect();
+				if (!CheckFixedPoint(snapshot.AsSpan(), width, providerCase != 0, FixedPointPrecision(formatCase, providerCase != 0))) return 4;
+			}
+		}
+		return 42;
+	}
+
+	private static System.Globalization.NumberFormatInfo FixedPointInfo() => new()
+	{
+		NegativeSign = new string("\u2212\0\u03A9".AsSpan()),
+		NumberDecimalSeparator = new string("\u03A9\0\uD83D\uDE00".AsSpan()), NumberDecimalDigits = 4,
+		NumberNegativePattern = 0
+	};
+
+	private static string FixedPointFormat(int scenario) => scenario == 0 ? "F" : scenario == 1 ? "F0" : scenario == 2 ? "f3" : "F65";
+	private static int FixedPointPrecision(int scenario, bool custom) => scenario == 0 ? custom ? 4 : 2 : scenario == 1 ? 0 : scenario == 2 ? 3 : 65;
+	private static string FixedPointMagnitude(int width) => width switch
+	{
+		0 => "128", 1 => "255", 2 => "32768", 3 => "65535", 4 => "2147483648", 5 => "4294967295",
+		6 => "9223372036854775808", _ => "18446744073709551615"
+	};
+
+	private static bool CheckFixedPoint(ReadOnlySpan<char> text, int width, bool custom, int precision)
+	{
+		var sign = (width & 1) != 0 ? string.Empty : custom ? "\u2212\0\u03A9" : "-";
+		var separator = precision == 0 ? string.Empty : custom ? "\u03A9\0\uD83D\uDE00" : ".";
+		var digits = FixedPointMagnitude(width);
+		if (text.Length != sign.Length + digits.Length + separator.Length + precision) return false;
+		for (var index = 0; index < text.Length; index++)
+		{
+			var offset = index - sign.Length;
+			var expected = index < sign.Length ? sign[index] : offset < digits.Length ? digits[offset]
+				: offset < digits.Length + separator.Length ? separator[offset - digits.Length] : '0';
+			if (text[index] != expected) return false;
+		}
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibFixedPointIntegerSpanHelpersEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		{
+			var info = FixedPointInfo(); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			info = null!;
+			for (var width = 0; width < 8; width++)
+			for (var formatCase = 0; formatCase < 4; formatCase++)
+			{
+				var custom = providerCase != 0; var precision = FixedPointPrecision(formatCase, custom);
+				var length = FixedPointMagnitude(width).Length + ((width & 1) != 0 ? 0 : custom ? 3 : 1)
+					+ (precision == 0 ? 0 : custom ? 4 : 1) + precision;
+				var value = StandardIntegerValue(width * 4);
+				for (var sizeCase = 0; sizeCase < 4; sizeCase++)
+				{
+					var size = sizeCase == 0 ? 0 : length + sizeCase - 2;
+					var storage = new char[size + 2]; for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+					var before = supplied.NumberQueries; M68kRuntime.Collect();
+					var success = TryStandardInteger(value, FixedPointFormat(formatCase).AsSpan(), new Span<char>(storage, 1, size), out var written, provider);
+					M68kRuntime.Collect();
+					if (success != (size >= length) || written != (success ? length : 0)) return 1;
+					if (providerCase == 2 && (supplied.NumberQueries != before + 1 || supplied.CustomQueries != 0)) return 2;
+					if (success && !CheckFixedPoint(new ReadOnlySpan<char>(storage, 1, written), width, custom, precision)) return 3;
+					for (var index = 0; index < storage.Length; index++)
+						if ((!success || index == 0 || index > written) && storage[index] != '#') return 4;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibFixedPointProviderContractsEntry()
+	{
+		var info = new System.Globalization.NumberFormatInfo { NegativeSign = "", NumberDecimalSeparator = "::", NumberDecimalDigits = 0 };
+		var builder = new System.Text.StringBuilder(80).AppendFormat(info, "[{0,8:F}][{1,-8:f3}]", -12, 12u);
+		if (builder.ToString(0, builder.Length) != "[      12][12::000 ]") return 1;
+		var snapshot = builder.ToString(0, builder.Length);
+		info.NegativeSign = "minus"; info.NumberDecimalDigits = 3; info.NumberDecimalSeparator = ","; M68kRuntime.Collect();
+		builder.Clear().AppendFormat(info, "{0:F}|{1:F\0ignored}|{2:f000000000000000003}", -12, -12, 12u);
+		if (builder.ToString(0, builder.Length) != "minus12,000|minus12|12,000" || snapshot != "[      12][12::000 ]") return 2;
+		for (var mode = 1; mode <= 2; mode++)
+		{
+			var provider = new CoreLibDecimalSignProvider { Mode = mode };
+			builder.Clear().AppendFormat(provider, "{0:F}/{1:F0}/{2:f3}", -12, 0u, ulong.MaxValue);
+			if (builder.ToString(0, builder.Length) != "-12.00/0/18446744073709551615.000" || provider.NumberQueries != 3 || provider.CustomQueries != 1) return 3;
+		}
+		var changing = new CoreLibDecimalSignProvider { Mode = 5, Info = new System.Globalization.NumberFormatInfo() };
+		builder = new System.Text.StringBuilder(1).AppendFormat(changing, "{0:F}", -12);
+		if (builder.ToString(0, builder.Length) != "second12::000" || changing.NumberQueries != 2 || changing.CustomQueries != 1) return 4;
+		var throwing = new CoreLibDecimalSignProvider { Mode = 3, Error = new InvalidOperationException("provider") };
+		builder = new System.Text.StringBuilder(80).Append("seed");
+		try { builder.AppendFormat(throwing, "pre{0:F0}post", 0u); return 5; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || builder.ToString(0, builder.Length) != "seedpre") return 6; }
+		throwing.NumberQueries = 0; builder.Clear().Append("seed");
+		try { builder.AppendFormat(throwing, "pre{0:F1000000000}post", -12); return 7; } catch (FormatException) { }
+		if (throwing.NumberQueries != 0 || builder.ToString(0, builder.Length) != "seedpre") return 8;
+		var guard = new char[2]; guard[0] = '#'; guard[1] = '#'; var written = 37;
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(-12, -1, "F0", throwing, guard, out written); return 19; }
+		catch (InvalidOperationException error) { if (!ReferenceEquals(error, throwing.Error) || written != 37 || guard[0] != '#' || guard[1] != '#') return 20; }
+		info.NumberDecimalDigits = 99;
+		var output = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(0, "F", info);
+		if (output.Length != 101 || output[0] != '0' || output[1] != ',') return 9;
+		for (var index = 2; index < output.Length; index++) if (output[index] != '0') return 9;
+		info.NumberDecimalDigits = 4;
+		try { info.NumberDecimalDigits = -1; return 10; } catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 11; }
+		try { info.NumberDecimalDigits = 100; return 12; } catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 13; }
+		try { info.NumberDecimalSeparator = null!; return 14; } catch (ArgumentNullException error) { if (error.ParamName != "value") return 15; }
+		try { info.NumberDecimalSeparator = string.Empty; return 16; } catch (ArgumentException error) { if (error.ParamName != "value") return 17; }
+		return info.NumberDecimalDigits == 4 && info.NumberDecimalSeparator == "," ? 42 : 18;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibFixedPointIntegerAllocationContractsEntry()
+	{
+		for (var providerCase = 0; providerCase < 3; providerCase++)
+		for (var width = 0; width < 8; width++)
+		{
+			var info = FixedPointInfo(); var supplied = new CoreLibDecimalSignProvider { Info = info };
+			IFormatProvider? provider = providerCase == 0 ? null : providerCase == 1 ? info : supplied;
+			var custom = providerCase != 0;
+			var length = FixedPointMagnitude(width).Length + ((width & 1) != 0 ? 0 : custom ? 3 : 1) + (custom ? 4 : 1) + 4;
+			var storage = new char[length + 2]; for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+			var value = StandardIntegerValue(width * 4);
+			SetStringBuilderAllocationFailure(1);
+			var shortSuccess = TryStandardInteger(value, "F4", new Span<char>(storage, 1, length - 1), out var shortWritten, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (shortSuccess || shortWritten != 0) return 1;
+			for (var index = 0; index < storage.Length; index++) if (storage[index] != '#') return 2;
+			SetStringBuilderAllocationFailure(1);
+			var success = TryStandardInteger(value, "F4", new Span<char>(storage, 1, length), out var written, provider);
+			SetStringBuilderAllocationFailure(0);
+			if (!success || written != length || !CheckFixedPoint(new ReadOnlySpan<char>(storage, 1, written), width, custom, 4)) return 3;
+			SetStringBuilderAllocationFailure(2);
+			var text = FormatStandardInteger(value, "F4", provider);
+			SetStringBuilderAllocationFailure(0);
+			if (!CheckFixedPoint(text.AsSpan(), width, custom, 4) || providerCase == 2 && supplied.NumberQueries != 3) return 4;
+		}
+		var guard = new char[1]; guard[0] = '#';
+		SetStringBuilderAllocationFailure(1);
+		var hugeSuccess = CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(long.MinValue, "F999999999", null, guard, out var hugeWritten);
+		SetStringBuilderAllocationFailure(0);
+		if (hugeSuccess || hugeWritten != 0 || guard[0] != '#') return 5;
+		for (var signCase = 0; signCase < 3; signCase++)
+		for (var failAt = 1; failAt <= 2; failAt++)
+		{
+			var info = signCase == 1 ? FixedPointInfo() : new System.Globalization.NumberFormatInfo
+				{ NegativeSign = signCase == 0 ? "-" : "", NumberDecimalSeparator = signCase == 0 ? "." : "::" };
+			var provider = new CoreLibDecimalSignProvider { Info = info };
+			var builder = new System.Text.StringBuilder(80).Append("seed"); object value = long.MinValue;
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.AppendFormat(provider, "pre{0:F100}post", value); SetStringBuilderAllocationFailure(0); return 6; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.ToString(0, builder.Length) != "seedpre" || provider.NumberQueries != failAt || provider.CustomQueries != 1) return 7;
+			builder.Clear().AppendFormat(provider, "{0:F4}", value);
+			var text = builder.ToString(0, builder.Length); var digits = FixedPointMagnitude(6);
+			var sign = info.NegativeSign; var separator = info.NumberDecimalSeparator;
+			if (text.Length != sign.Length + digits.Length + separator.Length + 4) return 8;
+			for (var index = 0; index < text.Length; index++)
+			{
+				var offset = index - sign.Length;
+				var expected = index < sign.Length ? sign[index] : offset < digits.Length ? digits[offset]
+					: offset < digits.Length + separator.Length ? separator[offset - digits.Length] : '0';
+				if (text[index] != expected) return 9;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderStandardIntegerFormatsEntry()
+	{
+		for (var scenario = 0; scenario < 32; scenario++)
+		for (var capacityCase = 0; capacityCase < 3; capacityCase++)
+		{
+			var builder = new System.Text.StringBuilder(capacityCase == 0 ? 1 : capacityCase == 1 ? 7 : 80);
+			var value = StandardIntegerValue(scenario);
+			var format = StandardIntegerCompositeFormat(scenario);
+			var expected = StandardIntegerText(scenario);
+			builder.AppendFormat(format, value);
+			var snapshot = builder.ToString(0, builder.Length);
+			M68kRuntime.Collect();
+			if (snapshot != expected) return 1;
+			builder.Clear().Append("pre").AppendFormat(format, value).Append("post");
+			M68kRuntime.Collect();
+			var text = builder.ToString(0, builder.Length);
+			if (text.Length != expected.Length + 7 || snapshot != expected) return 2;
+			for (var index = 0; index < text.Length; index++)
+				if (text[index] != (index < 3 ? "pre"[index] : index < expected.Length + 3 ? expected[index - 3] : "post"[index - expected.Length - 3])) return 2;
+		}
+		var aligned = new System.Text.StringBuilder(80).AppendFormat("[{0,8:X4}][{1,-8:D4}]", (sbyte)-1, (short)-12);
+		if (aligned.ToString(0, aligned.Length) != "[    00FF][-0012   ]") return 3;
+		aligned.Clear().AppendFormat(new CoreLibPrimitiveFormatProvider(), "{0:X4}/{1:B10}", (sbyte)-1, (short)-1);
+		if (aligned.ToString(0, aligned.Length) != "00FF/1111111111111111") return 4;
+		aligned.Clear().Append("seed");
+		try { aligned.AppendFormat("pre{0:D1000000000}post", 42); return 5; } catch (FormatException) { }
+		return aligned.ToString(0, aligned.Length) == "seedpre" ? 42 : 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStandardIntegerFormattingHelpersEntry()
+	{
+		for (var scenario = 0; scenario < 32; scenario++)
+		{
+			var value = StandardIntegerValue(scenario);
+			var format = StandardIntegerCompositeFormat(scenario);
+			var specifier = format.AsSpan(3, format.Length - 4);
+			var expected = StandardIntegerText(scenario);
+			for (var capacityCase = 0; capacityCase < 4; capacityCase++)
+			{
+				var size = capacityCase == 0 ? 0 : expected.Length + capacityCase - 2;
+				var storage = new char[size + 2];
+				for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+				M68kRuntime.Collect();
+				var success = TryStandardInteger(value, specifier, new Span<char>(storage, 1, size), out var written);
+				M68kRuntime.Collect();
+				if (success != (size >= expected.Length) || written != (success ? expected.Length : 0)) return 1;
+				for (var index = 0; index < storage.Length; index++)
+					if (storage[index] != (success && index > 0 && index <= written ? expected[index - 1] : '#')) return 2;
+			}
+		}
+		var buffer = new char[1]; buffer[0] = '#';
+		if (CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(-1, -1, "D999999999", null, buffer, out var count) || count != 0 || buffer[0] != '#') return 3;
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(42, -1, "D1000000000", null, buffer, out _); return 4; } catch (FormatException) { }
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(42, "Z", null, buffer, out _); return 5; } catch (FormatException) { }
+		return buffer[0] == '#' ? 42 : 6;
+	}
+
+	private static bool TryStandardInteger(object value, ReadOnlySpan<char> format, Span<char> destination, out int written, IFormatProvider? provider = null)
+	{
+		if (value is sbyte signedByte) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(signedByte, 255, format, provider, destination, out written);
+		if (value is byte unsignedByte) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(unsignedByte, format, provider, destination, out written);
+		if (value is short signedShort) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(signedShort, 65535, format, provider, destination, out written);
+		if (value is ushort unsignedShort) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(unsignedShort, format, provider, destination, out written);
+		if (value is int signed) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt32(signed, -1, format, provider, destination, out written);
+		if (value is uint unsigned) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(unsigned, format, provider, destination, out written);
+		if (value is long signedLong) return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(signedLong, format, provider, destination, out written);
+		return CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64((ulong)value, format, provider, destination, out written);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStandardIntegerFormattingAllocationContractsEntry()
+	{
+		// Initialize the ambient culture cache before measuring individual formatting calls.
+		_ = System.Globalization.NumberFormatInfo.CurrentInfo.NegativeSign;
+		for (var scenario = 0; scenario < 32; scenario++)
+		{
+			var value = StandardIntegerValue(scenario);
+			var format = StandardIntegerCompositeFormat(scenario);
+			var expected = StandardIntegerText(scenario);
+			var buffer = new char[expected.Length];
+			var specifier = format.AsSpan(3, format.Length - 4);
+			var formatText = new string(specifier);
+			SetStringBuilderAllocationFailure(1);
+			var success = TryStandardInteger(value, specifier, buffer, out var written);
+			SetStringBuilderAllocationFailure(0);
+			if (!success || written != expected.Length) return 1;
+			for (var index = 0; index < written; index++) if (buffer[index] != expected[index]) return 2;
+			SetStringBuilderAllocationFailure(2);
+			var text = FormatStandardInteger(value, formatText);
+			SetStringBuilderAllocationFailure(0);
+			if (text != expected) return 6;
+		}
+		for (var scenario = 0; scenario < 3; scenario++)
+		{
+			var format = scenario == 0 ? "D3" : scenario == 1 ? "X3" : "B3";
+			var buffer = new char[3];
+			SetStringBuilderAllocationFailure(1);
+			var success = CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(0, format, null, buffer, out var written);
+			SetStringBuilderAllocationFailure(0);
+			if (!success || written != 3 || buffer[0] != '0' || buffer[1] != '0' || buffer[2] != '0') return 7;
+			SetStringBuilderAllocationFailure(2);
+			var text = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(0, format, null);
+			SetStringBuilderAllocationFailure(0);
+			if (text != "000") return 8;
+		}
+		for (var scenario = 0; scenario < 3; scenario++)
+		for (var failAt = 1; failAt <= 2; failAt++)
+		{
+			var builder = new System.Text.StringBuilder(80).Append("seed");
+			object value = scenario == 0 ? (object)long.MinValue : ulong.MaxValue;
+			var format = scenario == 0 ? "pre{0:D100}post" : scenario == 1 ? "pre{0:X100}post" : "pre{0:B100}post";
+			SetStringBuilderAllocationFailure(failAt);
+			try { builder.AppendFormat(format, value); SetStringBuilderAllocationFailure(0); return 3; }
+			catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+			if (builder.ToString(0, builder.Length) != "seedpre") return 4;
+			builder.Clear().Append("seed").AppendFormat("pre{0:D6}post", -12);
+			if (builder.ToString(0, builder.Length) != "seedpre-000012post") return 5;
+		}
+		return 42;
+	}
+
+	private static string FormatStandardInteger(object value, string format, IFormatProvider? provider = null)
+	{
+		if (value is sbyte signedByte) return CopperSharp.Runtime.ShadowNumberFormatting.FormatInt32(signedByte, 255, format, provider);
+		if (value is byte unsignedByte) return CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(unsignedByte, format, provider);
+		if (value is short signedShort) return CopperSharp.Runtime.ShadowNumberFormatting.FormatInt32(signedShort, 65535, format, provider);
+		if (value is ushort unsignedShort) return CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(unsignedShort, format, provider);
+		if (value is int signed) return CopperSharp.Runtime.ShadowNumberFormatting.FormatInt32(signed, -1, format, provider);
+		if (value is uint unsigned) return CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(unsigned, format, provider);
+		if (value is long signedLong) return CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(signedLong, format, provider);
+		return CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64((ulong)value, format, provider);
+	}
+
+	private static object StandardIntegerValue(int scenario) => (scenario / 4) switch
+	{
+		0 => sbyte.MinValue, 1 => byte.MaxValue, 2 => short.MinValue, 3 => ushort.MaxValue,
+		4 => int.MinValue, 5 => uint.MaxValue, 6 => long.MinValue, _ => ulong.MaxValue
+	};
+
+	private static string StandardIntegerCompositeFormat(int scenario)
+	{
+		var group = scenario / 4;
+		return (scenario % 4) switch
+		{
+			0 => group < 4 ? "{0:D6}" : group < 6 ? "{0:D12}" : "{0:D22}",
+			1 => group < 2 ? "{0:X4}" : group < 4 ? "{0:X6}" : group < 6 ? "{0:X10}" : "{0:X18}",
+			2 => "{0:x1}",
+			_ => group < 2 ? "{0:B10}" : group < 4 ? "{0:B18}" : group < 6 ? "{0:B34}" : "{0:B66}"
+		};
+	}
+
+	private static string StandardIntegerText(int scenario) => scenario switch
+	{
+		0 => "-000128", 1 => "0080", 2 => "80", 3 => "0010000000",
+		4 => "000255", 5 => "00FF", 6 => "ff", 7 => "0011111111",
+		8 => "-032768", 9 => "008000", 10 => "8000", 11 => "001000000000000000",
+		12 => "065535", 13 => "00FFFF", 14 => "ffff", 15 => "001111111111111111",
+		16 => "-002147483648", 17 => "0080000000", 18 => "80000000", 19 => "0010000000000000000000000000000000",
+		20 => "004294967295", 21 => "00FFFFFFFF", 22 => "ffffffff", 23 => "0011111111111111111111111111111111",
+		24 => "-0009223372036854775808", 25 => "008000000000000000", 26 => "8000000000000000", 27 => "001000000000000000000000000000000000000000000000000000000000000000",
+		28 => "0018446744073709551615", 29 => "00FFFFFFFFFFFFFFFF", 30 => "ffffffffffffffff", _ => "001111111111111111111111111111111111111111111111111111111111111111"
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibSpanStringConstructionEntry()
+	{
+		for (var length = 0; length <= 65; length++)
+		for (var offset = 0; offset <= 3; offset++)
+		{
+			var array = new char[length + offset + 2];
+			for (var index = 0; index < array.Length; index++) array[index] = "A\0\u03A9\uD83D\uDE00\uD800\uFFFF"[index % 7];
+			ReadOnlySpan<char> value = new ReadOnlySpan<char>(array, offset, length);
+			array = null!;
+			M68kRuntime.Collect();
+			var text = new string(value);
+			value = default;
+			M68kRuntime.Collect(); var pressure = new char[length + offset + 2]; pressure[0] = 'z';
+			if (text.Length != length || length == 0 && !ReferenceEquals(text, string.Empty)) return 1;
+			for (var index = 0; index < length; index++) if (text[index] != "A\0\u03A9\uD83D\uDE00\uD800\uFFFF"[(index + offset) % 7]) return 2;
+		}
+		Span<char> stack = stackalloc char[3]; stack[0] = 'x'; stack[1] = '\u03A9'; stack[2] = '\0';
+		var snapshot = new string(stack); stack[0] = 'y'; M68kRuntime.Collect();
+		return snapshot == "x\u03A9\0" && ReferenceEquals(new string(default(ReadOnlySpan<char>)), string.Empty) ? 42 : 3;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibInt32ArrayCopyEntry()
+	{
+		for (var same = 0; same < 2; same++)
+		for (var sourceIndex = 0; sourceIndex <= 8; sourceIndex++)
+		for (var destinationIndex = 0; destinationIndex <= 8; destinationIndex++)
+		for (var length = 0; length <= 8 - sourceIndex && length <= 8 - destinationIndex; length++)
+		{
+			var source = new int[8]; var destination = same == 0 ? new int[8] : source;
+			for (var index = 0; index < 8; index++) { source[index] = Int32CopyPattern(index); if (same == 0) destination[index] = 123; }
+			M68kRuntime.Collect();
+			Array.Copy(source, sourceIndex, destination, destinationIndex, length);
+			M68kRuntime.Collect();
+			for (var index = 0; index < 8; index++)
+			{
+				var expected = index >= destinationIndex && index < destinationIndex + length ? Int32CopyPattern(index - destinationIndex + sourceIndex)
+					: same == 0 ? 123 : Int32CopyPattern(index);
+				if (destination[index] != expected || same == 0 && source[index] != Int32CopyPattern(index)) return 1;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibInt32ArrayCopyContractEntry()
+	{
+		var source = new int[3]; source[0] = 12; source[1] = 34; source[2] = 56;
+		var destination = new int[3]; destination[0] = 78; destination[1] = 90; destination[2] = -1;
+		for (var scenario = 0; scenario < 12; scenario++)
+		{
+			try
+			{
+				if (scenario == 0) Array.Copy(null!, -1, destination, -1, -1);
+				else if (scenario == 1) Array.Copy(source, -1, null!, -1, -1);
+				else Array.Copy(source, scenario == 3 || scenario == 5 ? -1 : scenario == 6 ? 4 : scenario == 8 ? 3 : scenario == 10 ? int.MaxValue : 0,
+					destination, scenario == 4 || scenario == 5 ? -1 : scenario == 7 ? 4 : scenario == 9 ? 3 : scenario == 11 ? int.MaxValue : 0,
+					scenario == 2 ? -1 : scenario == 6 || scenario == 7 ? 0 : 1);
+				return 1;
+			}
+			catch (ArgumentNullException error) { if (scenario > 1 || error.ParamName != (scenario == 0 ? "sourceArray" : "destinationArray")) return 2; }
+			catch (ArgumentOutOfRangeException error) { if (scenario < 2 || scenario > 5 || error.ParamName != (scenario == 2 ? "length" : scenario == 4 ? "destinationIndex" : "sourceIndex")) return 3; }
+			catch (ArgumentException error) { if (scenario < 6 || error.ParamName != (scenario == 6 || scenario == 8 || scenario == 10 ? "sourceArray" : "destinationArray")) return 4; }
+			if (source[0] != 12 || source[1] != 34 || source[2] != 56 || destination[0] != 78 || destination[1] != 90 || destination[2] != -1) return 5;
+		}
+		Array.Copy(source, 3, destination, 3, 0);
+		Array.Copy(source, 1, destination, 0, 2);
+		return destination[0] == 34 && destination[1] == 56 && destination[2] == -1 ? 42 : 6;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibInt32ArrayCopyRejectsUnknownEntry()
+	{
+		var values = new int[3]; values[0] = 12; values[1] = 34; values[2] = 56;
+		for (var scenario = 0; scenario < 3; scenario++)
+		{
+			Array unsupported = scenario == 0 ? new byte[3] : scenario == 1 ? new long[3] : new object[3];
+			try { Array.Copy(unsupported, 0, values, 0, 0); return 1; } catch (NotSupportedException) { }
+			try { Array.Copy(values, 0, unsupported, 0, 1); return 2; } catch (NotSupportedException) { }
+			if (values[0] != 12 || values[1] != 34 || values[2] != 56) return 3;
+		}
+		Array.Copy(values, 0, values, 1, 2);
+		return values[0] == 12 && values[1] == 12 && values[2] == 34 ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe int CoreLibMemoryZeroEntry()
+	{
+		CopperSharp.Runtime.ShadowBuffer.ZeroMemoryInternal(null, 0);
+		for (var offset = 0; offset < 4; offset++)
+		for (var length = 0; length <= 65; length++)
+		{
+			var bytes = new byte[72]; var integers = new int[72]; var raw = new byte[72]; var references = new object?[72]; var characters = new char[72];
+			for (var index = 0; index < 72; index++) { bytes[index] = 0xA5; raw[index] = 0x5A; integers[index] = Int32CopyPattern(index); references[index] = "keep"; characters[index] = '\uFFFF'; }
+			M68kRuntime.Collect();
+			Array.Clear(bytes, offset, length); Array.Clear(integers, offset, length); Array.Clear(references, offset, length); Array.Clear(characters, offset, length);
+			fixed (byte* pointer = raw) CopperSharp.Runtime.ShadowBuffer.ZeroMemoryInternal(pointer + offset, (nuint)length);
+			M68kRuntime.Collect();
+			for (var index = 0; index < 72; index++)
+			{
+				var cleared = index >= offset && index < offset + length;
+				if (bytes[index] != (cleared ? 0 : 0xA5) || raw[index] != (cleared ? 0 : 0x5A) || integers[index] != (cleared ? 0 : Int32CopyPattern(index))) return 1;
+				if (references[index] != (cleared ? null : (object)"keep")) return 2;
+				if (characters[index] != (cleared ? 0 : 0xFFFF)) return 3;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe int CoreLibRawZeroSmokeEntry()
+	{
+		var bytes = new byte[8]; for (var index = 0; index < 8; index++) bytes[index] = 0x55;
+		fixed (byte* pointer = bytes) CopperSharp.Runtime.ShadowBuffer.ZeroMemoryInternal(pointer + 1, 3);
+		for (var index = 0; index < 8; index++) if (bytes[index] != (index >= 1 && index < 4 ? 0 : 0x55)) return 1;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibMemoryZeroContractEntry()
+	{
+		var values = new int[3]; values[0] = 12; values[1] = 34; values[2] = 56;
+		try { Array.Clear(null!, -1, -1); return 1; } catch (ArgumentNullException error) { if (error.ParamName != "array") return 2; }
+		for (var scenario = 0; scenario < 6; scenario++)
+		{
+			try { Array.Clear(values, scenario == 0 || scenario == 4 ? -1 : scenario == 2 ? 4 : scenario == 3 ? 3 : 0,
+				scenario == 1 || scenario == 4 ? -1 : scenario == 0 || scenario == 2 ? 0 : scenario == 5 ? int.MaxValue : 1); return 3; }
+			catch (IndexOutOfRangeException) { }
+			if (values[0] != 12 || values[1] != 34 || values[2] != 56) return 4;
+		}
+		Array.Clear(values, 3, 0); Array.Clear(values, 1, 1);
+		Array.Clear(new byte[0], 0, 0); Array.Clear(new char[0], 0, 0); Array.Clear(new int[0], 0, 0); Array.Clear(new object[0], 0, 0);
+		return values[0] == 12 && values[1] == 0 && values[2] == 56 ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibMemoryClearRejectsUnknownEntry()
+	{
+		for (var scenario = 0; scenario < 3; scenario++)
+		{
+			Array values = scenario == 0 ? new uint[3] : scenario == 1 ? new short[3] : new long[3];
+			try { Array.Clear(values, 0, 0); return 1; } catch (NotSupportedException) { }
+		}
+		var retained = new string?[3]; retained[0] = "first"; retained[1] = "cleared"; retained[2] = "last";
+		Array.Clear(retained, 1, 1);
+		return retained[0] == "first" && retained[1] == null && retained[2] == "last" ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe int CoreLibMemoryAlgorithmsAllocationFreeEntry()
+	{
+		var values = new int[8]; var bytes = new byte[72];
+		for (var index = 0; index < 8; index++) values[index] = Int32CopyPattern(index);
+		for (var index = 0; index < 72; index++) bytes[index] = 0xA5;
+		SetStringBuilderAllocationFailure(1);
+		Array.Copy(values, 0, values, 1, 7);
+		Array.Clear(values, 3, 3); Array.Clear(bytes, 1, 65);
+		fixed (byte* pointer = bytes) CopperSharp.Runtime.ShadowBuffer.ZeroMemoryInternal(pointer + 66, 3);
+		SetStringBuilderAllocationFailure(0);
+		for (var index = 0; index < 8; index++)
+			if (values[index] != (index >= 3 && index < 6 ? 0 : Int32CopyPattern(index == 0 ? 0 : index - 1))) return 1;
+		for (var index = 0; index < 72; index++) if (bytes[index] != (index >= 1 && index < 69 ? 0 : 0xA5)) return 2;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibMemoryReferenceOffsetsRetainOwnersEntry()
+	{
+		int[]? integers = new int[8]; integers[4] = 123; integers[7] = int.MaxValue;
+		ref int first = ref System.Runtime.CompilerServices.Unsafe.Add(ref integers[4], -4);
+		ref int last = ref System.Runtime.CompilerServices.Unsafe.Add(ref first, 7);
+		integers = null;
+		M68kRuntime.Collect(); var pressure = new int[8]; pressure[7] = -1;
+		if (last != int.MaxValue) return 1;
+		first = int.MinValue;
+		M68kRuntime.Collect();
+		if (first != int.MinValue || System.Runtime.CompilerServices.Unsafe.Add(ref first, 4) != 123) return 2;
+		byte[]? bytes = new byte[72]; bytes[0] = 0xA5; bytes[71] = 0x5A;
+		ref byte middle = ref System.Runtime.CompilerServices.Unsafe.Add(ref bytes[0], (nuint)35);
+		ref byte start = ref System.Runtime.CompilerServices.Unsafe.AddByteOffset(ref middle, (nint)(-35));
+		ref byte end = ref System.Runtime.CompilerServices.Unsafe.AddByteOffset(ref start, (nuint)71);
+		bytes = null;
+		M68kRuntime.Collect(); var other = new byte[72]; other[0] = 12; other[71] = 34;
+		if (start != 0xA5 || end != 0x5A) return 3;
+		start = 123; end = 234;
+		M68kRuntime.Collect();
+		if (start != 123 || end != 234 || pressure[7] != -1 || other[0] != 12 || other[71] != 34) return 4;
+		nint[]? native = new nint[4]; native[0] = -123; native[3] = 234;
+		ref nint nativeEnd = ref System.Runtime.CompilerServices.Unsafe.Add(ref native[3], (nuint)0);
+		ref nint nativeStart = ref System.Runtime.CompilerServices.Unsafe.Add(ref nativeEnd, (nint)(-3));
+		ref nint nativeLast = ref System.Runtime.CompilerServices.Unsafe.Add(ref nativeStart, 3);
+		native = null;
+		M68kRuntime.Collect(); var nativePressure = new nint[4]; nativePressure[0] = 345;
+		return nativeStart == -123 && nativeLast == 234 && nativePressure[0] == 345 ? 42 : 5;
+	}
+
+	private sealed class ReferenceBoxPayload { public int Value; }
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinContractEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 8).Append("seed");
+		try { builder.AppendJoin("|", (string?[])null!); return 1; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 2; }
+		try { builder.AppendJoin('\0', (string?[])null!); return 3; }
+		catch (ArgumentNullException error) { if (error.ParamName != "values") return 4; }
+		if (builder.Length != 4 || builder.Capacity != 8 || builder.ToString(0, 4) != "seed") return 5;
+		var values = new string?[] { null, "", "A", null };
+		if (builder.AppendJoin((string?)null, values) != builder || builder.ToString(0, builder.Length) != "seedA") return 6;
+		builder.Length = 4;
+		if (builder.AppendJoin("", values) != builder || builder.ToString(0, builder.Length) != "seedA") return 7;
+		builder.Length = 4;
+		if (builder.AppendJoin('\0', values) != builder || builder.ToString(0, builder.Length) != "seed\0\0A\0") return 8;
+		for (var character = 0; character < 2; character++)
+		{
+			var limited = new System.Text.StringBuilder(4, 8).Append("seed");
+			var parts = new[] { "a", "bc", "def" };
+			try
+			{
+				if (character == 0) limited.AppendJoin("|", parts); else limited.AppendJoin('|', parts);
+				return 9;
+			}
+			catch (ArgumentOutOfRangeException error) { if (error.ParamName != "valueCount") return 10; }
+			if (limited.Length != 8 || limited.Capacity != 8 || limited.MaxCapacity != 8 || limited.ToString(0, 8) != "seeda|bc") return 11;
+			limited.Clear().AppendJoin('|', new[] { "X", "Y" });
+			if (limited.ToString(0, limited.Length) != "X|Y") return 12;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendJoinAllocationFailureEntry()
+	{
+		for (var character = 0; character < 2; character++)
+		{
+			var available = new System.Text.StringBuilder(512).Append("seed");
+			var values = CreateAppendJoinValues(5);
+			var empty = new string?[0];
+			var separator = "\u03A9\0\uD83D\uDE00\uFFFF";
+			SetStringBuilderAllocationFailure(1);
+			if (character == 0) available.AppendJoin(separator, values); else available.AppendJoin('\u03A9', values);
+			available.AppendJoin((string?)null, empty);
+			SetStringBuilderAllocationFailure(0);
+			if (!AppendJoinMatches(available, "seed", values, character == 0 ? separator : "\u03A9")) return 1;
+			for (var scenario = 0; scenario < (character == 0 ? 4 : 3); scenario++)
+			for (var failAt = 1; failAt <= 2; failAt++)
+			{
+				var capacity = scenario == 0 ? 4 : scenario == 2 ? 6 : 8;
+				var builder = new System.Text.StringBuilder(capacity).Append("seed");
+				var parts = new[] { "AB", "CD" };
+				var delimiter = scenario == 3 ? separator : "|";
+				var retained = scenario == 0 ? "seed" : scenario == 1 ? "seedAB|C" : scenario == 2 ? "seedAB" : "seedAB\u03A9\0";
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (character == 0) builder.AppendJoin(delimiter, parts); else builder.AppendJoin('|', parts);
+					SetStringBuilderAllocationFailure(0); return 2;
+				}
+				catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+				if (builder.Capacity != capacity || builder.Length != retained.Length || builder.ToString(0, builder.Length) != retained) return 3;
+				if (parts[0] != "AB" || parts[1] != "CD") return 4;
+				builder.Length = 4;
+				if (character == 0) builder.AppendJoin(delimiter, parts); else builder.AppendJoin('|', parts);
+				if (!AppendJoinMatches(builder, "seed", parts, delimiter)) return 5;
+				builder.Clear().AppendJoin('|', new[] { "X", "Y" });
+				if (builder.ToString(0, builder.Length) != "X|Y") return 6;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static object? BoxClosedReference<T>(T value) => value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ClosedReferenceBoxIdentityEntry()
+	{
+		var payload = new ReferenceBoxPayload { Value = 42 };
+		var array = new[] { payload };
+		SetStringBuilderAllocationFailure(1);
+		var first = BoxClosedReference(payload);
+		var second = BoxClosedReference(array);
+		var third = BoxClosedReference("text");
+		var fourth = BoxClosedReference((object)payload);
+		var nil = BoxClosedReference((ReferenceBoxPayload?)null);
+		SetStringBuilderAllocationFailure(0);
+		return first == payload && second == array && third == (object)"text" && fourth == payload && nil == null ? 42 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ClosedReferenceBoxGcEntry()
+	{
+		ReferenceBoxPayload? payload = new ReferenceBoxPayload { Value = 42 };
+		ReferenceBoxPayload[]? array = new[] { payload };
+		var first = BoxClosedReference(payload);
+		var second = BoxClosedReference(array);
+		payload = null; array = null;
+		M68kRuntime.Collect();
+		var pressure = new ReferenceBoxPayload { Value = 99 };
+		M68kRuntime.Collect();
+		return ((ReferenceBoxPayload)first!).Value == 42 && ((ReferenceBoxPayload[])second!)[0] == first && pressure.Value == 99 ? 42 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ReferenceArrayCountdownEntry() => FillReferenceArrayCountdown(9);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderChunksLifetimeEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var lengthCase = 0; lengthCase < 2; lengthCase++)
+		{
+			var length = lengthCase == 0 ? 65 : 129;
+			System.Text.StringBuilder? builder = CreatePatternStringBuilder(1, length, 0);
+			var enumerator = CopyChunkEnumerator(builder.GetChunks());
+			builder = null;
+			M68kRuntime.Collect();
+			var position = 0;
+			while (enumerator.MoveNext())
+			{
+				M68kRuntime.Collect();
+				var span = enumerator.Current.Span;
+				for (var index = 0; index < span.Length; index++) if (span[index] != pattern[(position + index) % 8]) return 1;
+				position += span.Length;
+			}
+			if (position != length) return 2;
+			enumerator = default;
+			var retained = CreateRetainedChunkView(length);
+			var copied = retained;
+			retained = default;
+			M68kRuntime.Collect();
+			var pressure = new char[512];
+			pressure[0] = 'X';
+			var view = copied.Span;
+			if (view.Length != 16) return 3;
+			for (var index = 0; index < view.Length; index++) if (view[index] != pattern[index % 8]) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder.ChunkEnumerator CopyChunkEnumerator(System.Text.StringBuilder.ChunkEnumerator value) => value.GetEnumerator();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlyMemory<char> CreateRetainedChunkView(int length)
+	{
+		var builder = CreatePatternStringBuilder(1, length, 0);
+		var enumerator = builder.GetChunks();
+		for (var chunk = 0; chunk < 6; chunk++) enumerator.MoveNext();
+		return enumerator.Current;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderChunksContractEntry()
+	{
+		var empty = new System.Text.StringBuilder(1).GetChunks();
+		try { _ = empty.Current; return 1; } catch (InvalidOperationException) { }
+		if (!empty.MoveNext() || empty.Current.Length != 0 || empty.MoveNext() || empty.MoveNext()) return 2;
+		var uninitialized = default(System.Text.StringBuilder.ChunkEnumerator);
+		if (uninitialized.MoveNext()) return 3;
+		try { _ = uninitialized.Current; return 4; } catch (InvalidOperationException) { }
+		var original = new System.Text.StringBuilder(1).Append("text").GetChunks();
+		var copy = original.GetEnumerator();
+		if (!original.MoveNext() || !copy.MoveNext() || original.Current.Length != copy.Current.Length) return 5;
+		var position = 0;
+		while (copy.MoveNext()) position += copy.Current.Length;
+		if (position + original.Current.Length != 4 || copy.MoveNext()) return 6;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderChunksAllocationFailureEntry()
+	{
+		for (var sizeCase = 0; sizeCase < 3; sizeCase++)
+		{
+			var length = sizeCase == 0 ? 0 : sizeCase == 1 ? 65 : 129;
+			var builder = CreatePatternStringBuilder(1, length, 0);
+			var capacity = builder.Capacity;
+			var before = builder.ToString(0, length);
+			for (var failAt = 1; failAt <= 2; failAt++)
+			{
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					var enumerator = builder.GetChunks();
+					var position = 0;
+					while (enumerator.MoveNext()) position += enumerator.Current.Length;
+					SetStringBuilderAllocationFailure(0);
+					if (sizeCase == 2 || position != length) return 1;
+				}
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					if (sizeCase != 2) return 2;
+				}
+				if (builder.Length != length || builder.Capacity != capacity || builder.ToString(0, length) != before) return 3;
+				var retry = builder.GetChunks();
+				var total = 0;
+				while (retry.MoveNext()) total += retry.Current.Length;
+				if (total != length) return 4;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int FillReferenceArrayCountdown(int count)
+	{
+		var array = new string[count];
+		while (0 <= --count) array[count] = "chunk";
+		for (var index = 0; index < array.Length; index++) if (array[index] != "chunk") return 1;
+		return count == -1 ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendLineEntry()
+	{
+		var builder = new System.Text.StringBuilder(1);
+		if (builder.AppendLine((string?)null) != builder || builder.AppendLine("\u03A9\0\uD83D\uDE00") != builder ||
+			builder.AppendLine(string.Empty) != builder || builder.AppendLine() != builder) return 1;
+		builder.Append("\r\n").AppendLine("tail");
+		M68kRuntime.Collect();
+		return builder.ToString() == "\n\u03A9\0\uD83D\uDE00\n\n\n\r\ntail\n" && Environment.NewLine == "\n" ? 42 : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe int CoreLibCharacterSpanReferenceEntry()
+	{
+		char[]? data = new char[3];
+		data[0] = '\u03A9'; data[1] = '\uFFFF'; data[2] = 'X';
+		var writable = new Span<char>(data);
+		var readOnly = new ReadOnlySpan<char>(data).Slice(1);
+		ref var first = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(writable);
+		ref var second = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(readOnly);
+		writable = default; readOnly = default; data = null;
+		M68kRuntime.Collect();
+		var replacement = new char[3];
+		replacement[0] = 'Y'; replacement[1] = 'Z';
+		if (first != '\u03A9' || second != '\uFFFF') return 1;
+		first = 'A'; second = 'B';
+		M68kRuntime.Collect();
+		if (first != 'A' || second != 'B') return 2;
+		if (new Span<char>((char[]?)null).Length != 0 || new ReadOnlySpan<char>((char[]?)null).Length != 0) return 3;
+		fixed (char* empty = &System.Runtime.InteropServices.MemoryMarshal.GetReference(default(Span<char>)))
+			if (empty != null) return 4;
+		fixed (char* empty = &System.Runtime.InteropServices.MemoryMarshal.GetReference(default(ReadOnlySpan<char>)))
+			if (empty != null) return 4;
+		Span<char> frame = stackalloc char[1];
+		frame[0] = '\u03A9';
+		ref var frameData = ref System.Runtime.InteropServices.MemoryMarshal.GetReference(frame);
+		M68kRuntime.Collect();
+		return frameData == '\u03A9' ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderTextValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		builder.Append("seed");
+		var chars = new char[4];
+		try { builder.Append("text", -1, 0); return 1; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append("text", 0, -1); return 2; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append("text", 3, 2); return 3; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append("text", int.MaxValue, 1); return 4; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append((string?)null, 1, 0); return 5; } catch (ArgumentNullException) { }
+		try { builder.Append(chars, -1, 0); return 6; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append(chars, 0, -1); return 7; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append(chars, 3, 2); return 8; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append(chars, int.MaxValue, 1); return 9; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append((char[]?)null, 0, 1); return 10; } catch (ArgumentNullException) { }
+		if (builder.Append("text", 4, 0) != builder || builder.Append(chars, 4, 0) != builder) return 11;
+		return builder.ToString() == "seed" ? 42 : 12;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderTextCapacityLimitEntry()
+	{
+		var builder = new System.Text.StringBuilder(4, 4);
+		builder.Append("seed");
+		var chars = new char[1];
+		chars[0] = 'X';
+		try { builder.Append("X"); return 1; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append("XYZ", 1, 1); return 2; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append(chars); return 3; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append(chars, 0, 1); return 4; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Append(new ReadOnlySpan<char>(chars)); return 5; } catch (ArgumentOutOfRangeException) { }
+		try { builder.AppendLine(); return 6; } catch (ArgumentOutOfRangeException) { }
+		return builder.Length == 4 && builder.ToString() == "seed" ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderTextAllocationFailureEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 16; index++) builder.Append('X');
+		try { builder.Append("growth"); }
+		catch (OutOfMemoryException)
+		{
+			return builder.Length == 16 && builder[0] == 'X' && builder[15] == 'X' ? 42 : 1;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderClearEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		if (builder.Clear() != builder || builder.Length != 0 || builder.Capacity != 4) return 1;
+		builder.Append("\u03A9\0\uD83D\uDE00");
+		var first = builder.ToString();
+		if (builder.Clear() != builder || builder.Length != 0 || builder.Capacity != 4) return 2;
+		for (var index = 0; index < 257; index++) builder.Append((char)(index * 251));
+		var snapshot = builder.ToString();
+		if (builder.Clear() != builder || builder.Length != 0 || builder.MaxCapacity != int.MaxValue || builder.ToString() != string.Empty) return 3;
+		M68kRuntime.Collect();
+		for (var cycle = 0; cycle < 12; cycle++)
+		{
+			builder.Append("reuse\u03A9\0\uD83D\uDE00");
+			if (builder.Length != 9 || builder[5] != '\u03A9' || builder[8] != '\uDE00') return 4;
+			if (builder.Clear() != builder || builder.Clear() != builder || builder.Length != 0) return 5;
+			M68kRuntime.Collect();
+		}
+		builder.Append(42);
+		if (builder.ToString() != "42" || first != "\u03A9\0\uD83D\uDE00" || snapshot.Length != 257) return 6;
+		for (var index = 0; index < snapshot.Length; index++)
+			if (snapshot[index] != (char)(index * 251)) return 7;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderLengthTruncationEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		for (var index = 0; index < 257; index++) builder.Append((char)(index * 251));
+		var snapshot = builder.ToString();
+		builder.Length = builder.Length;
+		builder.Length = 256;
+		if (builder.Length != 256 || builder[255] != (char)(255 * 251)) return 1;
+		builder.Length = 128;
+		builder.Length = 127;
+		builder.Length = 17;
+		builder.Length = 16;
+		builder.Length = 5;
+		builder.Length = 4;
+		builder.Length = 3;
+		M68kRuntime.Collect();
+		if (builder.Length != 3 || builder[0] != (char)0 || builder[1] != (char)251 || builder[2] != (char)502) return 2;
+		builder.Append("\u03A9\0\uD83D\uDE00");
+		if (builder.Length != 7 || builder[3] != '\u03A9' || builder[6] != '\uDE00') return 3;
+		builder.Length = 0;
+		builder.Append("after");
+		if (builder.ToString() != "after" || snapshot.Length != 257) return 4;
+		for (var index = 0; index < snapshot.Length; index++)
+			if (snapshot[index] != (char)(index * 251)) return 5;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderLengthGrowthEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		builder.Append("seed");
+		var snapshot = builder.ToString();
+		builder.Length = 257;
+		if (builder.Length != 257) return 1;
+		for (var index = 0; index < builder.Length; index++)
+			if (builder[index] != (index < 4 ? "seed"[index] : '\0')) return 2;
+		builder[200] = '\uFFFF';
+		builder.Length = 5;
+		builder.Length = 300;
+		M68kRuntime.Collect();
+		for (var index = 4; index < builder.Length; index++)
+			if (builder[index] != '\0') return 3;
+		builder.Length = 0;
+		builder.Length = 17;
+		for (var index = 0; index < builder.Length; index++)
+			if (builder[index] != '\0') return 4;
+		builder.Append("tail");
+		return builder.Length == 21 && builder[17] == 't' && builder[20] == 'l' && snapshot == "seed" ? 42 : 5;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderLengthValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(4, 32);
+		builder.Append("seed");
+		try { builder.Length = -1; return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value" || (int)error.ActualValue! != -1) return 2; }
+		try { builder.Length = 33; return 3; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 4; }
+		try { builder.Length = int.MaxValue; return 5; } catch (ArgumentOutOfRangeException) { }
+		if (builder.Length != 4 || builder.ToString() != "seed" || builder.Capacity != 4 || builder.MaxCapacity != 32) return 6;
+		builder.Length = 32;
+		if (builder.Length != 32 || builder.MaxCapacity != 32) return 7;
+		for (var index = 4; index < 32; index++) if (builder[index] != '\0') return 8;
+		builder.Clear();
+		if (builder.Length != 0 || builder.MaxCapacity != 32) return 9;
+		builder.Length = 1;
+		return builder[0] == '\0' ? 42 : 10;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibCharacterArrayCopyEntry()
+	{
+		var source = new char[5];
+		source[0] = '\u03A9'; source[1] = '\0'; source[2] = '\uD83D'; source[3] = '\uDE00'; source[4] = '\uFFFF';
+		var destination = new char[6];
+		for (var index = 0; index < destination.Length; index++) destination[index] = '#';
+		Array.Copy(source, destination, 0);
+		if (destination[0] != '#' || destination[5] != '#') return 1;
+		Array.Copy(source, destination, 5);
+		Array.Copy(destination, destination, 5);
+		M68kRuntime.Collect();
+		for (var index = 0; index < source.Length; index++) if (destination[index] != source[index]) return 2;
+		if (destination[5] != '#') return 3;
+		try { Array.Copy(null!, destination, 1); return 4; }
+		catch (ArgumentNullException error) { if (error.ParamName != "sourceArray") return 5; }
+		try { Array.Copy(source, null!, 1); return 6; }
+		catch (ArgumentNullException error) { if (error.ParamName != "destinationArray") return 7; }
+		try { Array.Copy(source, destination, -1); return 8; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "length") return 9; }
+		try { Array.Copy(source, destination, 6); return 10; } catch (ArgumentException) { }
+		try { Array.Copy(destination, source, 6); return 11; } catch (ArgumentException) { }
+		try { Array.Copy(source, destination, int.MaxValue); return 12; } catch (ArgumentException) { }
+		try { Array.Copy(new int[1], destination, 1); return 13; } catch (NotSupportedException) { }
+		try { Array.Copy(source, new int[1], 1); return 14; } catch (NotSupportedException) { }
+		for (var index = 0; index < source.Length; index++) if (destination[index] != source[index]) return 15;
+		return destination[5] == '#' ? 42 : 16;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderLengthAllocationFailureEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		builder.Append("seed");
+		try { builder.Length = 257; }
+		catch (OutOfMemoryException)
+		{
+			if (builder.Length != 16 || builder[0] != 's' || builder[3] != 'd') return 1;
+			for (var index = 4; index < builder.Length; index++) if (builder[index] != '\0') return 2;
+			builder.Length = 4;
+			builder.Append('X');
+			return builder.Length == 5 && builder[4] == 'X' ? 42 : 3;
+		}
+		return 4;
+	}
+
+	[M68kImport("fixture.string-builder-allocation-failure")]
+	private static extern void SetStringBuilderAllocationFailure([M68kRegister(M68kRegister.D0)] int fail);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderClearAllocationFailureEntry() => CoreLibStringBuilderChunkRebuildFailure(clear: true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderTruncationAllocationFailureEntry() => CoreLibStringBuilderChunkRebuildFailure(clear: false);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int CoreLibStringBuilderChunkRebuildFailure(bool clear)
+	{
+		var builder = new System.Text.StringBuilder(4);
+		for (var index = 0; index < 65; index++) builder.Append((char)(index * 251));
+		var snapshot = builder.ToString();
+		var capacity = builder.Capacity;
+		SetStringBuilderAllocationFailure(1);
+		try
+		{
+			if (clear) builder.Clear(); else builder.Length = 3;
+			SetStringBuilderAllocationFailure(0);
+			return 1;
+		}
+		catch (OutOfMemoryException)
+		{
+			SetStringBuilderAllocationFailure(0);
+			if (builder.Length != 65 || builder.Capacity != capacity) return 2;
+			for (var index = 0; index < builder.Length; index++)
+				if (builder[index] != (char)(index * 251)) return 3;
+			if (clear) builder.Clear(); else builder.Length = 3;
+			builder.Append('X');
+			if (builder.Length != (clear ? 1 : 4) || builder[builder.Length - 1] != 'X') return 4;
+			for (var index = 0; index < snapshot.Length; index++)
+				if (snapshot[index] != (char)(index * 251)) return 5;
+			return 42;
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertionAllocationFailureEntry()
+	{
+		for (var failAt = 1; failAt <= 2; failAt++)
+		{
+			var builder = new System.Text.StringBuilder(4);
+			for (var index = 0; index < 65; index++) builder.Append((char)(index * 251));
+			var snapshot = builder.ToString();
+			var capacity = builder.Capacity;
+			SetStringBuilderAllocationFailure(failAt);
+			try
+			{
+				builder.Insert(65, snapshot);
+				SetStringBuilderAllocationFailure(0);
+				return 1;
+			}
+			catch (OutOfMemoryException)
+			{
+				SetStringBuilderAllocationFailure(0);
+				if (builder.Length != 65 || builder.Capacity != capacity) return 2;
+				for (var index = 0; index < 65; index++)
+					if (builder[index] != (char)(index * 251)) return 3;
+				builder.Insert(65, snapshot);
+				if (builder.Length != 130) return 4;
+				for (var index = 0; index < 130; index++)
+					if (builder[index] != (char)((index % 65) * 251)) return 5;
+				builder.Remove(65, 65);
+				for (var index = 0; index < snapshot.Length; index++)
+					if (snapshot[index] != (char)(index * 251)) return 6;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderBooleanAppendEntry()
+	{
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			builder.Append('\0').Append('\u03A9');
+			var before = builder.ToString();
+			for (var scenario = 0; scenario < 12; scenario++)
+			{
+				var value = scenario % 2 == 0;
+				var expected = value ? "True" : "False";
+				var start = builder.Length;
+				if (builder.Append(value) != builder) return 1;
+				M68kRuntime.Collect();
+				if (builder.Length != start + expected.Length) return 2;
+				for (var index = 0; index < expected.Length; index++)
+					if (builder[start + index] != expected[index]) return 3;
+			}
+			if (before.Length != 2 || before[0] != '\0' || before[1] != '\u03A9') return 4;
+			builder.Clear().Append(false).Append(true);
+			if (builder.ToString() != "FalseTrue") return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderBooleanInsertionEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		for (var scenario = 0; scenario < 11; scenario++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var position = StringBuilderEditPosition(scenario);
+			var value = scenario % 2 == 0;
+			var expected = value ? "True" : "False";
+			if (builder.Insert(position, value) != builder) return 1;
+			M68kRuntime.Collect();
+			if (builder.Length != 65 + expected.Length) return 2;
+			for (var index = 0; index < builder.Length; index++)
+			{
+				var character = index < position ? pattern[index % 8]
+					: index < position + expected.Length ? expected[index - position]
+					: pattern[(index - expected.Length) % 8];
+				if (builder[index] != character) return 3;
+			}
+			builder.Remove(position, expected.Length);
+			if (builder.ToString() != before) return 4;
+			builder.Clear().Insert(0, value);
+			if (builder.ToString() != expected) return 5;
+			for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static uint StringBuilderUnsignedValue(int scenario) => scenario switch
+	{
+		0 => 0u, 1 => 1u, 2 => 9u, 3 => 10u, 4 => 99u, 5 => 100u,
+		6 => 999_999_999u, 7 => 1_000_000_000u, 8 => 2_147_483_647u,
+		9 => 2_147_483_648u, _ => uint.MaxValue
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string StringBuilderUnsignedText(int scenario) => scenario switch
+	{
+		0 => "0", 1 => "1", 2 => "9", 3 => "10", 4 => "99", 5 => "100",
+		6 => "999999999", 7 => "1000000000", 8 => "2147483647",
+		9 => "2147483648", _ => "4294967295"
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderUnsignedAppendEntry()
+	{
+		for (var layout = 0; layout < 3; layout++)
+		for (var scenario = 0; scenario < 11; scenario++)
+		{
+			// Leave zero, nine or ten characters available to exercise fallback and direct formatting.
+			var builder = new System.Text.StringBuilder(layout == 0 ? 1 : layout == 1 ? 10 : 11);
+			builder.Append('\u03A9');
+			var before = builder.ToString();
+			var expected = StringBuilderUnsignedText(scenario);
+			if (builder.Append(StringBuilderUnsignedValue(scenario)) != builder) return 1;
+			M68kRuntime.Collect();
+			if (builder.Length != expected.Length + 1 || builder[0] != '\u03A9') return 2;
+			for (var index = 0; index < expected.Length; index++)
+				if (builder[index + 1] != expected[index]) return 3;
+			builder.Append('|').Append(uint.MaxValue);
+			M68kRuntime.Collect();
+			if (builder.ToString(builder.Length - 11, 11) != "|4294967295" || before != "\u03A9") return 4;
+			builder.Clear().Append(0u).Append(uint.MaxValue);
+			if (builder.ToString() != "04294967295") return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderUnsignedInsertionEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		for (var scenario = 0; scenario < 11; scenario++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var position = StringBuilderEditPosition(scenario);
+			var expected = StringBuilderUnsignedText(scenario);
+			if (builder.Insert(position, StringBuilderUnsignedValue(scenario)) != builder) return 1;
+			M68kRuntime.Collect();
+			if (builder.Length != 65 + expected.Length) return 2;
+			for (var index = 0; index < builder.Length; index++)
+			{
+				var character = index < position ? pattern[index % 8]
+					: index < position + expected.Length ? expected[index - position]
+					: pattern[(index - expected.Length) % 8];
+				if (builder[index] != character) return 3;
+			}
+			builder.Remove(position, expected.Length);
+			if (builder.ToString() != before) return 4;
+			builder.Clear().Insert(0, StringBuilderUnsignedValue(scenario));
+			if (builder.ToString() != expected) return 5;
+			for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int StringBuilderSmallIntegerValue(int kind, int scenario) => kind switch
+	{
+		0 => scenario switch { 0 => -128, 1 => -127, 2 => -100, 3 => -10, 4 => -1, 5 => 0, 6 => 1, 7 => 9, 8 => 10, 9 => 99, 10 => 100, _ => 127 },
+		1 => scenario switch { 0 => 0, 1 => 1, 2 => 9, 3 => 10, 4 => 99, 5 => 100, 6 => 127, 7 => 128, 8 => 200, 9 => 253, 10 => 254, _ => 255 },
+		2 => scenario switch { 0 => -32768, 1 => -32767, 2 => -10000, 3 => -1000, 4 => -100, 5 => -10, 6 => -1, 7 => 0, 8 => 1, 9 => 10000, 10 => 32766, _ => 32767 },
+		_ => scenario switch { 0 => 0, 1 => 1, 2 => 9, 3 => 10, 4 => 99, 5 => 100, 6 => 32767, 7 => 32768, 8 => 50000, 9 => 65533, 10 => 65534, _ => 65535 }
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string StringBuilderSmallIntegerText(int kind, int scenario) => kind switch
+	{
+		0 => scenario switch { 0 => "-128", 1 => "-127", 2 => "-100", 3 => "-10", 4 => "-1", 5 => "0", 6 => "1", 7 => "9", 8 => "10", 9 => "99", 10 => "100", _ => "127" },
+		1 => scenario switch { 0 => "0", 1 => "1", 2 => "9", 3 => "10", 4 => "99", 5 => "100", 6 => "127", 7 => "128", 8 => "200", 9 => "253", 10 => "254", _ => "255" },
+		2 => scenario switch { 0 => "-32768", 1 => "-32767", 2 => "-10000", 3 => "-1000", 4 => "-100", 5 => "-10", 6 => "-1", 7 => "0", 8 => "1", 9 => "10000", 10 => "32766", _ => "32767" },
+		_ => scenario switch { 0 => "0", 1 => "1", 2 => "9", 3 => "10", 4 => "99", 5 => "100", 6 => "32767", 7 => "32768", 8 => "50000", 9 => "65533", 10 => "65534", _ => "65535" }
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder AppendSmallInteger(System.Text.StringBuilder builder, int kind, int value) => kind switch
+	{
+		0 => builder.Append((sbyte)value), 1 => builder.Append((byte)value),
+		2 => builder.Append((short)value), _ => builder.Append((ushort)value)
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static System.Text.StringBuilder InsertSmallInteger(System.Text.StringBuilder builder, int position, int kind, int value) => kind switch
+	{
+		0 => builder.Insert(position, (sbyte)value), 1 => builder.Insert(position, (byte)value),
+		2 => builder.Insert(position, (short)value), _ => builder.Insert(position, (ushort)value)
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSmallIntegerAppendEntry()
+	{
+		for (var kind = 0; kind < 4; kind++)
+		for (var layout = 0; layout < 3; layout++)
+		for (var scenario = 0; scenario < 12; scenario++)
+		{
+			var limitScenario = kind == 0 || kind == 2 ? 0 : 11;
+			var limitText = StringBuilderSmallIntegerText(kind, limitScenario);
+			// Leave zero, one less than the maximum, or exactly the maximum text length available.
+			var builder = new System.Text.StringBuilder(layout == 0 ? 1 : layout == 1 ? limitText.Length : limitText.Length + 1);
+			builder.Append('\u03A9');
+			var before = builder.ToString();
+			var expected = StringBuilderSmallIntegerText(kind, scenario);
+			if (AppendSmallInteger(builder, kind, StringBuilderSmallIntegerValue(kind, scenario)) != builder) return 1;
+			M68kRuntime.Collect();
+			if (builder.Length != expected.Length + 1 || builder[0] != '\u03A9') return 2;
+			for (var index = 0; index < expected.Length; index++) if (builder[index + 1] != expected[index]) return 3;
+			builder.Append('|');
+			AppendSmallInteger(builder, kind, StringBuilderSmallIntegerValue(kind, limitScenario));
+			M68kRuntime.Collect();
+			if (builder.ToString(builder.Length - limitText.Length, limitText.Length) != limitText || before != "\u03A9") return 4;
+			builder.Clear();
+			AppendSmallInteger(builder, kind, StringBuilderSmallIntegerValue(kind, 11));
+			if (builder.ToString() != StringBuilderSmallIntegerText(kind, 11)) return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSmallIntegerInsertionEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var kind = 0; kind < 4; kind++)
+		for (var layout = 0; layout < 2; layout++)
+		for (var scenario = 0; scenario < 12; scenario++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var position = StringBuilderEditPosition(scenario % 11);
+			var expected = StringBuilderSmallIntegerText(kind, scenario);
+			if (InsertSmallInteger(builder, position, kind, StringBuilderSmallIntegerValue(kind, scenario)) != builder) return 1;
+			M68kRuntime.Collect();
+			if (builder.Length != 65 + expected.Length) return 2;
+			for (var index = 0; index < builder.Length; index++)
+			{
+				var character = index < position ? pattern[index % 8]
+					: index < position + expected.Length ? expected[index - position]
+					: pattern[(index - expected.Length) % 8];
+				if (builder[index] != character) return 3;
+			}
+			builder.Remove(position, expected.Length);
+			if (builder.ToString() != before) return 4;
+			builder.Clear();
+			InsertSmallInteger(builder, 0, kind, StringBuilderSmallIntegerValue(kind, scenario));
+			if (builder.ToString() != expected) return 5;
+			for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static long StringBuilderInt64Value(int scenario) => scenario switch
+	{
+		0 => 0L, 1 => -1L, 2 => 9L, 3 => -10L, 4 => 99L, 5 => -100L,
+		6 => 2_147_483_648L, 7 => -2_147_483_649L, 8 => 4_294_967_295L,
+		9 => 4_294_967_296L, 10 => -4_294_967_296L, 11 => 1_000_000_000_000_000_000L,
+		12 => long.MaxValue, _ => long.MinValue
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ulong StringBuilderUInt64Value(int scenario) => scenario switch
+	{
+		0 => 0UL, 1 => 1UL, 2 => 9UL, 3 => 10UL, 4 => 99UL, 5 => 100UL,
+		6 => 2_147_483_648UL, 7 => 4_294_967_295UL, 8 => 4_294_967_296UL,
+		9 => 4_294_967_297UL, 10 => 1_000_000_000_000_000_000UL, 11 => 9_223_372_036_854_775_807UL,
+		12 => 9_223_372_036_854_775_808UL, _ => ulong.MaxValue
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string StringBuilder64BitText(bool signed, int scenario) => signed
+		? scenario switch
+		{
+			0 => "0", 1 => "-1", 2 => "9", 3 => "-10", 4 => "99", 5 => "-100",
+			6 => "2147483648", 7 => "-2147483649", 8 => "4294967295", 9 => "4294967296",
+			10 => "-4294967296", 11 => "1000000000000000000", 12 => "9223372036854775807", _ => "-9223372036854775808"
+		}
+		: scenario switch
+		{
+			0 => "0", 1 => "1", 2 => "9", 3 => "10", 4 => "99", 5 => "100",
+			6 => "2147483648", 7 => "4294967295", 8 => "4294967296", 9 => "4294967297",
+			10 => "1000000000000000000", 11 => "9223372036854775807", 12 => "9223372036854775808", _ => "18446744073709551615"
+		};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilder64BitAppendEntry()
+	{
+		for (var signedCase = 0; signedCase < 2; signedCase++)
+		for (var layout = 0; layout < 3; layout++)
+		for (var scenario = 0; scenario < 14; scenario++)
+		{
+			var signed = signedCase == 0;
+			// Leave zero, nineteen or twenty characters available in the current chunk.
+			var builder = new System.Text.StringBuilder(layout == 0 ? 1 : layout == 1 ? 20 : 21);
+			builder.Append('\u03A9');
+			var before = builder.ToString();
+			var expected = StringBuilder64BitText(signed, scenario);
+			var returned = signed ? builder.Append(StringBuilderInt64Value(scenario)) : builder.Append(StringBuilderUInt64Value(scenario));
+			M68kRuntime.Collect();
+			if (returned != builder || builder.Length != expected.Length + 1 || builder[0] != '\u03A9') return 1;
+			for (var index = 0; index < expected.Length; index++) if (builder[index + 1] != expected[index]) return 2;
+			builder.Append('|');
+			if (signed) builder.Append(long.MinValue); else builder.Append(ulong.MaxValue);
+			M68kRuntime.Collect();
+			if (builder.ToString(builder.Length - 21, 21) != (signed ? "|-9223372036854775808" : "|18446744073709551615") || before != "\u03A9") return 3;
+			builder.Clear();
+			if (signed) builder.Append(long.MinValue); else builder.Append(ulong.MaxValue);
+			if (builder.ToString() != StringBuilder64BitText(signed, 13)) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilder64BitInsertionEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var signedCase = 0; signedCase < 2; signedCase++)
+		for (var layout = 0; layout < 2; layout++)
+		for (var scenario = 0; scenario < 14; scenario++)
+		{
+			var signed = signedCase == 0;
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var position = StringBuilderEditPosition(scenario % 11);
+			var expected = StringBuilder64BitText(signed, scenario);
+			var returned = signed ? builder.Insert(position, StringBuilderInt64Value(scenario)) : builder.Insert(position, StringBuilderUInt64Value(scenario));
+			M68kRuntime.Collect();
+			if (returned != builder || builder.Length != 65 + expected.Length) return 1;
+			for (var index = 0; index < builder.Length; index++)
+			{
+				var character = index < position ? pattern[index % 8]
+					: index < position + expected.Length ? expected[index - position]
+					: pattern[(index - expected.Length) % 8];
+				if (builder[index] != character) return 2;
+			}
+			builder.Remove(position, expected.Length);
+			if (builder.ToString() != before) return 3;
+			builder.Clear();
+			if (signed) builder.Insert(0, StringBuilderInt64Value(scenario)); else builder.Insert(0, StringBuilderUInt64Value(scenario));
+			if (builder.ToString() != expected) return 4;
+			for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSmallIntegerValidationEntry()
+	{
+		for (var kind = 0; kind < 4; kind++)
+		{
+			var limitScenario = kind == 0 || kind == 2 ? 0 : 11;
+			var value = StringBuilderSmallIntegerValue(kind, limitScenario);
+			var builder = new System.Text.StringBuilder(8, 16);
+			builder.Append("seed");
+			try { InsertSmallInteger(builder, -1, kind, value); return 1; }
+			catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 2; }
+			try { InsertSmallInteger(builder, int.MaxValue, kind, value); return 3; }
+			catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 4; }
+			if (builder.ToString() != "seed" || builder.Length != 4 || builder.Capacity != 8) return 5;
+			var limited = new System.Text.StringBuilder(2, 2);
+			limited.Append('X');
+			var before = limited.ToString();
+			try { AppendSmallInteger(limited, kind, value); return 6; } catch (ArgumentOutOfRangeException) { }
+			try { InsertSmallInteger(limited, 1, kind, value); return 7; } catch (OutOfMemoryException) { }
+			if (limited.ToString() != "X" || limited.Length != 1 || limited.Capacity != 2 || limited.MaxCapacity != 2) return 8;
+			limited.Clear();
+			AppendSmallInteger(limited, kind, 0);
+			if (limited.ToString() != "0" || before != "X") return 9;
+			// Compare the literal fixture oracle with the host's formatting in the host test.
+			for (var scenario = 0; scenario < 12; scenario++)
+			{
+				var actual = new System.Text.StringBuilder();
+				AppendSmallInteger(actual, kind, StringBuilderSmallIntegerValue(kind, scenario));
+				if (actual.ToString() != StringBuilderSmallIntegerText(kind, scenario)) return 10;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderPrimitiveValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 16);
+		builder.Append("seed");
+		try { builder.Insert(-1, true); return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 2; }
+		try { builder.Insert(5, false); return 3; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 4; }
+		try { builder.Insert(-1, uint.MaxValue); return 5; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 6; }
+		try { builder.Insert(int.MaxValue, 0u); return 7; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 8; }
+		try { builder.Insert(-1, long.MinValue); return 15; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 16; }
+		try { builder.Insert(5, long.MaxValue); return 17; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 18; }
+		try { builder.Insert(-1, ulong.MaxValue); return 19; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 20; }
+		try { builder.Insert(int.MaxValue, 0UL); return 21; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 22; }
+		if (builder.ToString() != "seed" || builder.Length != 4 || builder.Capacity != 8) return 9;
+		var limited = new System.Text.StringBuilder(4, 4);
+		limited.Append('X');
+		try { limited.Append(true); return 10; } catch (ArgumentOutOfRangeException) { }
+		try { limited.Append(uint.MaxValue); return 11; } catch (ArgumentOutOfRangeException) { }
+		try { limited.Insert(0, false); return 12; } catch (OutOfMemoryException) { }
+		try { limited.Insert(1, uint.MaxValue); return 13; } catch (OutOfMemoryException) { }
+		try { limited.Append(long.MinValue); return 23; } catch (ArgumentOutOfRangeException) { }
+		try { limited.Append(ulong.MaxValue); return 24; } catch (ArgumentOutOfRangeException) { }
+		try { limited.Insert(0, long.MinValue); return 25; } catch (OutOfMemoryException) { }
+		try { limited.Insert(1, ulong.MaxValue); return 26; } catch (OutOfMemoryException) { }
+		return limited.ToString() == "X" && limited.Length == 1 && limited.Capacity == 4 && limited.MaxCapacity == 4 ? 42 : 14;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibConstrainedIntegerToStringEntry()
+	{
+		var unsigned = uint.MaxValue;
+		var signed = int.MinValue;
+		var first = CoreLibConstrainedIntegerText(ref unsigned);
+		M68kRuntime.Collect();
+		var second = CoreLibConstrainedIntegerText(ref signed);
+		M68kRuntime.Collect();
+		var signedByte = sbyte.MinValue;
+		var unsignedByte = byte.MaxValue;
+		var signedShort = short.MinValue;
+		var unsignedShort = ushort.MaxValue;
+		var third = CoreLibConstrainedIntegerText(ref signedByte);
+		M68kRuntime.Collect();
+		var fourth = CoreLibConstrainedIntegerText(ref unsignedByte);
+		M68kRuntime.Collect();
+		var fifth = CoreLibConstrainedIntegerText(ref signedShort);
+		M68kRuntime.Collect();
+		var sixth = CoreLibConstrainedIntegerText(ref unsignedShort);
+		M68kRuntime.Collect();
+		return first == "4294967295" && second == "-2147483648" && third == "-128" && fourth == "255" &&
+			fifth == "-32768" && sixth == "65535" ? 42 : 1;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static string CoreLibConstrainedIntegerText<T>(ref T value) where T : struct => value.ToString()!;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string CoreLibConstrainedBooleanToStringEntry()
+	{
+		var value = true;
+		return CoreLibConstrainedIntegerText(ref value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string CoreLibConstrainedCharacterToStringEntry()
+	{
+		var value = 'A';
+		return CoreLibConstrainedIntegerText(ref value);
+	}
+
+	private enum CoreLibConstrainedIntegerProbeEnum { Value = 42 }
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string CoreLibConstrainedEnumToStringEntry()
+	{
+		var value = CoreLibConstrainedIntegerProbeEnum.Value;
+		return CoreLibConstrainedIntegerText(ref value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibUnsignedFormattingHelpersEntry()
+	{
+		for (var scenario = 0; scenario < 11; scenario++)
+		{
+			var value = StringBuilderUnsignedValue(scenario);
+			var expected = StringBuilderUnsignedText(scenario);
+			for (var size = 0; size <= 11; size++)
+			{
+				var storage = new char[13];
+				for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+				var destination = new Span<char>(storage, 1, size);
+				var success = CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(value, default, null, destination, out var written);
+				M68kRuntime.Collect();
+				if (success != (size >= expected.Length) || written != (success ? expected.Length : 0)) return 1;
+				for (var index = 0; index < storage.Length; index++)
+					if (storage[index] != (success && index >= 1 && index <= written ? expected[index - 1] : '#')) return 2;
+			}
+			var text = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(value, null, null);
+			M68kRuntime.Collect();
+			if (text != expected || CopperSharp.Runtime.ShadowNumberFormatting.UInt32ToDecStr(value) != expected) return 3;
+			if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(value, string.Empty, null) != expected) return 4;
+		}
+		var buffer = new char[10];
+		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(42, "000.0", null, buffer, out _); return 5; }
+		catch (NotSupportedException) { }
+		try { _ = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(42, "000.0", null); return 6; }
+		catch (NotSupportedException) { }
+		var provider = new CoreLibPrimitiveFormatProvider();
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(42, default, provider, buffer, out var count) || count != 2) return 7;
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(42, null, provider) != "42") return 8;
+		for (var index = 0; index < buffer.Length; index++) if (buffer[index] != (index < 2 ? "42"[index] : '#')) return 9;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLib64BitFormattingHelpersEntry()
+	{
+		for (var signedCase = 0; signedCase < 2; signedCase++)
+		for (var scenario = 0; scenario < 14; scenario++)
+		{
+			var signed = signedCase == 0;
+			var expected = StringBuilder64BitText(signed, scenario);
+			for (var size = 0; size <= 21; size++)
+			{
+				var storage = new char[23];
+				for (var index = 0; index < storage.Length; index++) storage[index] = '#';
+				var destination = new Span<char>(storage, 1, size);
+				var success = signed
+					? CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(StringBuilderInt64Value(scenario), default, null, destination, out var written)
+					: CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(StringBuilderUInt64Value(scenario), default, null, destination, out written);
+				M68kRuntime.Collect();
+				if (success != (size >= expected.Length) || written != (success ? expected.Length : 0)) return 1;
+				for (var index = 0; index < storage.Length; index++)
+					if (storage[index] != (success && index >= 1 && index <= written ? expected[index - 1] : '#')) return 2;
+			}
+			var text = signed ? CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(StringBuilderInt64Value(scenario), null, null)
+				: CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(StringBuilderUInt64Value(scenario), null, null);
+			M68kRuntime.Collect();
+			if (text != expected) return 3;
+			if (signed)
+			{
+				if (CopperSharp.Runtime.ShadowNumberFormatting.Int64ToDecStr(StringBuilderInt64Value(scenario)) != expected ||
+					CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(StringBuilderInt64Value(scenario), string.Empty, null) != expected) return 4;
+			}
+			else if (CopperSharp.Runtime.ShadowNumberFormatting.UInt64ToDecStr(StringBuilderUInt64Value(scenario)) != expected ||
+				CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(StringBuilderUInt64Value(scenario), string.Empty, null) != expected) return 5;
+		}
+		var buffer = new char[20];
+		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
+		var provider = new CoreLibPrimitiveFormatProvider();
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(42, "000.0", null, buffer, out _); return 6; } catch (NotSupportedException) { }
+		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(42, "000.0", null, buffer, out _); return 7; } catch (NotSupportedException) { }
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(42, default, provider, buffer, out var count) || count != 2) return 8;
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(42, default, provider, buffer, out count) || count != 2) return 9;
+		try { _ = CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(42, "000.0", null); return 10; } catch (NotSupportedException) { }
+		try { _ = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(42, "000.0", null); return 11; } catch (NotSupportedException) { }
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(42, null, provider) != "42") return 12;
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(42, null, provider) != "42") return 13;
+		for (var index = 0; index < buffer.Length; index++) if (buffer[index] != (index < 2 ? "42"[index] : '#')) return 14;
+		return 42;
+	}
+
+	private sealed class CoreLibPrimitiveFormatProvider : IFormatProvider
+	{
+		public object? GetFormat(Type? formatType) => null;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderPrimitiveAllocationFailureEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var available = new System.Text.StringBuilder(128);
+			SetStringBuilderAllocationFailure(1);
+			// Boolean appends need no allocation when there is room.
+			available.Append(true).Append(false);
+			SetStringBuilderAllocationFailure(0);
+			if (available.ToString() != "TrueFalse") return 1;
+			for (var operation = 0; operation < 4; operation++)
+			// CoreLib's generic null check boxes uint; append fallback also allocates decimal text.
+			for (var failAt = 1; failAt <= (operation == 1 ? 4 : operation == 3 ? 3 : 2); failAt++)
+			{
+				var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+				for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+				builder.Capacity = 65;
+				var before = builder.ToString();
+				// Insertion into earlier chunks can shift later offsets before allocation in CoreLib.
+				// Pin failure preservation at the end of multiple chunks and in the middle of one chunk.
+				var position = operation < 2 || layout == 0 ? 65 : 31;
+				var expected = operation == 0 ? "True" : operation == 2 ? "False" : "4294967295";
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (operation == 0) builder.Append(true);
+					else if (operation == 1) builder.Append(uint.MaxValue);
+					else if (operation == 2) builder.Insert(position, false);
+					else builder.Insert(position, uint.MaxValue);
+					SetStringBuilderAllocationFailure(0);
+					return 2;
+				}
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					if (builder.Length != 65 || builder.Capacity != 65) return 3;
+					for (var index = 0; index < 65; index++)
+						if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8]) return 4;
+					if (operation == 0) builder.Append(true);
+					else if (operation == 1) builder.Append(uint.MaxValue);
+					else if (operation == 2) builder.Insert(position, false);
+					else builder.Insert(position, uint.MaxValue);
+					if (builder.Length != 65 + expected.Length) return 5;
+					for (var index = 0; index < builder.Length; index++)
+					{
+						var character = index < position ? pattern[index % 8]
+							: index < position + expected.Length ? expected[index - position]
+							: pattern[(index - expected.Length) % 8];
+						if (builder[index] != character) return 6;
+					}
+					builder.Clear().Append(42u).Insert(0, true);
+					if (builder.ToString() != "True42") return 7;
+					for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 8;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilder64BitAllocationFailureEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			for (var operation = 0; operation < 4; operation++)
+			// CoreLib boxes both 64-bit types; append fallback also allocates decimal text.
+			for (var failAt = 1; failAt <= (operation < 2 ? 4 : 3); failAt++)
+			{
+				var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+				for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+				builder.Capacity = 65;
+				var before = builder.ToString();
+				// Insertion into earlier chunks can shift later offsets before allocation in CoreLib.
+				// Pin failure preservation at the end of multiple chunks and in the middle of one chunk.
+				var position = operation < 2 || layout == 0 ? 65 : 31;
+				var expected = operation == 0 || operation == 2 ? "-9223372036854775808" : "18446744073709551615";
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (operation == 0) builder.Append(long.MinValue);
+					else if (operation == 1) builder.Append(ulong.MaxValue);
+					else if (operation == 2) builder.Insert(position, long.MinValue);
+					else builder.Insert(position, ulong.MaxValue);
+					SetStringBuilderAllocationFailure(0);
+					return 2;
+				}
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					if (builder.Length != 65 || builder.Capacity != 65) return 3;
+					for (var index = 0; index < 65; index++)
+						if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8]) return 4;
+					if (operation == 0) builder.Append(long.MinValue);
+					else if (operation == 1) builder.Append(ulong.MaxValue);
+					else if (operation == 2) builder.Insert(position, long.MinValue);
+					else builder.Insert(position, ulong.MaxValue);
+					if (builder.Length != 65 + expected.Length) return 5;
+					for (var index = 0; index < builder.Length; index++)
+					{
+						var character = index < position ? pattern[index % 8]
+							: index < position + expected.Length ? expected[index - position]
+							: pattern[(index - expected.Length) % 8];
+						if (builder[index] != character) return 6;
+					}
+					builder.Clear().Append(42L).Insert(0, 1UL);
+					if (builder.ToString() != "142") return 7;
+					for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 8;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSmallIntegerAllocationFailureEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var kind = 0; kind < 4; kind++)
+		{
+			var scenario = kind == 0 || kind == 2 ? 0 : 11;
+			var value = StringBuilderSmallIntegerValue(kind, scenario);
+			var expected = StringBuilderSmallIntegerText(kind, scenario);
+			var available = new System.Text.StringBuilder(128);
+			available.Append('X');
+			// Allow the generic null-check box, but fail any second allocation.
+			SetStringBuilderAllocationFailure(2);
+			AppendSmallInteger(available, kind, value);
+			SetStringBuilderAllocationFailure(0);
+			SetStringBuilderAllocationFailure(2);
+			InsertSmallInteger(available, 0, kind, value);
+			SetStringBuilderAllocationFailure(0);
+			if (available.Length != 2 * expected.Length + 1 || available[expected.Length] != 'X') return 1;
+			for (var index = 0; index < expected.Length; index++)
+				if (available[index] != expected[index] || available[index + expected.Length + 1] != expected[index]) return 2;
+			for (var layout = 0; layout < 2; layout++)
+			for (var operation = 0; operation < 2; operation++)
+			// Append fallback allocates a box, text, array and chunk; insertion allocates a box and chunk storage.
+			for (var failAt = 1; failAt <= (operation == 0 ? 4 : 3); failAt++)
+			{
+				var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+				for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+				builder.Capacity = 65;
+				var before = builder.ToString();
+				// Pin preservation at the end of multiple chunks and in the middle of one chunk.
+				var position = operation == 0 || layout == 0 ? 65 : 31;
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					if (operation == 0) AppendSmallInteger(builder, kind, value);
+					else InsertSmallInteger(builder, position, kind, value);
+					SetStringBuilderAllocationFailure(0);
+					return 3;
+				}
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					if (builder.Length != 65 || builder.Capacity != 65) return 4;
+					for (var index = 0; index < 65; index++)
+						if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8]) return 5;
+					if (operation == 0) AppendSmallInteger(builder, kind, value);
+					else InsertSmallInteger(builder, position, kind, value);
+					if (builder.Length != 65 + expected.Length) return 6;
+					for (var index = 0; index < builder.Length; index++)
+					{
+						var character = index < position ? pattern[index % 8]
+							: index < position + expected.Length ? expected[index - position]
+							: pattern[(index - expected.Length) % 8];
+						if (builder[index] != character) return 7;
+					}
+					builder.Clear();
+					AppendSmallInteger(builder, kind, 0);
+					InsertSmallInteger(builder, 0, kind, value);
+					if (builder.Length != expected.Length + 1 || builder[expected.Length] != '0') return 8;
+					for (var index = 0; index < expected.Length; index++) if (builder[index] != expected[index]) return 9;
+					for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 10;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderBuilderAppendAllocationFailureEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var source = CreatePatternStringBuilder(layout == 0 ? 4 : 128, 65, 0);
+			var empty = new System.Text.StringBuilder();
+			var noOp = CreatePatternStringBuilder(layout == 0 ? 4 : 128, 65, 0);
+			noOp.Capacity = 65;
+			SetStringBuilderAllocationFailure(1);
+			if (noOp.Append((System.Text.StringBuilder?)null) != noOp || noOp.Append(empty) != noOp ||
+				noOp.Append(source, int.MaxValue, 0) != noOp || noOp.Append(noOp, int.MaxValue, 0) != noOp ||
+				noOp.Append((System.Text.StringBuilder?)null, 0, 0) != noOp) { SetStringBuilderAllocationFailure(0); return 1; }
+			SetStringBuilderAllocationFailure(0);
+			if (noOp.Length != 65 || noOp.Capacity != 65) return 2;
+			var available = CreatePatternStringBuilder(256, 17, 3);
+			SetStringBuilderAllocationFailure(1);
+			available.Append(source).Append(source, 1, 35);
+			SetStringBuilderAllocationFailure(0);
+			if (available.Length != 117) return 3;
+			for (var index = 0; index < available.Length; index++)
+				if (available[index] != pattern[(index < 17 ? index + 3 : index < 82 ? index - 17 : index - 81) % 8]) return 4;
+			for (var ranged = 0; ranged < 2; ranged++)
+			{
+				var self = CreatePatternStringBuilder(layout == 0 ? 4 : 128, 65, 0);
+				self.Capacity = 256;
+				var before = self.ToString();
+				var start = ranged == 0 ? 0 : 15;
+				var count = ranged == 0 ? 65 : 35;
+				// Self-append snapshots allocate even when the destination has room.
+				SetStringBuilderAllocationFailure(1);
+				try { AppendBuilderSource(self, self, start, count, ranged != 0); SetStringBuilderAllocationFailure(0); return 5; }
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					if (self.Length != 65 || self.Capacity != 256 || self.ToString() != before) return 6;
+				}
+				// Permit the snapshot but fail any additional allocation.
+				SetStringBuilderAllocationFailure(2);
+				AppendBuilderSource(self, self, start, count, ranged != 0);
+				SetStringBuilderAllocationFailure(0);
+				if (self.Length != 65 + count) return 7;
+				for (var index = 0; index < self.Length; index++)
+					if (self[index] != pattern[(index < 65 ? index : start + index - 65) % 8]) return 8;
+				for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 9;
+			}
+			for (var operation = 0; operation < 4; operation++)
+			// Distinct sources allocate chunk storage; self-appends first allocate a snapshot.
+			for (var failAt = 1; failAt <= (operation < 2 ? 2 : 3); failAt++)
+			{
+				var builder = CreatePatternStringBuilder(layout == 0 ? 4 : 128, 65, 0);
+				builder.Capacity = 65;
+				var before = builder.ToString();
+				var ranged = (operation & 1) != 0;
+				var start = ranged ? 15 : 0;
+				var count = ranged ? 35 : 65;
+				var value = operation < 2 ? source : builder;
+				SetStringBuilderAllocationFailure(failAt);
+				try
+				{
+					AppendBuilderSource(builder, value, start, count, ranged);
+					SetStringBuilderAllocationFailure(0);
+					return 10;
+				}
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					// No character space was available, so failures occur before a partial copy.
+					if (builder.Length != 65 || builder.Capacity != 65) return 11;
+					for (var index = 0; index < 65; index++)
+						if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8] || source[index] != pattern[index % 8]) return 12;
+					AppendBuilderSource(builder, value, start, count, ranged);
+					if (builder.Length != 65 + count) return 13;
+					for (var index = 0; index < builder.Length; index++)
+						if (builder[index] != pattern[(index < 65 ? index : start + index - 65) % 8]) return 14;
+					builder.Clear().Append(CreatePatternStringBuilder(4, 3, 3), 0, 3).Append('X');
+					if (builder.ToString() != "\0\u03A9\uD83DX") return 15;
+					for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8] || source[index] != pattern[index % 8]) return 16;
+				}
+			}
+			for (var operation = 0; operation < 4; operation++)
+			for (var growthFailure = 1; growthFailure <= 2; growthFailure++)
+			{
+				var builder = CreatePatternStringBuilder(layout == 0 ? 4 : 128, 65, 0);
+				builder.Capacity = 72;
+				var before = builder.ToString();
+				var ranged = (operation & 1) != 0;
+				var start = ranged ? 15 : 0;
+				var count = ranged ? 35 : 65;
+				var value = operation < 2 ? source : builder;
+				SetStringBuilderAllocationFailure(growthFailure + (operation < 2 ? 0 : 1));
+				try { AppendBuilderSource(builder, value, start, count, ranged); SetStringBuilderAllocationFailure(0); return 17; }
+				catch (OutOfMemoryException)
+				{
+					SetStringBuilderAllocationFailure(0);
+					// CoreLib consumes available space before growing, so failure retains a partial append.
+					if (builder.Length != 72 || builder.Capacity != 72) return 18;
+					for (var index = 0; index < 72; index++)
+						if (builder[index] != pattern[(index < 65 ? index : start + index - 65) % 8]) return 19;
+					for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8] || source[index] != pattern[index % 8]) return 20;
+					builder.Length = 65;
+					AppendBuilderSource(builder, value, start, count, ranged);
+					if (builder.Length != 65 + count) return 21;
+					for (var index = 0; index < builder.Length; index++)
+						if (builder[index] != pattern[(index < 65 ? index : start + index - 65) % 8]) return 22;
+					builder.Clear().Append('X');
+					if (builder.ToString() != "X" || before.Length != 65) return 23;
+				}
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEnsureCapacityEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128, 256);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var capacity = builder.Capacity;
+			if (builder.EnsureCapacity(0) != capacity || builder.EnsureCapacity(64) != capacity ||
+				builder.EnsureCapacity(capacity) != capacity) return 1;
+			if (builder.EnsureCapacity(capacity + 17) != capacity + 17 || builder.Capacity != capacity + 17) return 2;
+			if (builder.EnsureCapacity(capacity + 1) != capacity + 17) return 3;
+			M68kRuntime.Collect();
+			if (builder.Length != 65 || builder.MaxCapacity != 256) return 4;
+			for (var index = 0; index < 65; index++)
+				if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8]) return 5;
+			if (builder.EnsureCapacity(256) != 256) return 6;
+			builder.Append(pattern);
+			M68kRuntime.Collect();
+			if (builder.Length != 73 || builder.Capacity != 256) return 7;
+			for (var index = 0; index < 8; index++) if (builder[index + 65] != pattern[index]) return 8;
+			builder.Clear();
+			capacity = builder.Capacity;
+			if (builder.EnsureCapacity(1) != capacity || builder.Length != 0) return 9;
+			builder.Append('X');
+			if (builder.ToString() != "X" || before.Length != 65) return 10;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCapacitySetterEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128, 256);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			builder.Capacity = builder.Capacity;
+			builder.Capacity = 145;
+			M68kRuntime.Collect();
+			if (builder.Capacity != 145 || builder.Length != 65 || builder.MaxCapacity != 256) return 1;
+			builder.Capacity = 65;
+			M68kRuntime.Collect();
+			if (builder.Capacity != 65 || builder.ToString() != before) return 2;
+			builder.Length = 70;
+			builder.Capacity = 70;
+			M68kRuntime.Collect();
+			for (var index = 0; index < 70; index++)
+				if (builder[index] != (index < 65 ? pattern[index % 8] : '\0')) return 3;
+			builder.Length = 31;
+			builder.Capacity = 31;
+			builder.Append('\u03A9');
+			M68kRuntime.Collect();
+			if (builder.Length != 32 || builder[31] != '\u03A9') return 4;
+			for (var index = 0; index < 31; index++) if (builder[index] != pattern[index % 8]) return 5;
+			builder.Clear();
+			builder.Capacity = 0;
+			if (builder.Length != 0 || builder.Capacity != 0 || builder.EnsureCapacity(0) != 0) return 6;
+			if (builder.EnsureCapacity(7) != 7) return 7;
+			builder.Append(pattern);
+			M68kRuntime.Collect();
+			if (builder.Length != 8 || builder.Capacity < 8 || builder.MaxCapacity != 256) return 8;
+			for (var index = 0; index < 8; index++) if (builder[index] != pattern[index]) return 9;
+			for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 10;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCapacityManagementValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(8, 16);
+		builder.Append("seed");
+		try { builder.Capacity = -1; return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value" || (int)error.ActualValue! != -1) return 2; }
+		try { builder.Capacity = 3; return 3; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 4; }
+		try { builder.Capacity = 17; return 5; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 6; }
+		try { builder.Capacity = int.MaxValue; return 7; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 8; }
+		try { _ = builder.EnsureCapacity(-1); return 9; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "capacity" || (int)error.ActualValue! != -1) return 10; }
+		try { _ = builder.EnsureCapacity(17); return 11; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 12; }
+		try { _ = builder.EnsureCapacity(int.MaxValue); return 13; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 14; }
+		if (builder.Length != 4 || builder.Capacity != 8 || builder.MaxCapacity != 16 || builder.ToString() != "seed") return 15;
+		builder.Capacity = 16;
+		if (builder.EnsureCapacity(16) != 16) return 16;
+		// Small appends can leave existing storage above MaxCapacity in CoreLib.
+		var oversized = new System.Text.StringBuilder(4, 10);
+		for (var index = 0; index < 9; index++) oversized.Append((char)('A' + index));
+		var capacity = oversized.Capacity;
+		if (capacity <= oversized.MaxCapacity || oversized.EnsureCapacity(11) != capacity) return 17;
+		try { oversized.Capacity = capacity; return 18; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "value") return 19; }
+		oversized.Capacity = 10;
+		if (oversized.Capacity != 10 || oversized.Length != 9 || oversized.MaxCapacity != 10) return 20;
+		for (var index = 0; index < 9; index++) if (oversized[index] != (char)('A' + index)) return 21;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCapacityManagementAllocationFailureEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		for (var operation = 0; operation < 3; operation++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128, 256);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var capacity = builder.Capacity;
+			var requested = operation == 2 ? 65 : capacity + 17;
+			SetStringBuilderAllocationFailure(1);
+			// Reserving already available storage and assigning the same capacity do not allocate.
+			if (builder.EnsureCapacity(0) != capacity || builder.EnsureCapacity(65) != capacity ||
+				builder.EnsureCapacity(capacity) != capacity) return 1;
+			builder.Capacity = capacity;
+			try
+			{
+				if (operation == 0) _ = builder.EnsureCapacity(requested); else builder.Capacity = requested;
+				SetStringBuilderAllocationFailure(0);
+				return 2;
+			}
+			catch (OutOfMemoryException)
+			{
+				SetStringBuilderAllocationFailure(0);
+				if (builder.Length != 65 || builder.Capacity != capacity || builder.MaxCapacity != 256) return 3;
+				for (var index = 0; index < 65; index++)
+					if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8]) return 4;
+				if (operation == 0)
+				{
+					if (builder.EnsureCapacity(requested) != requested) return 5;
+				}
+				else builder.Capacity = requested;
+				if (builder.Capacity != requested || builder.Length != 65) return 6;
+				builder.Append('X');
+				if (builder.Length != 66 || builder[65] != 'X') return 7;
+				for (var index = 0; index < 65; index++)
+					if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8]) return 8;
+				builder.Clear().Append('Y');
+				if (builder.ToString() != "Y") return 9;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderRangedToStringEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var capacity = builder.Capacity;
+			for (var position = 0; position < 11; position++)
+			for (var countCase = 0; countCase < 4; countCase++)
+			{
+				var start = StringBuilderEditPosition(position);
+				var remaining = 65 - start;
+				var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+					: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+				var text = builder.ToString(start, count);
+				if (text.Length != count || builder.Length != 65 || builder.Capacity != capacity) return 1;
+				if (count == 0 && ReferenceEquals(text, string.Empty)) return 2;
+				if (count != 0) builder[start] = 'X';
+				M68kRuntime.Collect();
+				for (var index = 0; index < count; index++)
+					if (text[index] != pattern[(start + index) % 8]) return 3;
+				if (count != 0) builder[start] = pattern[start % 8];
+			}
+			builder.Clear();
+			if (builder.ToString(0, 0).Length != 0) return 4;
+			builder.Append(pattern);
+			if (builder.ToString(4, 3) != "\u03A9\uD83D\uDE00") return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderArrayCopyToEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var layout = 0; layout < 2; layout++)
+		{
+			var builder = new System.Text.StringBuilder(layout == 0 ? 4 : 128);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var capacity = builder.Capacity;
+			for (var position = 0; position < 11; position++)
+			for (var countCase = 0; countCase < 4; countCase++)
+			{
+				var start = StringBuilderEditPosition(position);
+				var remaining = 65 - start;
+				var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+					: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+				var destination = new char[72];
+				for (var index = 0; index < destination.Length; index++) destination[index] = '\uF00D';
+				var destinationIndex = countCase + 2;
+				builder.CopyTo(start, destination, destinationIndex, count);
+				M68kRuntime.Collect();
+				for (var index = 0; index < destination.Length; index++)
+				{
+					var expected = index >= destinationIndex && index < destinationIndex + count
+						? pattern[(start + index - destinationIndex) % 8] : '\uF00D';
+					if (destination[index] != expected) return 1;
+				}
+				if (builder.Length != 65 || builder.Capacity != capacity) return 2;
+			}
+			builder.CopyTo(65, new char[0], 0, 0);
+			builder.Clear();
+			builder.CopyTo(0, new char[0], 0, 0);
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderSpanCopyToEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		var builder = new System.Text.StringBuilder(4);
+		for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+		for (var position = 0; position < 11; position++)
+		for (var countCase = 0; countCase < 4; countCase++)
+		{
+			var start = StringBuilderEditPosition(position);
+			var remaining = 65 - start;
+			var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+				: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+			char[]? storage = new char[72];
+			for (var index = 0; index < storage.Length; index++) storage[index] = '\uF00D';
+			var destination = new Span<char>(storage, 2, 68);
+			storage = null;
+			M68kRuntime.Collect();
+			builder.CopyTo(start, destination, count);
+			M68kRuntime.Collect();
+			for (var index = 0; index < destination.Length; index++)
+				if (destination[index] != (index < count ? pattern[(start + index) % 8] : '\uF00D')) return 1;
+		}
+		Span<char> stack = stackalloc char[71];
+		for (var index = 0; index < stack.Length; index++) stack[index] = '\uFFFF';
+		builder.CopyTo(0, stack.Slice(3, 65), 65);
+		M68kRuntime.Collect();
+		for (var index = 0; index < stack.Length; index++)
+			if (stack[index] != (index >= 3 && index < 68 ? pattern[(index - 3) % 8] : '\uFFFF')) return 2;
+		builder.CopyTo(65, default(Span<char>), 0);
+		builder.Clear();
+		builder.CopyTo(0, default(Span<char>), 0);
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderExtractionValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		builder.Append("seed");
+		var destination = new char[4];
+		for (var index = 0; index < destination.Length; index++) destination[index] = '\uF00D';
+		try { _ = builder.ToString(-1, 0); return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 2; }
+		try { _ = builder.ToString(0, -1); return 3; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "length") return 4; }
+		try { _ = builder.ToString(5, 0); return 5; } catch (ArgumentOutOfRangeException) { }
+		try { _ = builder.ToString(1, int.MaxValue); return 6; } catch (ArgumentOutOfRangeException) { }
+		try { builder.CopyTo(0, null!, 0, 0); return 7; }
+		catch (ArgumentNullException error) { if (error.ParamName != "destination") return 8; }
+		try { builder.CopyTo(0, destination, -1, 0); return 9; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "destinationIndex") return 10; }
+		try { builder.CopyTo(0, destination, 0, -1); return 11; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "count") return 12; }
+		try { builder.CopyTo(-1, destination, 0, 0); return 13; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "sourceIndex") return 14; }
+		try { builder.CopyTo(5, destination, 0, 0); return 15; } catch (ArgumentOutOfRangeException) { }
+		try { builder.CopyTo(1, destination, 0, 4); return 16; } catch (ArgumentException) { }
+		try { builder.CopyTo(0, destination, 1, 4); return 17; } catch (ArgumentException) { }
+		try { builder.CopyTo(0, destination, 5, 0); return 18; } catch (ArgumentException) { }
+		try { builder.CopyTo(0, destination, 1, int.MaxValue); return 19; } catch (ArgumentException) { }
+		var span = new Span<char>(destination);
+		try { builder.CopyTo(-1, span, 0); return 20; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "sourceIndex") return 21; }
+		try { builder.CopyTo(0, span, -1); return 22; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "count") return 23; }
+		try { builder.CopyTo(5, span, 0); return 24; } catch (ArgumentOutOfRangeException) { }
+		try { builder.CopyTo(1, span, 4); return 25; } catch (ArgumentException) { }
+		try { builder.CopyTo(0, span, int.MaxValue); return 26; } catch (ArgumentException) { }
+		try { builder.CopyTo(0, default(Span<char>), 1); return 27; } catch (ArgumentException) { }
+		for (var index = 0; index < destination.Length; index++) if (destination[index] != '\uF00D') return 28;
+		return builder.ToString() == "seed" && builder.Length == 4 ? 42 : 29;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderExtractionAllocationFailureEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		var builder = new System.Text.StringBuilder(4);
+		for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+		var before = builder.ToString();
+		var capacity = builder.Capacity;
+		var destination = new char[72];
+		for (var index = 0; index < destination.Length; index++) destination[index] = '\uF00D';
+		for (var countCase = 0; countCase < 2; countCase++)
+		{
+			var count = countCase == 0 ? 0 : 35;
+			SetStringBuilderAllocationFailure(1);
+			// Both CopyTo overloads remain usable with the allocator disabled.
+			builder.CopyTo(0, destination, 2, 65);
+			builder.CopyTo(0, new Span<char>(destination, 3, 65), 65);
+			try
+			{
+				_ = builder.ToString(17, count);
+				SetStringBuilderAllocationFailure(0);
+				return 2;
+			}
+			catch (OutOfMemoryException)
+			{
+				SetStringBuilderAllocationFailure(0);
+				if (builder.Length != 65 || builder.Capacity != capacity) return 3;
+				for (var index = 0; index < 65; index++)
+					if (builder[index] != pattern[index % 8] || before[index] != pattern[index % 8] ||
+						destination[index + 3] != pattern[index % 8]) return 4;
+				if (destination[0] != '\uF00D' || destination[1] != '\uF00D' || destination[2] != 'a' || destination[68] != '\uF00D') return 5;
+				var text = builder.ToString(17, count);
+				if (text.Length != count) return 6;
+				for (var index = 0; index < text.Length; index++) if (text[index] != pattern[(17 + index) % 8]) return 7;
+			}
+		}
+		builder.Clear().Append('X');
+		return builder.ToString(0, 1) == "X" ? 42 : 8;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCharacterReplacementEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var scenario = 0; scenario < 11; scenario++)
+		for (var countCase = 0; countCase < 4; countCase++)
+		{
+			var start = StringBuilderEditPosition(scenario);
+			var remaining = 65 - start;
+			var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+				: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+			var builder = new System.Text.StringBuilder(4);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			var capacity = builder.Capacity;
+			if (builder.Replace('a', '\uFFFF', start, count) != builder) return 1;
+			M68kRuntime.Collect();
+			var after = builder.ToString();
+			if (builder.Length != 65 || builder.Capacity != capacity) return 2;
+			for (var index = 0; index < 65; index++)
+			{
+				var original = pattern[index % 8];
+				var expected = index >= start && index < start + count && original == 'a' ? '\uFFFF' : original;
+				if (builder[index] != expected || after[index] != expected || before[index] != original) return 3;
+			}
+			builder.Replace('\0', '\u03A9').Replace('\uD83D', '\uDE00');
+			for (var index = 0; index < 65; index++)
+			{
+				var expected = after[index];
+				if (expected == '\0') expected = '\u03A9';
+				if (expected == '\uD83D') expected = '\uDE00';
+				if (builder[index] != expected) return 4;
+			}
+			builder.Replace('X', 'Y').Replace('\uFFFF', '\uFFFF');
+			builder.Clear().Append('X');
+			if (builder.ToString() != "X") return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderStringReplacementEntry()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var scenario = 0; scenario < 8; scenario++)
+		for (var range = 0; range < 4; range++)
+		{
+			var oldValue = scenario == 3 ? "\uFFFFaba\0" : scenario == 4 ? "\0\u03A9\uD83D\uDE00" :
+				scenario == 5 ? "missing" : scenario >= 6 ? "a" : "aba";
+			string? newValue = scenario == 0 || scenario == 3 ? "Z" : scenario == 1 ? "xyz" :
+				scenario == 2 ? "\u03A9\0\uD83D\uDE00\uFFFFLONG" : scenario == 7 ? null : scenario == 6 ? "aa" : "";
+			var start = range == 0 ? 0 : range == 1 ? 15 : range == 2 ? 4 : 65;
+			var count = range == 0 ? 65 : range == 1 ? 19 : range == 2 ? 12 : 0;
+			var builder = new System.Text.StringBuilder(4);
+			for (var index = 0; index < 65; index++) builder.Append(pattern[index % 8]);
+			var before = builder.ToString();
+			if (builder.Replace(oldValue, newValue, start, count) != builder) return 1;
+			M68kRuntime.Collect();
+			var after = builder.ToString();
+			for (var index = 0; index < 65; index++) if (before[index] != pattern[index % 8]) return 3;
+			if (!StringBuilderReplacementMatches(builder, before, after, oldValue, newValue, start, count)) return 2;
+			builder.Clear().Append("abaaba");
+			builder.Replace("aba", "Q");
+			if (builder.ToString() != "QQ") return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibUninitializedSpanOwnerEntry()
+	{
+		var source = new char[8];
+		for (var index = 0; index < source.Length; index++) source[index] = (char)(0xD83D + index);
+		var first = ReadSpanAfterCollection(source);
+		for (var index = 0; index < source.Length; index++) if (source[index] != (char)(0xD83D + index)) return 1;
+		return first == '\uD83D' ? 42 : 2;
+	}
+
+	[SkipLocalsInit]
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static unsafe char ReadSpanAfterCollection(char[] source)
+	{
+		M68kRuntime.Collect();
+		var span = new ReadOnlySpan<char>(source);
+		return span[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderReplacementMatchGrowthEntry()
+	{
+		for (var scenario = 0; scenario < 2; scenario++)
+		{
+			var builder = new System.Text.StringBuilder(1024);
+			for (var index = 0; index < 513; index++) builder.Append('a');
+			var before = builder.ToString();
+			var expected = scenario == 0 ? "bc" : "\u03A9\0\uD83D\uDE00\uFFFF";
+			if (scenario == 0)
+			{
+				if (builder.Replace("a", expected, 1, 511) != builder) return 1;
+			}
+			else
+			{
+				char[]? oldArray = new char[3];
+				oldArray[0] = 'X'; oldArray[1] = 'a'; oldArray[2] = 'Y';
+				char[]? newArray = new char[7];
+				newArray[0] = 'X'; newArray[6] = 'Y';
+				for (var index = 0; index < expected.Length; index++) newArray[index + 1] = expected[index];
+				var oldView = new ReadOnlySpan<char>(oldArray, 1, 1);
+				var newView = new ReadOnlySpan<char>(newArray, 1, 5);
+				oldArray = null; newArray = null;
+				M68kRuntime.Collect();
+				if (builder.Replace(oldView, newView, 1, 511) != builder) return 2;
+				M68kRuntime.Collect();
+				builder.Clear().Append("aa").Replace(oldView, newView);
+				var reused = builder.ToString();
+				if (reused.Length != 10) return 3;
+				for (var index = 0; index < 10; index++) if (reused[index] != expected[index % 5]) return 4;
+				builder.Clear();
+				for (var index = 0; index < 513; index++) builder.Append('a');
+				builder.Replace(oldView, newView, 1, 511);
+			}
+			M68kRuntime.Collect();
+			var after = builder.ToString();
+			if (!StringBuilderReplacementMatches(builder, before, after, "a", expected, 1, 511)) return 5;
+			for (var index = 0; index < before.Length; index++) if (before[index] != 'a') return 6;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderReplacementAllocationFailureEntry()
+	{
+		// Two match-list growth allocations precede the new chunk and its array.
+		for (var failAt = 1; failAt <= 4; failAt++)
+		{
+			var builder = new System.Text.StringBuilder(1024);
+			for (var index = 0; index < 513; index++) builder.Append('a');
+			var before = builder.ToString();
+			SetStringBuilderAllocationFailure(failAt);
+			try
+			{
+				builder.Replace("a", "bc", 1, 511);
+				SetStringBuilderAllocationFailure(0);
+				return 1;
+			}
+			catch (OutOfMemoryException)
+			{
+				SetStringBuilderAllocationFailure(0);
+				if (builder.Length != 513 || builder.Capacity != 1024) return 2;
+				for (var index = 0; index < 513; index++) if (builder[index] != 'a' || before[index] != 'a') return 3;
+				builder.Replace("a", "bc", 1, 511);
+				if (!StringBuilderReplacementMatches(builder, before, builder.ToString(), "a", "bc", 1, 511)) return 4;
+			}
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static bool StringBuilderReplacementMatches(System.Text.StringBuilder builder, string before, string after,
+		string oldValue, string? newValue, int start, int count)
+	{
+		var resultIndex = 0;
+		for (var cursor = 0; cursor < before.Length;)
+		{
+			var matches = cursor >= start && cursor <= start + count - oldValue.Length;
+			for (var index = 0; matches && index < oldValue.Length; index++)
+				if (before[cursor + index] != oldValue[index]) matches = false;
+			if (matches)
+			{
+				for (var index = 0; newValue != null && index < newValue.Length; index++)
+				{
+					if (resultIndex >= builder.Length || resultIndex >= after.Length ||
+						builder[resultIndex] != newValue[index] || after[resultIndex] != newValue[index]) return false;
+					resultIndex++;
+				}
+				cursor += oldValue.Length;
+			}
+			else
+			{
+				if (resultIndex >= builder.Length || resultIndex >= after.Length ||
+					builder[resultIndex] != before[cursor] || after[resultIndex] != before[cursor]) return false;
+				resultIndex++;
+				cursor++;
+			}
+		}
+		return builder.Length == resultIndex && after.Length == resultIndex;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderReplacementValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(4, 32);
+		builder.Append("seed");
+		try { builder.Replace('s', 'X', -1, 0); return 1; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 2; }
+		try { builder.Replace('s', 'X', 0, -1); return 3; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "count") return 4; }
+		try { builder.Replace('s', 'X', 5, 0); return 5; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Replace('s', 'X', 1, int.MaxValue); return 6; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Replace((string)null!, "X"); return 7; }
+		catch (ArgumentNullException error) { if (error.ParamName != "oldValue") return 8; }
+		try { builder.Replace("", "X"); return 9; }
+		catch (ArgumentException error) { if (error.ParamName != "oldValue") return 10; }
+		try { builder.Replace("s", "X", -1, 0); return 11; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Replace("s", "X", 0, -1); return 12; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Replace("s", "X", 1, int.MaxValue); return 13; } catch (ArgumentOutOfRangeException) { }
+		if (builder.Replace("missing", "X") != builder || builder.Replace('s', 's') != builder ||
+			builder.Replace("s", "X", 4, 0) != builder) return 14;
+		if (builder.ToString() != "seed" || builder.MaxCapacity != 32) return 15;
+		try { builder.Replace("e", "12345678901234567890"); return 17; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "requiredLength") return 21; }
+		if (builder.ToString() != "seed") return 18;
+		try { builder.Replace(default(ReadOnlySpan<char>), default(ReadOnlySpan<char>)); return 19; }
+		catch (ArgumentException error) { if (error.ParamName != "oldValue") return 20; }
+		builder.Clear().Replace('a', 'b').Replace("a", "b");
+		return builder.Length == 0 ? 42 : 16;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderStringInsertionEntry()
+	{
+		const string inserted = "I\0\u03A9\uD83D\uDE00\uFFFF";
+		for (var scenario = 0; scenario < 11; scenario++)
+		{
+			var position = StringBuilderEditPosition(scenario);
+			var builder = new System.Text.StringBuilder(4);
+			for (var index = 0; index < 65; index++) builder.Append((char)(index * 251));
+			var before = builder.ToString();
+			if (builder.Insert(position, inserted) != builder || builder.Length != 71) return 1;
+			M68kRuntime.Collect();
+			var after = builder.ToString();
+			for (var index = 0; index < after.Length; index++)
+			{
+				var expected = index < position ? (char)(index * 251) : index < position + inserted.Length
+					? inserted[index - position] : (char)((index - inserted.Length) * 251);
+				if (builder[index] != expected || after[index] != expected) return 2;
+			}
+			if (builder.Remove(position, inserted.Length) != builder || builder.Length != 65) return 3;
+			for (var index = 0; index < 65; index++)
+				if (builder[index] != (char)(index * 251) || before[index] != (char)(index * 251)) return 4;
+			if (after[position] != 'I') return 5;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderRemovalEntry()
+	{
+		for (var scenario = 0; scenario < 11; scenario++)
+		for (var countCase = 0; countCase < 4; countCase++)
+		{
+			var position = StringBuilderEditPosition(scenario);
+			var remaining = 65 - position;
+			var count = countCase == 0 ? 0 : countCase == 1 ? (remaining == 0 ? 0 : 1)
+				: countCase == 2 ? (remaining < 17 ? remaining : 17) : remaining;
+			var builder = new System.Text.StringBuilder(4);
+			for (var index = 0; index < 65; index++) builder.Append((char)(index * 251));
+			var before = builder.ToString();
+			if (builder.Remove(position, count) != builder || builder.Length != 65 - count) return 1;
+			M68kRuntime.Collect();
+			var after = builder.ToString();
+			for (var index = 0; index < after.Length; index++)
+			{
+				var expected = (char)((index < position ? index : index + count) * 251);
+				if (builder[index] != expected || after[index] != expected) return 2;
+			}
+			builder.Append('\uFFFF');
+			if (builder[builder.Length - 1] != '\uFFFF') return 3;
+			for (var index = 0; index < before.Length; index++)
+				if (before[index] != (char)(index * 251)) return 4;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderInsertionOverloadsEntry()
+	{
+		var builder = new System.Text.StringBuilder(4);
+		if (builder.Insert(0, '\u03A9') != builder || builder.Insert(1, '\0') != builder ||
+			builder.Insert(2, '\uD83D') != builder || builder.Insert(3, '\uDE00') != builder) return 1;
+		char[]? source = new char[257];
+		for (var index = 0; index < source.Length; index++) source[index] = (char)(index * 251);
+		if (builder.Insert(2, source, 7, 65) != builder) return 2;
+		var before = builder.ToString();
+		var view = new ReadOnlySpan<char>(source, 100, 157);
+		source = null;
+		M68kRuntime.Collect();
+		if (builder.Insert(1, view) != builder || builder.Length != 226) return 3;
+		M68kRuntime.Collect();
+		var after = builder.ToString();
+		if (after[0] != '\u03A9' || after[158] != '\0' || after[224] != '\uD83D' || after[225] != '\uDE00') return 4;
+		for (var index = 0; index < 157; index++)
+			if (after[index + 1] != (char)((index + 100) * 251)) return 5;
+		for (var index = 0; index < 65; index++)
+			if (after[index + 159] != (char)((index + 7) * 251) || before[index + 2] != (char)((index + 7) * 251)) return 6;
+		builder.Clear();
+		var entire = new char[3];
+		entire[0] = '\u03A9'; entire[1] = '\0'; entire[2] = '\uFFFF';
+		if (builder.Insert(0, entire) != builder || builder.ToString() != "\u03A9\0\uFFFF") return 7;
+		builder.Clear();
+		if (builder.Insert(0, int.MinValue) != builder || builder.Insert(11, 42) != builder ||
+			builder.Insert(0, 0) != builder || builder.ToString() != "0-214748364842") return 8;
+		return before.Length == 69 && before[0] == '\u03A9' && before[1] == '\0' &&
+			before[67] == '\uD83D' && before[68] == '\uDE00' ? 42 : 9;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderRepeatedInsertionEntry()
+	{
+		const string inserted = "I\0\u03A9\uD83D\uDE00\uFFFF";
+		var builder = new System.Text.StringBuilder(4);
+		for (var index = 0; index < 65; index++) builder.Append((char)(index * 251));
+		var before = builder.ToString();
+		if (builder.Insert(17, inserted, 23) != builder || builder.Length != 203) return 1;
+		M68kRuntime.Collect();
+		var after = builder.ToString();
+		for (var index = 0; index < after.Length; index++)
+		{
+			var expected = index < 17 ? (char)(index * 251) : index < 155 ? inserted[(index - 17) % 6]
+				: (char)((index - 138) * 251);
+			if (builder[index] != expected || after[index] != expected) return 2;
+		}
+		builder.Remove(17, 138);
+		for (var index = 0; index < 65; index++)
+			if (builder[index] != (char)(index * 251) || before[index] != (char)(index * 251)) return 3;
+		return after[17] == 'I' && after[154] == '\uFFFF' ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderEditValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(4, 32);
+		builder.Append("seed");
+		var chars = new char[3];
+		if (builder.Insert(4, (string?)null) != builder || builder.Insert(0, string.Empty) != builder ||
+			builder.Insert(0, (char[]?)null) != builder || builder.Insert(0, (char[]?)null, 0, 0) != builder ||
+			builder.Insert(0, default(ReadOnlySpan<char>)) != builder || builder.Insert(2, "X", 0) != builder ||
+			builder.Insert(1, (string?)null, 3) != builder || builder.Remove(4, 0) != builder) return 1;
+		try { builder.Insert(-1, "X"); return 2; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "index") return 3; }
+		try { builder.Insert(5, "X"); return 4; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(int.MaxValue, default(ReadOnlySpan<char>)); return 5; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(0, "X", -1); return 6; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "count") return 7; }
+		try { builder.Insert(0, chars, -1, 1); return 8; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(0, chars, 0, -1); return 9; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(0, chars, 2, 2); return 10; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(0, chars, int.MaxValue, 1); return 11; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(0, (char[]?)null, 0, 1); return 12; } catch (ArgumentNullException) { }
+		try { builder.Remove(-1, 0); return 13; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "startIndex") return 14; }
+		try { builder.Remove(0, -1); return 15; }
+		catch (ArgumentOutOfRangeException error) { if (error.ParamName != "length") return 16; }
+		try { builder.Remove(5, 0); return 17; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Remove(1, int.MaxValue); return 18; } catch (ArgumentOutOfRangeException) { }
+		try { builder.Insert(2, "X", 29); return 19; } catch (OutOfMemoryException) { }
+		try { builder.Insert(2, "XX", int.MaxValue); return 21; } catch (OutOfMemoryException) { }
+		return builder.Length == 4 && builder.ToString() == "seed" && builder.MaxCapacity == 32 ? 42 : 20;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibReadOnlyCharacterArrayRangeEntry()
+	{
+		char[]? source = new char[4];
+		source[0] = 'X'; source[1] = '\u03A9'; source[2] = '\uFFFF'; source[3] = 'Y';
+		var range = new ReadOnlySpan<char>(source, 1, 2);
+		source = null;
+		M68kRuntime.Collect();
+		var replacement = new char[4];
+		replacement[1] = 'Z';
+		if (range.Length != 2 || range[0] != '\u03A9' || range[1] != '\uFFFF') return 1;
+		if (new ReadOnlySpan<char>((char[]?)null, 0, 0).Length != 0 || new ReadOnlySpan<char>(replacement, 4, 0).Length != 0) return 2;
+		try { return new ReadOnlySpan<char>((char[]?)null, 0, 1).Length + 3; } catch (ArgumentOutOfRangeException) { }
+		try { return new ReadOnlySpan<char>(replacement, -1, 0).Length + 4; } catch (ArgumentOutOfRangeException) { }
+		try { return new ReadOnlySpan<char>(replacement, 0, -1).Length + 5; } catch (ArgumentOutOfRangeException) { }
+		try { return new ReadOnlySpan<char>(replacement, 3, 2).Length + 6; } catch (ArgumentOutOfRangeException) { }
+		try { return new ReadOnlySpan<char>(replacement, int.MaxValue, 1).Length + 7; } catch (ArgumentOutOfRangeException) { }
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int Int64MultiplicationEntry()
+	{
+		if (MultiplyInt64(0, long.MinValue) != 0 || MultiplyInt64(long.MaxValue, 1) != long.MaxValue) return 1;
+		if (MultiplyInt64(-1, long.MinValue) != long.MinValue || MultiplyInt64(long.MaxValue, -1) != -long.MaxValue) return 2;
+		if (MultiplyInt64(0x100000001L, 0x100000001L) != 0x200000001L) return 3;
+		if (MultiplyInt64(0xFFFFFFFFL, 0xFFFFFFFFL) != unchecked((long)0xFFFFFFFE00000001UL)) return 4;
+		if (MultiplyInt64(long.MinValue, 2) != 0 || MultiplyInt64(-3, -7) != 21) return 5;
+		if (MultiplyInt64(int.MaxValue, int.MaxValue) != 4611686014132420609L) return 6;
+		if (MultiplyInt64(0x123456789ABCDEFL, -0x1020304050607L) != unchecked(0x123456789ABCDEFL * -0x1020304050607L)) return 7;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static long MultiplyInt64(long first, long second) => unchecked(first * second);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ByrefArgumentReassignmentEntry()
+	{
+		char[]? owner = new char[5];
+		owner[0] = 'A'; owner[1] = 'B'; owner[2] = '\u03A9'; owner[3] = '\uD83D'; owner[4] = '\uDE00';
+		ref var start = ref owner[0];
+		owner = null;
+		M68kRuntime.Collect();
+		if (AdvanceByrefArgument(ref start, 4) != '\uDE00' || start != 'A') return 1;
+		if (ReassignByrefArgumentOwner(ref start, false) != '\u03A9' ||
+			ReassignByrefArgumentOwner(ref start, true) != '\uFFFF' || start != 'A') return 2;
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static char AdvanceByrefArgument(ref char source, int count)
+	{
+		while (count-- > 0)
+		{
+			source = ref System.Runtime.CompilerServices.Unsafe.Add(ref source, 1);
+			M68kRuntime.Collect();
+		}
+		return source;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static char ReassignByrefArgumentOwner(ref char source, bool alternate)
+	{
+		char[]? owner = new char[4];
+		owner[0] = 'X'; owner[1] = 'Y'; owner[2] = '\u03A9'; owner[3] = '\uFFFF';
+		source = ref owner[0];
+		if (alternate) source = ref System.Runtime.CompilerServices.Unsafe.Add(ref source, 1);
+		owner = null;
+		M68kRuntime.Collect();
+		var replacement = new char[4];
+		replacement[2] = 'Z';
+		for (var index = 0; index < 2; index++) source = ref System.Runtime.CompilerServices.Unsafe.Add(ref source, 1);
+		M68kRuntime.Collect();
+		return source;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int StringBuilderEditPosition(int scenario) => scenario switch
+	{
+		0 => 0, 1 => 1, 2 => 3, 3 => 4, 4 => 15, 5 => 16,
+		6 => 31, 7 => 32, 8 => 33, 9 => 64, _ => 65
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderIntegerCapacityLimitEntry()
+	{
+		var builder = new System.Text.StringBuilder(4, 4);
+		builder.Append(42);
+		try { builder.Append(int.MinValue); }
+		catch (ArgumentOutOfRangeException)
+		{
+			return builder.ToString() == "42" ? 42 : 1;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderIntegerAllocationFailureEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 15; index++) builder.Append('X');
+		try { builder.Append(int.MinValue); }
+		catch (OutOfMemoryException)
+		{
+			return builder.Length == 15 && builder[14] == 'X' ? 42 : 1;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAppendCharEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		builder.Append('4');
+		builder.Append('2');
+		return builder.Length == 2 && builder[0] == '4' && builder[1] == '2' ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderChunkGrowthEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 257; index++)
+		{
+			if (builder.Append((char)(index * 251)) != builder) return 1;
+		}
+		if (builder.Length != 257 || builder.Capacity < 257) return 2;
+		for (var index = 0; index < builder.Length; index++)
+		{
+			if (builder[index] != (char)(index * 251)) return 3;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderToStringEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		if (builder.ToString() != string.Empty) return 1;
+		for (var index = 0; index < 257; index++) builder.Append((char)(index * 251));
+		var text = builder.ToString();
+		builder.Append('\uD83D');
+		builder.Append('\uDE00');
+		builder[0] = 'X';
+		if (text.Length != 257) return 2;
+		for (var index = 0; index < text.Length; index++)
+		{
+			if (text[index] != (char)(index * 251)) return 3;
+		}
+		var updated = builder.ToString();
+		return updated.Length == 259 && updated[0] == 'X' &&
+			updated[257] == '\uD83D' && updated[258] == '\uDE00' ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderGcEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 257; index++) builder.Append((char)(index * 251));
+		var first = builder.ToString();
+		M68kRuntime.Collect();
+		for (var index = 257; index < 513; index++) builder.Append((char)(index * 251));
+		var second = builder.ToString();
+		M68kRuntime.Collect();
+		if (first.Length != 257 || second.Length != 513 || builder.Length != 513) return 1;
+		for (var index = 0; index < second.Length; index++)
+		{
+			var expected = (char)(index * 251);
+			if (builder[index] != expected || second[index] != expected) return 2;
+			if (index < first.Length && first[index] != expected) return 3;
+		}
+		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCapacityLimitEntry()
+	{
+		var builder = new System.Text.StringBuilder(16, 32);
+		try
+		{
+			for (var index = 0; index < 33; index++) builder.Append((char)index);
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+			return builder.Length == 32 && builder[31] == (char)31 ? 42 : 1;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderCapacityValidationEntry()
+	{
+		var builder = new System.Text.StringBuilder(0, 32);
+		if (builder.Length != 0 || builder.Capacity != 16 || builder.MaxCapacity != 32) return 1;
+		try { _ = new System.Text.StringBuilder(-1, 32); }
+		catch (ArgumentOutOfRangeException error)
+		{
+			return error.ParamName == "capacity" && (int)error.ActualValue! == -1 ? 42 : 2;
+		}
+		return 3;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int ScalarArgumentAssignmentEntry()
+	{
+		return AssignScalarArgument(0) == 42 && AssignNarrowArgument((char)0) == '\uFFFF' &&
+			AssignReferenceArgument(null) == 42 ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int AssignScalarArgument(int value)
+	{
+		while (value < 42) value += 3;
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static char AssignNarrowArgument(char value)
+	{
+		if (value == 0) value = '\uFFFF';
+		return value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static int AssignReferenceArgument(char[]? value)
+	{
+		value = new char[1];
+		value[0] = (char)42;
+		M68kRuntime.Collect();
+		return value[0];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderAllocationFailureEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		try
+		{
+			for (var index = 0; index < 17; index++) builder.Append((char)index);
+		}
+		catch (OutOfMemoryException)
+		{
+			return builder.Length == 16 && builder[15] == (char)15 ? 42 : 1;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibStringBuilderToStringAllocationFailureEntry()
+	{
+		var builder = new System.Text.StringBuilder();
+		for (var index = 0; index < 16; index++) builder.Append((char)index);
+		try { _ = builder.ToString(); }
+		catch (OutOfMemoryException)
+		{
+			return builder.Length == 16 && builder[15] == (char)15 ? 42 : 1;
+		}
+		return 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibOutOfMemoryConstructorEntry()
+	{
+		try { throw new OutOfMemoryException(); }
+		catch (OutOfMemoryException) { return 42; }
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -4321,6 +10388,13 @@ public static class CompilerFixtures
 	{
 		var text = new FixtureException().FormatBase();
 		return text.Length == 16 && text[0] == 'S' && text[15] == 'n' ? 42 : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibExternalExceptionToStringCutPointEntry()
+	{
+		var text = new FixtureExternalException().FormatBase();
+		return text == "System.Runtime.InteropServices.ExternalException" ? 42 : 0;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -6478,6 +12552,18 @@ public static class CompilerFixtures
 	{
 		M68kRuntime.Collect();
 		return 42;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ExplicitCollectWithDynamicFrameEntry() => ExplicitCollectWithDynamicFrame(3);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static unsafe uint ExplicitCollectWithDynamicFrame(int count)
+	{
+		var scratch = stackalloc uint[count];
+		scratch[0] = 42;
+		M68kRuntime.Collect();
+		return scratch[0];
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

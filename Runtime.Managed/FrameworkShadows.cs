@@ -10,6 +10,411 @@ using CopperSharp.Compiler;
 namespace CopperSharp.Runtime;
 
 /// <summary>
+/// Platform newline adapters for the experimental official StringBuilder bodies.
+/// </summary>
+public static class ShadowStringBuilder
+{
+	public static System.Text.StringBuilder AppendLine(System.Text.StringBuilder builder) =>
+		builder.Append(Environment.NewLine);
+
+	public static System.Text.StringBuilder AppendLine(System.Text.StringBuilder builder, string? value) =>
+		builder.Append(value).Append(Environment.NewLine);
+}
+
+/// <summary>Representation-compatible receiver adapter for the exact object join call site.</summary>
+public sealed class ShadowObjectJoinText
+{
+	// Used only after exact Int64/UInt64 descriptor checks. Their boxed
+	// payloads begin after the eight-byte object header, in high/low order.
+#pragma warning disable CS0649 // Assigned through the representation-compatible boxed receiver.
+	private readonly uint _high;
+	private readonly uint _low;
+#pragma warning restore CS0649
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public override string ToString()
+	{
+		object value = this;
+		if (value is string text) return text;
+		if (value is bool boolean) return boolean ? "True" : "False";
+		if (value is char character)
+		{
+			var result = M68kRuntime.AllocateString(1);
+			M68kRuntime.SetStringChar(result, 0, character);
+			return result;
+		}
+		if (value is int signed) return ShadowNumberFormatting.Int32ToDecStr(signed);
+		if (value is uint unsigned) return ShadowIntegerFormatter.FormatUInt32(unsigned);
+		if (value is sbyte signedByte) return ShadowNumberFormatting.Int32ToDecStr(signedByte);
+		if (value is byte unsignedByte) return ShadowIntegerFormatter.FormatUInt32(unsignedByte);
+		if (value is short signedShort) return ShadowNumberFormatting.Int32ToDecStr(signedShort);
+		if (value is ushort unsignedShort) return ShadowIntegerFormatter.FormatUInt32(unsignedShort);
+		if (value is long) return ShadowNumberFormatting.Int64ToDecStr(M68kRuntime.CombineInt64(_high, _low));
+		if (value is ulong) return ShadowIntegerFormatter.FormatUInt64(_high, _low);
+		return value.ToString()!;
+	}
+}
+
+/// <summary>Default receiver for bounded object formatting dispatch.</summary>
+public class ShadowObjectJoinDispatch
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public override string ToString() => GetType().ToString();
+}
+
+/// <summary>Enumeration adapters for the experimental CoreLib string join loop.</summary>
+public static class ShadowStringJoinEnumeration
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static ShadowStringJoinEnumerator GetEnumerator(IEnumerable<string?> source)
+	{
+		if (source is string?[] array) return new ShadowStringJoinEnumerator(array);
+		// Only an exact List uses the verified field view. A subclass may
+		// reimplement IEnumerable and must retain its public iterator dispatch.
+		if (source is List<string?> list && list.GetType() == typeof(List<string?>) && (object)list is ShadowList<string?> shadow)
+			return new ShadowStringJoinEnumerator(shadow);
+		var custom = source.GetEnumerator();
+		if (custom == null) return null!;
+		try { return new ShadowStringJoinEnumerator(custom); }
+		catch { custom.Dispose(); throw; }
+	}
+}
+
+public sealed class ShadowStringJoinEnumerator : IEnumerator<string?>
+{
+	private string?[]? _array;
+	private ShadowList<string?>? _list;
+	private readonly int _version;
+	private int _index;
+	private string? _current;
+	private IEnumerator<string?>? _custom;
+
+	public ShadowStringJoinEnumerator(string?[] array) => _array = array;
+	public ShadowStringJoinEnumerator(IEnumerator<string?> custom) => _custom = custom;
+	public ShadowStringJoinEnumerator(ShadowList<string?> list)
+	{
+		_list = list;
+		_version = list._version;
+	}
+
+	public string? Current => _custom != null ? _custom.Current : _current;
+	object? IEnumerator.Current => Current;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public bool MoveNext()
+	{
+		if (_custom != null) return _custom.MoveNext();
+		var list = _list;
+		if (list != null)
+		{
+			if (_version != list._version) M68kRuntime.ThrowInvalidOperationException();
+			if ((uint)_index < (uint)list._size)
+			{
+				_current = list._items![_index++];
+				return true;
+			}
+		}
+		else if (_array is { } array && (uint)_index < (uint)array.Length)
+		{
+			_current = array[_index++];
+			return true;
+		}
+		_current = null;
+		return false;
+	}
+
+	public void Reset() => throw new NotSupportedException();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Dispose()
+	{
+		var custom = _custom;
+		_custom = null;
+		_array = null;
+		_list = null;
+		_current = null;
+		if (custom != null) custom.Dispose();
+	}
+}
+
+/// <summary>Enumeration adapters for the experimental CoreLib object join loop.</summary>
+public static class ShadowObjectJoinEnumeration
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static ShadowObjectJoinEnumerator GetEnumerator(IEnumerable<object?> source)
+	{
+		if (source is object?[] array) return new ShadowObjectJoinEnumerator(array);
+		// The compiler verifies the pinned CoreLib layout and descriptor for
+		// this field view before admitting these two list type checks.
+		if (source is List<object?> list && list.GetType() == typeof(List<object?>) && (object)list is ShadowList<object?> shadow)
+			return new ShadowObjectJoinEnumerator(shadow);
+		var custom = source.GetEnumerator();
+		if (custom == null) return null!;
+		try { return new ShadowObjectJoinEnumerator(custom); }
+		catch { custom.Dispose(); throw; }
+	}
+}
+
+public sealed class ShadowObjectJoinEnumerator : IEnumerator<object?>
+{
+	private object?[]? _array;
+	private ShadowList<object?>? _list;
+	private readonly int _version;
+	private int _index;
+	private object? _current;
+	private IEnumerator<object?>? _custom;
+
+	public ShadowObjectJoinEnumerator(object?[] array) => _array = array;
+	public ShadowObjectJoinEnumerator(IEnumerator<object?> custom) => _custom = custom;
+	public ShadowObjectJoinEnumerator(ShadowList<object?> list)
+	{
+		_list = list;
+		_version = list._version;
+	}
+
+	public object? Current => _custom != null ? _custom.Current : _current;
+	object? IEnumerator.Current => Current;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public bool MoveNext()
+	{
+		if (_custom != null) return _custom.MoveNext();
+		var list = _list;
+		if (list != null)
+		{
+			if (_version != list._version) M68kRuntime.ThrowInvalidOperationException();
+			if ((uint)_index < (uint)list._size)
+			{
+				_current = list._items![_index++];
+				return true;
+			}
+		}
+		else if (_array is { } array && (uint)_index < (uint)array.Length)
+		{
+			_current = array[_index++];
+			return true;
+		}
+		_current = null;
+		return false;
+	}
+
+	public void Reset() => throw new NotSupportedException();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Dispose()
+	{
+		var custom = _custom;
+		_custom = null;
+		_array = null;
+		_list = null;
+		_current = null;
+		if (custom != null) custom.Dispose();
+	}
+}
+
+/// <summary>Enumeration adapters for the experimental CoreLib Int32 join loop.</summary>
+public static class ShadowInt32JoinEnumeration
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static ShadowInt32JoinEnumerator GetEnumerator(IEnumerable<int> source)
+	{
+		if (source is int[] array) return new ShadowInt32JoinEnumerator(array);
+		// The compiler verifies the pinned CoreLib layout and descriptor for
+		// this field view before admitting these two list type checks.
+		if (source is List<int> list && list.GetType() == typeof(List<int>) && (object)list is ShadowList<int> shadow)
+			return new ShadowInt32JoinEnumerator(shadow);
+		var custom = source.GetEnumerator();
+		if (custom == null) return null!;
+		try { return new ShadowInt32JoinEnumerator(custom); }
+		catch { custom.Dispose(); throw; }
+	}
+}
+
+public sealed class ShadowInt32JoinEnumerator : IEnumerator<int>
+{
+	private int[]? _array;
+	private ShadowList<int>? _list;
+	private readonly int _version;
+	private int _index;
+	private int _current;
+	private IEnumerator<int>? _custom;
+
+	public ShadowInt32JoinEnumerator(IEnumerator<int> custom) => _custom = custom;
+	public ShadowInt32JoinEnumerator(int[] array) => _array = array;
+	public ShadowInt32JoinEnumerator(ShadowList<int> list)
+	{
+		_list = list;
+		_version = list._version;
+	}
+
+	public int Current => _custom != null ? _custom.Current : _current;
+	object IEnumerator.Current => Current;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public bool MoveNext()
+	{
+		if (_custom != null) return _custom.MoveNext();
+		var list = _list;
+		if (list != null)
+		{
+			if (_version != list._version) M68kRuntime.ThrowInvalidOperationException();
+			if ((uint)_index < (uint)list._size)
+			{
+				_current = list._items![_index++];
+				return true;
+			}
+		}
+		else if (_array is { } array && (uint)_index < (uint)array.Length)
+		{
+			_current = array[_index++];
+			return true;
+		}
+		_current = 0;
+		return false;
+	}
+
+	public void Reset() => throw new NotSupportedException();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Dispose()
+	{
+		var custom = _custom;
+		_custom = null;
+		_array = null;
+		_list = null;
+		_current = 0;
+		if (custom != null) custom.Dispose();
+	}
+}
+
+/// <summary>Nonallocating byte clearing for experimental CoreLib memory helpers.</summary>
+public static class ShadowBuffer
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe void ClearWithoutReferences(ref byte destination, nuint length)
+	{
+		fixed (byte* bytes = &destination) ZeroMemoryInternal(bytes, length);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe void ZeroMemoryInternal(void* destination, nuint length)
+	{
+		var bytes = (byte*)destination;
+		for (nuint index = 0; index < length; index++) bytes[index] = 0;
+	}
+}
+
+/// <summary>Scalar UTF-16 helpers for the experimental CoreLib builder bodies.</summary>
+public static class ShadowCharacterSpans
+{
+	public static Span<char> Identity(Span<char> span) => span;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int IndexOfAny(ReadOnlySpan<char> span, char first, char second)
+	{
+		for (var index = 0; index < span.Length; index++) if (span[index] == first || span[index] == second) return index;
+		return -1;
+	}
+
+	public static bool EqualsOrdinal(ReadOnlySpan<char> span, ReadOnlySpan<char> value)
+	{
+		if (span.Length != value.Length) return false;
+		for (var index = 0; index < span.Length; index++)
+			if (span[index] != value[index]) return false;
+		return true;
+	}
+
+	public static void Replace(Span<char> span, char oldValue, char newValue)
+	{
+		for (var index = 0; index < span.Length; index++)
+			if (span[index] == oldValue) span[index] = newValue;
+	}
+
+	public static int IndexOf(ReadOnlySpan<char> span, ReadOnlySpan<char> value)
+	{
+		for (var index = 0; index <= span.Length - value.Length; index++)
+		{
+			var matched = 0;
+			while (matched < value.Length && span[index + matched] == value[matched]) matched++;
+			if (matched == value.Length) return index;
+		}
+		return -1;
+	}
+}
+
+/// <summary>
+/// Allocation helpers with the pinned ValueListBuilder field order. The target
+/// keeps temporary match arrays under ordinary GC ownership instead of pooling.
+/// Int32 and Char constructions are admitted by the experimental profile.
+/// </summary>
+public ref struct ShadowValueListBuilder<T>
+{
+	private Span<T> _span;
+	private T[]? _arrayFromPool;
+	private int _pos;
+
+	public ShadowValueListBuilder(Span<T> span)
+	{
+		_span = span;
+		_arrayFromPool = null;
+		_pos = 0;
+	}
+
+	public void Append(T value)
+	{
+		if (_pos == _span.Length) Grow(1);
+		_span[_pos++] = value;
+	}
+
+	public ReadOnlySpan<T> AsSpan() => _span.Slice(0, _pos);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Grow(int additionalCapacity)
+	{
+		var capacity = Math.Max(_span.Length == 0 ? 4 : _span.Length * 2, _span.Length + additionalCapacity);
+		if ((uint)capacity > 0x7FFFFFC7u)
+			capacity = Math.Max(Math.Max(_span.Length + 1, 0x7FFFFFC7), _span.Length);
+		var array = new T[capacity];
+		for (var index = 0; index < _pos; index++) array[index] = _span[index];
+		_arrayFromPool = array;
+		_span = array;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Dispose() => _arrayFromPool = null;
+}
+
+/// <summary>Storage helpers for the verified CoreLib character buffer layout.</summary>
+public ref struct ShadowValueStringBuilder
+{
+	private char[]? _arrayToReturnToPool;
+	private Span<char> _chars;
+	private int _pos;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Grow(int additionalCapacityBeyondPos)
+	{
+		var required = (uint)(_pos + additionalCapacityBeyondPos);
+		var doubled = (uint)_chars.Length * 2;
+		if (doubled > 0x7FFFFFC7u) doubled = 0x7FFFFFC7u;
+		var capacity = (int)(required > doubled ? required : doubled);
+		if (capacity < 0) throw new ArgumentOutOfRangeException("minimumLength");
+		var array = new char[capacity];
+		for (var index = 0; index < _pos; index++) array[index] = _chars[index];
+		_arrayToReturnToPool = array;
+		_chars = array;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void Dispose()
+	{
+		_arrayToReturnToPool = null;
+		_chars = default;
+		_pos = 0;
+	}
+}
+
+/// <summary>
 /// Compact target implementation of the public <see cref="EqualityComparer{T}"/>
 /// singleton contract. Each closed construction owns one managed instance.
 /// </summary>
@@ -163,12 +568,118 @@ public class ShadowException
 }
 
 /// <summary>
-/// Date/time globalization boundary used by the experimental official-body profile.
-/// Numeric formatting remains on the official CoreLib path; calendar and
-/// host-locale discovery are deliberately outside the target runtime.
+/// Compact derived exception formatting for the experimental official-body profile.
+/// Stack traces, reflection metadata, and HRESULT formatting remain outside this profile.
+/// </summary>
+public class ShadowExternalException
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public override string ToString() => "System.Runtime.InteropServices.ExternalException";
+}
+
+/// <summary>
+/// Target storage adapter for the verified CoreLib CultureInfo layout.
+/// Empty-name cultures provide invariant numeric settings; named locale data
+/// and calendar discovery require additional target support.
 /// </summary>
 public class ShadowCultureInfo
 {
+#pragma warning disable CS0169, CS0649 // Verified layout includes opaque, currently unused CoreLib fields.
+	private bool _isReadOnly;
+	private System.Globalization.CompareInfo? _compareInfo;
+	private System.Globalization.TextInfo? _textInfo;
+	private System.Globalization.NumberFormatInfo? _numInfo;
+	private System.Globalization.DateTimeFormatInfo? _dateTimeInfo;
+	private System.Globalization.Calendar? _calendar;
+	private object? _cultureData;
+	private bool _isInherited;
+	private System.Globalization.CultureInfo? _consoleFallbackCulture;
+	private string? _name;
+	private string? _nonSortName;
+	private string? _sortName;
+	private System.Globalization.CultureInfo? _parent;
+#pragma warning restore CS0169, CS0649
+	private static System.Globalization.CultureInfo? _invariantCulture;
+	private static System.Globalization.CultureInfo? _currentCulture;
+	private static System.Globalization.CultureInfo? _defaultThreadCurrentCulture;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static System.Globalization.CultureInfo GetCurrentCulture() =>
+		_currentCulture ?? _defaultThreadCurrentCulture ?? GetInvariantCulture();
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void SetCurrentCulture(System.Globalization.CultureInfo value)
+	{
+		if (value is null) throw new ArgumentNullException(nameof(value));
+		_currentCulture = value;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static System.Globalization.CultureInfo? GetDefaultThreadCurrentCulture() => _defaultThreadCurrentCulture;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void SetDefaultThreadCurrentCulture(System.Globalization.CultureInfo? value) => _defaultThreadCurrentCulture = value;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static System.Globalization.CultureInfo GetInvariantCulture()
+	{
+		if (_invariantCulture is null)
+		{
+			var culture = new System.Globalization.CultureInfo("");
+			FreezeCulture(culture);
+			_invariantCulture = culture;
+		}
+		return _invariantCulture;
+	}
+
+	// These private leaves bind to the verified CoreLib boolean fields on the
+	// target. UnsafeAccessor supplies the same field writes to managed host probes.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void FreezeCulture(System.Globalization.CultureInfo culture) => CultureReadOnly(culture) = true;
+
+	[UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_isReadOnly")]
+	private static extern ref bool CultureReadOnly(System.Globalization.CultureInfo culture);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void FreezeNumberFormat(System.Globalization.NumberFormatInfo info) => NumberReadOnly(info) = true;
+
+	[UnsafeAccessor(UnsafeAccessorKind.Field, Name = "_isReadOnly")]
+	private static extern ref bool NumberReadOnly(System.Globalization.NumberFormatInfo info);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void InitializeName(string name)
+	{
+		if (name is null) throw new ArgumentNullException(nameof(name));
+		if (name.Length != 0) throw new NotSupportedException("Named culture data is not available on this target.");
+		_name = name;
+		_nonSortName = name;
+		_sortName = name;
+		_isInherited = GetType() != typeof(System.Globalization.CultureInfo);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public void InitializeNameWithOverrides(string name, bool useUserOverride) => InitializeName(name);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public virtual System.Globalization.NumberFormatInfo GetNumberFormat()
+	{
+		if (_numInfo is null)
+		{
+			var info = new System.Globalization.NumberFormatInfo();
+			if (_isReadOnly) FreezeNumberFormat(info);
+			_numInfo = info;
+		}
+		return _numInfo;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public virtual void SetNumberFormat(System.Globalization.NumberFormatInfo value)
+	{
+		if (value is null) throw new ArgumentNullException(nameof(value));
+		if (_isReadOnly) throw new InvalidOperationException("Instance is read-only.");
+		_numInfo = value;
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public virtual System.Globalization.DateTimeFormatInfo? GetDateTimeFormat() => null;
 
@@ -179,18 +690,275 @@ public class ShadowCultureInfo
 		new ShadowCultureInfo().GetDateTimeFormat() is null ? 42 : 0;
 }
 
+/// <summary>Invariant integer formatting for experimental CoreLib bodies.</summary>
+public static class ShadowNumberFormatting
+{
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Int64ToDecStr(long value)
+	{
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		if (value < 0) return ShadowStandardIntegerFormatting.Format(high, low, true, null, 'D', 0);
+		return ShadowIntegerFormatter.FormatInt64(high, low);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string UInt64ToDecStr(ulong value)
+	{
+		var low = M68kRuntime.SplitUInt64(value, out var high);
+		return ShadowIntegerFormatter.FormatUInt64(high, low);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatInt64(long value, string? format, IFormatProvider? provider)
+	{
+		if (format is not null && format.Length != 0 || value < 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.FormatInt64(value, format, ShadowCustomNumberFormatting.ResolveInfo(provider));
+			var low = M68kRuntime.SplitInt64(value, out var high);
+			return ShadowStandardIntegerFormatting.Format(high, low, value < 0,
+				provider, specifier, precision);
+		}
+
+		return Int64ToDecStr(value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatUInt64(ulong value, string? format, IFormatProvider? provider)
+	{
+		if (format is not null && format.Length != 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.FormatUInt64(value, format, ShadowCustomNumberFormatting.ResolveInfo(provider));
+			var low = M68kRuntime.SplitUInt64(value, out var high);
+			return ShadowStandardIntegerFormatting.Format(high, low, false, provider, specifier, precision);
+		}
+
+		return UInt64ToDecStr(value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static bool TryFormatInt64(long value, ReadOnlySpan<char> format,
+		IFormatProvider? provider, Span<char> destination, out int charsWritten)
+	{
+		if (format.Length != 0 || value < 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.TryFormatInt64(value, format, ShadowCustomNumberFormatting.ResolveInfo(provider), destination, out charsWritten);
+			var bits = M68kRuntime.SplitInt64(value, out var upper);
+			return ShadowStandardIntegerFormatting.TryFormat(upper, bits, value < 0,
+				provider, specifier, precision, destination, out charsWritten);
+		}
+
+		var low = M68kRuntime.SplitInt64(value, out var high);
+		var length = ShadowIntegerFormatter.PackInt64(high, low, out var word0, out var word1,
+			out var word2, out var word3, out var word4);
+		return TryWritePackedInteger(destination, length, word0, word1, word2, word3, word4, out charsWritten);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static bool TryFormatUInt64(ulong value, ReadOnlySpan<char> format,
+		IFormatProvider? provider, Span<char> destination, out int charsWritten)
+	{
+		if (format.Length != 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.TryFormatUInt64(value, format, ShadowCustomNumberFormatting.ResolveInfo(provider), destination, out charsWritten);
+			var bits = M68kRuntime.SplitUInt64(value, out var upper);
+			return ShadowStandardIntegerFormatting.TryFormat(upper, bits, false, provider, specifier, precision, destination, out charsWritten);
+		}
+
+		var low = M68kRuntime.SplitUInt64(value, out var high);
+		var length = ShadowIntegerFormatter.PackUInt64(high, low, out var word0, out var word1,
+			out var word2, out var word3, out var word4);
+		return TryWritePackedInteger(destination, length, word0, word1, word2, word3, word4, out charsWritten);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	internal static bool TryWritePackedInteger(Span<char> destination, int length,
+		uint word0, uint word1, uint word2, uint word3, uint word4, out int charsWritten)
+	{
+		charsWritten = 0;
+		if (destination.Length < length) return false;
+		for (var index = 0; index < length; index++)
+		{
+			var word = index < 4 ? word0 : index < 8 ? word1 : index < 12 ? word2 : index < 16 ? word3 : word4;
+			destination[index] = (char)((word >> ((3 - (index & 3)) * 8)) & 0xffu);
+		}
+		charsWritten = length;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string Int32ToDecStr(int value) => value < 0
+		? ShadowIntegerFormatter.FormatNegativeInt32(value, ShadowStandardIntegerFormatting.NegativeSign(null))
+		: ShadowIntegerFormatter.FormatInt32(value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string UInt32ToDecStr(uint value) => ShadowIntegerFormatter.FormatUInt32(value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static bool TryFormatUInt32(uint value, ReadOnlySpan<char> format,
+		IFormatProvider? provider, Span<char> destination, out int charsWritten)
+	{
+		if (format.Length != 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.TryFormatUInt32(value, format, ShadowCustomNumberFormatting.ResolveInfo(provider), destination, out charsWritten);
+			return ShadowStandardIntegerFormatting.TryFormat(0, value, false, provider, specifier, precision, destination, out charsWritten);
+		}
+
+		var remaining = value;
+		var digits = 1;
+		while (remaining >= 10)
+		{
+			remaining /= 10;
+			digits++;
+		}
+		charsWritten = 0;
+		if (destination.Length < digits) return false;
+		for (var index = digits - 1; index >= 0; index--)
+		{
+			destination[index] = (char)('0' + value % 10);
+			value /= 10;
+		}
+		charsWritten = digits;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatUInt32(uint value, string? format, IFormatProvider? provider)
+	{
+		if (format is not null && format.Length != 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.FormatUInt32(value, format, ShadowCustomNumberFormatting.ResolveInfo(provider));
+			return ShadowStandardIntegerFormatting.Format(0, value, false, provider, specifier, precision);
+		}
+
+		return ShadowIntegerFormatter.FormatUInt32(value);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static bool TryFormatInt32(int value, int hexMask, ReadOnlySpan<char> format,
+		IFormatProvider? provider, Span<char> destination, out int charsWritten)
+	{
+		if (format.Length != 0 || value < 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.TryFormatInt32(value, hexMask, format, ShadowCustomNumberFormatting.ResolveInfo(provider), destination, out charsWritten);
+			var radix = specifier is 'X' or 'x' or 'B';
+			var high = !radix && value < 0 ? uint.MaxValue : 0;
+			var low = radix ? (uint)(value & hexMask) : (uint)value;
+			return ShadowStandardIntegerFormatting.TryFormat(high, low, value < 0,
+				provider, specifier, precision, destination, out charsWritten);
+		}
+
+		var negative = value < 0;
+		var magnitude = negative ? (uint)(-(value + 1)) + 1u : (uint)value;
+		var remaining = magnitude;
+		var digits = 1;
+		while (remaining >= 10)
+		{
+			remaining /= 10;
+			digits++;
+		}
+		var length = digits + (negative ? 1 : 0);
+		charsWritten = 0;
+		if (destination.Length < length) return false;
+		for (var index = length - 1; index >= (negative ? 1 : 0); index--)
+		{
+			destination[index] = (char)('0' + magnitude % 10);
+			magnitude /= 10;
+		}
+		if (negative) destination[0] = '-';
+		charsWritten = length;
+		return true;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatInt32(int value, int hexMask, string? format, IFormatProvider? provider)
+	{
+		if (format is not null && format.Length != 0 || value < 0)
+		{
+			var specifier = ShadowStandardIntegerFormatting.Parse(format, out var precision);
+			if (specifier == '\0') return ShadowCustomNumberFormatting.FormatInt32(value, hexMask, format, ShadowCustomNumberFormatting.ResolveInfo(provider));
+			var radix = specifier is 'X' or 'x' or 'B';
+			var high = !radix && value < 0 ? uint.MaxValue : 0;
+			var low = radix ? (uint)(value & hexMask) : (uint)value;
+			return ShadowStandardIntegerFormatting.Format(high, low, value < 0,
+				provider, specifier, precision);
+		}
+
+		return ShadowIntegerFormatter.FormatInt32(value);
+	}
+
+}
+
 /// <summary>
 /// Deterministic CoreLib error resources for the experimental official-body profile.
-/// This matches .NET's resource-key mode without importing ResourceManager or reflection.
+/// Resource lookup returns keys; compact message formatting omits argument rendering.
 /// </summary>
 public static class ShadowSystemResources
 {
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string GetOutOfMemoryMessage() => "Insufficient memory to continue the execution of the program.";
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static string GetResourceString(string key) => key;
+
+	// ExceptionResource values audited against the released 10.0.9 input.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string GetFormattingResourceString(int resource) => resource switch {
+		15 => "ArgumentOutOfRange_SmallCapacity",
+		75 => "Format_UnexpectedClosingBrace",
+		76 => "Format_UnclosedFormatItem",
+		77 => "Format_ExpectedAsciiDigit",
+		_ => throw new InvalidOperationException("Unsupported formatting resource identifier.")
+	};
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatResourceString(string key, object? argument) => key;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatResourceString(string key, object? first, object? second) => key;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatResourceString(string key, object? first, object? second, object? third) => key;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatResourceString(string key, object? first, object? second, object? third, object? fourth) => key;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	internal static int ProbeResourceString() =>
 		GetResourceString("resource-key").Length;
+}
+
+/// <summary>Target-owned string singleton used by experimental CoreLib bodies.</summary>
+public static class ShadowStringData
+{
+	public static readonly string Empty = "";
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe string FromNullTerminatedCharacters(char* value)
+	{
+		if (value == null) return Empty;
+		var length = 0;
+		while (value[length] != '\0') length++;
+		if (length == 0) return Empty;
+		var result = M68kRuntime.AllocateString(length);
+		for (var index = 0; index < length; index++) M68kRuntime.SetStringChar(result, index, value[index]);
+		return result;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FromCharacters(ReadOnlySpan<char> value)
+	{
+		if (value.Length == 0) return Empty;
+		var result = M68kRuntime.AllocateString(value.Length);
+		for (var index = 0; index < value.Length; index++) M68kRuntime.SetStringChar(result, index, value[index]);
+		return result;
+	}
 }
 
 /// <summary>
@@ -208,6 +976,178 @@ internal static class ShadowEmptyArray<T>
 /// </summary>
 public static class ShadowArray
 {
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void ClearDecimals(Array array, int index, int length)
+	{
+		if (array is null) throw new ArgumentNullException(nameof(array));
+		if (array is not decimal[] values) throw new NotSupportedException("The decimal clear requires a Decimal array.");
+		if (index < 0 || length < 0 || index > values.Length || length > values.Length - index) throw new IndexOutOfRangeException();
+		for (var position = index; position < index + length; position++) values[position] = default;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopyDecimals(Array sourceArray, Array destinationArray, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceArray is not decimal[] source || destinationArray is not decimal[] destination)
+			throw new NotSupportedException("The decimal prefix copy requires matching Decimal arrays.");
+		if (length > source.Length || length > destination.Length)
+			throw new ArgumentException("The copy length exceeds an array's length.");
+		for (var index = 0; index < length; index++) destination[index] = source[index];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopyCompositeSegments(Array sourceArray, Array destinationArray, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceArray is not (string?, int, int, string?)[] source || destinationArray is not (string?, int, int, string?)[] destination)
+			throw new NotSupportedException("The parsed-segment copy requires matching tuple arrays.");
+		if (length > source.Length || length > destination.Length)
+			throw new ArgumentException("The copy length exceeds an array's length.");
+		for (var index = 0; index < length; index++) destination[index] = source[index];
+	}
+
+	// Scoped to the verified NumberFormatInfo number/currency/percent group-size accessors.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static object CloneInt32(Array array)
+	{
+		if (array is not int[] source) throw new NotSupportedException("This clone boundary supports Int32 arrays only.");
+		var copy = new int[source.Length];
+		for (var index = 0; index < source.Length; index++) copy[index] = source[index];
+		return copy;
+	}
+
+	// The bounded CoreLib slice needs only same-type char[] prefix copies.
+	// Keep type conversion, covariance, and multidimensional arrays explicit
+	// unsupported cases rather than importing the host Array.Copy runtime path.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopyCharacters(Array sourceArray, Array destinationArray, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceArray is not char[] source || destinationArray is not char[] destination)
+			throw new NotSupportedException("Array.Copy currently supports character arrays only.");
+		if (length > source.Length || length > destination.Length)
+			throw new ArgumentException("The copy length exceeds an array's length.");
+		source.AsSpan(0, length).CopyTo(destination);
+	}
+
+	// Scoped to the verified CoreLib floating List capacity and ToArray paths.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopySingles(Array sourceArray, Array destinationArray, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceArray is not float[] source || destinationArray is not float[] destination)
+			throw new NotSupportedException("This prefix copy requires Single arrays.");
+		if (length > source.Length || length > destination.Length)
+			throw new ArgumentException("The copy length exceeds an array's length.");
+		for (var index = 0; index < length; index++) destination[index] = source[index];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopyDoubles(Array sourceArray, Array destinationArray, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceArray is not double[] source || destinationArray is not double[] destination)
+			throw new NotSupportedException("This prefix copy requires Double arrays.");
+		if (length > source.Length || length > destination.Length)
+			throw new ArgumentException("The copy length exceeds an array's length.");
+		for (var index = 0; index < length; index++) destination[index] = source[index];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopyObjects(Array sourceArray, Array destinationArray, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceArray is not object[] source || destinationArray is not object[] destination)
+			throw new NotSupportedException("This prefix copy requires reference arrays.");
+		if (length > source.Length || length > destination.Length)
+			throw new ArgumentException("The copy length exceeds an array's length.");
+		for (var index = 0; index < length; index++) destination[index] = source[index];
+	}
+
+	// Indexed copies admit only same-type, one-dimensional Int32 arrays.
+	// Copy direction preserves the source range when the arrays overlap.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CopyInt32(Array sourceArray, int sourceIndex, Array destinationArray, int destinationIndex, int length)
+	{
+		if (sourceArray is null) throw new ArgumentNullException(nameof(sourceArray));
+		if (destinationArray is null) throw new ArgumentNullException(nameof(destinationArray));
+		if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
+		if (sourceIndex < 0) throw new ArgumentOutOfRangeException(nameof(sourceIndex));
+		if (destinationIndex < 0) throw new ArgumentOutOfRangeException(nameof(destinationIndex));
+		if (sourceArray is not int[] source || destinationArray is not int[] destination)
+			throw new NotSupportedException("Indexed Array.Copy currently supports Int32 arrays only.");
+		if (sourceIndex > source.Length || length > source.Length - sourceIndex)
+			throw new ArgumentException("The source range exceeds the array's length.", nameof(sourceArray));
+		if (destinationIndex > destination.Length || length > destination.Length - destinationIndex)
+			throw new ArgumentException("The destination range exceeds the array's length.", nameof(destinationArray));
+		if (source == destination && destinationIndex > sourceIndex && destinationIndex - sourceIndex < length)
+		{
+			for (var index = length; index > 0; index--) destination[destinationIndex + index - 1] = source[sourceIndex + index - 1];
+		}
+		else
+		{
+			for (var index = 0; index < length; index++) destination[destinationIndex + index] = source[sourceIndex + index];
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static unsafe void ClearPrimitive(Array array, int index, int length)
+	{
+		if (array is null) throw new ArgumentNullException(nameof(array));
+		if (index < 0 || length < 0)
+			throw new IndexOutOfRangeException();
+		if (array is byte[] bytes)
+		{
+			ValidateClearRange(bytes.Length, index, length);
+			fixed (byte* pointer = bytes) ShadowBuffer.ZeroMemoryInternal(pointer + index, (nuint)length);
+		}
+		else if (array is char[] characters)
+		{
+			ValidateClearRange(characters.Length, index, length);
+			fixed (char* pointer = characters) ShadowBuffer.ZeroMemoryInternal(pointer + index, (nuint)length * 2);
+		}
+		else if (array is int[] integers)
+		{
+			ValidateClearRange(integers.Length, index, length);
+			fixed (int* pointer = integers) ShadowBuffer.ZeroMemoryInternal(pointer + index, (nuint)length * 4);
+		}
+		else if (array is string?[] strings)
+		{
+			ValidateClearRange(strings.Length, index, length);
+			for (var position = index; position < index + length; position++) strings[position] = null;
+		}
+		else if (array is object?[] references)
+		{
+			ValidateClearRange(references.Length, index, length);
+			for (var position = index; position < index + length; position++) references[position] = null;
+		}
+		else throw new NotSupportedException("Array.Clear currently supports byte, character, Int32, string and object arrays only.");
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ValidateClearRange(int arrayLength, int index, int length)
+	{
+		if (index > arrayLength || length > arrayLength - index) throw new IndexOutOfRangeException();
+	}
+
+	// Zeroing is allowed by AllocateUninitializedArray's contract. All target
+	// allocations are nonmoving, including arrays requested with pinned=true.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static T[] AllocateUninitializedArray<T>(int length, bool pinned) => new T[length];
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static T[] Empty<T>() => ShadowEmptyArray<T>.Value;
 
@@ -1113,6 +2053,21 @@ public readonly struct ShadowUInt64
 public static class ShadowIntegerFormatter
 {
 	private const int MaximumPrecision = 999_999_999;
+
+	// This path has no format specifier or precision. Keeping it separate from
+	// the general formatter avoids importing grouped/scientific formats merely
+	// to render an exception's negative integer value.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static string FormatNegativeInt32(int value, string sign)
+	{
+		var magnitude = (uint)(-(value + 1)) + 1u;
+		var digits = CountDecimalDigits(magnitude);
+		var result = M68kRuntime.AllocateString(sign.Length + digits);
+		for (var index = 0; index < sign.Length; index++)
+			M68kRuntime.SetStringChar(result, index, sign[index]);
+		WriteDecimalValue(result, sign.Length, digits, magnitude);
+		return result;
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static string FormatInt32(int value)
@@ -2209,7 +3164,7 @@ public ref struct ShadowDefaultInterpolatedStringHandler
 /// Compact growable backing implementation for the admitted
 /// <see cref="System.Collections.Generic.List{T}"/> contract.
 /// </summary>
-public sealed class ShadowList<T>
+public sealed class ShadowList<T> : IEnumerable<T>
 {
 	internal T[]? _items;
 	internal int _size;
@@ -2368,6 +3323,10 @@ public sealed class ShadowList<T>
 		result._version = _version;
 		return result;
 	}
+
+	IEnumerator<T> IEnumerable<T>.GetEnumerator() =>
+		_size == 0 ? ShadowEmptyListEnumerator<T>.Instance : GetEnumerator();
+	IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<T>)this).GetEnumerator();
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public T[] ToArray()
@@ -2709,10 +3668,23 @@ public sealed class ShadowDictionaryStorage<TKey, TValue>
 }
 
 /// <summary>
+/// Cached interface enumerator for an empty List, matching CoreLib's empty array enumerator.
+/// </summary>
+internal sealed class ShadowEmptyListEnumerator<T> : IEnumerator<T>
+{
+	internal static readonly ShadowEmptyListEnumerator<T> Instance = new();
+	public bool MoveNext() => false;
+	public T Current { get { M68kRuntime.ThrowInvalidOperationException(); return default!; } }
+	object? IEnumerator.Current { get { M68kRuntime.ThrowInvalidOperationException(); return null; } }
+	public void Reset() { }
+	public void Dispose() { }
+}
+
+/// <summary>
 /// Layout-compatible private implementation of the admitted
 /// <see cref="System.Collections.Generic.List{T}.Enumerator"/> contract.
 /// </summary>
-public struct ShadowListEnumerator<T>
+public struct ShadowListEnumerator<T> : IEnumerator<T>
 {
 	internal ShadowList<T> _list;
 	internal int _version;
@@ -2742,6 +3714,22 @@ public struct ShadowListEnumerator<T>
 	{
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		get => _current;
+	}
+
+	object? IEnumerator.Current
+	{
+		get
+		{
+			if (_index == 0 || _index == -1) M68kRuntime.ThrowInvalidOperationException();
+			return _current;
+		}
+	}
+
+	void IEnumerator.Reset()
+	{
+		if (_version != _list._version) M68kRuntime.ThrowInvalidOperationException();
+		_index = 0;
+		_current = default!;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

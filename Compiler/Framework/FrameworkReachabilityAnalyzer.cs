@@ -53,11 +53,25 @@ internal static class FrameworkReachabilityAnalyzer
 	ProcessPending:
 		while (pending.TryDequeue(out var reachable))
 		{
-			var method = module.ApplyTargetRuntimeOverride(reachable.Method);
+			CilMethod method;
+			try
+			{
+				method = module.ApplyTargetRuntimeOverride(reachable.Method);
+			}
+			catch (M68kCompilationException exception) when (IsUnresolvedFrameworkCall(module, contract, reachable.Method, exception))
+			{
+				// Numeric type analysis can resolve calls before the framework walk.
+				// Keep the original body when an unimplemented framework call blocks
+				// that analysis, so the walk records its exact identity and root path.
+				// Compilation will still reject the resulting incompatible graph.
+				method = reachable.Method;
+			}
 			if (method.IsImport)
 			{
 				continue;
 			}
+			if (module.RegisterStringDispatchLayout(method) is { } stringLayout)
+				reachableDispatchLayouts.TryAdd(stringLayout.Identity, stringLayout);
 			var suppressedEphemeralSpanCalls = method.Instructions
 				.Where(static instruction => instruction.OpCode == OpCodes.Call)
 				.Select(instruction =>
@@ -108,6 +122,9 @@ internal static class FrameworkReachabilityAnalyzer
 					continue;
 				}
 
+				if (instruction.OpCode == OpCodes.Box && module.RegisterBoxedDispatchLayout(
+					module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset), method.ModuleName) is { } boxedLayout)
+					reachableDispatchLayouts.TryAdd(boxedLayout.Identity, boxedLayout);
 				if (instruction.OpCode == OpCodes.Newarr)
 				{
 					var elementType = module.ResolveTypeToken(
@@ -159,25 +176,52 @@ internal static class FrameworkReachabilityAnalyzer
 
 				if (description is not null && isFrameworkReference)
 				{
+					module.TryCreateExperimentalJoinEnumerationBinding(exactIdentity, method, out var callSiteOverride);
+					if (callSiteOverride is null) module.TryCreateExperimentalListPrefixCopyBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreateExperimentalCompositeSegmentCopyBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreateExperimentalObjectJoinTextBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreateExperimentalObjectJoinDispatchBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreateExperimentalNumberGroupCloneBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedStringBuilderToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedApplicationToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
+					if (callSiteOverride is null) module.TryCreatePinnedGeneralObjectToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedApplicationFormattingLeafBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedHandlerToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedCompositeBufferToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
+					if (callSiteOverride is null) module.TryCreatePinnedIntegralToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
+					if (callSiteOverride is null) module.TryCreatePinnedNullableToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
+					if (callSiteOverride is null) module.TryCreatePinnedDecimalScaleComparisonBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
+					if (callSiteOverride is null) module.TryCreatePinnedNumericSpanIdentityBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedArrayMemoryStartConstructorBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedFormattingResourceBinding(exactIdentity, method, out callSiteOverride);
 					var decision = contract.Classify(
 						exactIdentity,
 						description,
 						target,
-						resolutionFailure);
+						resolutionFailure,
+						useVerifiedCoreLibIdentity: module.FrameworkImplementationPack is not null,
+						callSiteOverride: callSiteOverride,
+						requirePinnedCoreLibBinding: module.FrameworkImplementationPack is { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false });
 					var reportedIdentity = module.FrameworkImplementationPack is null
 						? exactIdentity
 						: FrameworkImplementationProfile.Canonicalize(exactIdentity);
 					AddObservation(
 						members,
 						reportedIdentity,
-						description,
+						module.FrameworkImplementationPack is null
+							? description
+							: description with { AssemblyName = reportedIdentity.AssemblyName },
 						decision,
 						method.DisplayName,
 						instruction.Offset,
 						reachable.RootPath);
+					// An unsupported framework edge is a diagnostic boundary. Its
+					// raw implementation body must not be traversed as application CIL.
+					if (decision.Status == M68kFrameworkCompatibilityStatus.Unsupported) target = null;
 				}
 
 				if (instruction.OpCode == OpCodes.Newobj &&
+					target?.IsConstructorFactory != true &&
 					target?.ImportName?.StartsWith(
 						"intrinsic:nullable-ctor:",
 						StringComparison.Ordinal) != true &&
@@ -197,10 +241,13 @@ internal static class FrameworkReachabilityAnalyzer
 						reachable.RootPath.ToArray()));
 				}
 				if (instruction.OpCode == OpCodes.Newobj &&
-					target?.Definition is { IsImport: false } constructor)
+					target?.IsConstructorFactory != true &&
+					target?.Definition is { IsImport: false } constructor &&
+					!module.IsValueTypeConstructor(constructor))
 				{
-					var layout = module.GetTypeLayout(constructor);
+					var layout = module.GetAllocationLayout(target!);
 					reachableDispatchLayouts.TryAdd(layout.Identity, layout);
+					module.RegisterReachableDispatchLayout(layout);
 					if (managedPoolRuntime is not null &&
 						module.TryGetEffectiveFinalizer(layout) is { } finalizer)
 					{
@@ -237,11 +284,32 @@ internal static class FrameworkReachabilityAnalyzer
 						"char[]",
 						reachable.RootPath.ToArray()));
 				}
+				if (target?.ImportName == "intrinsic:runtime-object-memberwise-clone")
+				{
+					managedAllocationSites.Add(new M68kManagedAllocationSite(method.DisplayName, instruction.Offset,
+						"clone", "object", reachable.RootPath.ToArray()));
+				}
 
 				if (target is null)
 				{
 					continue;
 				}
+				if (instruction.ConstrainedTypeToken is { } constrainedToken && target.Definition is { } constrainedDeclaration &&
+					module.TryResolveConstrainedValueInterfaceImplementation(method, constrainedToken, instruction.Offset,
+						constrainedDeclaration, out var constrainedImplementation) &&
+					constrainedImplementation is { ModuleName: "System.Private.CoreLib", DisplayName: "System.ValueType::ToString" })
+				{
+					var boxedType = module.ResolveTypeToken(constrainedToken, method, instruction.Offset);
+					if (module.RegisterBoxedDispatchLayout(boxedType, method.ModuleName) is { } implicitBoxLayout)
+						reachableDispatchLayouts.TryAdd(implicitBoxLayout.Identity, implicitBoxLayout);
+					managedAllocationSites.Add(new M68kManagedAllocationSite(method.DisplayName, instruction.Offset,
+						"box", boxedType.DisplayName, reachable.RootPath.ToArray()));
+				}
+				if (target.ImportName is "intrinsic:runtime-object-get-type" or "intrinsic:runtime-type-from-handle" &&
+					module.RegisterRuntimeTypeDispatchLayout() is { } runtimeTypeLayout)
+					reachableDispatchLayouts.TryAdd(runtimeTypeLayout.Identity, runtimeTypeLayout);
+				if (CompilationModule.IsString(target.Signature.ReturnType) && module.RegisterStringDispatchLayout() is { } returnedStringLayout)
+					reachableDispatchLayouts.TryAdd(returnedStringLayout.Identity, returnedStringLayout);
 				if (instruction.ConstrainedTypeToken is null &&
 					target.Definition is
 						{ IsImport: false, DeclaringTypeIsInterface: true } interfaceDefinition &&
@@ -355,6 +423,14 @@ internal static class FrameworkReachabilityAnalyzer
 		M68kFloatingPointMode floatingPoint,
 		Action<CilMethod> enqueue)
 	{
+		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: false } constrainedDeclaration &&
+			instruction.ConstrainedTypeToken is { } valueTypeToken &&
+			module.TryResolveConstrainedValueInterfaceImplementation(caller, valueTypeToken, instruction.Offset,
+				constrainedDeclaration, out var valueImplementation))
+		{
+			enqueue(valueImplementation);
+			return;
+		}
 		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 		{
 			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
@@ -440,6 +516,7 @@ internal static class FrameworkReachabilityAnalyzer
 		instruction.OpCode == OpCodes.Newobj;
 
 	private static bool IsSpanByrefConstructor(string? importName) =>
+		importName is "intrinsic:readonly-span-from-ref-length:char" or "intrinsic:span-from-ref-length:char" ||
 		importName?.StartsWith(
 			"intrinsic:span-from-ref:",
 			StringComparison.Ordinal) == true ||
@@ -471,6 +548,24 @@ internal static class FrameworkReachabilityAnalyzer
 	{
 		var separator = methodDisplayName.LastIndexOf("::", StringComparison.Ordinal);
 		return separator < 0 ? methodDisplayName : methodDisplayName[..separator];
+	}
+
+	private static bool IsUnresolvedFrameworkCall(CompilationModule module, Net10FrameworkContract contract,
+		CilMethod method, M68kCompilationException exception)
+	{
+		if (method.HasDeferredBody || method.IsImport || exception.DiagnosticId != M68kDiagnosticIds.UnsupportedInstruction ||
+			!string.Equals(exception.Method, method.DisplayName, StringComparison.Ordinal) || exception.IlOffset is not { } offset)
+			return false;
+		foreach (var instruction in method.Instructions)
+		{
+			if (instruction.Offset != offset) continue;
+			if (instruction.OpCode != OpCodes.Call && instruction.OpCode != OpCodes.Callvirt && instruction.OpCode != OpCodes.Newobj ||
+				instruction.Operand is not int token || token == 0) return false;
+			var member = module.DescribeFrameworkMethodToken(token, method, offset);
+			return contract.IsFrameworkAssembly(member.AssemblyName) ||
+				module.FrameworkImplementationPack is not null && FrameworkImplementationProfile.IsFrameworkImplementationCandidate(member);
+		}
+		return false;
 	}
 
 	private sealed class MemberAccumulator

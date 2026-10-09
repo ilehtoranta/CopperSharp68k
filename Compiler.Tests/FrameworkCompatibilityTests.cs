@@ -181,6 +181,31 @@ public sealed class FrameworkCompatibilityTests
 			context));
 	}
 
+	[Theory]
+	[InlineData("System.Private.CoreLib", "System.Int32", false, M68kFrameworkCompatibilityStatus.Unsupported)]
+	[InlineData("System.Private.CoreLib", "System.Int32", true, M68kFrameworkCompatibilityStatus.Intrinsic)]
+	[InlineData("System.Private.CoreLib", "System.UInt32", true, M68kFrameworkCompatibilityStatus.Unsupported)]
+	[InlineData("User.Assembly", "System.Int32", true, M68kFrameworkCompatibilityStatus.Unsupported)]
+	public void CoreLibIntrinsicIdentityMappingRequiresVerifiedPackAndExactSignature(
+		string assemblyName, string returnType, bool verified, M68kFrameworkCompatibilityStatus expected)
+	{
+		static FrameworkMemberId StringLength(string assembly, string result) => new(
+			FrameworkTypeId.Named(assembly, "System.String"),
+			"get_Length",
+			new FrameworkMethodSignatureId(0x20, 0, 0, FrameworkTypeId.Primitive(result), []));
+		var binding = FrameworkBindingRegistry.TryBind(
+			StringLength("System.Runtime", "System.Int32"),
+			new FrameworkBindingContext("System.String", default, null, false));
+		Assert.NotNull(binding);
+		var description = new CilMethodReferenceIdentity(
+			assemblyName, "System.String", "get_Length", false, 0, "int", [], []);
+		var decision = Net10FrameworkContract.Default.Classify(
+			StringLength(assemblyName, returnType), description,
+			MethodReference.ForBinding(binding, default), null,
+			useVerifiedCoreLibIdentity: verified);
+		Assert.Equal(expected, decision.Status);
+	}
+
 	[Fact]
 	public void AnalysisInventoriesReachableManagedAllocationInstructions()
 	{
@@ -2203,8 +2228,11 @@ public sealed class FrameworkCompatibilityTests
 	[Fact]
 	public void ExplicitCilReferenceEqualsRetainsPublicIdentityAndUsesIntrinsic()
 	{
-		var assemblyPath = RawCilFixtureBuilder.CreateObjectReferenceEqualsAssembly(
-			Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!);
+		// Parallel compilation probes reflect over DLLs beside their input.
+		// Isolate this temporary fixture so another probe cannot load and lock it.
+		var directory = Path.Combine(Path.GetTempPath(), $"CopperSharp-reference-equals-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(directory);
+		var assemblyPath = RawCilFixtureBuilder.CreateObjectReferenceEqualsAssembly(directory);
 		try
 		{
 			var request = new M68kCompilationRequest
@@ -2232,6 +2260,7 @@ public sealed class FrameworkCompatibilityTests
 		finally
 		{
 			File.Delete(assemblyPath);
+			Directory.Delete(directory);
 		}
 	}
 

@@ -129,11 +129,6 @@ internal sealed class M68kArithmeticFrameMemory
 		else
 		{
 			if (!_module.GetTypeLayout(field).FieldOffsets.TryGetValue(field.Handle, out displacement)) return false;
-			// Match the compiler's public value transport, which omits CoreLib's
-			// object header for the pinned TimeSpan implementation.
-			if (field.ModuleName == "System.Private.CoreLib" &&
-				field.DisplayName.EndsWith("System.TimeSpan::_ticks", StringComparison.Ordinal))
-				displacement -= 8;
 		}
 		if (field.Type.IsSupportedScalar) size = field.Type.Size;
 		else if (_module.TryGetReferenceFreeStructLayout(field.Type, field.ModuleName, out var layout)) size = layout.Size;

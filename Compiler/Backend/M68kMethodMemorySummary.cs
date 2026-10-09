@@ -176,6 +176,16 @@ internal static class M68kMethodMemorySummaryAnalyzer
 			block.Instructions))
 		{
 			summary.ObservesManagedRoots |= instruction.IsSafepoint;
+			if (instruction.Operation is M68kMachineOperation.ArgumentLoad or M68kMachineOperation.ArgumentAddress &&
+				instruction.ArgumentIndex is { } loadedParameter)
+			{
+				// Address-taken arguments are read from a mutable home rather than
+				// the initial Argument SSA value. The loaded object may reach casts
+				// and callbacks; it cannot make the caller's storage unobservable.
+				// Do not claim an exact returned alias for a mutable argument home.
+				summary.AddParameter(loadedParameter, M68kParameterMemoryEffect.Read |
+					M68kParameterMemoryEffect.Write | M68kParameterMemoryEffect.Capture);
+			}
 			if (instruction.Operation == M68kMachineOperation.Call)
 			{
 				// Calls are composed from logical target summaries below. Avoid
@@ -476,6 +486,17 @@ internal static class M68kMethodMemorySummaryAnalyzer
 	private static M68kParameterMemoryEffect ParameterEffectFor(
 		M68kMachineInstruction instruction)
 	{
+		if (instruction.Operation is M68kMachineOperation.Box or
+			M68kMachineOperation.TypeTest or M68kMachineOperation.Unbox)
+		{
+			// Reference-type generic boxing and casts can expose the incoming
+			// object through their result, including later interface callbacks.
+			// Parameter aliases currently follow copies and exact return aliases;
+			// retain concrete storage until conditional cast aliases are modeled.
+			return M68kParameterMemoryEffect.Read |
+				M68kParameterMemoryEffect.Write |
+				M68kParameterMemoryEffect.Capture;
+		}
 		if (instruction.Operation is
 			M68kMachineOperation.ArrayLoad or
 			M68kMachineOperation.AggregateArrayLoad ||

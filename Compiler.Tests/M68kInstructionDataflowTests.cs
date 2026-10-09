@@ -225,6 +225,31 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void CallReturnNullFactDoesNotApplyToSavedReceiver()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x204E); // MOVEA.L A6,A0 receiver.
+		assembler.EmitJsr("getter", external: true); // Returns a different value in A0.
+		assembler.EmitWord(0xB0FC); // CMPA.W #0,A0
+		assembler.EmitWord(0);
+		assembler.EmitBranch(M68kCondition.NotEqual, "done");
+		assembler.EmitWord(0x204E); // Reload the receiver, independent of the null result.
+		assembler.EmitWord(0xB0FC); // CMPA.W #0,A0
+		assembler.EmitWord(0);
+		assembler.EmitBranch(M68kCondition.NotEqual, "done");
+		assembler.EmitWord(0x7001); // Null receiver failure.
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("done");
+		assembler.EmitWord(0x702A);
+		assembler.EmitWord(0x4E75);
+
+		assembler.OptimizeForCpu(M68kCpuTarget.M68000,
+			peepholeOptimization: M68kPeepholeOptimizationMode.FixedPoint);
+
+		Assert.Equal(2, assembler.GetInstructionStream().Count(i => i.Opcode == 0xB0FC));
+	}
+
+	[Fact]
 	public void CallClobbersButDoesNotConsumeConditionCodes()
 	{
 		var assembler = new M68kAssembler();
@@ -1704,6 +1729,50 @@ public sealed class M68kInstructionDataflowTests
 			0x4CD2, 0x00FF, // MOVEM.L (A2),D0-D7
 			0x4E75,
 		}, words);
+	}
+
+	[Theory]
+	[InlineData(0)]
+	[InlineData(1)]
+	[InlineData(2)]
+	[InlineData(3)]
+	[InlineData(4)]
+	[InlineData(5)]
+	[InlineData(6)]
+	[InlineData(7)]
+	public void ByteToLongExtensionWritesOnlyItsDataRegisterAndConditions(int register)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord((ushort)(0x49C0 | register)); // EXTB.L Dn
+		var effects = M68kInstructionDataflow.GetEffects(Assert.Single(assembler.GetInstructionStream()));
+		Assert.Equal(1 << register, effects.UsesData);
+		Assert.Equal(1 << register, effects.DefinesData);
+		Assert.Equal(0, effects.UsesAddress);
+		Assert.Equal(0, effects.DefinesAddress);
+		Assert.NotEqual(M68kConditionCodeSet.None, effects.WritesConditions & M68kConditionCodeSet.Zero);
+		Assert.NotEqual(M68kConditionCodeSet.None, effects.WritesConditions & M68kConditionCodeSet.Negative);
+	}
+
+	[Fact]
+	public void MemoryPushGroupingPreservesA4AcrossByteExtensionAndCall()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x2F2B); // MOVE.L 8(A3),-(A7)
+		assembler.EmitWord(8);
+		assembler.EmitWord(0x2F2B); // MOVE.L 4(A3),-(A7)
+		assembler.EmitWord(4);
+		assembler.EmitWord(0x2F13); // MOVE.L (A3),-(A7)
+		assembler.EmitWord(0x49C0); // EXTB.L D0 preserves A4.
+		assembler.EmitWord(0x223C); // MOVE.L #255,D1
+		assembler.EmitLong(255);
+		assembler.EmitWord(0x204A); // MOVEA.L A2,A0
+		assembler.EmitJsr("callee", external: true);
+		assembler.EmitWord(0x4E75);
+		assembler.OptimizeForCpu(M68kCpuTarget.M68020);
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68020);
+		Assert.DoesNotContain("movem.l", assembly, StringComparison.Ordinal);
+		Assert.Contains("extb.l\td0", assembly, StringComparison.Ordinal);
+		Assert.Contains("move.l\t8(a3),-(a7)", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]
@@ -6454,6 +6523,32 @@ public sealed class M68kInstructionDataflowTests
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Contains("moveq\t#1,d2", assembly, StringComparison.Ordinal);
 		Assert.Contains("tst.l\td0", assembly, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void KeepsDistinctRelocatedAddressComparisonsInDispatchChain()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0xB5FC); // CMPA.L #first_descriptor,A2
+		assembler.EmitAddress("first_descriptor");
+		assembler.EmitBranch(M68kCondition.Equal, "first");
+		assembler.EmitWord(0xB5FC); // CMPA.L #second_descriptor,A2
+		assembler.EmitAddress("second_descriptor");
+		assembler.EmitBranch(M68kCondition.Equal, "second");
+		assembler.EmitWord(0x7000); assembler.EmitWord(0x4E75);
+		assembler.Mark("first"); assembler.EmitWord(0x7001); assembler.EmitWord(0x4E75);
+		assembler.Mark("second"); assembler.EmitWord(0x7002); assembler.EmitWord(0x4E75);
+		assembler.Mark("first_descriptor"); assembler.EmitLong(0);
+		assembler.Mark("second_descriptor"); assembler.EmitLong(0);
+		assembler.OptimizeForM68000();
+		var comparisons = assembler.GetInstructionStream().Where(static i => i.Opcode == 0xB5FC).ToArray();
+		Assert.Equal(2, comparisons.Length);
+		foreach (var comparison in comparisons)
+			Assert.Contains(comparison.Offset + 2, assembler.AddressFixupOffsets);
+		Assert.Equal(2, assembler.GetInstructionStream().Count(static i => i.Kind == M68kInstructionKind.ConditionalBranch));
+		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
+		Assert.Contains("cmpa.l\t#C68K_first_descriptor,a2", assembly, StringComparison.Ordinal);
+		Assert.Contains("cmpa.l\t#C68K_second_descriptor,a2", assembly, StringComparison.Ordinal);
 	}
 
 	[Fact]

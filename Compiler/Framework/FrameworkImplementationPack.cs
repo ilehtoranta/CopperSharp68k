@@ -31,6 +31,11 @@ internal sealed class FrameworkImplementationPackCatalog
 
 	public bool EnableUnlistedManagedBodies { get; }
 
+	public bool IsPinnedStringBuilderInput => StringBuilderImplementationInput.Matches(Provenance);
+
+	// Protocol transport is independent of admitting reachable managed bodies.
+	public bool SupportsStringBuilderProtocolAbi => EnableUnlistedManagedBodies || IsPinnedStringBuilderInput;
+
 	public bool TryGetAssemblyPath(string assemblyName, out string path) =>
 		_assemblyPaths.TryGetValue(assemblyName, out path!);
 }
