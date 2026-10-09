@@ -47,9 +47,6 @@
 	<ProjectReference Include="..\Sdk.Amiga\Examples\CopperBars\CopperBars.csproj" />
     <ProjectReference Include="..\Sdk.Amiga\Examples\StopwatchBenchmark\StopwatchBenchmark.csproj" />
     <ProjectReference Include="..\Targets.Amiga\CopperSharp.Targets.Amiga.csproj" />
-    <ProjectReference Include="..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj"
-                      ReferenceOutputAssembly="false"
-                      Condition="Exists('..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj') and '$(SkipCopperScreenHeadlessProjectReference)' != 'true'" />
     <PackageReference Include="Copper68k" Version="1.4.0" />
   </ItemGroup>
 

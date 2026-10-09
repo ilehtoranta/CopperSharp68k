@@ -41,6 +41,7 @@ dotnet restore Compiler.NativeOsRunner/CopperSharp.Compiler.NativeOsRunner.cspro
 dotnet build Compiler.NativeOsRunner/CopperSharp.Compiler.NativeOsRunner.csproj -c Release --no-restore
 $env:COPPERSHARP_KICKSTART31_ROM = 'C:/path/to/kickstart-3.1-a500.rom'
 ./scripts/test-native-os.ps1
+./scripts/test-native-os.ps1 -IncludeCompilerIntegration
 ```
 
 The script requires a ROM and runs both protocol and native execution tests.
@@ -53,6 +54,21 @@ the test project directly.
 Directly running the test project without the ROM runs the protocol tests and
 explicitly skips native execution. This optional project is separate from the
 main test suite so compiler unit tests do not require an emulator checkout.
+
+`-IncludeCompilerIntegration` also runs `CopperScreenHeadlessIntegrationTests`
+through this runner. It configures `COPPERSHARP_NATIVE_OS_RUNNER` for the test
+process and saves JSON records and their Hunk images under `CompilerIntegration`.
+Records include compiler, fixture, runner and Hunk hashes, expected return values,
+and the native result. The script restores its environment settings on completion.
+Set `COPPERSHARP_NATIVE_OS_INTEGRATION_RESULTS` to retain this evidence when
+invoking the compiler test project directly.
+
+The integration cases use the 68000 interpreter, the 68040 interpreter running
+68000 payloads, and the 68040 JIT running 68040 payloads. There is no 68000 JIT
+equivalent in the current engine. An absent ROM configuration explicitly skips
+these optional cases; configured missing ROM or runner paths fail. The retired
+FileStats payload-only cost test stays skipped until instruction and cycle
+measurement can isolate the payload. A separate test bounds the native boot.
 
 ```powershell
 dotnet Compiler.NativeOsRunner/bin/Release/net10.0/CopperSharp.Compiler.NativeOsRunner.dll --fixture DosProbe --expect-d0 42
@@ -93,9 +109,9 @@ The initial validated profile is Kickstart 3.1 A500, PAL OCS, 512 KiB Chip RAM
 and 512 KiB Slow RAM, 68000 interpreter. `RunCommand` requires DOS v37 or newer;
 Kickstart 1.3 is not supported by this launcher. The runner accepts 68020 and
 68040 configurations, with JIT restricted to 68040 by the current engine.
-The 68020 and 68040 configurations require separate validation for this runner
-test suite. Accelerator timing
-is approximate, and there is no 68000 JIT backend in this engine.
+The compiler integration matrix also validates 68040 interpreter and JIT
+execution; 68020 native execution remains unvalidated. Accelerator timing is
+approximate, and there is no 68000 JIT backend in this engine.
 
 The default bounds are 1500 frames and 120 seconds of host emulation time.
 Reported frames and cycles include boot, floppy access, payload execution,
