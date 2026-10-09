@@ -1,5 +1,13 @@
 # Compatibility and performance testing
 
+## Native StringBuilder growth, formatting and GC
+
+The native runner tests use the verified Microsoft.NETCore.App.Runtime.win-x64 10.0.9 CoreLib with normal public admission. Five scenarios check presized append, chunk growth, invariant decimal/hex formatting, interpolated integer formatting, and explicit collection while a builder and its string snapshot remain live. Each scenario runs with Disabled and FixedPoint optimization on the 68000 interpreter, 68040 interpreter, and 68040 JIT, checking exact stdout, return value 42, and fresh native completion identifiers. The managed heap is 8 KiB, allocated through Exec. This is semantic and GC coverage; boot-inclusive cycles do not measure StringBuilder performance.
+
+The compiler/runtime prerequisites include the pinned StringBuilder surface and dependency rules, formatting helpers, aggregate/byref lowering and GC root handling. Built-in runtime calls use relocatable absolute JSR until final layout proves that a short call is in range, allowing large formatting bodies to reach GC shutdown. The native test script retains Hunk images, maps, backend settings and input hashes under the StringBuilder results directory. The broader BCL corpus contains additional gates; these five native scenarios do not establish general CoreLib support.
+
+The isolated branch was verified with SDK 10.0.301: 775 selected admission, pinned-input, surface/ABI, register/dataflow, branch-relaxation and managed-runtime/GC host tests passed without skips; all 37 native runner tests passed, including 30 StringBuilder executions; and 43 native compiler integration tests passed. The one existing payload-only cycle benchmark remains explicitly deferred. The retained StringBuilder records were audited against executable/map hashes, exact output and return values, actual backends, optimizer pairs and 30 distinct run identifiers. The 68000 and 68040 interpreters executed identical images for each scenario/mode, and all 726 source/build inputs remained unchanged during verification. These checks do not claim a complete run of the broader BCL corpus.
+
 ## Testing model
 
 Compatibility is executable. The prose specifications explain intent, while manifests, ledgers, compiler diagnostics, semantic tests, target execution, map assertions, and package integration tests enforce it.

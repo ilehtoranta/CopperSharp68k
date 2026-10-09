@@ -23,9 +23,11 @@ $previousRom = $env:COPPERSHARP_KICKSTART31_ROM
 $previousRunner = $env:COPPERSHARP_NATIVE_OS_RUNNER
 $previousRecords = $env:COPPERSHARP_NATIVE_OS_INTEGRATION_RESULTS
 $previousFileStatsRecords = $env:COPPERSHARP_NATIVE_FILESTATS_RESULTS
+$previousStringBuilderRecords = $env:COPPERSHARP_NATIVE_STRINGBUILDER_RESULTS
 try {
     $env:COPPERSHARP_KICKSTART31_ROM = (Resolve-Path -LiteralPath $Rom).Path
     $env:COPPERSHARP_NATIVE_FILESTATS_RESULTS = Join-Path ([System.IO.Path]::GetFullPath($ResultsDirectory)) 'FileStats'
+    $env:COPPERSHARP_NATIVE_STRINGBUILDER_RESULTS = Join-Path ([System.IO.Path]::GetFullPath($ResultsDirectory)) 'StringBuilder'
     & dotnet test $project -c Release --no-restore "-p:CopperScreenRoot=$engineRoot" `
         --logger 'trx;LogFileName=native-os.trx' --results-directory $ResultsDirectory
     if ($LASTEXITCODE -ne 0) { throw 'Native OS verification failed; inspect the TRX report.' }
@@ -46,4 +48,5 @@ finally {
     $env:COPPERSHARP_NATIVE_OS_RUNNER = $previousRunner
     $env:COPPERSHARP_NATIVE_OS_INTEGRATION_RESULTS = $previousRecords
     $env:COPPERSHARP_NATIVE_FILESTATS_RESULTS = $previousFileStatsRecords
+    $env:COPPERSHARP_NATIVE_STRINGBUILDER_RESULTS = $previousStringBuilderRecords
 }

@@ -1,5 +1,30 @@
 # Native AmigaDOS Hunk runner
 
+## Native StringBuilder checks
+
+The runner test project uses the pinned .NET 10.0.9 win-x64 CoreLib implementation
+for StringBuilder tests. Restore downloads that package and copies the CIL input
+into `PinnedCoreLib/10.0.9`; the test helper verifies its SHA-256 before compiling.
+The framework pack uses the compiler's normal pinned admission rules and does
+not enable unlisted managed bodies. The compiler and managed runtime provide the pinned StringBuilder support
+used by these cases.
+
+Five scenarios cover presized append, chunk growth, invariant decimal/hex
+composite formatting, interpolated integer formatting, and allocation pressure
+with explicit GC while a builder and its string snapshot remain live. Every
+scenario checks exact native stdout and return value 42 with Disabled and
+FixedPoint optimization. The 8 KiB managed heap is allocated through Exec.
+The 68000 and 68040 interpreters share compiled 68000 payloads; the 68040 JIT
+uses 68040 payloads. Completion polling and boot limits retain their meaning.
+
+`scripts/test-native-os.ps1` retains their Hunk images, maps and JSON records
+under `StringBuilder` in the results directory. Set
+`COPPERSHARP_NATIVE_STRINGBUILDER_RESULTS` for the same evidence when invoking
+the test project directly. Records identify CoreLib, compiler, fixture, runtime,
+runner, Amiga engine and CPU engine hashes, as well as the actual native result.
+This is semantic/GC coverage; boot-inclusive cycles are not StringBuilder costs.
+
+
 This optional runner boots a standard OFS floppy in the current CopperScreen
 Lightweight engine. The 901,120-byte ADF is mounted from host memory and stays
 in memory during execution. No disk image is saved unless `--save-adf` is given.

@@ -7,6 +7,9 @@
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x64" Version="[10.0.9]" />
+    <None Include="$(NuGetPackageRoot)/microsoft.netcore.app.runtime.win-x64/10.0.9/runtimes/win-x64/lib/net10.0/System.Private.CoreLib.dll"
+          Link="PinnedCoreLib/10.0.9/System.Private.CoreLib.dll" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
