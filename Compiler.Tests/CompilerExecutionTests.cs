@@ -6857,7 +6857,7 @@ public sealed partial class CompilerExecutionTests
 			{
 				calls.Add("OpenLibrary");
 				Assert.Equal("dos.library", ReadCString(bus, state.A[1]));
-				Assert.Equal(0u, state.D[0]);
+				Assert.Equal(37u, state.D[0]);
 				state.D[0] = dosBase;
 			});
 			bus.RegisterGateway(dosBase - 30, state =>
