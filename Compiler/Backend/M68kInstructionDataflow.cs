@@ -1040,8 +1040,10 @@ internal sealed class M68kInstructionDataflow
 				}
 				else
 				{
+					// EOR's source is Dn, but its destination is the opcode's
+					// effective address. Opmode selects the operand size.
 					UseData((opcode >> 9) & 7);
-					AddEffectiveAddress((ushort)(((opcode >> 9) & 7) | (operationMode << 3)), EffectiveAddressAccess.ReadWrite);
+					AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				}
 				WriteArithmeticConditions();
 				return;
