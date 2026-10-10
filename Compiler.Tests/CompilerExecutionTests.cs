@@ -14,6 +14,20 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class CompilerExecutionTests
 {
+	[Fact]
+	public void CopperStartCpuProbeRestoresAllTemporaryExceptionVectors()
+	{
+		var result = Compile(M68kCpuTarget.M68000, M68kOutputFormat.Hunk,
+			"CopperSharp.Compiler.Tests.CompilerFixtures::CopperStartCpuProbeEntry",
+			exceptionMode: M68kExceptionMode.Yolo,
+			peepholeOptimization: M68kPeepholeOptimizationMode.Bounded);
+		var bus = CreateHunkBus(result);
+		var vectors = new uint[] { 8, 12, 16, 44 };
+		foreach (var vector in vectors) bus.WriteLong(vector, 0x2000 + vector);
+		_ = Execute(bus, M68kCpuModel.M68000, HunkLoadAddress + result.EntryPoint);
+		foreach (var vector in vectors) Assert.Equal(0x2000 + vector, bus.ReadLong(vector));
+	}
+
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
 	public void TransparentOutStructFieldDistinguishesValueAndReferenceReceivers(
@@ -283,6 +297,8 @@ public sealed class CompilerExecutionTests
 				("NarrowUnsignedSubtractionEntry", 64000u),
 				("NarrowByteMultiplyEntry", 255u),
 				("NarrowShortShiftEntry", 0xFFFF_FFCEu),
+				("NarrowWordHighByteEntry", 253u),
+				("NarrowSignedWordByteShiftEntry", 126u),
 				("NarrowSignedNegateEntry", 120u)
 			})
 			{

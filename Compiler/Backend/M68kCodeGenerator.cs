@@ -7131,17 +7131,17 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
 		_assembler.EmitWord(0x227C); // MOVEA.L #lineFVectorAddress,A1
 		_assembler.EmitLong(lineFVectorAddress);
-		_assembler.EmitWord(0x2268); // MOVE.L 4(A0),D1
+		_assembler.EmitWord(0x2228); // MOVE.L 4(A0),D1
 		_assembler.EmitWord(4);
 		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
 		_assembler.EmitWord(0x227C); // MOVEA.L #busErrorVectorAddress,A1
 		_assembler.EmitLong(busErrorVectorAddress);
-		_assembler.EmitWord(0x2268); // MOVE.L 8(A0),D1
+		_assembler.EmitWord(0x2228); // MOVE.L 8(A0),D1
 		_assembler.EmitWord(8);
 		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
 		_assembler.EmitWord(0x227C); // MOVEA.L #addressErrorVectorAddress,A1
 		_assembler.EmitLong(addressErrorVectorAddress);
-		_assembler.EmitWord(0x2268); // MOVE.L 12(A0),D1
+		_assembler.EmitWord(0x2228); // MOVE.L 12(A0),D1
 		_assembler.EmitWord(12);
 		_assembler.EmitWord(0x2281); // MOVE.L D1,(A1)
 		_assembler.EmitBranch(M68kCondition.True, skipHandler);

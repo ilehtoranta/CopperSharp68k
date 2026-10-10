@@ -8,6 +8,11 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class CompilerFixtures
 {
+	public static uint CopperStartCpuProbeEntry() => CopperStartCpuProbe();
+
+	[M68kImport("intrinsic:copperstart-probe-cpu")]
+	private static extern uint CopperStartCpuProbe();
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static uint AggressiveGuestRead(APTR address, int offset) =>
 		APTR.ReadUInt32(address, offset);
@@ -6204,6 +6209,18 @@ public static class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static uint MultiplyBySubtractConstant(uint value) =>
 		value * 0x7FFFFFFFu;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NarrowWordHighByteEntry() => WordHighByte(65000);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static byte WordHighByte(ushort value) => (byte)(value >> 8);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint NarrowSignedWordByteShiftEntry() => SignedWordByteShift(-12345);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static byte SignedWordByteShift(short value) => (byte)(value >> 5);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int NarrowShortShiftEntry()
