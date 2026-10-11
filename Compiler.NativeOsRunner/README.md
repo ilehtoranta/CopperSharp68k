@@ -9,13 +9,23 @@ The framework pack uses the compiler's normal pinned admission rules and does
 not enable unlisted managed bodies. The compiler and managed runtime provide the pinned StringBuilder support
 used by these cases.
 
-Five scenarios cover presized append, chunk growth, invariant decimal/hex
+Six scenarios cover presized append, chunk growth, invariant decimal/hex
 composite formatting, interpolated integer formatting, and allocation pressure
-with explicit GC while a builder and its string snapshot remain live. Every
+with explicit or allocation-triggered GC while a builder and its string snapshot remain live. Every
 scenario checks exact native stdout and return value 42 with Disabled and
 FixedPoint optimization. The 8 KiB managed heap is allocated through Exec.
 The 68000 and 68040 interpreters share compiled 68000 payloads; the 68040 JIT
 uses 68040 payloads. Completion polling and boot limits retain their meaning.
+
+The automatic-collection case makes no `GC.Collect` or disposal calls. Its
+discarded builders allocate at least 64 KiB of character-array data, plus object
+headers and temporary strings, on the 8 KiB heap.
+It requires at least two observed resets of the existing runtime allocation
+counter, which ordinary allocation only increases and collection resets. It
+checks the old snapshot after each pressure round and the grown builder's exact
+contents before clearing and reusing it. The configured strategy is
+`OnAllocationFailure`; successful continuation therefore exercises allocation
+failure, reclamation and retry without adding runtime instrumentation.
 
 `scripts/test-native-os.ps1` retains their Hunk images, maps and JSON records
 under `StringBuilder` in the results directory. Set

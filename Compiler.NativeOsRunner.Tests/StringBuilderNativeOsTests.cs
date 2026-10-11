@@ -19,7 +19,8 @@ public sealed class StringBuilderNativeOsTests
         { "Growing", "partpartpartpartpartpartpartpart\n" },
         { "IntegerFormat", "-00042|89ABCDEF\n" },
         { "IntegerHandler", "[0][1][2][3][4][5][6][7]\n" },
-        { "CollectWithLiveBuilderAndSnapshot", "partpartpartpartpartpartpartpart\nafter collection\n" }
+        { "CollectWithLiveBuilderAndSnapshot", "partpartpartpartpartpartpartpart\nafter collection\n" },
+        { "CollectOnAllocationFailureWithLiveBuilderAndSnapshot", "partpartpartpartpartpartpartpart\nafter automatic collection\n" }
     };
 
     public static TheoryData<string, string, string> NativeCases

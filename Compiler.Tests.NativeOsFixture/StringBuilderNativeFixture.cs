@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
+using CopperSharp.Runtime;
 
 namespace CopperSharp.Compiler.Tests.NativeOsFixture;
 
@@ -56,5 +58,44 @@ public static class StringBuilderNativeFixture
         Console.WriteLine(snapshot);
         Console.WriteLine(builder.ToString());
         return 42;
+    }
+
+    public static int CollectOnAllocationFailureWithLiveBuilderAndSnapshot()
+    {
+        var builder = new StringBuilder(1);
+        for (var i = 0; i < 8; i++) builder.Append("part");
+        var snapshot = builder.ToString();
+        var observedSweeps = 0;
+        for (var round = 0; round < 8; round++)
+        {
+            // Grow the live builder while retaining its independent old snapshot.
+            builder.Append("part");
+            for (var i = 0; i < 32; i++)
+            {
+                var before = ManagedPool.GetStaleBytes();
+                if (AllocateDiscardedBuilder() != 9) return 14;
+                // Collect resets this existing counter; ordinary allocation only
+                // increases it. No explicit collection or disposal occurs here.
+                if (ManagedPool.GetStaleBytes() < before) observedSweeps++;
+            }
+            if (snapshot != "partpartpartpartpartpartpartpart" ||
+                builder.Length != 32 + (round + 1) * 4) return 15;
+        }
+        if (observedSweeps < 2 || builder.Capacity < 64) return 16;
+        if (builder.ToString() != "partpartpartpartpartpartpartpartpartpartpartpartpartpartpartpart") return 17;
+        builder.Clear().Append("after automatic collection");
+        Console.WriteLine(snapshot);
+        Console.WriteLine(builder.ToString());
+        return 42;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int AllocateDiscardedBuilder()
+    {
+        // The backing char array alone consumes 256 payload bytes. 256 calls
+        // allocate over 64 KiB on the test's 8 KiB heap, and return no reference.
+        var temporary = new StringBuilder(128);
+        temporary.Append("discarded");
+        return temporary.ToString().Length;
     }
 }

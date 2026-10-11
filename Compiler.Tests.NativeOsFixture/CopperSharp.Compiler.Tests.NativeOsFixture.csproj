@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Sdk.Amiga/CopperSharp.Sdk.Amiga.csproj" />
+    <ProjectReference Include="../Runtime.Managed/CopperSharp.Runtime.Managed.csproj" />
   </ItemGroup>
 </Project>
