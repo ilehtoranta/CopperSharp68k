@@ -572,6 +572,8 @@ public sealed record M68kCodeSizeOptions
 	public bool RemoveRedundantTransport { get; init; }
 	/// <summary>Fold private stack copies when their intermediate register is dead.</summary>
 	public bool CompactPrivateStackCopies { get; init; }
+	/// <summary>Remove trivial loop phis before allocation for MC68000 resident HUNKs with YOLO exceptions and no managed memory.</summary>
+	public bool SimplifyLoopPhis { get; init; }
 	/// <summary>Select compact indexed guest accesses and direct memory tests.</summary>
 	public bool CompactGuestMemory { get; init; }
 	/// <summary>Defer narrow normalization when consumers use only the low part.</summary>

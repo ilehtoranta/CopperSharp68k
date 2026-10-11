@@ -237,6 +237,57 @@ public sealed class GeneratedCodeSizeExecutionTests
         }
     }
 
+    [Fact]
+    public void LoopPhiCleanupRetainsUpdatesAcrossCallsAndZeroIterationLoops()
+    {
+        foreach (var peephole in Enum.GetValues<M68kPeepholeOptimizationMode>())
+        foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
+            var compiled = AmigaM68kCompiler.Compile(new M68kCompilationRequest {
+                AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
+                EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::LoopPhiEntry",
+                Cpu = target, RuntimeProfile = M68kRuntimeProfile.Resident,
+                OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+                MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
+                Hunk = new() { IncludeSymbols = false },
+                CodeSizeOptimizations = new() { SimplifyLoopPhis = true }
+            });
+            foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
+            foreach (var load in new uint[] { 0x10000, 0x20000 })
+            foreach (var input in new uint[] { 0, 1, 2, 7, 8, 0x12345678, uint.MaxValue }) {
+                var stable = input ^ 0x12345678;
+                var expected = stable;
+                for (uint index = 0; index < (input & 7); index++)
+                    expected = unchecked((expected + stable + index) ^ 0x55aa55aa);
+                Assert.Equal(expected, Guest(compiled, model, load, input)[0]);
+            }
+        }
+    }
+
+    [Fact]
+    public void LoopPhiPolicyIsOptInAndRestrictedToItsQualifiedProfile()
+    {
+        Assert.False(new M68kCodeSizeOptions().SimplifyLoopPhis);
+        var request = new M68kCompilationRequest {
+            AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
+            EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::LoopPressureEntry",
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
+            OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+            MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
+            Hunk = new() { IncludeSymbols = false }
+        };
+        var baseline = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() });
+        var candidate = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() { SimplifyLoopPhis = true } });
+        Assert.True(candidate.Image.Length < baseline.Image.Length);
+        foreach (var target in new[] { M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
+            var unsupported = request with { Cpu = target };
+            Assert.Equal(AmigaM68kCompiler.Compile(unsupported with { CodeSizeOptimizations = new() }).Image,
+                AmigaM68kCompiler.Compile(unsupported with { CodeSizeOptimizations = new() { SimplifyLoopPhis = true } }).Image);
+        }
+        var application = request with { RuntimeProfile = M68kRuntimeProfile.Application };
+        Assert.Equal(AmigaM68kCompiler.Compile(application with { CodeSizeOptimizations = new() }).Image,
+            AmigaM68kCompiler.Compile(application with { CodeSizeOptimizations = new() { SimplifyLoopPhis = true } }).Image);
+    }
+
     private static LinkedCode Raw(ushort[] words, bool enabled)
     {
         var assembler = new M68kAssembler {
@@ -328,6 +379,27 @@ public sealed class GeneratedCodeSizeExecutionTests
 
 public static unsafe class GeneratedSizeFixtures
 {
+    public static uint LoopPressureEntry() {
+        var input = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        var stable = input ^ 0x12345678;
+        var result = stable;
+        for (uint index = 0; index < (input & 7); index++) {
+            if ((index & 1) == 0) result = LoopPhiMix(unchecked(result + stable + index));
+            else result = LoopPhiMix(result ^ stable ^ input);
+        }
+        return result;
+    }
+    public static uint LoopPhiEntry() {
+        var input = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        var stable = input ^ 0x12345678;
+        var result = stable;
+        for (uint index = 0; index < (input & 7); index++)
+            result = LoopPhiMix(unchecked(result + stable + index));
+        return result;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static uint LoopPhiMix(uint value) => value ^ 0x55aa55aa;
+
     public static uint ScalarRawEntry() {
         AmigaVarArg value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
         return value.Raw;

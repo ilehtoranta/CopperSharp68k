@@ -1943,6 +1943,60 @@ public sealed class M68kMachineOptimizerTests
 			instruction.Definitions.Contains(invariant.Id));
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void LoopPhiCleanupPreservesCarriedValuesCopiesAndRegisterConstraints(bool differentRegisters)
+	{
+		var function = new M68kMachineFunction("loop-phi-cleanup", 0) { SimplifyLoopPhis = true };
+		var entry = AddBlock(function, 0, 0);
+		var header = AddBlock(function, 1, 10);
+		var body = AddBlock(function, 2, 20);
+		var exit = AddBlock(function, 3, 30);
+		Connect(entry, header);
+		Connect(header, body);
+		Connect(header, exit);
+		Connect(body, header);
+		var initial = CreateLong(function);
+		var condition = CreateLong(function);
+		var delta = CreateLong(function);
+		AddArgument(function, entry, initial.Id, 0);
+		AddArgument(function, entry, condition.Id, 1);
+		AddArgument(function, entry, delta.Id, 2);
+		entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Branch, 1));
+		var stable = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long,
+			differentRegisters ? M68kRegisterSet.DataOrAddress : M68kRegisterSet.Data);
+		var counter = CreateLong(function);
+		var next = CreateLong(function);
+		var copy = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long,
+			stable.AllowedRegisters);
+		header.Phis.Add(new(stable.Id, new Dictionary<int, int> {
+			[entry.Id] = initial.Id, [body.Id] = stable.Id }));
+		header.Phis.Add(new(counter.Id, new Dictionary<int, int> {
+			[entry.Id] = condition.Id, [body.Id] = next.Id }));
+		header.Instructions.Add(function.CreateInstruction(M68kMachineOperation.ConditionalBranch,
+			10, uses: [counter.Id], sourceInstruction: new CilInstruction(10, OpCodes.Brtrue, 20, 11)));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy,
+			20, uses: [stable.Id], definitions: [copy.Id]));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalStore,
+			21, uses: [copy.Id], memoryEffect: M68kMachineMemoryEffect.Write, argumentIndex: 0));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Add,
+			22, uses: [counter.Id, delta.Id], definitions: [next.Id],
+			sourceInstruction: new CilInstruction(22, OpCodes.Add, null, 23)));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Branch, 23));
+		exit.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 30, uses: [counter.Id]));
+
+		M68kControlFlowAnalysis.ComputeLoopDepths(function);
+		var statistics = M68kMachineOptimizer.Run(function, M68kCpuTarget.M68000);
+
+		Assert.Equal(differentRegisters, header.Phis.Any(phi => phi.Definition == stable.Id));
+		Assert.Contains(header.Phis, phi => phi.Definition == counter.Id &&
+			phi.Inputs[body.Id] == next.Id);
+		Assert.Contains(body.Instructions, instruction => instruction.Operation == M68kMachineOperation.Copy &&
+			instruction.Uses.SequenceEqual(new[] { differentRegisters ? stable.Id : initial.Id }));
+		if (!differentRegisters) Assert.True(statistics.PhisRemoved > 0);
+	}
+
 	private static void AddConstant(
 		M68kMachineFunction function,
 		M68kMachineBlock block,

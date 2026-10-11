@@ -57,6 +57,7 @@ static int Run(string[] args)
 				ValidateLiteralOperands = selected.Contains(nameof(M68kCodeSizeOptions.ValidateLiteralOperands)),
 				RemoveRedundantTransport = selected.Contains(nameof(M68kCodeSizeOptions.RemoveRedundantTransport)),
 				CompactPrivateStackCopies = selected.Contains(nameof(M68kCodeSizeOptions.CompactPrivateStackCopies)),
+				SimplifyLoopPhis = selected.Contains(nameof(M68kCodeSizeOptions.SimplifyLoopPhis)),
 				CompactGuestMemory = selected.Contains(nameof(M68kCodeSizeOptions.CompactGuestMemory)),
 				NarrowOperations = selected.Contains(nameof(M68kCodeSizeOptions.NarrowOperations)),
 				EliminateRedundantInitialization = selected.Contains(nameof(M68kCodeSizeOptions.EliminateRedundantInitialization)),
@@ -699,7 +700,7 @@ static void PrintUsage()
 		  [--code-size-passes comma-separated M68kCodeSizeOptions property names]
 		    New generated-code passes default off: RemoveRedundantTransport,
 		    CompactGuestMemory, NarrowOperations, EliminateRedundantInitialization,
-		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores, CompactPrivateStackCopies, ValidateLiteralOperands.
+		    SizeFirstCosts, InlineMemoryHelpers, ShareArithmeticCores, CompactPrivateStackCopies, SimplifyLoopPhis, ValidateLiteralOperands.
 		  [--resident-stack-context-threshold bytes; default 512]
 		  [--bulk-copy-provider <Assembly::Namespace.Type::Method>]
 		  [--bulk-copy-min-bytes <positive bytes; default 64 with provider>]

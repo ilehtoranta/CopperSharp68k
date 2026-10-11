@@ -1507,7 +1507,9 @@ internal sealed partial class M68kCodeGenerator
 				CilOptimizer.Optimize(method, _module),
 				internalAbi.Arguments
 					.Select(static argument => argument.Register)
-					.ToArray());
+					.ToArray(),
+				simplifyLoopPhis: SupportsGeneratedCodeSizeProfile &&
+					_request.CodeSizeOptimizations!.SimplifyLoopPhis);
 			machineFunction.PreserveCalleeSavedRegisters =
 				!_rootOnlyMethods.Contains(method.Identity);
 			if (UsesResidentInvocationContext)

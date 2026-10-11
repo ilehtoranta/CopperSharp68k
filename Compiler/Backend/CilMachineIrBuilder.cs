@@ -42,7 +42,8 @@ internal static class CilMachineIrBuilder
 		M68kCpuTarget cpu = M68kCpuTarget.M68000,
 		bool hasRuntimeFrame = false,
 		CilOptimizationPlan? optimizations = null,
-		IReadOnlyList<M68kRegister?>? argumentRegisters = null)
+		IReadOnlyList<M68kRegister?>? argumentRegisters = null,
+		bool simplifyLoopPhis = false)
 	{
 		optimizations ??= CilOptimizer.Optimize(method, module);
 		var stackStates = CilStackAnalyzer.AnalyzeTypes(method, module, optimizations);
@@ -69,6 +70,7 @@ internal static class CilMachineIrBuilder
 		var function = new M68kMachineFunction(method.DisplayName, 0, method)
 		{
 			ReservedRegisters = M68kRegisterSet.None,
+			SimplifyLoopPhis = simplifyLoopPhis,
 			HasExceptionHandlers = method.ExceptionRegions.Count != 0
 		};
 		for (var index = 0; index < blockInstructions.Count; index++)
