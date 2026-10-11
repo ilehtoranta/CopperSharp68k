@@ -1147,6 +1147,7 @@ internal sealed partial class CompilationModule : IDisposable
 		var isValueType = IsValueTypeDefinition(definition);
 		var inheritedSize = isValueType ? 0 : 8;
 		var inheritedBitmap = 0u;
+		var additionalBitmaps = new List<uint>();
 		var fieldOffsets = new Dictionary<FieldDefinitionHandle, int>();
 		if (!isValueType && TryGetExperimentalListBase(handle) is { } listBase)
 		{
@@ -1159,6 +1160,7 @@ internal sealed partial class CompilationModule : IDisposable
 			var baseLayout = GetTypeLayout((TypeDefinitionHandle)definition.BaseType);
 			inheritedSize = baseLayout.Size;
 			inheritedBitmap = baseLayout.ReferenceBitmap;
+			additionalBitmaps.AddRange(baseLayout.AdditionalReferenceBitmaps);
 			foreach (var item in baseLayout.FieldOffsets)
 			{
 				fieldOffsets.Add(item.Key, item.Value);
@@ -1207,9 +1209,7 @@ internal sealed partial class CompilationModule : IDisposable
 					 _assemblyName == "CopperSharp.Runtime.Managed" && GetTypeName(definition) == "CopperSharp.Runtime.ShadowNumberBuffer"))
 				{
 					var word = (size - (isValueType ? 0 : 8)) / 4;
-					if (aggregateLayout.ReferenceBitmap != 0 && (word >= 32 || (word > 0 && (aggregateLayout.ReferenceBitmap >> (32 - word)) != 0)))
-						throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, $"Reference fields of '{field.DisplayName}' exceed the descriptor bitmap.");
-					bitmap |= aggregateLayout.ReferenceBitmap << word;
+					MergeReferenceBitmap(ref bitmap, additionalBitmaps, aggregateLayout.ReferenceBitmap, word, isValueType, field.DisplayName);
 				}
 				size = checked(size + aggregateLayout.Size);
 				continue;
@@ -1232,9 +1232,7 @@ internal sealed partial class CompilationModule : IDisposable
 				var fieldIndex = (size - (isValueType ? 0 : 8)) / 4;
 				if (field.Type.IsReference)
 			{
-				if (fieldIndex is < 0 or >= 32)
-					throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, $"Reference fields of '{field.DisplayName}' exceed the descriptor bitmap.");
-				bitmap |= 1u << fieldIndex;
+				MergeReferenceBitmap(ref bitmap, additionalBitmaps, 1, fieldIndex, isValueType, field.DisplayName);
 			}
 
 			fieldOffsets.Add(fieldHandle, size);
@@ -1262,7 +1260,7 @@ internal sealed partial class CompilationModule : IDisposable
 			size,
 			bitmap,
 			fieldOffsets,
-			_assemblyName);
+			_assemblyName) { AdditionalReferenceBitmaps = additionalBitmaps.ToArray() };
 		_layoutCache.Add(handle, layout);
 		return layout;
 	}
@@ -4688,6 +4686,24 @@ internal sealed partial class CompilationModule : IDisposable
 			_ => false
 		};
 
+	private static void MergeReferenceBitmap(ref uint bitmap, List<uint> additional, uint references, int word, bool isValueType, string name)
+	{
+		for (var bit = 0; references != 0; bit++, references >>= 1)
+		{
+			if ((references & 1) == 0) continue;
+			var index = checked(word + bit);
+			if (index < 0 || isValueType && index >= 32)
+				throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, $"Reference fields of '{name}' exceed the descriptor bitmap.");
+			if (index < 32) bitmap |= 1u << index;
+			else
+			{
+				var extraWord = index / 32 - 1;
+				while (additional.Count <= extraWord) additional.Add(0);
+				additional[extraWord] |= 1u << (index % 32);
+			}
+		}
+	}
+
 	private static bool IsReflectionTransparentScalarField(Type type) =>
 		type == typeof(bool) ||
 		type == typeof(char) ||
@@ -5080,6 +5096,7 @@ internal sealed partial class CompilationModule : IDisposable
 		var isValueType = IsValueTypeDefinition(definition);
 		var inheritedSize = isValueType ? 0 : 8;
 		var inheritedBitmap = 0u;
+		var additionalBitmaps = new List<uint>();
 		var fieldOffsets = new Dictionary<FieldDefinitionHandle, int>();
 		if (!isValueType && TryGetExperimentalListBase(handle, constructedType) is { } listBase)
 		{
@@ -5091,6 +5108,7 @@ internal sealed partial class CompilationModule : IDisposable
 			var baseLayout = GetTypeLayout((TypeDefinitionHandle)definition.BaseType);
 			inheritedSize = baseLayout.Size;
 			inheritedBitmap = baseLayout.ReferenceBitmap;
+			additionalBitmaps.AddRange(baseLayout.AdditionalReferenceBitmaps);
 			foreach (var item in baseLayout.FieldOffsets)
 			{
 				fieldOffsets.Add(item.Key, item.Value);
@@ -5121,6 +5139,7 @@ internal sealed partial class CompilationModule : IDisposable
 					baseType);
 				inheritedSize = baseLayout.Size;
 				inheritedBitmap = baseLayout.ReferenceBitmap;
+				additionalBitmaps.AddRange(baseLayout.AdditionalReferenceBitmaps);
 				foreach (var item in baseLayout.FieldOffsets)
 				{
 					fieldOffsets.Add(item.Key, item.Value);
@@ -5158,9 +5177,7 @@ internal sealed partial class CompilationModule : IDisposable
 					(IsCharacterValueListBuilder(constructedType) || IsExperimentalManagedStructLayout(aggregateLayout) || IsExperimentalNullableJoinValue(fieldType)))
 				{
 					var word = (size - (isValueType ? 0 : 8)) / 4;
-					if (aggregateLayout.ReferenceBitmap != 0 && (word >= 32 || (word > 0 && (aggregateLayout.ReferenceBitmap >> (32 - word)) != 0)))
-						throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, $"Reference fields of '{constructedType.DisplayName}' exceed the descriptor bitmap.");
-					bitmap |= aggregateLayout.ReferenceBitmap << word;
+					MergeReferenceBitmap(ref bitmap, additionalBitmaps, aggregateLayout.ReferenceBitmap, word, isValueType, constructedType.DisplayName);
 				}
 				size = checked(size + aggregateLayout.Size);
 				continue;
@@ -5180,9 +5197,7 @@ internal sealed partial class CompilationModule : IDisposable
 			var fieldIndex = (size - (isValueType ? 0 : 8)) / 4;
 			if (fieldType.Kind == CilTypeKind.ManagedReference)
 			{
-				if (fieldIndex is < 0 or >= 32)
-					throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, $"Reference fields of '{constructedType.DisplayName}' exceed the descriptor bitmap.");
-				bitmap |= 1u << fieldIndex;
+				MergeReferenceBitmap(ref bitmap, additionalBitmaps, 1, fieldIndex, isValueType, constructedType.DisplayName);
 			}
 			fieldOffsets.Add(fieldHandle, size);
 			size = checked(size + fieldStorageSize);
@@ -5197,7 +5212,7 @@ internal sealed partial class CompilationModule : IDisposable
 			bitmap,
 			fieldOffsets,
 			_assemblyName,
-			constructedType);
+			constructedType) { AdditionalReferenceBitmaps = additionalBitmaps.ToArray() };
 		if (FrameworkImplementationPack?.EnableUnlistedManagedBodies == true && _assemblyName == "System.Private.CoreLib" &&
 			constructedType.GenericArguments is [{ Kind: CilTypeKind.ManagedReference, DisplayName: "object" }] &&
 			GetTypeName(definition).StartsWith("System.Runtime.CompilerServices.InlineArray", StringComparison.Ordinal))
@@ -10521,6 +10536,8 @@ internal sealed record CilTypeLayout(
 	string ModuleName = "",
 	CilType? ConstructedType = null)
 {
+	// Class payload words 32 and above. Value-type transport still uses one word.
+	public IReadOnlyList<uint> AdditionalReferenceBitmaps { get; init; } = Array.Empty<uint>();
 	// Reference-bearing single-word structs use the same address-based value
 	// representation and stack ABI as larger aggregates, including return buffers.
 	public bool UsesAggregateTransport => Size > 4 || ReferenceBitmap != 0;

@@ -1,5 +1,6 @@
 param(
     [string]$Configuration = 'Release',
+    [string]$ArtifactsPath,
     [string]$ResultsDirectory = 'TestResults/CpuMatrix',
     [ValidateRange(1, 64)][int]$ShardCount = 32,
     [int[]]$ShardNumbers = @(),
@@ -12,6 +13,12 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $project = Join-Path $repoRoot 'Compiler.Tests/CopperSharp.Compiler.Tests.csproj'
 $binRoot = Join-Path $repoRoot "Compiler.Tests/bin/$Configuration/net10.0"
+$artifactArguments = @()
+if ($ArtifactsPath) {
+    $ArtifactsPath = [IO.Path]::GetFullPath($ArtifactsPath)
+    $binRoot = Join-Path $ArtifactsPath "bin/CopperSharp.Compiler.Tests/$($Configuration.ToLowerInvariant())"
+    $artifactArguments = @('--artifacts-path', $ArtifactsPath)
+}
 $resultsRoot = [IO.Path]::GetFullPath($ResultsDirectory)
 $manifestPath = Join-Path $resultsRoot 'manifest.json'
 $className = 'CopperSharp.Compiler.Tests.CompilerExecutionTests'
@@ -65,12 +72,13 @@ function Read-ShardResult($path, $methods, $minimumCases = 0, $expectedCases = @
 
 if (Test-Path -LiteralPath $manifestPath) {
     $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
-    if ($manifest.ShardCount -ne $ShardCount -or $manifest.Configuration -ne $Configuration -or $manifest.Repository -ne $repoRoot) {
+    if ($manifest.ShardCount -ne $ShardCount -or $manifest.Configuration -ne $Configuration -or $manifest.Repository -ne $repoRoot -or
+        [string]$manifest.ArtifactsPath -ne [string]$ArtifactsPath) {
         throw 'Requested matrix settings differ from the existing manifest.'
     }
     Assert-BinaryInputs
 } else {
-    $listed = & dotnet test $project -c $Configuration --no-build --no-restore --list-tests --filter "FullyQualifiedName~$className" 2>&1
+    $listed = & dotnet test $project -c $Configuration @artifactArguments --no-build --no-restore --list-tests --filter "FullyQualifiedName~$className" 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Test discovery failed: $listed" }
     $listed | Set-Content -LiteralPath (Join-Path $resultsRoot 'discovery.txt')
     $pattern = "^($([regex]::Escape($className))\.[^(]+)"
@@ -87,7 +95,7 @@ if (Test-Path -LiteralPath $manifestPath) {
         $shard.DiscoveredCases += $method.Count
     }
     $manifest = [pscustomobject]@{ SchemaVersion = 1; Repository = $repoRoot; Configuration = $Configuration;
-        Sdk = (& dotnet --version).Trim(); ShardCount = $ShardCount; MethodCount = $methods.Count;
+        Sdk = (& dotnet --version).Trim(); ShardCount = $ShardCount; MethodCount = $methods.Count; ArtifactsPath = $ArtifactsPath;
         BinaryInputs = Get-BinaryInputs; Shards = $shards;
         DiscoverySha256 = (Get-FileHash -LiteralPath (Join-Path $resultsRoot 'discovery.txt')).Hash }
     $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath
@@ -171,7 +179,7 @@ foreach ($number in $ShardNumbers) {
     New-Item -ItemType Directory -Path $attemptRoot | Out-Null
     $filter = ($shard.Methods | Sort-Object | ForEach-Object { "FullyQualifiedName=$_" }) -join '|'
     Write-Host "Running shard $number/$ShardCount, attempt $attempt, $($shard.Methods.Count) methods."
-    & dotnet test $project -c $Configuration --no-build --no-restore --filter $filter --logger 'trx;LogFileName=tests.trx' --results-directory $attemptRoot 2>&1 |
+    & dotnet test $project -c $Configuration @artifactArguments --no-build --no-restore --filter $filter --logger 'trx;LogFileName=tests.trx' --results-directory $attemptRoot 2>&1 |
         Tee-Object -FilePath (Join-Path $attemptRoot 'test.log')
     $testExitCode = $LASTEXITCODE
     Assert-BinaryInputs

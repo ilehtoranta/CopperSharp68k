@@ -276,7 +276,6 @@ internal sealed class M68kConditionProvenanceAnalysis
 		M68kEmittedInstruction branch,
 		M68kEmittedInstruction successor)
 	{
-		var result = output.Clone();
 		if (branch.Kind != M68kInstructionKind.ConditionalBranch ||
 			branch.TargetOffset is not { } targetOffset ||
 			successor.Offset != targetOffset &&
@@ -286,9 +285,12 @@ internal sealed class M68kConditionProvenanceAnalysis
 			output.Conditions.Zero.Width != 4 ||
 			!output.Conditions.Zero.Left.IsKnown)
 		{
-			return result;
+			// SetInitial copies retained states and JoinFrom only reads incoming
+			// states. Unrefined edges can therefore share this transfer result.
+			return output;
 		}
 
+		var result = output.Clone();
 		var isTarget = successor.Offset == targetOffset;
 		var isZero = ((branch.Opcode >> 8) & 0x0F) == 7
 			? isTarget

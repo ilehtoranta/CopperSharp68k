@@ -10310,7 +10310,7 @@ internal sealed partial class M68kCodeGenerator
 			{
 				_assembler.EmitAddress(BoxedInterfaceMapLabel(type));
 			}
-			EmitEmptyClassFinalizerDescriptorEntry();
+			EmitEmptyClassFinalizerDescriptorEntry(Math.Max(4, boxedPayloadBytes));
 		}
 
 		foreach (var item in _boxedStructLayouts.OrderBy(item => item.Key, StringComparer.Ordinal))
@@ -10729,11 +10729,12 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitClassFinalizerDescriptorEntry(CilTypeLayout layout)
 	{
-		if (!_usesFinalizers)
+		var additionalWords = Math.Max(0, (layout.Size - 8 + 127) / 128 - 1);
+		if (!_usesFinalizers && additionalWords == 0)
 		{
 			return;
 		}
-		if (_module.TryGetEffectiveFinalizer(layout) is { } finalizer)
+		if (_usesFinalizers && _module.TryGetEffectiveFinalizer(layout) is { } finalizer)
 		{
 			_assembler.EmitAddress(MethodLabel(finalizer));
 		}
@@ -10741,6 +10742,8 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.EmitLong(0);
 		}
+		for (var word = 0; word < additionalWords; word++)
+			_assembler.EmitLong(word < layout.AdditionalReferenceBitmaps.Count ? layout.AdditionalReferenceBitmaps[word] : 0);
 	}
 
 	private void EmitInitializeResidentInvocationSlots()
@@ -10767,12 +10770,14 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
-	private void EmitEmptyClassFinalizerDescriptorEntry()
+	private void EmitEmptyClassFinalizerDescriptorEntry(int payloadBytes = 0)
 	{
-		if (_usesFinalizers)
+		var additionalWords = Math.Max(0, (payloadBytes + 127) / 128 - 1);
+		if (_usesFinalizers || additionalWords != 0)
 		{
 			_assembler.EmitLong(0);
 		}
+		for (var word = 0; word < additionalWords; word++) _assembler.EmitLong(0);
 	}
 
 	private void EmitZeroInitializedStatics()

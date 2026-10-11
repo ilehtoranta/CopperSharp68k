@@ -31,6 +31,7 @@ public static class ManagedPool
 	private const uint FinalizerCountIncrement = 1u << FinalizerCountShift;
 	private const uint FinalizerCountMask = 0xFFFF_FF00;
 	private const int TypeFinalizerOffset = 20;
+	private const int ClassAdditionalReferenceBitmapsOffset = 24;
 	private const uint AggregateArrayReferenceFlag = 0x8000_0000;
 	private const int AggregateArrayElementSizeOffset = 28;
 	private const int AggregateArrayElementBitmapOffset = 32;
@@ -827,6 +828,16 @@ public static class ManagedPool
 		}
 
 		TraceFields(payloadAddress + 8, M68kAddress.ReadUInt32(descriptor, 4));
+		var fieldAddress = payloadAddress + 8 + 128;
+		var remainingBytes = fixedSize > 136 ? fixedSize - 136 : 0;
+		var bitmapOffset = ClassAdditionalReferenceBitmapsOffset;
+		while (remainingBytes != 0)
+		{
+			TraceFields(fieldAddress, M68kAddress.ReadUInt32(descriptor, bitmapOffset));
+			fieldAddress += 128;
+			bitmapOffset += 4;
+			remainingBytes = remainingBytes > 128 ? remainingBytes - 128 : 0;
+		}
 	}
 
 	private static void TraceFields(uint fieldAddress, uint bitmap)
