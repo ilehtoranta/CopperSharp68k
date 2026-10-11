@@ -746,10 +746,9 @@ internal static class CilMachineIrBuilder
 			}
 			return target.Signature.ParameterTypes.Length == 0 &&
 				target.Signature.ReturnType.DisplayName == "uint" &&
-				(target.ImportName?.EndsWith("-raw", StringComparison.Ordinal) == true ||
-				 target.Definition is { } definition &&
-				 definition.Signature.Header.IsInstance &&
-				 definition.Name == "get_Raw");
+				target.ImportName is { } rawImport &&
+				rawImport.StartsWith("intrinsic:", StringComparison.Ordinal) &&
+				rawImport.EndsWith("-raw", StringComparison.Ordinal);
 		}
 		return false;
 	}

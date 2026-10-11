@@ -203,6 +203,40 @@ public sealed class GeneratedCodeSizeExecutionTests
         Assert.Contains("derived only from string literals", error.Message);
     }
 
+    [Theory]
+    [InlineData("ScalarRawEntry")]
+    [InlineData("LiteralRawEntry")]
+    [InlineData("ConditionalRawEntry")]
+    [InlineData("ReferenceRawEntry")]
+    [InlineData("ValueRawEntry")]
+    [InlineData("EmbeddedRawEntry")]
+    [InlineData("CustomRawEntry")]
+    public void OrdinaryRawGettersReceiveStorageAndRetainTheirBodies(string entry)
+    {
+        foreach (var peephole in Enum.GetValues<M68kPeepholeOptimizationMode>())
+        foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
+            var compiled = AmigaM68kCompiler.Compile(new M68kCompilationRequest {
+                AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
+                EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::" + entry,
+                Cpu = target, RuntimeProfile = M68kRuntimeProfile.Resident,
+                OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+                MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
+                Hunk = new() { IncludeSymbols = false }
+            });
+            foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
+            foreach (var load in new uint[] { 0x10000, 0x20000 })
+            foreach (var input in new uint[] { 0, 1, 0x12345678, uint.MaxValue }) {
+                var expected = entry switch {
+                    "LiteralRawEntry" => (uint)'L',
+                    "ConditionalRawEntry" => input == 0 ? (uint)'F' : (uint)'T',
+                    "CustomRawEntry" => input ^ 0x55aa55aa,
+                    _ => input
+                };
+                Assert.Equal(expected, Guest(compiled, model, load, input)[0]);
+            }
+        }
+    }
+
     private static LinkedCode Raw(ushort[] words, bool enabled)
     {
         var assembler = new M68kAssembler {
@@ -294,6 +328,44 @@ public sealed class GeneratedCodeSizeExecutionTests
 
 public static unsafe class GeneratedSizeFixtures
 {
+    public static uint ScalarRawEntry() {
+        AmigaVarArg value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        return value.Raw;
+    }
+    public static uint LiteralRawEntry() {
+        AmigaVarArg value = "Literal";
+        return APTR.ReadUInt8(APTR.FromPointer(value.Raw), 0);
+    }
+    public static uint ConditionalRawEntry() {
+        AmigaVarArg value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) == 0 ? "False" : "True";
+        return APTR.ReadUInt8(APTR.FromPointer(value.Raw), 0);
+    }
+    public static uint ReferenceRawEntry() {
+        AmigaVarArg value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        return ReadRawReference(ref value);
+    }
+    public static uint ValueRawEntry() {
+        AmigaVarArg value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0);
+        return ReadRawValue(value);
+    }
+    private struct RawHolder { public AmigaVarArg Value; }
+    public static uint EmbeddedRawEntry() {
+        var holder = new RawHolder { Value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) };
+        return holder.Value.Raw;
+    }
+    private struct CustomRawValue {
+        public uint Value;
+        public uint Raw => Value ^ 0x55aa55aa;
+    }
+    public static uint CustomRawEntry() {
+        var value = new CustomRawValue { Value = APTR.ReadUInt32(APTR.FromPointer(0x40000), 0) };
+        return value.Raw;
+    }
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static uint ReadRawReference(ref AmigaVarArg value) => value.Raw;
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static uint ReadRawValue(AmigaVarArg value) => value.Raw;
+
     public static uint LocalCStringEntry()
     {
         string text;
