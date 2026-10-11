@@ -49,6 +49,8 @@ internal sealed partial class CompilationModule : IDisposable
 		_reflectionAttributeCache = new();
 	private Dictionary<string, (TypeDefinitionHandle Handle, bool IsInterface)>?
 		_runtimeTypeDefinitionIndex;
+	private Dictionary<string, (TypeDefinitionHandle Handle, bool IsInterface)>?
+		_constructedTypeDefinitionIndex;
 	private readonly IReadOnlyList<IM68kExternalCallResolver> _externalCallResolvers;
 	private readonly string _assemblyPath;
 	private readonly string _assemblyDirectory;
@@ -5000,21 +5002,29 @@ internal sealed partial class CompilationModule : IDisposable
 			? constructedType.DisplayName
 			: constructedType.DisplayName[..separator];
 		if (constructedType.IsNullable) definitionName = "System.Nullable`1";
-		foreach (var handle in Reader.TypeDefinitions)
+		// Metadata is immutable for the lifetime of this module. Interface
+		// closure asks for the same generic definitions repeatedly, including
+		// misses, so decode their signature names once rather than rescanning
+		// CoreLib for every constructed type. Keep this index separate from the
+		// runtime identity aliases: this lookup accepts signature names only.
+		if (_constructedTypeDefinitionIndex is null)
 		{
-			var definition = Reader.GetTypeDefinition(handle);
-			var signatureName = _signatureProvider
-				.GetTypeFromDefinition(Reader, handle, 0x12)
-				.DisplayName;
-			if (!StringComparer.Ordinal.Equals(signatureName, definitionName))
+			var index = new Dictionary<string, (TypeDefinitionHandle, bool)>(StringComparer.Ordinal);
+			foreach (var handle in Reader.TypeDefinitions)
 			{
-				continue;
+				var definition = Reader.GetTypeDefinition(handle);
+				var signatureName = _signatureProvider.GetTypeFromDefinition(Reader, handle, 0x12).DisplayName;
+				index.TryAdd(signatureName, (handle, (definition.Attributes & TypeAttributes.Interface) != 0));
 			}
+			_constructedTypeDefinitionIndex = index;
+		}
+		if (_constructedTypeDefinitionIndex.TryGetValue(definitionName, out var definitionTarget))
+		{
 			target = new CilRuntimeTypeTarget(
 				constructedType,
 				_assemblyName,
-				handle,
-				(definition.Attributes & TypeAttributes.Interface) != 0,
+				definitionTarget.Handle,
+				definitionTarget.IsInterface,
 				IsArray: false,
 				IsConstructedGeneric: true);
 			return true;

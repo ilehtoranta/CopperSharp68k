@@ -29,6 +29,26 @@ All seven fixture samples, including their recorded MC68000 cycle counts, remain
 
 An initial full host run was intentionally stopped after 99 minutes, with 4,609 passes (including 394 StringBuilder cases), one identical baseline failure, and no skips. Its TRX records an aborted run because the owned test host was terminated. That run does not establish a passing or complete full CPU matrix. The subsequent focused check and the complete native runner check provide the stated verification scope; the remaining full execution matrix is outstanding.
 
+## Generic metadata lookup cost
+
+Profiling the slowest retained host cases identified repeated generic definition lookup during interface reachability. In an isolated `StringBuilderInheritedGenericListDispatchEntry` analysis, `TryFindConstructedGenericDefinition` occupied 94.22% of inclusive sampled time. Each lookup scanned the module's complete type table and decoded signature names, including enum metadata. Repeated CoreLib searches produced 68.16 GB of cumulative temporary managed allocation; this is allocation traffic, not peak memory usage.
+
+The lookup now builds one ordinal signature-name index per `CompilationModule`, retaining the first matching definition and its interface flag. Each result still carries the caller's constructed type and arguments. Missing names use the same fallback as before. The index is separate from runtime primitive aliases and is neither global nor shared across compilations.
+
+Single-process analysis measurements under Windows, SDK 10.0.301 and the pinned CoreLib 10.0.9 were:
+
+| Entry | Before / after seconds | Before / after allocated GB |
+| --- | --- | --- |
+| `StringBuilderInheritedGenericListDispatchEntry` | 63.57 / 2.69 | 68.16 / 1.65 |
+| `CoreLibFloatingHandlerFormatProbeEntry` | 29.39 / 2.06 | 29.90 / 1.28 |
+| `CoreLibGenericDecimalNullableJoinsEntry` | 5.52 / 1.16 | 6.04 / 0.66 |
+
+All three complete analysis JSON outputs were byte-identical before and after the change. The first pair used sampled-thread tracing; the other pairs ran without tracing. These are individual local measurements, not statistical performance thresholds or estimates for the complete CPU suite. Twenty targeted type identity, interface dispatch and profile-baseline checks passed, followed by all ninety selected allocation, floating, nullable and integral/enum graph checks, without failures or skips.
+
+Paired full compilation of the inherited generic-list entry with optimization disabled produced byte-identical Hunk images and analysis JSON. Elapsed time decreased from 161.69 to 49.63 seconds, with cumulative allocation decreasing from 175.71 to 22.21 GB. The before measurement partially overlapped other profiling/check processes, so this timing ratio is indicative rather than a controlled benchmark; the image equality is independent of that scheduling difference. No native OS suite or complete CPU matrix was rerun for this change.
+
+Full fixed-point compilation of the inherited generic-list entry with the index still took 107.48 seconds and allocated 60.68 GB cumulatively. Its separate sampled profile attributed 53.47% of inclusive time to optimization and 17.79% to graph-coloring allocation. Hot paths include repeated instruction decoding/rendering and `CanFoldAcrossUnreferencedIlLabels`, which scans labels for each replacement candidate. This establishes remaining backend costs; the metadata speedups above must not be reported as full-compilation or full-suite speedups. The optimizer and allocator were not changed in this investigation.
+
 ## Testing model
 
 Compatibility is executable. The prose specifications explain intent, while manifests, ledgers, compiler diagnostics, semantic tests, target execution, map assertions, and package integration tests enforce it.
