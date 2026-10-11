@@ -194,6 +194,7 @@ internal static class FrameworkReachabilityAnalyzer
 					if (callSiteOverride is null) module.TryCreatePinnedNumericSpanIdentityBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedArrayMemoryStartConstructorBinding(exactIdentity, method, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedFormattingResourceBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreateCultureReadOnlyTextBinding(exactIdentity, method, out callSiteOverride);
 					var decision = contract.Classify(
 						exactIdentity,
 						description,

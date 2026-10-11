@@ -12034,6 +12034,14 @@ internal sealed partial class M68kCodeGenerator
 
 	private string RuntimeTypeTestIdentityLabel(CilRuntimeTypeTarget target)
 	{
+		if (target.ModuleName == "System.Private.CoreLib" && target.Type.DisplayName is "System.Enum" or "System.ValueType")
+		{
+			// Boxed descriptors link to these canonical runtime base identities.
+			// A metadata-layout descriptor would create a second identity for the
+			// same base and make otherwise valid boxed-value type tests fail.
+			RegisterRuntimeTypeDescriptor(target.Type.DisplayName);
+			return RuntimeTypeDescriptorLabel(target.Type.DisplayName);
+		}
 		if (!target.Type.IsReference)
 		{
 			RegisterBoxedType(target.Type);

@@ -661,6 +661,12 @@ public class ShadowCultureInfo
 	public void InitializeNameWithOverrides(string name, bool useUserOverride) => InitializeName(name);
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public virtual string GetName() => _name ?? string.Empty;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public virtual bool GetIsNeutralCulture() => false;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public virtual System.Globalization.NumberFormatInfo GetNumberFormat()
 	{
 		if (_numInfo is null)

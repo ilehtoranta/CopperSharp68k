@@ -1651,6 +1651,16 @@ internal sealed partial class CompilationModule : IDisposable
 		return materializeBody ? LowerNumericOperations(implementation) : implementation;
 	}
 
+	internal bool TryCreateCultureReadOnlyTextBinding(FrameworkMemberId member, CilMethod caller, out FrameworkBinding binding)
+	{
+		binding = null!;
+		return FrameworkImplementationPack is { } catalog && caller.ModuleName == "System.Private.CoreLib" &&
+			caller.Name == "ReadOnly" && member.Name == "ReadOnly" &&
+			member.DeclaringType.FullMetadataName == "System.Globalization.TextInfo" &&
+			FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(member, catalog,
+				DescribeImplementationCaller(caller), out binding);
+	}
+
 	private CilMethod ApplyTargetRuntimeOverrideCore(CilMethod method)
 	{
 		var member = DescribeFrameworkMethodDefinition(
@@ -4666,6 +4676,9 @@ internal sealed partial class CompilationModule : IDisposable
 	}
 
 	private bool IsValueTypeDefinition(TypeDefinition definition) =>
+		// System.Enum itself is a reference base class despite deriving from
+		// System.ValueType. Its concrete descendants are the value types.
+		!(_assemblyName == "System.Private.CoreLib" && GetTypeName(definition) == "System.Enum") &&
 		!definition.BaseType.IsNil && definition.BaseType.Kind switch
 		{
 			HandleKind.TypeReference => GetTypeName(Reader.GetTypeReference(

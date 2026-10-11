@@ -346,6 +346,26 @@ internal static class FrameworkImplementationProfile
 		out FrameworkBinding binding)
 	{
 		binding = null!;
+		if ((catalog.EnableUnlistedManagedBodies || catalog.IsPinnedStringBuilderInput) &&
+			implementationCaller is { AssemblyName: ImplementationAssembly, Name: "ReadOnly" } &&
+			referencedMember.Name == "ReadOnly")
+		{
+			var readOnlyCultureType = FrameworkTypeId.Named(ContractAssembly, CultureInfoType);
+			var readOnlyTextType = FrameworkTypeId.Named(ContractAssembly, "System.Globalization.TextInfo");
+			if (IsExactStaticMethod(Canonicalize(implementationCaller), CultureInfoType, "ReadOnly", readOnlyCultureType, [readOnlyCultureType]) &&
+				IsExactStaticMethod(Canonicalize(referencedMember), "System.Globalization.TextInfo", "ReadOnly", readOnlyTextType, [readOnlyTextType]))
+			{
+				var shadow = new FrameworkShadowMethod(ImplementationAssembly, "System.Globalization.TextInfo", "ReadOnly");
+				binding = new FrameworkBinding(referencedMember, FrameworkBindingKind.ShadowMethod,
+					$"shadow:{shadow.AssemblyName}:{shadow.TypeName}::{shadow.MethodName}",
+					new FrameworkEffectSummary(FrameworkEffects.MayThrow | FrameworkEffects.MayAllocate | FrameworkEffects.MayCollect |
+						FrameworkEffects.ReadsManagedMemory | FrameworkEffects.WritesManagedMemory,
+						[FrameworkFeature.ManagedObjects, FrameworkFeature.ManagedExceptions, FrameworkFeature.ManagedGc]),
+					Reason: "CultureInfo.ReadOnly retains the CoreLib TextInfo clone/freeze body without initializing host text data.",
+					ShadowMethod: shadow, TypeInitializerPolicy: FrameworkTypeInitializerPolicy.TargetOwned);
+				return true;
+			}
+		}
 		// These two exact public wrappers must use the target newline even when
 		// reached through the released interpolated-handler consumer bodies.
 		if (catalog.IsPinnedStringBuilderInput &&
@@ -1917,6 +1937,33 @@ internal static class FrameworkImplementationProfile
 				Reason: "Target CultureInfo storage supplies invariant numeric settings and explicitly rejects unavailable named locale data.",
 				ShadowMethod: shadow, PreservesVirtualDispatch: member.Name != ".ctor",
 				TypeInitializerPolicy: FrameworkTypeInitializerPolicy.TargetOwned);
+			return true;
+		}
+
+		if (IsExactStaticMethod(member, CultureInfoType, "ReadOnly", cultureType, [cultureType]))
+		{
+			var shadow = new FrameworkShadowMethod(ImplementationAssembly, CultureInfoType, "ReadOnly");
+			binding = new FrameworkBinding(referencedMember, FrameworkBindingKind.ShadowMethod,
+				$"shadow:{shadow.AssemblyName}:{shadow.TypeName}::{shadow.MethodName}",
+				new FrameworkEffectSummary(FrameworkEffects.MayThrow | FrameworkEffects.MayAllocate | FrameworkEffects.MayCollect |
+					FrameworkEffects.ReadsManagedMemory | FrameworkEffects.WritesManagedMemory,
+					[FrameworkFeature.ManagedObjects, FrameworkFeature.ManagedExceptions, FrameworkFeature.ManagedGc]),
+				Reason: "ReadOnly retains its CoreLib body while target culture storage owns initialization.",
+				ShadowMethod: shadow, TypeInitializerPolicy: FrameworkTypeInitializerPolicy.TargetOwned);
+			return true;
+		}
+
+		if (IsExactInstanceMethod(member, CultureInfoType, "get_Name", cultureString, []) ||
+			IsExactInstanceMethod(member, CultureInfoType, "get_IsNeutralCulture", FrameworkTypeId.Primitive("System.Boolean"), []))
+		{
+			var shadow = new FrameworkShadowMethod("CopperSharp.Runtime.Managed", "CopperSharp.Runtime.ShadowCultureInfo",
+				member.Name == "get_Name" ? "GetName" : "GetIsNeutralCulture");
+			binding = new FrameworkBinding(referencedMember, FrameworkBindingKind.ShadowMethod,
+				$"shadow:{shadow.AssemblyName}:{shadow.TypeName}::{shadow.MethodName}",
+				new FrameworkEffectSummary(member.Name == "get_Name" ? FrameworkEffects.ReadsManagedMemory : FrameworkEffects.None,
+					[FrameworkFeature.ManagedObjects]),
+				Reason: "Target culture identity reads initialized storage and supports only the non-neutral invariant culture.",
+				ShadowMethod: shadow, PreservesVirtualDispatch: true, TypeInitializerPolicy: FrameworkTypeInitializerPolicy.TargetOwned);
 			return true;
 		}
 

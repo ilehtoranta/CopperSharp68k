@@ -139,6 +139,119 @@ public sealed class CultureProviderTests
 		Assert.Null(module.GetTriggeredTypeInitializer(entry, allocation));
 	}
 
+	[Theory]
+	[InlineData("get_Name", "GetName", "System.String")]
+	[InlineData("get_IsNeutralCulture", "GetIsNeutralCulture", "System.Boolean")]
+	public void CultureIdentityAdaptersRequireExactSignaturesAndPreserveOfficialSlots(string name, string shadowName, string returnType)
+	{
+		var result = FrameworkTypeId.Primitive(returnType);
+		foreach (var assembly in new[] { "System.Runtime", "System.Private.CoreLib" })
+		{
+			var owner = FrameworkTypeId.Named(assembly, "System.Globalization.CultureInfo");
+			var signature = new FrameworkMethodSignatureId(0x20, 0, 0, result, []);
+			var member = new FrameworkMemberId(owner, name, signature);
+			Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(member, false, out _));
+			Assert.True(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(member, true, out var binding));
+			Assert.Equal("shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowCultureInfo::" + shadowName, binding.Target);
+			Assert.True(binding.PreservesVirtualDispatch);
+			foreach (var wrong in new[] {
+				new FrameworkMethodSignatureId(0, 0, 0, result, []),
+				new FrameworkMethodSignatureId(0x20, 1, 0, result, []),
+				new FrameworkMethodSignatureId(0x20, 0, 1, result, [result]),
+				new FrameworkMethodSignatureId(0x20, 0, 0, FrameworkTypeId.Primitive("System.Int32"), []) })
+				Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(new FrameworkMemberId(owner, name, wrong), true, out _));
+			Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(new FrameworkMemberId(
+				FrameworkTypeId.Named("Application", "System.Globalization.CultureInfo"), name, signature), true, out _));
+		}
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		using var module = Open(pack, true);
+		var official = module.ResolveManagedMethod("System.Private.CoreLib", "System.Globalization.CultureInfo::" + name);
+		var fallback = module.ApplyTargetRuntimeOverride(official);
+		Assert.Equal("CopperSharp.Runtime.ShadowCultureInfo::" + shadowName, fallback.DisplayName);
+		Assert.Equal(module.GetVirtualSlot(official), module.GetVirtualSlot(fallback));
+	}
+
+	[Theory]
+	[InlineData("CoreLibStringBuilderCultureInvariantEntry")]
+	[InlineData("CoreLibStringBuilderCultureReadOnlyEntry")]
+	public void CultureIdentityReadsDoNotReachHostLocaleStorage(string entry)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var analysis = M68kCompiler.AnalyzeFramework(new M68kCompilationRequest
+		{
+			AssemblyPath = typeof(CompilerFixtures).Assembly.Location,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
+			ExceptionMode = M68kExceptionMode.Full,
+			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowCultureInfo).Assembly.Location],
+			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+		});
+		Assert.True(analysis.IsCompatible);
+		Assert.DoesNotContain(analysis.Members, member => member.Member.TypeName == "System.Globalization.CultureData");
+	}
+
+	[Fact]
+	public void CultureReadOnlyTextCloneDoesNotTriggerHostInitializer()
+	{
+		var culture = FrameworkTypeId.Named("System.Runtime", "System.Globalization.CultureInfo");
+		var text = FrameworkTypeId.Named("System.Runtime", "System.Globalization.TextInfo");
+		var caller = new FrameworkMemberId(FrameworkTypeId.Named("System.Private.CoreLib", "System.Globalization.CultureInfo"), "ReadOnly",
+			new FrameworkMethodSignatureId(0, 0, 1, culture, [culture]));
+		var signature = new FrameworkMethodSignatureId(0, 0, 1, text, [text]);
+		var member = new FrameworkMemberId(text, "ReadOnly", signature);
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var catalog = Assert.IsType<FrameworkImplementationPackCatalog>(FrameworkImplementationPackLoader.Load(
+			new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }));
+		Assert.True(FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(member, catalog, caller, out var binding));
+		Assert.Equal("shadow:System.Private.CoreLib:System.Globalization.TextInfo::ReadOnly", binding.Target);
+		Assert.Equal(FrameworkTypeInitializerPolicy.TargetOwned, binding.TypeInitializerPolicy);
+		Assert.False(FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(member, catalog, null, out _));
+		var stable = Assert.IsType<FrameworkImplementationPackCatalog>(FrameworkImplementationPackLoader.Load(new M68kFrameworkImplementationPackOptions(pack.ManifestPath)));
+		Assert.False(FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(member, stable, caller, out _));
+		foreach (var wrong in new[] {
+			new FrameworkMethodSignatureId(0x20, 0, 1, text, [text]),
+			new FrameworkMethodSignatureId(0, 1, 1, text, [text]),
+			new FrameworkMethodSignatureId(0, 0, 0, text, []),
+			new FrameworkMethodSignatureId(0, 0, 1, FrameworkTypeId.Primitive("System.Object"), [text]) })
+			Assert.False(FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(new FrameworkMemberId(text, "ReadOnly", wrong), catalog, caller, out _));
+		Assert.False(FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(member, catalog,
+			new FrameworkMemberId(FrameworkTypeId.Named("Application", "System.Globalization.CultureInfo"), "ReadOnly", caller.Signature), out _));
+		using var module = Open(pack, true);
+		var entry = module.ResolveManagedMethod("System.Private.CoreLib", "System.Globalization.CultureInfo::ReadOnly");
+		var calls = entry.Instructions.Where(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Call &&
+			module.ResolveMethodToken((int)instruction.Operand!, entry, instruction.Offset).Definition?.DisplayName == "System.Globalization.TextInfo::ReadOnly").ToArray();
+		Assert.NotEmpty(calls);
+		Assert.True(module.HasTypeInitializer(module.ResolveManagedMethod("System.Private.CoreLib", "System.Globalization.TextInfo::ReadOnly")));
+		foreach (var call in calls)
+			Assert.Null(module.GetTriggeredTypeInitializer(entry, call));
+	}
+
+	[Fact]
+	public void CultureReadOnlyRetainsCoreLibBodyWithoutTriggeringHostInitializer()
+	{
+		var culture = FrameworkTypeId.Named("System.Runtime", "System.Globalization.CultureInfo");
+		var signature = new FrameworkMethodSignatureId(0, 0, 1, culture, [culture]);
+		var member = new FrameworkMemberId(culture, "ReadOnly", signature);
+		Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(member, false, out _));
+		Assert.True(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(member, true, out var binding));
+		Assert.Equal("shadow:System.Private.CoreLib:System.Globalization.CultureInfo::ReadOnly", binding.Target);
+		Assert.Equal(FrameworkTypeInitializerPolicy.TargetOwned, binding.TypeInitializerPolicy);
+		foreach (var wrong in new[] {
+			new FrameworkMethodSignatureId(0x20, 0, 1, culture, [culture]),
+			new FrameworkMethodSignatureId(0, 1, 1, culture, [culture]),
+			new FrameworkMethodSignatureId(0, 0, 0, culture, []),
+			new FrameworkMethodSignatureId(0, 0, 1, FrameworkTypeId.Primitive("System.Object"), [culture]) })
+			Assert.False(FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(new FrameworkMemberId(culture, "ReadOnly", wrong), true, out _));
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		using var module = Open(pack, true);
+		Assert.True(module.HasTypeInitializer(module.ResolveManagedMethod("System.Private.CoreLib", "System.Globalization.CultureInfo::ReadOnly")));
+		var entry = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderCultureReadOnlyEntry");
+		var calls = entry.Instructions.Where(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Call &&
+			module.ResolveMethodToken((int)instruction.Operand!, entry, instruction.Offset).Definition?.DisplayName == "System.Globalization.CultureInfo::ReadOnly").ToArray();
+		Assert.NotEmpty(calls);
+		foreach (var call in calls)
+			Assert.Null(module.GetTriggeredTypeInitializer(entry, call));
+	}
+
 	[Fact]
 	public void DerivedCultureRetainsBaseStorageAndGcReferencesWithoutMixingFieldHandles()
 	{
