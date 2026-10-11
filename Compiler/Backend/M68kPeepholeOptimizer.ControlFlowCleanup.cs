@@ -27,19 +27,12 @@ internal sealed partial class M68kPeepholeOptimizer
 		// control-flow targets. They are hidden by assembly rendering, but still
 		// need to be moved when their original instruction is replaced. A named
 		// block/method entry or any referenced IL marker remains a hard boundary.
-		IEnumerable<string> labels = _assembler.AnalysisLabelNames ??
-			(IEnumerable<string>)_buffer.Labels.Keys;
-		foreach (var name in labels)
-		{
-			if (!_buffer.Labels.TryGetValue(name, out var offset) ||
-				offset <= startOffset || offset >= endOffset) continue;
-			var marker = name.LastIndexOf(":IL_", StringComparison.Ordinal);
-			if (!name.StartsWith("method:", StringComparison.Ordinal) ||
-				marker < 0 || name.Length - marker - 4 < 4 ||
-				!name[(marker + 4)..].All(character => character is
-					>= '0' and <= '9' or >= 'A' and <= 'F' or >= 'a' and <= 'f') ||
-				_unrelocatableLabelNames.Contains(name)) return false;
-		}
+		var boundaries = _addressFixupOffsets is null
+			? BuildFoldBoundaryLabelOffsets()
+			: _foldBoundaryLabelOffsets ??= BuildFoldBoundaryLabelOffsets();
+		var boundary = Array.BinarySearch(boundaries, startOffset);
+		boundary = boundary < 0 ? ~boundary : boundary + 1;
+		if (boundary < boundaries.Length && boundaries[boundary] < endOffset) return false;
 		// An address can enter through a label plus an addend without naming an
 		// interior marker. Even a target after the replacement is unsafe when
 		// the label and target straddle the bytes being shortened: its literal
@@ -52,6 +45,32 @@ internal sealed partial class M68kPeepholeOptimizer
 			? new AddressEntryBoundaryIndex(_buffer)
 			: _addressEntryBoundaryIndex ??= new AddressEntryBoundaryIndex(_buffer);
 		return !entries.BlocksReplacement(startOffset, endOffset);
+	}
+
+	private int[] BuildFoldBoundaryLabelOffsets()
+	{
+		var offsets = new HashSet<int>();
+		IEnumerable<string> labels = _assembler.AnalysisLabelNames ??
+			(IEnumerable<string>)_buffer.Labels.Keys;
+		foreach (var name in labels)
+		{
+			if (!_buffer.Labels.TryGetValue(name, out var offset)) continue;
+			var marker = name.LastIndexOf(":IL_", StringComparison.Ordinal);
+			var relocatable = name.StartsWith("method:", StringComparison.Ordinal) &&
+				marker >= 0 && name.Length - marker - 4 >= 4 &&
+				!_unrelocatableLabelNames.Contains(name);
+			if (relocatable)
+			{
+				foreach (var character in name.AsSpan(marker + 4))
+					if (character is not (>= '0' and <= '9' or >= 'A' and <= 'F' or >= 'a' and <= 'f'))
+					{
+						relocatable = false;
+						break;
+					}
+			}
+			if (!relocatable) offsets.Add(offset);
+		}
+		return offsets.Order().ToArray();
 	}
 
 	private sealed class AddressEntryBoundaryIndex

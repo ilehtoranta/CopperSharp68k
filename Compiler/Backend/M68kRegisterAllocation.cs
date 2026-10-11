@@ -1138,33 +1138,37 @@ internal static class M68kGraphColoringAllocator
 			.Select(static group => group.Id)
 			.ToHashSet();
 		var stack = new Stack<int>();
+		// The coalesced graph and color constraints do not change while
+		// simplifying. Only removal of a neighbor changes an effective degree.
+		// Preserve the original ordering while updating those degrees locally.
+		var degrees = remaining.ToDictionary(id => id,
+			id => EffectiveDegree(groups, groupNeighbors, remaining, groups[id]));
+		var colors = remaining.ToDictionary(id => id, id => AvailableColorCount(groups[id]));
+		var simplifiableGroups = new SortedSet<(bool SpillTemporary, int Id)>();
+		var spillCandidates = new SortedSet<(double Priority, int Id)>();
+		foreach (var id in remaining)
+		{
+			if (degrees[id] < colors[id]) simplifiableGroups.Add((groups[id].IsSpillTemporary, id));
+			spillCandidates.Add((SpillPriority(groups[id], degrees[id]), id));
+		}
 		while (remaining.Count != 0)
 		{
-			var simplifiable = remaining
-				.Select(group => groups[group])
-				.Where(group =>
-					EffectiveDegree(groups, groupNeighbors, remaining, group) <
-					AvailableColorCount(group))
-				// Spill-generated reload/store scratch values must be colored before
-				// their live-through neighbors. Push them last so stack coloring pops
-				// them first and spills an ordinary neighbor when pressure is exact.
-				.OrderBy(static group => group.IsSpillTemporary)
-				.ThenBy(static group => group.Id)
-				.FirstOrDefault();
-			var selected = simplifiable?.Id ??
-				remaining
-					.Select(group => groups[group])
-					.OrderBy(group => SpillPriority(
-						group,
-						EffectiveDegree(
-							groups,
-							groupNeighbors,
-							remaining,
-							group)))
-					.ThenBy(static group => group.Id)
-					.First()
-					.Id;
+			// Push spill temporaries last so they are colored first, as before.
+			var selected = simplifiableGroups.Count != 0
+				? simplifiableGroups.Min.Id : spillCandidates.Min.Id;
+			simplifiableGroups.Remove((groups[selected].IsSpillTemporary, selected));
+			spillCandidates.Remove((SpillPriority(groups[selected], degrees[selected]), selected));
 			remaining.Remove(selected);
+			foreach (var neighbor in groupNeighbors[selected])
+			{
+				if (!remaining.Contains(neighbor) ||
+					!groups[neighbor].AllowedRegisters.Overlaps(groups[selected].AllowedRegisters)) continue;
+				spillCandidates.Remove((SpillPriority(groups[neighbor], degrees[neighbor]), neighbor));
+				degrees[neighbor]--;
+				spillCandidates.Add((SpillPriority(groups[neighbor], degrees[neighbor]), neighbor));
+				if (degrees[neighbor] < colors[neighbor])
+					simplifiableGroups.Add((groups[neighbor].IsSpillTemporary, neighbor));
+			}
 			stack.Push(selected);
 		}
 

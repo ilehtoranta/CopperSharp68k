@@ -49,6 +49,24 @@ Paired full compilation of the inherited generic-list entry with optimization di
 
 Full fixed-point compilation of the inherited generic-list entry with the index still took 107.48 seconds and allocated 60.68 GB cumulatively. Its separate sampled profile attributed 53.47% of inclusive time to optimization and 17.79% to graph-coloring allocation. Hot paths include repeated instruction decoding/rendering and `CanFoldAcrossUnreferencedIlLabels`, which scans labels for each replacement candidate. This establishes remaining backend costs; the metadata speedups above must not be reported as full-compilation or full-suite speedups. The optimizer and allocator were not changed in this investigation.
 
+## Backend cost and resumable CPU verification
+
+The label guard indexes hard boundary offsets once per optimizer round and uses a binary search for the strict interior of each replacement. Hard aliases at the same offset are retained, while only valid, unreferenced source markers can move. The snapshot is cleared at round start and end; queries outside a round observe current labels and scope. Register simplification maintains effective degrees as neighbors are removed, with ordered candidate sets preserving the original spill-temporary, spill-priority and group-ID decisions. Fixed-register neighbors remain counted.
+
+The inherited generic-list example produced byte-identical Hunk images in FixedPoint and Disabled modes compared with the compiler at `b3552e4`. Individual local FixedPoint time changed from 107.48 to 59.56 seconds, and Disabled time from 49.63 to 20.80 seconds. Cumulative allocation changed from 60.68 to 57.28 GB and 22.21 to 18.50 GB respectively. The earlier FixedPoint measurement used sampling and the current measurement did not; these are indicative observations rather than controlled statistical ratios. All 154 selected allocator, boundary, control-flow and unchanged profile-baseline cases passed without skips.
+
+`scripts/run-cpu-matrix.ps1` freezes the discovered `CompilerExecutionTests` method assignments, SDK and all test-directory DLL hashes in a manifest. It runs all theory rows for each assigned method, retains separate attempts and TRX files, and checks method coverage, failures, skips and aborts before accepting a batch. `-Resume` re-verifies existing successful TRX results rather than trusting a saved completion flag. `-ShardNumbers` allows disjoint workers to use the same manifest. `-AuditOnly` checks every batch against the manifest and writes `audit.json`; an incomplete audit exits with code 2. The observed case count must also meet the discovery count, while deferred theories may expand to additional cases. A changed compiler build requires a new results directory.
+
+Initialize after building with the pinned SDK, then run or resume selected batches:
+
+```powershell
+./scripts/run-cpu-matrix.ps1 -ResultsDirectory TestResults/CpuMatrix -InitializeOnly
+./scripts/run-cpu-matrix.ps1 -ResultsDirectory TestResults/CpuMatrix -ShardNumbers @(1, 2, 3) -Resume
+./scripts/run-cpu-matrix.ps1 -ResultsDirectory TestResults/CpuMatrix -AuditOnly
+```
+
+The current matrix manifest assigns all 1,100 discovered execution-test methods to 32 batches. The complete matrix remains unverified until its final audit succeeds; the targeted checks and identical sample images above do not substitute for that audit.
+
 ## Testing model
 
 Compatibility is executable. The prose specifications explain intent, while manifests, ledgers, compiler diagnostics, semantic tests, target execution, map assertions, and package integration tests enforce it.

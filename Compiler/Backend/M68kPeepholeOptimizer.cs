@@ -35,6 +35,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private HashSet<int>? _labelOffsets;
 	private HashSet<int>? _addressFixupOffsets;
 	private AddressEntryBoundaryIndex? _addressEntryBoundaryIndex;
+	private int[]? _foldBoundaryLabelOffsets;
 
 	private readonly record struct TerminalBlockLookup(
 		int[] MethodEndOffsets,
@@ -95,6 +96,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			try
 			{
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true);
@@ -263,6 +265,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_labelOffsets = null;
 				_addressFixupOffsets = null;
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -445,6 +448,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			try
 			{
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true);
@@ -465,6 +469,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_labelOffsets = null;
 				_addressFixupOffsets = null;
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
