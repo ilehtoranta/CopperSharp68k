@@ -87,6 +87,10 @@ Completed diagnostic shard timings identify the floating left-alignment allocati
 
 The matrix runner accepts `-ArtifactsPath` for builds created with `dotnet build --artifacts-path`, freezes that path in the manifest, and uses it for discovery and execution. A separate one-method/four-CPU smoke matrix executed the isolated build and passed its final audit; it is not the full matrix. The corrected full manifest assigns 1,101 methods, including the new large-class test, to 32 shards. The original frozen matrix and corrected matrix must remain separate, and completion still requires the corrected matrix's full audit.
 
+The corrected GC/optimizer build passed its first two full shards: 148 and 132 cases, with no failures or skips and no missing methods or explicit rows in the strict audit. Exact TRX names match passing results for all sixteen original first-shard failures. These 280 passing cases do not establish the remaining thirty shards.
+
+The diagnostic fifth shard exposed eight stale fixture expectations: unsigned and 64-bit formatting helpers expected the custom format `000.0` to throw after custom-format support had already been implemented. A focused recheck reproduced the unsigned expectation failure on all four CPU targets. The fixtures now verify the supported result `042.0`, written lengths and untouched destination suffixes, resetting the buffer before their separate default-format checks. All eight revised helper rows passed on the four CPU targets with no skips; exact TRX names cover all eight diagnostic failures. The changed fixture assembly requires a separate frozen full matrix, retained in `MatrixFormatContracts`; its 1,101 methods and 32 shards remain the completion gate. Earlier matrix results and this focused check cannot substitute for that final audit.
+
 ## Testing model
 
 Compatibility is executable. The prose specifications explain intent, while manifests, ledgers, compiler diagnostics, semantic tests, target execution, map assertions, and package integration tests enforce it.

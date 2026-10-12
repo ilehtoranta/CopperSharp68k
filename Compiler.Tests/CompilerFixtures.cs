@@ -9050,10 +9050,11 @@ public static partial class CompilerFixtures
 		}
 		var buffer = new char[10];
 		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
-		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(42, "000.0", null, buffer, out _); return 5; }
-		catch (NotSupportedException) { }
-		try { _ = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(42, "000.0", null); return 6; }
-		catch (NotSupportedException) { }
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(42, "000.0", null, buffer, out var customCount) || customCount != 5) return 5;
+		for (var index = 0; index < buffer.Length; index++)
+			if (buffer[index] != (index < customCount ? "042.0"[index] : '#')) return 5;
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(42, "000.0", null) != "042.0") return 6;
+		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
 		var provider = new CoreLibPrimitiveFormatProvider();
 		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt32(42, default, provider, buffer, out var count) || count != 2) return 7;
 		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt32(42, null, provider) != "42") return 8;
@@ -9097,12 +9098,18 @@ public static partial class CompilerFixtures
 		var buffer = new char[20];
 		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
 		var provider = new CoreLibPrimitiveFormatProvider();
-		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(42, "000.0", null, buffer, out _); return 6; } catch (NotSupportedException) { }
-		try { CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(42, "000.0", null, buffer, out _); return 7; } catch (NotSupportedException) { }
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(42, "000.0", null, buffer, out var customCount) || customCount != 5) return 6;
+		for (var index = 0; index < buffer.Length; index++)
+			if (buffer[index] != (index < customCount ? "042.0"[index] : '#')) return 6;
+		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
+		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(42, "000.0", null, buffer, out customCount) || customCount != 5) return 7;
+		for (var index = 0; index < buffer.Length; index++)
+			if (buffer[index] != (index < customCount ? "042.0"[index] : '#')) return 7;
+		for (var index = 0; index < buffer.Length; index++) buffer[index] = '#';
 		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatInt64(42, default, provider, buffer, out var count) || count != 2) return 8;
 		if (!CopperSharp.Runtime.ShadowNumberFormatting.TryFormatUInt64(42, default, provider, buffer, out count) || count != 2) return 9;
-		try { _ = CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(42, "000.0", null); return 10; } catch (NotSupportedException) { }
-		try { _ = CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(42, "000.0", null); return 11; } catch (NotSupportedException) { }
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(42, "000.0", null) != "042.0") return 10;
+		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(42, "000.0", null) != "042.0") return 11;
 		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatInt64(42, null, provider) != "42") return 12;
 		if (CopperSharp.Runtime.ShadowNumberFormatting.FormatUInt64(42, null, provider) != "42") return 13;
 		for (var index = 0; index < buffer.Length; index++) if (buffer[index] != (index < 2 ? "42"[index] : '#')) return 14;
