@@ -3005,7 +3005,8 @@ public sealed partial class CompilerExecutionTests
 				Imports = new Dictionary<string, uint> { ["fixture.grouped-progress"] = 0x3000 },
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				// Full provider images extend beyond the former 0x40000 heap.
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
 			var bus = CreateHunkBus(result); var progress = 0u; var checkpoints = 0;
@@ -3073,9 +3074,11 @@ public sealed partial class CompilerExecutionTests
 				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				// Full percent-provider images extend beyond the old 0x40000 heap boundary.
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
+			Assert.True(HunkLoadAddress + result.Code.Length < StackPointer, "Percent image overlaps its test stack.");
 			try { Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 240_000_000)); }
 			catch (Exception error) { throw new Xunit.Sdk.XunitException($"{entry}/{target}/{mode}: {error.Message}"); }
 		}
@@ -3141,9 +3144,11 @@ public sealed partial class CompilerExecutionTests
 				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				// Full currency-provider images extend beyond the old 0x40000 heap boundary.
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
+			Assert.True(HunkLoadAddress + result.Code.Length < StackPointer, "Currency image overlaps its test stack.");
 			try { Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 240_000_000)); }
 			catch (Exception error) { throw new Xunit.Sdk.XunitException($"{entry}/{target}/{mode}: {error.Message}"); }
 		}
@@ -5672,7 +5677,8 @@ public sealed partial class CompilerExecutionTests
 				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				// Parsed provider images can extend past the former 0x40000 heap.
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
 			// The provider matrix forces collection in every query/formatter callback as well as on allocation.
@@ -5990,10 +5996,9 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderSmallIntegerValidationEntry());
 
 	[Theory]
-	[InlineData("CoreLibConstrainedBooleanToStringEntry")]
 	[InlineData("CoreLibConstrainedCharacterToStringEntry")]
 	[InlineData("CoreLibConstrainedEnumToStringEntry")]
-	public void CoreLibConstrainedIntegerToStringAdmissionRejectsOtherValueTypes(string entry)
+	public void CoreLibConstrainedAllocatingToStringRequiresAnAllocatorImport(string entry)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		var error = Assert.Throws<M68kCompilationException>(() => M68kCompiler.Compile(new M68kCompilationRequest
@@ -6004,7 +6009,34 @@ public sealed partial class CompilerExecutionTests
 			OutputFormat = M68kOutputFormat.Hunk,
 			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 		}));
-		Assert.Equal(M68kDiagnosticIds.UnsupportedPolymorphism, error.DiagnosticId);
+		Assert.Equal(M68kDiagnosticIds.UnresolvedImport, error.DiagnosticId);
+		Assert.Contains(M68kRuntimeImports.Allocate, error.Message, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void CoreLibConstrainedScalarTextContractsMatchHost() =>
+		Assert.Equal(42, CompilerFixtures.CoreLibConstrainedScalarTextContractsEntry());
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void CoreLibConstrainedScalarTextContractsRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest {
+				AssemblyPath = FixtureAssembly,
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibConstrainedScalarTextContractsEntry",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full,
+				PeepholeOptimization = mode, MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.True(HunkLoadAddress + result.Code.Length < StackPointer);
+			Assert.True(Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint,
+				maxInstructions: 5_000_000) == 42, $"Constrained scalar text contracts failed; {target}, {mode}.");
+		}
 	}
 
 	[Theory]
@@ -11192,10 +11224,12 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(
 			"Console input/output example\nType text: ",
 			System.Text.Encoding.Latin1.GetString(eofOutput));
-		Assert.Equal(30_132, input.Cycles);
-		Assert.Equal(3_112, input.Instructions);
-		Assert.Equal(16_606, eof.Cycles);
-		Assert.Equal(1_797, eof.Instructions);
+		// Call barriers invalidate stale condition aliases, and finally frames
+		// initialize their active-exception slot even on the normal path.
+		Assert.Equal(30_992, input.Cycles);
+		Assert.Equal(3_190, input.Instructions);
+		Assert.Equal(17_156, eof.Cycles);
+		Assert.Equal(1_849, eof.Instructions);
 	}
 
 	[Fact]
@@ -24951,8 +24985,36 @@ public sealed partial class CompilerExecutionTests
 	}
 
 
+	[Fact]
+	public void HunkTestLoaderRejectsOverlappingManagedHeapBeforeExecution()
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest {
+			AssemblyPath = FixtureAssembly,
+			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::DefaultEntry",
+			Cpu = M68kCpuTarget.M68000, OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			Heap = new M68kHeapOptions { StartAddress = HunkLoadAddress, Size = 0x8000 }
+		});
+		var error = Assert.Throws<Xunit.Sdk.TrueException>(() => CreateHunkBus(result));
+		Assert.Contains("overlaps configured heap", error.Message, StringComparison.Ordinal);
+	}
+
 	private static TestBus CreateHunkBus(M68kCompilationResult result)
 	{
+		var gcConfigReference = result.Relocations.FirstOrDefault(relocation => relocation.Target == "runtime:gc-config");
+		if (gcConfigReference.Target is not null)
+		{
+			var configOffset = checked((int)BinaryPrimitives.ReadUInt32BigEndian(result.Code.AsSpan(gcConfigReference.Offset, 4)));
+			var heapStart = BinaryPrimitives.ReadUInt32BigEndian(result.Code.AsSpan(configOffset + 8, 4));
+			var heapSize = BinaryPrimitives.ReadUInt32BigEndian(result.Code.AsSpan(configOffset + 12, 4));
+			// A zero start denotes an arena supplied dynamically by the native OS.
+			if (heapStart != 0 && heapSize != 0)
+			{
+				var imageEnd = (ulong)HunkLoadAddress + (uint)result.Code.Length;
+				Assert.True((ulong)heapStart + heapSize <= HunkLoadAddress || heapStart >= imageEnd,
+					$"Test image [0x{HunkLoadAddress:X}, 0x{imageEnd:X}) overlaps configured heap [0x{heapStart:X}, 0x{(ulong)heapStart + heapSize:X}).");
+			}
+		}
 		var bus = new TestBus();
 		result.Code.CopyTo(bus.Memory.AsSpan((int)HunkLoadAddress));
 		foreach (var relocation in result.Relocations)

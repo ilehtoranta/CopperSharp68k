@@ -9026,6 +9026,18 @@ public static partial class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int CoreLibConstrainedScalarTextContractsEntry()
+	{
+		if (CoreLibConstrainedBooleanToStringEntry() != "True") return 1;
+		if (CoreLibConstrainedCharacterToStringEntry() != "A") return 2;
+		if (CoreLibConstrainedEnumToStringEntry() != "Value") return 3;
+		var boolean = false;
+		var character = '\u03A9';
+		return CoreLibConstrainedIntegerText(ref boolean) == "False" &&
+			CoreLibConstrainedIntegerText(ref character) == "\u03A9" ? 42 : 4;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibUnsignedFormattingHelpersEntry()
 	{
 		for (var scenario = 0; scenario < 11; scenario++)

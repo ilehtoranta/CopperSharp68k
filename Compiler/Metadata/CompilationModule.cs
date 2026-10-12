@@ -8024,7 +8024,7 @@ internal sealed partial class CompilationModule : IDisposable
 		FrameworkMemberId referenced, CilMethod? caller, int ilOffset, out FrameworkBinding binding)
 	{
 		binding = null!;
-		if (FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+		if (FrameworkImplementationPack?.SupportsStringBuilderProtocolAbi != true ||
 			caller is null || ilOffset < 0 ||
 			!caller.Instructions.Any(instruction => instruction.Offset == ilOffset && instruction.OpCode == OpCodes.Callvirt)) return false;
 		var member = FrameworkImplementationProfile.Canonicalize(referenced);

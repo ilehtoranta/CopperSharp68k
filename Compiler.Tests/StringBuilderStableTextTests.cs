@@ -12,6 +12,29 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class StringBuilderStableDispatchTests
 {
 	[Fact]
+	public void ExperimentalSnapshotBindingStillRequiresAProvenStringBuilderReceiver()
+	{
+		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
+		var catalog = FrameworkImplementationPackLoader.Load(new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
+		using var module = new CompilationModule(typeof(CompilerFixtures).Assembly.Location, frameworkImplementationPack: catalog);
+		foreach (var name in new[] { "StringBuilderStableSnapshot", "StringBuilderProducedSnapshot", "StringBuilderConstructedSnapshot", "StringBuilderUnknownSnapshot", "StringBuilderUnknownProducedSnapshot" })
+		{
+			var caller = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::" + name);
+			var call = caller.Instructions.Last(instruction => instruction.OpCode == OpCodes.Callvirt);
+			var member = module.DescribeFrameworkMethodToken((int)call.Operand!, caller, call.Offset);
+			var known = name is "StringBuilderStableSnapshot" or "StringBuilderProducedSnapshot" or "StringBuilderConstructedSnapshot";
+			Assert.Equal(known, module.TryCreatePinnedStringBuilderToStringBinding(member, caller, call.Offset, out var binding));
+			if (known)
+			{
+				Assert.Equal("managed:sealed-stringbuilder-tostring", binding.Target);
+				var implementation = module.ResolveMethodToken((int)call.Operand!, caller, call.Offset).Definition!;
+				Assert.Equal("System.Text.StringBuilder::ToString", implementation.DisplayName);
+				Assert.True(implementation.DeclaringTypeIsSealed);
+			}
+		}
+	}
+
+	[Fact]
 	public void SnapshotBindingRequiresTheExactSealedReceiverAndReleasedInput()
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
