@@ -2369,12 +2369,38 @@ public static partial class CompilerFixtures
 		first = null!;
 		second = null!;
 		M68kRuntime.Collect();
-		return byref;
+		// Consume each allocation so collection and reuse cannot be optimized away.
+		// A dangling interior pointer must not pass just because freed bytes persist.
+		var sum = 0;
+		for (var index = 0; index < 128; index++)
+		{
+			var pressure = new ManagedBox { Value = index + 100 };
+			var secondPressure = new ManagedBox { Value = index + 300 };
+			sum += pressure.Value + secondPressure.Value;
+		}
+		return sum == 67456 ? byref : -1;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int IncompatibleOwnerByrefMergeEntry() =>
 		IncompatibleOwnerByrefMerge(true);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int OwnerByrefMergeStartupEntry(
+		int argLength, global::Amiga.CONST_STRPTR argText) =>
+		IncompatibleOwnerByrefMerge(argLength != 0);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int MixedFrameOwnerByrefMergeStartupEntry(
+		int argLength, global::Amiga.CONST_STRPTR argText)
+	{
+		var owner = new ManagedBox { Value = 42 };
+		var frame = 17;
+		ref var byref = ref (argLength != 0 ? ref owner.Value : ref frame);
+		owner = null!;
+		M68kRuntime.Collect();
+		return byref;
+	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	private static ref int ReturnBorrowedByref(ref int value) => ref value;
@@ -4765,6 +4791,22 @@ public static partial class CompilerFixtures
 			unicode.Equals("\0\u03A9\uDE00\uD83D\uD800\uFFFF".AsSpan())) return 5;
 		if (new System.Text.StringBuilder().Append("\u00E9").Equals("e\u0301".AsSpan())) return 6;
 		return limited.Length == 4 && limited.Capacity == 4 && limited.MaxCapacity == 4 && roomy.Capacity == 128 && roomy.MaxCapacity == 256 ? 42 : 7;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static bool StringBuilderObjectEquals(System.Text.StringBuilder? builder, object? value) => builder!.Equals(value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static bool UnknownReceiverObjectEquals(object builder, object? value) => builder.Equals(value);
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int StringBuilderObjectEqualsNullReceiverEntry()
+	{
+		var builder = new System.Text.StringBuilder().Append("text");
+		if (!StringBuilderObjectEquals(builder, builder) || StringBuilderObjectEquals(builder, null) ||
+			StringBuilderObjectEquals(builder, new System.Text.StringBuilder().Append("text"))) return 1;
+		try { StringBuilderObjectEquals(null, null); return 2; }
+		catch (NullReferenceException) { return 42; }
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]

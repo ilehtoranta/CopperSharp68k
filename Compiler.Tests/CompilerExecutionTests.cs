@@ -1769,21 +1769,25 @@ public sealed partial class CompilerExecutionTests
 	public void CoreLibStringBuilderEqualsSurvivesCollectionOnEveryCpu(string entry, M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var result = M68kCompiler.Compile(new M68kCompilationRequest
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
 		{
-			AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
-			Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
-			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-			Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
-			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
-		});
-		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 50_000_000));
-		Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::Equals");
-		if (entry != "CoreLibStringBuilderBuilderEqualsEntry")
-			Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowCharacterSpans::EqualsOrdinal");
-		Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Runtime.Intrinsics.Vector", StringComparison.Ordinal) ||
-			symbol.Name.Contains("System.Numerics.Vector", StringComparison.Ordinal) ||
-			symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			{
+				AssemblyPath = FixtureAssembly, EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, PeepholeOptimization = mode,
+				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
+			});
+			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 50_000_000));
+			Assert.Contains(result.Symbols, static symbol => symbol.Name == "System.Text.StringBuilder::Equals");
+			if (entry != "CoreLibStringBuilderBuilderEqualsEntry")
+				Assert.Contains(result.Symbols, static symbol => symbol.Name == "CopperSharp.Runtime.ShadowCharacterSpans::EqualsOrdinal");
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Runtime.Intrinsics.Vector", StringComparison.Ordinal) ||
+				symbol.Name.Contains("System.Numerics.Vector", StringComparison.Ordinal) ||
+				symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
+			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name == "System.Globalization.CultureInfo::Equals");
+		}
 	}
 
 	[Theory]
@@ -13108,25 +13112,57 @@ public sealed partial class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void IncompatibleOwnerByrefAtSafepointHasStableDiagnostic()
+	public void MixedFrameOwnerByrefAtSafepointHasStableDiagnostic()
 	{
-		var exception = Assert.Throws<M68kCompilationException>(() =>
-			M68kCompiler.Compile(new M68kCompilationRequest
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var exception = Assert.Throws<M68kCompilationException>(() =>
+				M68kCompiler.Compile(new M68kCompilationRequest
+				{
+					AssemblyPath = FixtureAssembly,
+					EntryPoint =
+						"CopperSharp.Compiler.Tests.CompilerFixtures::MixedFrameOwnerByrefMergeStartupEntry",
+					PeepholeOptimization = mode,
+					MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+					Heap = new M68kHeapOptions
+					{
+						StartAddress = 0x0000_4000,
+						Size = 0x0000_2000
+					}
+				}));
+
+			Assert.Equal(M68kDiagnosticIds.UnsupportedInstruction, exception.DiagnosticId);
+			Assert.Contains("transported owner root", exception.Message, StringComparison.Ordinal);
+			Assert.Contains("Unknown", exception.Message, StringComparison.Ordinal);
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void SelectedObjectByrefOwnerSurvivesCollectionAndReuse(M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = FixtureAssembly,
-				EntryPoint =
-					"CopperSharp.Compiler.Tests.CompilerFixtures::IncompatibleOwnerByrefMergeEntry",
+				EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::OwnerByrefMergeStartupEntry",
+				Cpu = target,
+				OutputFormat = M68kOutputFormat.Hunk,
+				PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
-				Heap = new M68kHeapOptions
-				{
-					StartAddress = 0x0000_4000,
-					Size = 0x0000_2000
-				}
-			}));
-
-		Assert.Equal(M68kDiagnosticIds.UnsupportedInstruction, exception.DiagnosticId);
-		Assert.Contains("transported owner root", exception.Message, StringComparison.Ordinal);
-		Assert.Contains("Unknown", exception.Message, StringComparison.Ordinal);
+				GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+				Heap = new M68kHeapOptions { StartAddress = 0x4000, Size = 0x2000 }
+			});
+			foreach (var selectFirst in new[] { false, true })
+			{
+				var bus = CreateHunkBus(result);
+				Assert.Equal(selectFirst ? 42u : 0u, Execute(bus, model,
+					HunkLoadAddress + result.EntryPoint,
+					initialize: state => { state.D[0] = selectFirst ? 1u : 0u; state.A[0] = 0; },
+					maxInstructions: 10_000_000));
+			}
+		}
 	}
 
 	[Fact]
@@ -17978,7 +18014,7 @@ public sealed partial class CompilerExecutionTests
 			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
-				StartAddress = 0x0000_4000,
+				StartAddress = 0x0010_0000,
 				Size = 0x0001_4000
 			}
 		});
@@ -18002,7 +18038,7 @@ public sealed partial class CompilerExecutionTests
 			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
-				StartAddress = 0x0000_4000,
+				StartAddress = 0x0010_0000,
 				Size = 0x0001_4000
 			}
 		});
@@ -20039,7 +20075,10 @@ public sealed partial class CompilerExecutionTests
 			Assert.True(
 				cycles <= 50_000,
 				$"Console.ReadLine grew to {cycles} MC68000 cycles.");
-			Assert.Equal(27, result.AllocationStatistics.Count);
+			// Root-site lookup and bitmap scanning are separate compiled GC helpers.
+			Assert.Equal(29, result.AllocationStatistics.Count);
+			Assert.Contains(result.AllocationStatistics, static item => item.Method == "CopperSharp.Runtime.ManagedPool::FindRootSite");
+			Assert.Contains(result.AllocationStatistics, static item => item.Method == "CopperSharp.Runtime.ManagedPool::TraceFields");
 			Assert.All(
 				result.AllocationStatistics,
 				item => Assert.Equal(0, item.SpillFrameBytes));

@@ -48,6 +48,10 @@ internal static class M68kControlFlowAnalysis
 					: new HashSet<int>(reachable));
 		}
 
+		// This scratch set is never retained in the result while it is mutated.
+		// On a change, exchange it with the block's former set so convergence
+		// does not allocate a new copy for every predecessor or unchanged pass.
+		var intersection = new HashSet<int>();
 		var changed = true;
 		while (changed)
 		{
@@ -58,19 +62,23 @@ internal static class M68kControlFlowAnalysis
 				{
 					continue;
 				}
-				HashSet<int>? intersection = null;
+				intersection.Clear();
+				var firstPredecessor = true;
 				foreach (var predecessor in block.ControlFlowPredecessors)
 				{
-					intersection = intersection is null
-						? new HashSet<int>(dominators[predecessor])
-						: new HashSet<int>(
-							intersection.Intersect(dominators[predecessor]));
+					if (firstPredecessor)
+					{
+						intersection.UnionWith(dominators[predecessor]);
+						firstPredecessor = false;
+					}
+					else intersection.IntersectWith(dominators[predecessor]);
 				}
-				intersection ??= new HashSet<int>();
 				intersection.Add(block.Id);
 				if (!intersection.SetEquals(dominators[block.Id]))
 				{
+					var previous = dominators[block.Id];
 					dominators[block.Id] = intersection;
+					intersection = previous;
 					changed = true;
 				}
 			}

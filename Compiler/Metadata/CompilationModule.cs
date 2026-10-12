@@ -7090,6 +7090,8 @@ internal sealed partial class CompilationModule : IDisposable
 			return MethodReference.ForManagedBinding(builderToStringBinding, implementation, signature);
 		}
 		var binding = FrameworkBindingRegistry.TryBind(lookupMember, context);
+		if (TryCreatePinnedStringBuilderObjectEqualsBinding(member, caller, ilOffset, out var builderEqualsBinding))
+			return MethodReference.ForBinding(builderEqualsBinding, signature);
 		if (TryCreatePinnedNumericSpanIdentityBinding(member, caller, ilOffset, out var enumerationBinding) || TryCreatePinnedApplicationFormattingLeafBinding(member, caller, ilOffset, out enumerationBinding) || TryCreatePinnedHandlerToStringBinding(member, caller, ilOffset, out enumerationBinding) || TryCreatePinnedGeneralObjectToStringBinding(member, caller, ilOffset, out enumerationBinding) ||
 			TryCreateExperimentalJoinEnumerationBinding(member, caller, out enumerationBinding) ||
 			TryCreatePinnedNullableListBinding(member, constructedDeclaringType, out enumerationBinding, caller) ||
@@ -8044,6 +8046,44 @@ internal sealed partial class CompilationModule : IDisposable
 		binding = new FrameworkBinding(referenced, FrameworkBindingKind.ManagedBody,
 			"managed:sealed-stringbuilder-tostring", effects,
 			Reason: "The exact sealed StringBuilder receiver selects its verified CoreLib ToString override.");
+		return true;
+	}
+
+	internal bool TryCreatePinnedStringBuilderObjectEqualsBinding(
+		FrameworkMemberId referenced, CilMethod? caller, int ilOffset, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (FrameworkImplementationPack?.SupportsStringBuilderProtocolAbi != true || caller is null || ilOffset < 0)
+			return false;
+		var declaration = new FrameworkMemberId(FrameworkTypeId.Named("System.Runtime", "System.Object"), "Equals",
+			new FrameworkMethodSignatureId(0x20, 0, 1, FrameworkTypeId.Primitive("System.Boolean"), [FrameworkTypeId.Primitive("System.Object")]));
+		if (!FrameworkImplementationProfile.Canonicalize(referenced).Equals(declaration)) return false;
+		var callIndex = caller.Instructions.ToList().FindIndex(instruction => instruction.Offset == ilOffset);
+		if (callIndex < 0 || caller.Instructions[callIndex].OpCode != OpCodes.Callvirt) return false;
+		var producers = new List<int>();
+		for (var index = callIndex - 1; index >= 0 && producers.Count < 2; index--)
+			if (caller.Instructions[index].OpCode != OpCodes.Nop) producers.Add(index);
+		if (producers.Count != 2 || HasControlFlowEntryIntoDelegateEqualsSuffix(caller, producers[1], callIndex) ||
+			(!IsSimpleObjectValueProducer(caller, caller.Instructions[producers[0]]) && caller.Instructions[producers[0]].OpCode != OpCodes.Ldstr) ||
+			!TryGetDirectLoadedType(caller, caller.Instructions[producers[1]], out var receiver) ||
+			receiver is not { Kind: CilTypeKind.ManagedReference, Size: 4, DisplayName: "System.Text.StringBuilder" } ||
+			!receiver.GenericArguments.IsDefaultOrEmpty) return false;
+		var identity = ResolveRuntimeTypeIdentity(receiver, caller.ModuleName);
+		if (identity.ModuleName != "System.Private.CoreLib" || identity.Handle.Kind != HandleKind.TypeDefinition) return false;
+		var owner = GetModule(identity.ModuleName);
+		var definition = owner.Reader.GetTypeDefinition((TypeDefinitionHandle)identity.Handle);
+		if ((definition.Attributes & TypeAttributes.Sealed) == 0 || owner.GetTypeName(definition) != "System.Text.StringBuilder" ||
+			definition.BaseType.Kind != HandleKind.TypeDefinition ||
+			owner.GetTypeName(owner.Reader.GetTypeDefinition((TypeDefinitionHandle)definition.BaseType)) != "System.Object") return false;
+		foreach (var handle in definition.GetMethods())
+		{
+			if (owner.Reader.GetString(owner.Reader.GetMethodDefinition(handle).Name) != "Equals") continue;
+			var candidate = owner.GetMethod(handle);
+			if (candidate.Signature.Header.IsInstance && candidate.Signature.ParameterTypes is [{ DisplayName: "object" }]) return false;
+		}
+		binding = new FrameworkBinding(referenced, FrameworkBindingKind.Intrinsic, "intrinsic:object-reference-equals",
+			new FrameworkEffectSummary(FrameworkEffects.MayThrow, [FrameworkFeature.ManagedObjects]),
+			Reason: "The verified sealed StringBuilder inherits Object.Equals, so equality compares references after the callvirt null check.");
 		return true;
 	}
 

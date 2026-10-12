@@ -143,6 +143,24 @@ internal sealed class M68kAssembler
 		new(0xF1F8, 0x5188, static opcode => "subq.l\t#" + QuickCount(opcode) + ",a" + (opcode & 7))
 	];
 
+	// The simple renderer rules already prove these opcodes occupy one word.
+	// Reuse that definition without invoking their text-formatting delegates
+	// on the instruction-analysis path.
+	private static readonly bool[] SimpleInstructionOpcodes = CreateSimpleInstructionOpcodes();
+
+	private static bool[] CreateSimpleInstructionOpcodes()
+	{
+		var opcodes = new bool[ushort.MaxValue + 1];
+		for (var opcode = 0; opcode < opcodes.Length; opcode++)
+			foreach (var rule in SimpleInstructionRules)
+				if ((opcode & rule.Mask) == rule.Value)
+				{
+					opcodes[opcode] = true;
+					break;
+				}
+		return opcodes;
+	}
+
 	private static readonly ImmediateRenderRule[] ImmediateInstructionRules =
 	[
 		new(0xFFFF, 0x007C, 2, static (_, value) =>
@@ -997,20 +1015,21 @@ internal sealed class M68kAssembler
 
 		for (var offset = startOffset; offset < endOffset;)
 		{
-			var decoded = TryRenderInstruction(
+			var opcode = _buffer.ReadWord(offset);
+			var length = 2;
+			var decoded = SimpleInstructionOpcodes[opcode] || TryRenderInstruction(
 				offset,
 				displayLabels,
 				addresses,
 				branches,
 				pcRelative,
 				out _,
-				out var length);
+				out length);
 			if (!decoded)
 			{
 				length = 2;
 			}
 
-			var opcode = _buffer.ReadWord(offset);
 			var extensionWord = length >= 4 && offset + 3 < _bytes.Count
 				? _buffer.ReadWord(offset + 2)
 				: (ushort)0;

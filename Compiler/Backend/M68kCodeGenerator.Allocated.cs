@@ -6767,6 +6767,9 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (name is "intrinsic:object-reference-equals" or "intrinsic:runtime-type-not-equals")
 		{
+			if (name == "intrinsic:object-reference-equals" && target.Signature.Header.IsInstance &&
+				instruction.SourceInstruction?.OpCode == OpCodes.Callvirt)
+				EmitAllocatedRequireNonNull(instruction.Uses[0], Use(0));
 			var equal = UniqueLabel("object-reference-equals-equal");
 			var done = UniqueLabel("object-reference-equals-done");
 			EmitAllocatedCompare(

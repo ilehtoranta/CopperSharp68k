@@ -183,6 +183,7 @@ internal static class FrameworkReachabilityAnalyzer
 					if (callSiteOverride is null) module.TryCreateExperimentalObjectJoinDispatchBinding(exactIdentity, method, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreateExperimentalNumberGroupCloneBinding(exactIdentity, method, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedStringBuilderToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedStringBuilderObjectEqualsBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedApplicationToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
 					if (callSiteOverride is null) module.TryCreatePinnedGeneralObjectToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedApplicationFormattingLeafBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
