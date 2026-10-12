@@ -31,12 +31,9 @@ internal static class M68kSpillSlotAllocator
 		var rematerialized = new HashSet<int>();
 		var slots = new List<(M68kSpillSlot Slot, List<int> Values)>();
 		var nextOffset = baseOffset;
-		foreach (var value in spilledValues
-			.Select(value => function.Values[value])
-			.OrderByDescending(static value => value.IsGcReference)
-			.ThenByDescending(static value => (int)value.Width)
-			.ThenByDescending(static value => value.SpillWeight)
-			.ThenBy(static value => value.Id))
+		var phiPartners = FindSpilledPhiPartners(function, spilledValues);
+		var webs = FindPhiWebs(spilledValues, phiPartners);
+		foreach (var value in OrderByPhiWebs(function, spilledValues, webs))
 		{
 			if (value.IsRematerializable)
 			{
@@ -45,11 +42,33 @@ internal static class M68kSpillSlotAllocator
 			}
 
 			var size = (int)value.Width;
-			var reusable = slots.FirstOrDefault(candidate =>
+			bool Fits((M68kSpillSlot Slot, List<int> Values) candidate) =>
 				candidate.Slot.Size == size &&
 				candidate.Slot.IsGcRoot == value.IsGcReference &&
 				candidate.Values.All(other =>
-					!interference.Neighbors(value.Id).Contains(other)));
+					!interference.Neighbors(value.Id).Contains(other));
+			// Prefer a slot that already holds a phi partner (a phi definition
+			// and its inputs are versions of one IL local), then one holding any
+			// member of the same phi web. Sharing a slot lets the rewriter drop
+			// the slot-to-slot copy the phi would otherwise need on every edge.
+			var reusable = default((M68kSpillSlot Slot, List<int> Values));
+			if (phiPartners.TryGetValue(value.Id, out var partners))
+			{
+				reusable = partners
+					.Where(assigned.ContainsKey)
+					.Select(partner => slots.First(candidate =>
+						candidate.Slot.Index == assigned[partner].Index))
+					.FirstOrDefault(Fits);
+			}
+			if (reusable.Slot is null && webs.TryGetValue(value.Id, out var web))
+			{
+				reusable = slots.FirstOrDefault(candidate =>
+					candidate.Values.Any(other =>
+						webs.TryGetValue(other, out var otherWeb) && otherWeb == web) &&
+					Fits(candidate));
+			}
+			if (reusable.Slot is null)
+				reusable = slots.FirstOrDefault(Fits);
 			if (reusable.Slot is not null)
 			{
 				reusable.Values.Add(value.Id);
@@ -71,6 +90,83 @@ internal static class M68kSpillSlotAllocator
 			assigned,
 			rematerialized,
 			Align(nextOffset, 4));
+	}
+
+	/// <summary>Maps each spilled value joined to others through phis to its web's root.</summary>
+	private static Dictionary<int, int> FindPhiWebs(
+		IReadOnlySet<int> spilledValues,
+		IReadOnlyDictionary<int, List<int>> phiPartners)
+	{
+		var parent = spilledValues.ToDictionary(static value => value, static value => value);
+		int Find(int value)
+		{
+			while (parent[value] != value)
+				value = parent[value] = parent[parent[value]];
+			return value;
+		}
+		foreach (var (value, partners) in phiPartners)
+		{
+			foreach (var partner in partners)
+			{
+				var left = Find(value);
+				var right = Find(partner);
+				if (left != right) parent[Math.Max(left, right)] = Math.Min(left, right);
+			}
+		}
+		return phiPartners.Keys.ToDictionary(static value => value, Find);
+	}
+
+	private static IEnumerable<M68kMachineValue> OrderByPhiWebs(
+		M68kMachineFunction function,
+		IReadOnlySet<int> spilledValues,
+		IReadOnlyDictionary<int, int> webs)
+	{
+		var ordered = spilledValues
+			.Select(value => function.Values[value])
+			.OrderByDescending(static value => value.IsGcReference)
+			.ThenByDescending(static value => (int)value.Width)
+			.ThenByDescending(static value => value.SpillWeight)
+			.ThenBy(static value => value.Id)
+			.ToList();
+		// Keep each phi web together, in the order of its first member, so its
+		// values are placed back to back and can find each other's slots.
+		int Group(int value) => webs.TryGetValue(value, out var web) ? web : value;
+		var rank = new Dictionary<int, int>();
+		for (var index = 0; index < ordered.Count; index++)
+			rank.TryAdd(Group(ordered[index].Id), index);
+		return ordered
+			.Select((value, index) => (value, index))
+			.OrderBy(item => rank[Group(item.value.Id)])
+			.ThenBy(static item => item.index)
+			.Select(static item => item.value);
+	}
+
+	private static Dictionary<int, List<int>> FindSpilledPhiPartners(
+		M68kMachineFunction function,
+		IReadOnlySet<int> spilledValues)
+	{
+		var partners = new Dictionary<int, List<int>>();
+		void Add(int left, int right)
+		{
+			if (!partners.TryGetValue(left, out var list))
+				partners.Add(left, list = []);
+			if (!list.Contains(right)) list.Add(right);
+		}
+		foreach (var phi in function.Blocks.SelectMany(static block => block.Phis))
+		{
+			if (!spilledValues.Contains(phi.Definition) ||
+				function.Values[phi.Definition].IsRematerializable)
+				continue;
+			foreach (var input in phi.Inputs.Values)
+			{
+				if (input == phi.Definition || !spilledValues.Contains(input) ||
+					function.Values[input].IsRematerializable)
+					continue;
+				Add(phi.Definition, input);
+				Add(input, phi.Definition);
+			}
+		}
+		return partners;
 	}
 
 	public static void Verify(
@@ -199,6 +295,12 @@ internal static class M68kSpillRewriter
 					{
 						continue;
 					}
+					if (SharesSlot(layout, phi.Definition, input.Value))
+					{
+						// Same slot as the phi: the value is already in place on this
+						// edge. RewritePhiDefinitions drops the matching store.
+						continue;
+					}
 					var edgeBlock = edgeInserter.GetInsertionBlock(
 						input.Key,
 						block.Id);
@@ -253,6 +355,10 @@ internal static class M68kSpillRewriter
 				}
 				foreach (var input in phi.Inputs)
 				{
+					if (SharesSlot(layout, phi.Definition, input.Value))
+					{
+						continue;
+					}
 					var edgeBlock = edgeInserter.GetInsertionBlock(
 						input.Key,
 						block.Id);
@@ -492,6 +598,12 @@ internal static class M68kSpillRewriter
 			ilOffset,
 			memoryEffect: M68kMachineMemoryEffect.Write,
 			spillSlotIndex: slot);
+
+	private static bool SharesSlot(M68kSpillLayout layout, int definition, int input) =>
+		input != definition &&
+		layout.Slots.TryGetValue(definition, out var definitionSlot) &&
+		layout.Slots.TryGetValue(input, out var inputSlot) &&
+		definitionSlot.Index == inputSlot.Index;
 
 	private static int InsertBeforeTerminator(M68kMachineBlock block) =>
 		block.Instructions.Count != 0 &&

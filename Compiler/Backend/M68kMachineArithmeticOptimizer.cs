@@ -15,6 +15,7 @@ internal enum M68kIntegerArithmeticKind
 	UnsignedPowerOfTwoDivision,
 	SignedWordDivision,
 	UnsignedWordDivision,
+	UnsignedRegisterWordDivision,
 	SignedWordMultiply,
 	UnsignedWordMultiply,
 	FactoredWordMultiply
@@ -35,7 +36,8 @@ internal sealed record M68kIntegerArithmeticPlan(
 internal static class M68kMachineArithmeticOptimizer
 {
 	public static IReadOnlyDictionary<int, M68kIntegerArithmeticPlan> Run(
-		M68kMachineFunction function, M68kCpuTarget cpu, CompilationModule? module = null)
+		M68kMachineFunction function, M68kCpuTarget cpu, CompilationModule? module = null,
+		bool boundedRegisterDivision = false)
 	{
 		var plans = new Dictionary<int, M68kIntegerArithmeticPlan>();
 		if (cpu != M68kCpuTarget.M68000) return plans;
@@ -70,6 +72,10 @@ internal static class M68kMachineArithmeticOptimizer
 							plan = new(M68kIntegerArithmeticKind.UnsignedWordDivision, divisor);
 					}
 				}
+				else if (boundedRegisterDivision && instruction.Operation is M68kMachineOperation.Divide or M68kMachineOperation.Remainder &&
+					IsUnsigned(instruction) && ranges.Get(left) is { IsUnsignedWord: true } &&
+					ranges.Get(right) is { Minimum: >= 1, Maximum: <= ushort.MaxValue })
+					plan = new(M68kIntegerArithmeticKind.UnsignedRegisterWordDivision);
 				else if (instruction.Operation == M68kMachineOperation.Multiply &&
 					instruction.SourceInstruction?.OpCode != OpCodes.Mul_Ovf &&
 					instruction.SourceInstruction?.OpCode != OpCodes.Mul_Ovf_Un)

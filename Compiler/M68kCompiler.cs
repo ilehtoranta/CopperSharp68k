@@ -381,6 +381,9 @@ public static class M68kCompiler
 
 	private static void ValidateRuntimeOptions(M68kCompilationRequest request)
 	{
+		if (request.CodeSizeOptimizations is not null && request.RomSizeOptimizations is not null)
+			throw new M68kCompilationException(M68kDiagnosticIds.InvalidOutputOptions,
+				"CodeSizeOptimizations and RomSizeOptimizations cannot be combined.");
 		BulkCopyProviderBinding.ValidateOptions(request.BulkCopy);
 
 		if (request.TargetContract is { } target &&
@@ -539,6 +542,7 @@ public static class M68kCompiler
 			symbols,
 			linked.Relocations,
 			CreateMap(
+				program,
 				request,
 				frameworkAnalysis,
 				entryOffset,
@@ -595,6 +599,7 @@ public static class M68kCompiler
 			symbols,
 			linked.Relocations,
 			CreateMap(
+				program,
 				request,
 				frameworkAnalysis,
 				entryOffset,
@@ -646,6 +651,7 @@ public static class M68kCompiler
 			symbols,
 			linked.Relocations,
 			CreateMap(
+				program,
 				request,
 				frameworkAnalysis,
 				entryPoint,
@@ -777,6 +783,7 @@ public static class M68kCompiler
 	}
 
 	private static string CreateMap(
+		GeneratedProgram program,
 		M68kCompilationRequest request,
 		M68kFrameworkAnalysisResult frameworkAnalysis,
 		uint entryPoint,
@@ -843,6 +850,15 @@ public static class M68kCompiler
 			$"runtime-helpers={nativeCompatibility.RuntimeHelperCount} " +
 			$"external-native-targets={nativeCompatibility.ExternalNativeTargetCount} " +
 			$"reachable-assemblies={nativeCompatibility.ReachableAssemblyCount}");
+		map.AppendLine($"RESIDENT-CONTEXT bytes={program.ResidentContextBytes} placement=" +
+			(program.ResidentContextBytes == 0 ? "none" : program.ResidentContextOnHeap ? "heap" : "stack"));
+		map.AppendLine($"CODE-SIZE mode={(request.CodeSizeOptimizations is not null ? "general" : request.RomSizeOptimizations is not null ? "rom" : "off")}");
+		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
+			? string.Join(',', typeof(M68kCodeSizeOptions).GetProperties().Where(p => (bool)p.GetValue(generatedPolicy)!).Select(p => p.Name))
+			: "none"));
+		foreach (var (pass, statistics) in program.Assembler.GeneratedCodeSizeStatistics.OrderBy(p => p.Key, StringComparer.Ordinal))
+			map.AppendLine($"GENERATED-SIZE-REWRITE pass={pass} rewrites={statistics.Rewrites} local-byte-delta={statistics.Bytes}" +
+				(pass == nameof(M68kCodeSizeOptions.EliminateRedundantInitialization) ? $" private-storage-bytes={statistics.Rewrites * 4}" : ""));
 		map.AppendLine($"ENTRY {entryPoint:X8}");
 		map.AppendLine(
 			$"METRICS artifact-bytes={artifactBytes} code-bytes={codeBytes} " +
@@ -898,6 +914,14 @@ public static class M68kCompiler
 			$"argument-calls={copies.ArgumentCopies} argument-bytes={copies.ArgumentBytes} " +
 			$"unclassified-calls={copies.UnclassifiedCopies} unclassified-bytes={copies.UnclassifiedBytes} " +
 			$"managed-providers={copies.ManagedProviders} external-providers={copies.ExternalProviders}");
+		foreach (var statistics in program.AllocationStatistics.Values.OrderBy(statistics => statistics.Method))
+		{
+			map.AppendLine($"ALLOCATION method={statistics.Method} values={statistics.VirtualValues} registers={statistics.RegisterValues} spilled={statistics.SpilledValues} reloads={statistics.Reloads} rematerialized={statistics.RematerializedValues} spill-bytes={statistics.SpillFrameBytes} frame-bytes={statistics.FrameBytes} saved-bytes={statistics.SavedBytes} iterations={statistics.AllocationIterations} pre-peephole-code-bytes={statistics.CodeBytes} pre-peephole-stack-instructions={statistics.StackMemoryInstructions}");
+			foreach (var slot in statistics.FrameSlots)
+				map.AppendLine($"FRAME-SLOT method={statistics.Method} kind={slot.Kind} index={slot.Index} offset={slot.Offset} size={slot.Size} address-taken={(slot.AddressTaken ? "yes" : "no")}");
+			foreach (var operation in statistics.OperationCounts.OrderBy(pair => pair.Key))
+				map.AppendLine($"MACHINE-OP method={statistics.Method} operation={operation.Key} count={operation.Value}");
+		}
 		map.AppendLine("SYMBOLS");
 		foreach (var symbol in symbols)
 		{

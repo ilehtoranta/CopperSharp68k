@@ -15,8 +15,19 @@ internal sealed partial class M68kCodeGenerator
 {
 	private readonly CompilationModule _module;
 	private readonly M68kCompilationRequest _request;
+	private bool SupportsCodeSizeProfile => _request.RuntimeProfile == M68kRuntimeProfile.Rom ||
+		_request.CodeSizeOptimizations is not null &&
+		_request.RuntimeProfile == M68kRuntimeProfile.Resident &&
+		_request.OutputFormat == M68kOutputFormat.Hunk;
+	private bool SupportsGeneratedCodeSizeProfile => _request.CodeSizeOptimizations is not null &&
+		_request.Cpu == M68kCpuTarget.M68000 && _request.RuntimeProfile == M68kRuntimeProfile.Resident &&
+		_request.OutputFormat == M68kOutputFormat.Hunk && _request.ExceptionMode == M68kExceptionMode.Yolo &&
+		_memoryManagement == M68kMemoryManagement.None && !_usesExceptionRuntime;
 	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();
+	private const string SharedDivisionCoreLabel = "generated-size:unsigned-division-core";
+	private int _sharedDivisionCoreCalls;
+	private readonly List<(string Start, string End)> _sharedDivisionCallRanges = [];
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _usedTypeLayouts = new();
 	private readonly Dictionary<string, (CilType Type, CilTypeLayout Layout)>
 		_constructedTypeDescriptors = new(StringComparer.Ordinal);
@@ -292,13 +303,15 @@ internal sealed partial class M68kCodeGenerator
 			() => LowerAggregateCopies(methods, rawFunctions, bulkCopyTarget),
 			foldedMethodAliases: _foldedMethodAliases,
 			inlineSingleUseMethods:
-				_request.RomSizeOptimizations?.InlineSingleUseMethods == true &&
+				_request.EffectiveCodeSizeOptions?.InlineSingleUseMethods == true &&
 				_request.Cpu == M68kCpuTarget.M68000 &&
-				_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+				SupportsCodeSizeProfile &&
 				_request.ExceptionMode == M68kExceptionMode.Yolo &&
 				_memoryManagement == M68kMemoryManagement.None &&
 				_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
-				!_usesExceptionRuntime);
+				!_usesExceptionRuntime,
+			inlineMemoryHelpers: SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.InlineMemoryHelpers,
+			sizeFirstCosts: SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.SizeFirstCosts);
 		_machineOptimizationStatistics = WithAggregateCopyStatistics(
 			_machineOptimizationStatistics, rawFunctions, _aggregateReturnForwardingStatistics);
 		methods = methods.Where(method =>
@@ -388,6 +401,17 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitLong(0);
 		}
 		EmitManagedPoolRuntime();
+		if (_sharedDivisionCoreCalls != 0)
+		{
+			_assembler.Mark(SharedDivisionCoreLabel);
+			EmitUnsignedDivisionCore();
+			var returnOffset = _assembler.Offset;
+			_assembler.EmitWord(0x4E75);
+			_assembler.SetInstructionEffects(returnOffset, new(0xFF, 0, 0xFF, 0x80,
+				M68kConditionCodeSet.All, M68kConditionCodeSet.None, M68kMemorySet.Stack,
+				M68kMemorySet.None, 4, true, false));
+			_assembler.Mark(SharedDivisionCoreLabel + "-limit");
+		}
 		VerifyAllocatedPrePeepholeOutput();
 		_assembler.ApplyRequestedAlignments();
 		var sizeFirstLoops = _request.Cpu == M68kCpuTarget.M68020
@@ -399,25 +423,42 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.MarkDataStart();
 		EmitSwitchAddressTables();
 		var enableWholeImageRomSizeOptimizations =
-			_request.RomSizeOptimizations is not null &&
+			_request.EffectiveCodeSizeOptions is not null &&
 			_request.Cpu == M68kCpuTarget.M68000 &&
-			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+			SupportsCodeSizeProfile &&
 			_request.ExceptionMode == M68kExceptionMode.Yolo &&
 			_memoryManagement == M68kMemoryManagement.None &&
 			_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
 			!_usesExceptionRuntime;
 		_assembler.EnableRepeatedCallResultTestOptimization =
-			enableWholeImageRomSizeOptimizations;
+			enableWholeImageRomSizeOptimizations &&
+			(_request.CodeSizeOptimizations is null || _request.EffectiveCodeSizeOptions!.ShareReturnSequences);
+		if (SupportsGeneratedCodeSizeProfile)
+		{
+			_assembler.GeneratedCodeSizeOptions = _request.CodeSizeOptimizations;
+			_assembler.GeneratedCodeSizeRanges = methods
+				.Where(method => rawFunctions.TryGetValue(method.Identity, out var function) &&
+					!function.HasExceptionHandlers && !function.HasDynamicStackAllocation &&
+					!function.Values.Values.Any(value => value.IsGcReference) &&
+					!function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+					!function.ArgumentHomes.Values.Any(home => home.HasGcReferences))
+				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
+			_assembler.GeneratedPrivateHelperRanges = methods.Where(method =>
+				(method.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Private &&
+				(method.ImplAttributes & MethodImplAttributes.NoInlining) == 0 && !optimizerRoots.Contains(method.Identity) &&
+				_assembler.GeneratedCodeSizeRanges.Any(range => range.StartLabel == MethodLabel(method)))
+				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
+		}
 		// Shared tails use only exact, self-contained terminal blocks. Managed
 		// memory, exception-runtime and dynamic-stack methods retain their exits.
 		_assembler.EnableMethodLocalTerminalReuse =
 			enableWholeImageRomSizeOptimizations &&
-			_request.RomSizeOptimizations!.ShareReturnSequences;
+			_request.EffectiveCodeSizeOptions!.ShareReturnSequences;
 		_assembler.EnableMethodLocalTerminalSuffixReuse = _assembler.EnableMethodLocalTerminalReuse;
 		_assembler.EnableRegionalTerminalReuse = _assembler.EnableMethodLocalTerminalReuse;
 		_assembler.EnableIdenticalMethodThunks =
 			enableWholeImageRomSizeOptimizations &&
-			_request.RomSizeOptimizations!.ShareIdenticalMethods;
+			_request.EffectiveCodeSizeOptions!.ShareIdenticalMethods;
 		if (_assembler.EnableMethodLocalTerminalReuse ||
 			_assembler.EnableIdenticalMethodThunks)
 		{
@@ -438,6 +479,13 @@ internal sealed partial class M68kCodeGenerator
 			_request.ClrPolicy,
 			sizeFirstLoops,
 			_request.PeepholeOptimization);
+		if (_sharedDivisionCoreCalls != 0)
+		{
+			var coreBytes = _assembler.Labels[SharedDivisionCoreLabel + "-limit"] - _assembler.Labels[SharedDivisionCoreLabel];
+			var callBytes = _sharedDivisionCallRanges.Sum(range => _assembler.Labels[range.End] - _assembler.Labels[range.Start]);
+			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.ShareArithmeticCores),
+				_sharedDivisionCoreCalls * 22 - coreBytes - callBytes);
+		}
 		_assembler.ApplyRequestedAlignments();
 		var deferZeroInitializedStorage = ShouldDeferZeroInitializedStorage();
 		EmitData(methods);
@@ -454,7 +502,11 @@ internal sealed partial class M68kCodeGenerator
 			_allocationStatistics,
 			_terminalDeadStoreStatistics,
 			_machineOptimizationStatistics,
-			_loopLayouts);
+			_loopLayouts)
+		{
+            ResidentContextBytes = UsesResidentInvocationContext ? (uint)ResidentInvocationContextBytes : 0,
+			ResidentContextOnHeap = UsesResidentHeapInvocationContext
+		};
 	}
 
 	private void VerifyAllocatedPrePeepholeOutput()
@@ -1455,7 +1507,9 @@ internal sealed partial class M68kCodeGenerator
 				CilOptimizer.Optimize(method, _module),
 				internalAbi.Arguments
 					.Select(static argument => argument.Register)
-					.ToArray());
+					.ToArray(),
+				simplifyLoopPhis: SupportsGeneratedCodeSizeProfile &&
+					_request.CodeSizeOptimizations!.SimplifyLoopPhis);
 			machineFunction.PreserveCalleeSavedRegisters =
 				!_rootOnlyMethods.Contains(method.Identity);
 			if (UsesResidentInvocationContext)
@@ -1552,7 +1606,9 @@ internal sealed partial class M68kCodeGenerator
 		var ilOptimizations = CilOptimizer.Optimize(method, _module);
 		var internalAbi = GetInternalCallAbi(method);
 		M68kCallAbiLowering.FinalizeLogicalCalls(machineFunction);
-		_integerArithmeticPlans = M68kMachineArithmeticOptimizer.Run(machineFunction, _request.Cpu, _module);
+		_integerArithmeticPlans = M68kMachineArithmeticOptimizer.Run(machineFunction, _request.Cpu, _module,
+			SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.ShareArithmeticCores &&
+			!machineFunction.HasExceptionHandlers && !machineFunction.HasDynamicStackAllocation);
 		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(
 			machineFunction,
 			!M68kCompiler.IsManagedRuntime(_request) ||
@@ -1624,7 +1680,20 @@ internal sealed partial class M68kCodeGenerator
 			allocatedFunction.Statistics with
 			{
 				CodeBytes = emittedEnd - emittedStart,
-				StackMemoryInstructions = stackMemoryInstructions
+				StackMemoryInstructions = stackMemoryInstructions,
+				FrameBytes = allocatedFunction.Frame.FrameBytes,
+				SavedBytes = allocatedFunction.Frame.CalleeSavedRegisters.Count * 4,
+				FrameSlots = allocatedFunction.Frame.LocalOffsets.Select(pair => new M68kFrameSlotStatistics(
+					"local", pair.Key, pair.Value, allocatedFunction.Function.LocalHomes[pair.Key].Size,
+					allocatedFunction.Function.Blocks.SelectMany(block => block.Instructions).Any(instruction =>
+						instruction.Operation == M68kMachineOperation.LocalAddress && instruction.ArgumentIndex == pair.Key)))
+					.Concat(allocatedFunction.Frame.ArgumentHomeOffsets.Select(pair => new M68kFrameSlotStatistics(
+						"argument", pair.Key, pair.Value, allocatedFunction.Function.ArgumentHomes[pair.Key].Size, true)))
+					.Concat(allocatedFunction.Frame.SpillOffsets.Select(pair => new M68kFrameSlotStatistics(
+						"spill", pair.Key, pair.Value, allocatedFunction.Spills.Slots.Values.First(slot => slot.Index == pair.Key).Size, false)))
+					.OrderBy(slot => slot.Offset).ThenBy(slot => slot.Kind).ToArray(),
+				OperationCounts = allocatedFunction.Function.Blocks.SelectMany(block => block.Instructions)
+					.GroupBy(instruction => instruction.Operation.ToString()).ToDictionary(group => group.Key, group => group.Count())
 			};
 	}
 
@@ -5121,25 +5190,22 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.Mark(divisorPositive);
 		}
 
-		var loop = UniqueLabel("div_loop");
-		var subtract = UniqueLabel("div_subtract");
-		var noSubtract = UniqueLabel("div_no_sub");
-		// The carry-chain body is 18 bytes on MC68000 versus 22 bytes for the
-		// former BTST/ORI/BSET body. It also retains the 33rd remainder bit in C,
-		// which is required when doubling a remainder above $7fffffff.
-		_assembler.EmitWord(0x7600); // MOVEQ #0,D3 remainder
-		_assembler.EmitWord(0x781F); // MOVEQ #31,D4 counter
-		_assembler.Mark(loop);
-		_assembler.EmitWord(0xD080); // ADD.L D0,D0: shift dividend/quotient, bit into X
-		_assembler.EmitWord(0xD783); // ADDX.L D3,D3: shift remainder and consume bit
-		_assembler.EmitBranch(M68kCondition.CarrySet, subtract);
-		_assembler.EmitWord(0xB681); // CMP.L D1,D3
-		_assembler.EmitBranch(M68kCondition.CarrySet, noSubtract);
-		_assembler.Mark(subtract);
-		_assembler.EmitWord(0x9681); // SUB.L D1,D3
-		_assembler.EmitWord(0x5280); // ADDQ.L #1,D0: append quotient bit
-		_assembler.Mark(noSubtract);
-		_assembler.EmitDbra(4, loop);
+		if (SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.ShareArithmeticCores &&
+			_emittingAllocatedFunction is { Function.HasExceptionHandlers: false, Function.HasDynamicStackAllocation: false })
+		{
+			var callStart = "generated-division-call-start-" + _sharedDivisionCoreCalls;
+			var callEnd = "generated-division-call-limit-" + _sharedDivisionCoreCalls;
+			_assembler.Mark(callStart);
+			var callOffset = _assembler.Offset;
+			_assembler.EmitJsr(SharedDivisionCoreLabel, external: false);
+			_assembler.Mark(callEnd);
+			_sharedDivisionCallRanges.Add((callStart, callEnd));
+			_assembler.SetInstructionEffects(callOffset, new(0x3, 0x19, 0x80, 0,
+				M68kConditionCodeSet.None, M68kConditionCodeSet.All, M68kMemorySet.Stack,
+				M68kMemorySet.Stack, 0, true, false));
+			_sharedDivisionCoreCalls++;
+		}
+		else EmitUnsignedDivisionCore();
 
 		if (signed)
 		{
@@ -5165,6 +5231,25 @@ internal sealed partial class M68kCodeGenerator
 	private void EmitShift(OpCode op)
 	{
 		EmitShift(op, CilStackValueKind.Int32);
+	}
+	private void EmitUnsignedDivisionCore()
+	{
+		var loop = UniqueLabel("div_loop");
+		var subtract = UniqueLabel("div_subtract");
+		var noSubtract = UniqueLabel("div_no_sub");
+		_assembler.EmitWord(0x7600); // MOVEQ #0,D3
+		_assembler.EmitWord(0x781F); // MOVEQ #31,D4
+		_assembler.Mark(loop);
+		_assembler.EmitWord(0xD080); // ADD.L D0,D0
+		_assembler.EmitWord(0xD783); // ADDX.L D3,D3, retaining the 33rd remainder bit
+		_assembler.EmitBranch(M68kCondition.CarrySet, subtract);
+		_assembler.EmitWord(0xB681); // CMP.L D1,D3
+		_assembler.EmitBranch(M68kCondition.CarrySet, noSubtract);
+		_assembler.Mark(subtract);
+		_assembler.EmitWord(0x9681); // SUB.L D1,D3
+		_assembler.EmitWord(0x5280); // ADDQ.L #1,D0
+		_assembler.Mark(noSubtract);
+		_assembler.EmitDbra(4, loop);
 	}
 
 	private void EmitShift(
@@ -7349,7 +7434,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		if (index <= 0 ||
+		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(instruction.Offset) ||
 			caller.Instructions[index - 1] is not { OpCode: var previousOp, Operand: int token } ||
 			previousOp != OpCodes.Ldstr)
 		{
@@ -7405,7 +7490,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		if (index <= 0 ||
+		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(instruction.Offset) ||
 			caller.Instructions[index - 1] is not { OpCode: var previousOp, Operand: int token } ||
 			previousOp != OpCodes.Ldstr)
 		{
@@ -11926,7 +12011,11 @@ internal sealed record GeneratedProgram(
 	IReadOnlyDictionary<CilMethodIdentity, M68kTerminalDeadStoreStatistics>
 		TerminalDeadStoreStatistics,
 	M68kMachineModuleOptimizationStatistics MachineOptimizationStatistics,
-	IReadOnlyList<M68kLoopLayout> LoopLayouts);
+	IReadOnlyList<M68kLoopLayout> LoopLayouts)
+{
+	public uint ResidentContextBytes { get; init; }
+	public bool ResidentContextOnHeap { get; init; }
+}
 
 internal sealed record GeneratedPlatformBase(
 	M68kExternalCallConvention Binding,

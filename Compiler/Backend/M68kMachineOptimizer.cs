@@ -77,6 +77,14 @@ internal static class M68kMachineOptimizer
 			{
 				changed |= SimplifyCopiesAndPhis(function, statistics);
 			}
+			else if (function.SimplifyLoopPhis)
+			{
+				// A phi with one distinct non-self input carries that same value
+				// around the loop. Remove only these phis; loop copy substitution
+				// retains its existing restriction and physical constraints still
+				// pass through CanSubstitute.
+				changed |= SimplifyCopiesAndPhis(function, statistics, simplifyCopies: false);
+			}
 			changed |= FoldConstantsAndIdentities(function, statistics);
 			changed |= FoldConstantBranches(function, statistics);
 			changed |= RemoveUnreachableBlocks(function, statistics);
@@ -194,7 +202,8 @@ internal static class M68kMachineOptimizer
 
 	private static bool SimplifyCopiesAndPhis(
 		M68kMachineFunction function,
-		MutableStatistics statistics)
+		MutableStatistics statistics,
+		bool simplifyCopies = true)
 	{
 		var liveness = M68kLivenessAnalysis.AnalyzeInstructions(
 			function,
@@ -204,7 +213,7 @@ internal static class M68kMachineOptimizer
 		{
 			foreach (var instruction in block.Instructions)
 			{
-				if (instruction is not
+				if (!simplifyCopies || instruction is not
 					{
 						Operation: M68kMachineOperation.Copy,
 						Uses: [var source],

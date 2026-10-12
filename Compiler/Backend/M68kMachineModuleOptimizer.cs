@@ -76,7 +76,9 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlySet<CilMethodIdentity>? noInlineMethods = null,
 		Action? beforeRetention = null,
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases = null,
-		bool inlineSingleUseMethods = false)
+		bool inlineSingleUseMethods = false,
+		bool inlineMemoryHelpers = false,
+		bool sizeFirstCosts = false)
 	{
 		ArgumentNullException.ThrowIfNull(methods);
 		ArgumentNullException.ThrowIfNull(functions);
@@ -139,7 +141,7 @@ internal static class M68kMachineModuleOptimizer
 
 		var graph = BuildCallGraph(functions, module, foldedMethodAliases);
 		var components = FindStronglyConnectedComponents(graph);
-		var singleUseCandidates = inlineSingleUseMethods
+		var singleUseCandidates = inlineSingleUseMethods || inlineMemoryHelpers
 			? FindSingleUseInlineCandidates(
 				functions,
 				module,
@@ -177,6 +179,7 @@ internal static class M68kMachineModuleOptimizer
 					noInlineMethods,
 					foldedMethodAliases,
 					singleUseCandidates,
+					inlineMemoryHelpers, sizeFirstCosts,
 					ref singleUseInlined);
 			}
 		}
@@ -491,6 +494,7 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlySet<CilMethodIdentity>? noInlineMethods,
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases,
 		IReadOnlySet<CilMethodIdentity> singleUseCandidates,
+		bool inlineMemoryHelpers, bool sizeFirstCosts,
 		ref int singleUseInlined)
 	{
 		var count = 0;
@@ -550,12 +554,17 @@ internal static class M68kMachineModuleOptimizer
 						targetMethod,
 						logicalCall,
 						module);
+				var additionalMemoryHelper = inlineMemoryHelpers && singleUseCandidates.Contains(bodyIdentity) &&
+					(targetMethod.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Private &&
+					!caller.HasExceptionHandlers && !caller.HasDynamicStackAllocation &&
+					!caller.Values.Values.Any(v => v.IsGcReference);
 				if (!TryGetScalarInlineBody(
 						target,
 						logicalCall,
 						module,
 						aggressive,
 						trivialValueTypeConstructor,
+						additionalMemoryHelper,
 						out var body,
 						out var arguments,
 						out var returnValues,
@@ -599,11 +608,11 @@ internal static class M68kMachineModuleOptimizer
 				var beforeCost = M68kTargetCostModel.Estimate(
 					block.Instructions.Skip(first).Take(removedCount),
 					cpu,
-					block.LoopDepth);
+					block.LoopDepth, sizeFirstCosts);
 				var afterCost = M68kTargetCostModel.Estimate(
 					body,
 					cpu,
-					block.LoopDepth) +
+					block.LoopDepth, sizeFirstCosts) +
 					(logicalCall.ResultValueIds.Length == 0
 						? new M68kTargetCost()
 						: M68kTargetCostModel.Estimate(
@@ -619,10 +628,10 @@ internal static class M68kMachineModuleOptimizer
 				// cloned, the local optimizer coalesces those copies around the one
 				// field store. Counting them as lasting growth would retain a BSR/RTS
 				// pair for a strictly smaller, faster local store.
-				var forceInline = guestMemoryIntrinsicWrapper ||
+				var forceInline = !additionalMemoryHelper && guestMemoryIntrinsicWrapper ||
 					trivialValueTypeConstructor;
 				var acceptedNormally = delta <= 0 &&
-					M68kTargetCostModel.Accept(beforeCost, afterCost, cpu);
+					M68kTargetCostModel.Accept(beforeCost, afterCost, cpu, sizeFirstCosts);
 				var pressurePenalty = checked(4L * Math.Max(
 					0,
 					afterCost.AddedLiveValuePressure -
@@ -1179,6 +1188,7 @@ internal static class M68kMachineModuleOptimizer
 		CompilationModule module,
 		bool allowGuestMemoryIntrinsic,
 		bool allowTrivialValueTypeConstructor,
+		bool allowAdditionalMemory,
 		out IReadOnlyList<M68kMachineInstruction> body,
 		out IReadOnlyDictionary<int, int> arguments,
 		out ImmutableArray<int> returnValues,
@@ -1222,6 +1232,7 @@ internal static class M68kMachineModuleOptimizer
 			IsGuestMemoryIntrinsic(instruction, module));
 		var trivialConstructorStoreCount = inlineBody.Count(
 			IsTrivialValueTypeConstructorStore);
+		var ordinaryMemoryCount = inlineBody.Count(IsOrdinaryMemory);
 		var isTrivialValueTypeConstructorBody =
 			allowTrivialValueTypeConstructor &&
 			trivialConstructorStoreCount == 1 &&
@@ -1232,10 +1243,11 @@ internal static class M68kMachineModuleOptimizer
 			!IsPureScalarInstruction(instruction) &&
 			!(isTrivialValueTypeConstructorBody &&
 			  IsTrivialValueTypeConstructorStore(instruction)) &&
-			!(allowGuestMemoryIntrinsic &&
+			!(allowAdditionalMemory && IsOrdinaryMemory(instruction)) &&
+			!((allowGuestMemoryIntrinsic || allowAdditionalMemory) &&
 			  IsGuestMemoryIntrinsic(instruction, module))) ||
-			guestMemoryIntrinsicCount > 1 ||
-			guestMemoryIntrinsicCount != 0 && inlineBody.Length > 8)
+			guestMemoryIntrinsicCount + ordinaryMemoryCount > (allowAdditionalMemory ? 3 : 1) ||
+			guestMemoryIntrinsicCount + ordinaryMemoryCount != 0 && inlineBody.Length > (allowAdditionalMemory ? 24 : 8))
 		{
 			return false;
 		}
@@ -1263,7 +1275,12 @@ internal static class M68kMachineModuleOptimizer
 			instruction.MemoryEffect == M68kMachineMemoryEffect.None &&
 			!instruction.MayThrow && !instruction.IsSafepoint &&
 			!instruction.RequiresLiveCallerFrame &&
-			instruction.LogicalCall is null;
+				instruction.LogicalCall is null;
+		static bool IsOrdinaryMemory(M68kMachineInstruction instruction) =>
+			instruction.Operation is M68kMachineOperation.Load or M68kMachineOperation.Store &&
+			instruction.MemoryEffect is M68kMachineMemoryEffect.Read or M68kMachineMemoryEffect.Write &&
+			!instruction.IsSafepoint && !instruction.RequiresLiveCallerFrame && instruction.LogicalCall is null &&
+			instruction.MemorySize is >= 0 and <= 4;
 
 		static bool IsTrivialValueTypeConstructorStore(
 			M68kMachineInstruction instruction) =>
@@ -1383,7 +1400,7 @@ internal static class M68kMachineModuleOptimizer
 				instruction.RequiresLiveCallerFrame,
 				instruction.ConstantValue,
 				origin,
-				nestedLogicalCall));
+					nestedLogicalCall) with { MemoryOffset = instruction.MemoryOffset, MemorySize = instruction.MemorySize });
 		}
 		for (var index = 0; index < logicalCall.ResultValueIds.Length; index++)
 		{

@@ -425,16 +425,9 @@ internal sealed partial class M68kCodeGenerator
 	private bool IsTransparentScalarRawGetter(MethodReference target) =>
 		target.Signature.ParameterTypes.Length == 0 &&
 		target.Signature.ReturnType.DisplayName == "uint" &&
-		(target.ImportName is { } importName &&
+		target.ImportName is { } importName &&
 		 importName.StartsWith("intrinsic:", StringComparison.Ordinal) &&
-		 importName.EndsWith("-raw", StringComparison.Ordinal) ||
-		 target.Definition is { } definition &&
-		 definition.Signature.Header.IsInstance &&
-		 definition.Name == "get_Raw" &&
-		 _module.IsTransparentScalarType(new CilType(
-			 CilTypeKind.ValueType,
-			 4,
-			 definition.DisplayName.Split("::", StringSplitOptions.None)[0])));
+		 importName.EndsWith("-raw", StringComparison.Ordinal);
 
 	private void EmitArgumentValue(
 		CilMethod caller,

@@ -187,6 +187,14 @@ internal sealed class M68kOptimizerPipeline
 		{
 			_assembler.ClearAnalysisScope();
 		}
+		var helperRewrites = _layoutPass.RunGeneratedHelperInlining();
+		if (helperRewrites != 0)
+		{
+			rewrites += helperRewrites;
+			batches++;
+			rounds++;
+			RunPassesToFixedPoint(ref batches, ref rewrites, ref rounds, "inlined private helpers");
+		}
 		RunLayoutCleanup(ref batches, ref rewrites, ref rounds);
 		var returnConditionStatistics = RunRepeatedCallResultTestOptimizer(
 			ref batches, ref rewrites, ref rounds);

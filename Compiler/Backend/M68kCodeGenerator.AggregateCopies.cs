@@ -30,9 +30,9 @@ internal sealed partial class M68kCodeGenerator
 		M68kBulkCopyTarget? target)
 	{
 		var methodSummaries =
-			_request.RomSizeOptimizations?.ForwardReadOnlyAggregateLocals == true &&
+			_request.EffectiveCodeSizeOptions?.ForwardReadOnlyAggregateLocals == true &&
 			_request.Cpu == M68kCpuTarget.M68000 &&
-			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+			SupportsCodeSizeProfile &&
 			_request.ExceptionMode == M68kExceptionMode.Yolo &&
 			_memoryManagement == M68kMemoryManagement.None &&
 			_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&

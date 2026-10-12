@@ -4833,6 +4833,14 @@ internal sealed partial class M68kCodeGenerator
 			var overwrittenLocals = M68kFrameInitializationAnalysis.FindEntryOverwrites(
 				allocated.Function,
 				instruction => AllocatedEntryLocalWriteSize(method, allocated, instruction));
+			if (SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.EliminateRedundantInitialization)
+			{
+				var additional = M68kPrivateInitializationAnalysis.FindOverwrites(allocated.Function,
+					instruction => AllocatedEntryLocalWriteSize(method, allocated, instruction));
+				foreach (var cell in additional.Except(overwrittenLocals))
+					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.EliminateRedundantInitialization), 0);
+				overwrittenLocals = overwrittenLocals.Concat(additional).ToHashSet();
+			}
 			var clearDisplacements = allocated.Function.LocalHomes.Values
 				.Where(static home => home.Initialize)
 				.OrderBy(static home => home.Index)
@@ -8589,8 +8597,15 @@ internal sealed partial class M68kCodeGenerator
 				constantOffset is >= short.MinValue and <= short.MaxValue
 					? (short)constantOffset
 					: (short)0;
-			if (!hasConstantOffset ||
-				constantOffset is < short.MinValue or > short.MaxValue)
+			// A narrow load sharing its index/result register cannot preclear
+			// the result. Keep that address available to the late liveness pass,
+			// which can fold it without paying a wider normalization sequence.
+			var indexedAccess = name == "intrinsic:aptr-read-uint32" && !hasConstantOffset && SupportsGeneratedCodeSizeProfile &&
+				_request.CodeSizeOptimizations!.CompactGuestMemory && !allocated.Function.HasExceptionHandlers &&
+				!allocated.Function.HasDynamicStackAllocation && !allocated.Function.Values.Values.Any(value => value.IsGcReference) &&
+				!allocated.Function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+				!allocated.Function.ArgumentHomes.Values.Any(home => home.HasGcReferences);
+			if (!indexedAccess && (!hasConstantOffset || constantOffset is < short.MinValue or > short.MaxValue))
 			{
 				EmitAllocatedBinaryInPlace(
 					M68kMachineOperation.Add,
@@ -8600,11 +8615,12 @@ internal sealed partial class M68kCodeGenerator
 			}
 			var width = name == "intrinsic:aptr-read-uint8" ? M68kMachineValueWidth.Byte :
 				name == "intrinsic:aptr-read-uint16" ? M68kMachineValueWidth.Word : M68kMachineValueWidth.Long;
-			EmitAllocatedBaseLoad(
-				baseRegister,
-				destination,
-				width,
-				displacement);
+			if (indexedAccess)
+			{
+				EmitAllocatedIndexedLoad(baseRegister, Use(1), destination, width, 1, 0);
+				_assembler.RecordCodeSizeRewrite("IndexedGuestAccess", 0);
+			}
+			else EmitAllocatedBaseLoad(baseRegister, destination, width, displacement);
 			if (width != M68kMachineValueWidth.Long)
 			{
 				// APTR reads publish canonical CLR byte/ushort values. A byte/word
@@ -8665,8 +8681,12 @@ internal sealed partial class M68kCodeGenerator
 				constantOffset is >= short.MinValue and <= short.MaxValue
 					? (short)constantOffset
 					: (short)0;
-			if (!hasConstantOffset ||
-				constantOffset is < short.MinValue or > short.MaxValue)
+			var indexedAccess = !hasConstantOffset && SupportsGeneratedCodeSizeProfile &&
+				_request.CodeSizeOptimizations!.CompactGuestMemory && !allocated.Function.HasExceptionHandlers &&
+				!allocated.Function.HasDynamicStackAllocation && !allocated.Function.Values.Values.Any(value => value.IsGcReference) &&
+				!allocated.Function.LocalHomes.Values.Any(home => home.HasGcReferences) &&
+				!allocated.Function.ArgumentHomes.Values.Any(home => home.HasGcReferences);
+			if (!indexedAccess && (!hasConstantOffset || constantOffset is < short.MinValue or > short.MaxValue))
 			{
 				EmitAllocatedBinaryInPlace(
 					M68kMachineOperation.Add,
@@ -8676,11 +8696,12 @@ internal sealed partial class M68kCodeGenerator
 			}
 			var width = name == "intrinsic:aptr-write-uint8" ? M68kMachineValueWidth.Byte :
 				name == "intrinsic:aptr-write-uint16" ? M68kMachineValueWidth.Word : M68kMachineValueWidth.Long;
-			EmitAllocatedBaseStore(
-				Use(instruction.Immediate is null ? 2 : 1),
-				baseRegister,
-				width,
-				displacement);
+			if (indexedAccess)
+			{
+				EmitAllocatedIndexedStore(Use(2), baseRegister, Use(1), width, 1, 0);
+				_assembler.RecordCodeSizeRewrite("IndexedGuestAccess", 0);
+			}
+			else EmitAllocatedBaseStore(Use(instruction.Immediate is null ? 2 : 1), baseRegister, width, displacement);
 			return;
 		}
 		if (name == "intrinsic:aptr-raw")
@@ -10334,10 +10355,14 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod caller,
 		M68kMachineInstruction instruction)
 	{
+		if (instruction.Immediate is int literalToken) return literalToken;
 		var index = caller.Instructions
 			.ToList()
 			.FindIndex(candidate => candidate.Offset == instruction.IlOffset);
-		if (index <= 0 ||
+		// A branch into the conversion can carry a different literal than the
+		// physically preceding ldstr. FromLiteral accepts one immediate literal,
+		// not a managed-string phi; never silently choose the fallthrough token.
+		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(instruction.IlOffset) ||
 			caller.Instructions[index - 1] is not
 				{ OpCode: var op, Operand: int token } ||
 			op != OpCodes.Ldstr)

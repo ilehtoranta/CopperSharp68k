@@ -231,6 +231,15 @@ internal sealed class M68kAssembler
 		_longAlignmentLabels.Add(label);
 
 	internal bool EnableRepeatedCallResultTestOptimization { get; set; }
+	internal M68kCodeSizeOptions? GeneratedCodeSizeOptions { get; set; }
+	internal IReadOnlyList<(string StartLabel, string EndLabel)> GeneratedCodeSizeRanges { get; set; } = [];
+	internal IReadOnlyList<(string StartLabel, string EndLabel)> GeneratedPrivateHelperRanges { get; set; } = [];
+	internal Dictionary<string, (int Rewrites, int Bytes)> GeneratedCodeSizeStatistics { get; } = new(StringComparer.Ordinal);
+	internal void RecordCodeSizeRewrite(string pass, int bytes)
+	{
+		GeneratedCodeSizeStatistics.TryGetValue(pass, out var previous);
+		GeneratedCodeSizeStatistics[pass] = (previous.Rewrites + 1, previous.Bytes + bytes);
+	}
 
 	internal bool EnableMethodLocalTerminalReuse { get; set; }
 

@@ -19,7 +19,7 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var instruction in instructions)
 		{
 			if (!_integerArithmeticPlans.TryGetValue(instruction.Id, out var plan) ||
-				plan.Kind is M68kIntegerArithmeticKind.SignedWordMultiply or M68kIntegerArithmeticKind.UnsignedWordMultiply)
+				plan.Kind is M68kIntegerArithmeticKind.SignedWordMultiply or M68kIntegerArithmeticKind.UnsignedWordMultiply or M68kIntegerArithmeticKind.UnsignedRegisterWordDivision)
 				continue;
 			var constantOperand = plan.Kind == M68kIntegerArithmeticKind.FactoredWordMultiply
 				? 1 - plan.SourceOperand : 1;
@@ -86,9 +86,18 @@ internal sealed partial class M68kCodeGenerator
 				return true;
 			case M68kIntegerArithmeticKind.SignedWordDivision:
 			case M68kIntegerArithmeticKind.UnsignedWordDivision:
+			case M68kIntegerArithmeticKind.UnsignedRegisterWordDivision:
 				var signed = plan.Kind == M68kIntegerArithmeticKind.SignedWordDivision;
-				_assembler.EmitWord(signed ? (ushort)0x81FC : (ushort)0x80FC); // DIV[SU].W #constant,D0
-				_assembler.EmitWord(unchecked((ushort)plan.Constant));
+				if (plan.Kind == M68kIntegerArithmeticKind.UnsignedRegisterWordDivision)
+				{
+					_assembler.EmitWord(0x80C1); // DIVU.W D1,D0, proven 1..65535 divisor and <=65535 dividend
+					_assembler.RecordCodeSizeRewrite("BoundedRegisterDivision", 0);
+				}
+				else
+				{
+					_assembler.EmitWord(signed ? (ushort)0x81FC : (ushort)0x80FC);
+					_assembler.EmitWord(unchecked((ushort)plan.Constant));
+				}
 				if (paired)
 				{
 					var other = remainder ? M68kRegister.D2 : M68kRegister.D3;

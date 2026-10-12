@@ -76,7 +76,7 @@ public sealed class M68kFrameClearRunsExecutionTests
 		string MethodCilSHA256, string AssemblyText);
 
 	internal static Measurement Measure(string shapeName, string pressureName, M68kCpuTarget target,
-		M68kClrPolicy clr, M68kPeepholeOptimizationMode mode, bool dynamicFrame, uint remainder)
+		M68kClrPolicy clr, M68kPeepholeOptimizationMode mode, bool dynamicFrame, uint remainder, bool sizeFirst = false)
 	{
 		var shape = Shapes.Single(item => item.Name == shapeName);
 		var pressure = Pressures.Single(item => item.Name == pressureName);
@@ -91,6 +91,8 @@ public sealed class M68kFrameClearRunsExecutionTests
 			ClrPolicy = clr, OutputFormat = M68kOutputFormat.Assembly, RuntimeProfile = M68kRuntimeProfile.Freestanding,
 			ExceptionMode = M68kExceptionMode.Yolo, MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = []
 		};
+		if (sizeFirst) request = request with { RuntimeProfile = M68kRuntimeProfile.Resident,
+			OutputFormat = M68kOutputFormat.Hunk, CodeSizeOptimizations = new() { SizeFirstCosts = true } };
 		var generator = new M68kCodeGenerator(module, request, []);
 		var assembler = (M68kAssembler)typeof(M68kCodeGenerator).GetField("_assembler", PrivateInstance)!.GetValue(generator)!;
 		var abi = Invoke(generator, "GetInternalCallAbi", method)!;
