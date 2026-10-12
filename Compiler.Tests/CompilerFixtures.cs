@@ -7299,6 +7299,8 @@ public static partial class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibGroupedIntegerAllocationContractsEntry()
 	{
+		// Initialize the lazy default provider before injecting formatting failures.
+		_ = System.Globalization.NumberFormatInfo.CurrentInfo;
 		for (var providerCase = 0; providerCase < 3; providerCase++)
 		for (var width = 0; width < 8; width++)
 		{
@@ -7505,6 +7507,8 @@ public static partial class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibScientificIntegerAllocationContractsEntry()
 	{
+		// Initialize the lazy default provider before injecting formatting failures.
+		_ = System.Globalization.NumberFormatInfo.CurrentInfo;
 		for (var providerCase = 0; providerCase < 3; providerCase++)
 		for (var width = 0; width < 8; width++)
 		{
@@ -7689,6 +7693,8 @@ public static partial class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibFixedPointIntegerAllocationContractsEntry()
 	{
+		// Initialize the lazy default provider before injecting formatting failures.
+		_ = System.Globalization.NumberFormatInfo.CurrentInfo;
 		for (var providerCase = 0; providerCase < 3; providerCase++)
 		for (var width = 0; width < 8; width++)
 		{
@@ -9294,6 +9300,9 @@ public static partial class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibStringBuilderSmallIntegerAllocationFailureEntry()
 	{
+		// The room-available checks permit only boxing, so prepare the lazy
+		// negative-sign provider before arming their allocation countdowns.
+		_ = System.Globalization.NumberFormatInfo.CurrentInfo;
 		const string pattern = "aba\0\u03A9\uD83D\uDE00\uFFFF";
 		for (var kind = 0; kind < 4; kind++)
 		{

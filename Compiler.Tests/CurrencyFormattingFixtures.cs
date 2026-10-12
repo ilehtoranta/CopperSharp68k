@@ -220,6 +220,8 @@ public static partial class CompilerFixtures
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int CoreLibCurrencyIntegerAllocationContractsEntry()
 	{
+		// Initialize the lazy default provider before injecting formatting failures.
+		_ = System.Globalization.NumberFormatInfo.CurrentInfo;
 		for (var providerCase = 0; providerCase < 3; providerCase++)
 		for (var width = 0; width < 8; width++)
 		{

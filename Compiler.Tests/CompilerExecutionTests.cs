@@ -3173,11 +3173,12 @@ public sealed partial class CompilerExecutionTests
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
 		{
 			var result = Compile(target, M68kOutputFormat.Hunk, "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibCurrencyIntegerAllocationContractsEntry",
-				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00 },
+				imports: new Dictionary<string, uint> { [M68kRuntimeImports.Allocate] = 0x2800, ["fixture.string-builder-allocation-failure"] = 0x2A00, [M68kRuntimeImports.GcCollect] = 0x2C00, [M68kRuntimeImports.UnhandledException] = 0x2D00 },
 				peepholeOptimization: mode,
 				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
 			var bus = CreateHunkBus(result);
 			var heap = 0x0010_0000u; var countdown = 0u; var attempts = 0; var failures = 0; var regions = 0;
+			bus.RegisterGateway(0x2D00, state => throw new Xunit.Sdk.XunitException($"Unhandled formatting exception: countdown={countdown}, attempts={attempts}, failures={failures}, regions={regions}, exception=0x{state.A[0]:X8}"));
 			bus.RegisterGateway(0x2C00, state => state.D[0] = 0);
 			bus.RegisterGateway(0x2A00, state => { countdown = state.D[0]; if (countdown != 0) regions++; });
 			bus.RegisterGateway(0x2800, state =>
@@ -6286,13 +6287,15 @@ public sealed partial class CompilerExecutionTests
 			var result = Compile(target, M68kOutputFormat.Hunk, $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
 				imports: new Dictionary<string, uint> {
 					[M68kRuntimeImports.Allocate] = allocatorAddress,
-					["fixture.string-builder-allocation-failure"] = failureControlAddress },
+					["fixture.string-builder-allocation-failure"] = failureControlAddress,
+					[M68kRuntimeImports.UnhandledException] = 0x2D00 },
 				frameworkImplementationPack: new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true });
 			var bus = CreateHunkBus(result);
 			// Keep the bump heap above both the loaded program and its stack.
 			var heap = 0x0010_0000u;
 			var failCountdown = 0u;
 			var failures = 0;
+			bus.RegisterGateway(0x2D00, state => throw new Xunit.Sdk.XunitException($"Unhandled chunk-rebuild exception: {entry}/{target}, countdown={failCountdown}, failures={failures}, reason={state.D[0]}, exception=0x{state.A[0]:X8}"));
 			bus.RegisterGateway(failureControlAddress, state => failCountdown = state.D[0]);
 			bus.RegisterGateway(allocatorAddress, state =>
 			{
@@ -14839,7 +14842,7 @@ public sealed partial class CompilerExecutionTests
 			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 			Heap = new M68kHeapOptions
 			{
-				StartAddress = 0x0000_4000,
+				StartAddress = 0x0010_0000,
 				Size = 0x0002_0000
 			}
 		});

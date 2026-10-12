@@ -10,6 +10,26 @@ namespace CopperSharp.Compiler.Tests;
 
 public static partial class CompilerFixtures
 {
+	public static int CoreLibColdDefaultCultureAllocationFailureEntry()
+	{
+		// CoreLib's NumberFormatInfo type initializer has its own failure policy.
+		// Initialize that type while leaving target-owned culture storage cold.
+		_ = new NumberFormatInfo();
+		SetStringBuilderAllocationFailure(1);
+		try { _ = CultureInfo.CurrentCulture; SetStringBuilderAllocationFailure(0); return 1; }
+		catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+		var culture = CultureInfo.CurrentCulture;
+		if (!ReferenceEquals(culture, CultureInfo.InvariantCulture) || !culture.IsReadOnly) return 2;
+		// A failed provider allocation must not publish a default NumberFormatInfo.
+		SetStringBuilderAllocationFailure(1);
+		try { _ = NumberFormatInfo.CurrentInfo; SetStringBuilderAllocationFailure(0); return 3; }
+		catch (OutOfMemoryException) { SetStringBuilderAllocationFailure(0); }
+		if (!ReferenceEquals(culture, CultureInfo.CurrentCulture)) return 4;
+		var info = NumberFormatInfo.CurrentInfo;
+		if (!info.IsReadOnly || info.NegativeSign != "-" || info.NumberDecimalSeparator != ".") return 5;
+		return ReferenceEquals(info, culture.NumberFormat) && ReferenceEquals(info, NumberFormatInfo.CurrentInfo) ? 42 : 6;
+	}
+
 	public static int CoreLibAmbientCultureDefaultsEntry()
 	{
 		if (CultureInfo.DefaultThreadCurrentCulture is not null ||
