@@ -1914,7 +1914,7 @@ public sealed partial class CompilerExecutionTests
 	{
 		Assert.Equal(42, CompilerFixtures.CoreLibStringBuilderAppendJoinContractEntry());
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var probe = CoreLibCharacterFixtureBuilder.Create(directory);
 		foreach (var entry in new[] { "CoreLibStringBuilderAppendJoinContractEntry", "ConstrainedStringEntry" })
@@ -2484,7 +2484,7 @@ public sealed partial class CompilerExecutionTests
 	public void CoreLibPrivateMemoryZeroHelpersRunOnEveryCpu(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = CoreLibCharacterFixtureBuilder.Create(directory);
 		foreach (var entry in new[] { "ZeroMemoryEntry", "ClearBytesEntry" })
@@ -4225,8 +4225,8 @@ public sealed partial class CompilerExecutionTests
 	public void UInt32MemmovePreservesOverlapDirectionAndGuardWords(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		// Host reflection retains generated assemblies; keep them in test output.
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "UInt32MemmoveProbes", Guid.NewGuid().ToString("N"));
+		// Host reflection retains generated assemblies; keep them outside frozen inputs.
+		var directory = Path.Combine(GeneratedProbeRoot, "UInt32MemmoveProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = UInt32MemmoveFixtureBuilder.Create(directory);
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
@@ -4247,7 +4247,7 @@ public sealed partial class CompilerExecutionTests
 	[MemberData(nameof(CpuTargets))]
 	public void NumericConversionsPreserveIeeeBitsRoundingAndIntegerLimits(M68kCpuTarget target, M68kCpuModel model)
 	{
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "NumericConversionProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "NumericConversionProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = NumericConversionFixtureBuilder.Create(directory);
 		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("NumericConversionProbe")!;
@@ -4269,7 +4269,7 @@ public sealed partial class CompilerExecutionTests
 	[MemberData(nameof(CpuTargets))]
 	public void FloatingNegationPreservesSignedZerosInfinitiesAndNaNPayloads(M68kCpuTarget target, M68kCpuModel model)
 	{
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingNegationProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "FloatingNegationProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = NumericConversionFixtureBuilder.Create(directory);
 		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("NumericConversionProbe")!;
@@ -4314,7 +4314,7 @@ public sealed partial class CompilerExecutionTests
 	public void CoreLibBitOperationsLog2UsesSoftwareFallbackAndForeignGatesReturnFalse(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "HardwareSupportProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "HardwareSupportProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory); var assembly = HardwareSupportFixtureBuilder.Create(directory);
 		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("HardwareSupportProbe")!;
 		Assert.Equal(42, (int)host.GetMethod("Log2Entry")!.Invoke(null, null)!);
@@ -4346,7 +4346,7 @@ public sealed partial class CompilerExecutionTests
 	[MemberData(nameof(CpuTargets))]
 	public void FloatingSubnormalSubtractionPreservesEveryFractionBit(M68kCpuTarget target, M68kCpuModel model)
 	{
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingSubnormalProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "FloatingSubnormalProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = FloatingPointArithmeticFixtureBuilder.Create(directory);
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
@@ -4369,7 +4369,7 @@ public sealed partial class CompilerExecutionTests
 	[MemberData(nameof(CpuTargets))]
 	public void FloatingBinaryArithmeticPreservesIeeeResultsAndCallerGuards(M68kCpuTarget target, M68kCpuModel model)
 	{
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingArithmeticProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "FloatingArithmeticProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = FloatingPointArithmeticFixtureBuilder.Create(directory);
 		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("FloatingPointArithmeticProbe")!;
@@ -4401,7 +4401,7 @@ public sealed partial class CompilerExecutionTests
 	[MemberData(nameof(CpuTargets))]
 	public void FloatingComparisonsPreserveUnorderedBranchesSignedZerosAndExceptionOffsets(M68kCpuTarget target, M68kCpuModel model)
 	{
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "FloatingComparisonProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "FloatingComparisonProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = FloatingPointComparisonFixtureBuilder.Create(directory);
 		var host = System.Reflection.Assembly.LoadFile(assembly).GetType("FloatingPointComparisonProbe")!;
@@ -4441,7 +4441,7 @@ public sealed partial class CompilerExecutionTests
 	private static void RunCoreLibBigIntegerProbe(M68kCpuTarget target, M68kCpuModel model, string entry)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "BigIntegerAddProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "BigIntegerAddProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory); var assembly = CoreLibBigIntegerFixtureBuilder.Create(directory);
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
 		{
@@ -4475,7 +4475,7 @@ public sealed partial class CompilerExecutionTests
 	public void CoreLibBigIntegerFixedBuffersPreserveEveryWordAndStackGuards(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibBigIntegerProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "CoreLibBigIntegerProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = CoreLibBigIntegerFixtureBuilder.Create(directory);
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
@@ -4505,7 +4505,7 @@ public sealed partial class CompilerExecutionTests
 	public void NativeUInt32SpanPointerKeepsItsOwnerAfterSpanResetAndCollection(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "NativeSpanPointerProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "NativeSpanPointerProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var assembly = CoreLibBigIntegerFixtureBuilder.Create(directory);
 		foreach (var entry in new[] { "OwnedPointerEntry", "ConvertedPointerEntry" })
@@ -6100,7 +6100,7 @@ public sealed partial class CompilerExecutionTests
 	public void CoreLibIntegerMatchListGrowthRetainsOwners(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var result = M68kCompiler.Compile(new M68kCompilationRequest {
 			AssemblyPath = CoreLibCharacterFixtureBuilder.Create(directory),
@@ -6149,7 +6149,7 @@ public sealed partial class CompilerExecutionTests
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		// Reflection resolution retains the generated assembly in the host load context.
 		// Keep it with the other test output rather than in the disposable pack.
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var request = new M68kCompilationRequest
 		{
@@ -6193,7 +6193,7 @@ public sealed partial class CompilerExecutionTests
 	public void CoreLibCharacterFillPreservesFullCountBoundsAndOwners(M68kCpuTarget target, M68kCpuModel model)
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
-		var directory = Path.Combine(Path.GetDirectoryName(FixtureAssembly)!, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
+		var directory = Path.Combine(GeneratedProbeRoot, "CoreLibCharacterProbes", Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(directory);
 		var result = M68kCompiler.Compile(new M68kCompilationRequest
 		{
@@ -10381,7 +10381,9 @@ public sealed partial class CompilerExecutionTests
 			@"\tmove\.l\t\k<offset>\(a0\),d0",
 			result.Text);
 		Assert.Matches(
-			@"\tmovea\.l\td0,a0\r?\n" +
+			// Initialize keeps the configuration pointer live for later threshold reads;
+			// its data-register assignment can change while a0 still serves both loads.
+			@"\tmovea\.l\td[0-7],a0\r?\n" +
 			@"(?:C68K_[^\r\n]+:\r?\n)*" +
 			@"\tmove\.l\t8\(a0\),d[0-7]\r?\n" +
 			@"\tmove\.l\t12\(a0\),d[0-7]",
@@ -10399,10 +10401,15 @@ public sealed partial class CompilerExecutionTests
 			@"\tmove\.l\t12\(a1\),d0\r?\n" +
 			@"\tmovea\.l\td0,a0",
 			result.Text);
+		// SDK wrappers should use their incoming address directly. The GC tracer
+		// can retain an address across branches while advancing another cursor.
+		var sdkMethods = Regex.Matches(result.Text!,
+			@"(?ms)^C68K_method_003A(?<token>[0-9A-F]{8}):\r?\n.*?^C68K_method_003A\k<token>_003Aend:\r?$");
+		Assert.NotEmpty(sdkMethods);
 		Assert.DoesNotMatch(
 			@"\tmovea\.l\ta[1-6],a0\r?\n" +
 			@"\tmove\.[bwl]\t[^\r\n]*\(a0\)",
-			result.Text);
+			string.Concat(sdkMethods.Select(static match => match.Value)));
 		Assert.DoesNotMatch(
 			"\\tlea\\t\\d+\\(a7\\),a[0-6]\\r?\\n" +
 			"\\tmove\\.[bwl]\\t\\(a[0-6]\\),d[0-7]",
@@ -13169,6 +13176,7 @@ public sealed partial class CompilerExecutionTests
 				M68kCompiler.Compile(new M68kCompilationRequest
 				{
 					AssemblyPath = assemblyPath,
+					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 					EntryPoint =
 						$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
 					MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
@@ -13200,6 +13208,7 @@ public sealed partial class CompilerExecutionTests
 				M68kCompiler.Compile(new M68kCompilationRequest
 				{
 					AssemblyPath = assemblyPath,
+					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 					EntryPoint =
 						"CopperSharp.Compiler.Tests.CompilerFixtures::ReadonlyByrefWriteTemplateEntry"
 				}));
@@ -13224,6 +13233,7 @@ public sealed partial class CompilerExecutionTests
 				M68kCompiler.Compile(new M68kCompilationRequest
 				{
 					AssemblyPath = assemblyPath,
+					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 					EntryPoint =
 						"CopperSharp.Compiler.Tests.CompilerFixtures::IncompatibleByrefTypeTemplateEntry"
 				}));
@@ -13274,6 +13284,7 @@ public sealed partial class CompilerExecutionTests
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = assemblyPath,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 				EntryPoint =
 					"CopperSharp.Compiler.Tests.CompilerFixtures::BoxInteriorByrefTemplateEntry",
 				Cpu = target,
@@ -14166,12 +14177,13 @@ public sealed partial class CompilerExecutionTests
 		M68kCpuModel model)
 	{
 		var assemblyPath = RawCilFixtureBuilder.CreateObjectReferenceEqualsAssembly(
-			Path.GetDirectoryName(FixtureAssembly)!);
+			GeneratedProbeRoot);
 		try
 		{
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = assemblyPath,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 				EntryPoint = "RawReferenceEquals::Entry",
 				Cpu = target
 			});
@@ -17225,6 +17237,7 @@ public sealed partial class CompilerExecutionTests
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = assemblyPath,
+				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 				EntryPoint =
 					"CopperSharp.Compiler.Tests.CompilerFixtures::MultiwordIndirectCopyEntry",
 				Cpu = target,
@@ -24214,7 +24227,7 @@ public sealed partial class CompilerExecutionTests
 		code.Slice(8, 5).Clear(); // unreachable nops preserve body size
 
 		var path = Path.Combine(
-			Path.GetDirectoryName(FixtureAssembly)!,
+			GeneratedProbeRoot,
 			$"CopperSharp-cpobj-{Guid.NewGuid():N}.dll");
 		File.WriteAllBytes(path, image);
 		return path;
@@ -24259,7 +24272,7 @@ public sealed partial class CompilerExecutionTests
 		code[reloadOffset + 1] = 0x00;
 
 		var path = Path.Combine(
-			Path.GetDirectoryName(FixtureAssembly)!,
+			GeneratedProbeRoot,
 			$"CopperSharp-unbox-byref-{Guid.NewGuid():N}.dll");
 		File.WriteAllBytes(path, image);
 		return path;
@@ -24323,7 +24336,7 @@ public sealed partial class CompilerExecutionTests
 			MetadataTokens.GetToken(field.Handle));
 
 		var path = Path.Combine(
-			Path.GetDirectoryName(FixtureAssembly)!,
+			GeneratedProbeRoot,
 			$"CopperSharp-byref-escape-{Guid.NewGuid():N}.dll");
 		File.WriteAllBytes(path, image);
 		return path;
@@ -24373,7 +24386,7 @@ public sealed partial class CompilerExecutionTests
 		code.Slice(callOffset + 1, 4).Clear();
 
 		var path = Path.Combine(
-			Path.GetDirectoryName(FixtureAssembly)!,
+			GeneratedProbeRoot,
 			$"CopperSharp-readonly-byref-{Guid.NewGuid():N}.dll");
 		File.WriteAllBytes(path, image);
 		return path;
@@ -24429,7 +24442,7 @@ public sealed partial class CompilerExecutionTests
 			MetadataTokens.GetToken(targetField.Handle));
 
 		var path = Path.Combine(
-			Path.GetDirectoryName(FixtureAssembly)!,
+			GeneratedProbeRoot,
 			$"CopperSharp-byref-type-{Guid.NewGuid():N}.dll");
 		File.WriteAllBytes(path, image);
 		return path;
@@ -24709,6 +24722,17 @@ public sealed partial class CompilerExecutionTests
 		Assert.DoesNotContain(M68kRuntimeImports.Allocate, result.Map);
 		measure?.Invoke(new ExecutionMeasurement(cycles, instructions));
 		return output.ToArray();
+	}
+
+	private static string GeneratedProbeRoot
+	{
+		get
+		{
+			var root = Environment.GetEnvironmentVariable("COPPERSHARP_TEST_PROBE_ROOT") ??
+				Path.Combine(Path.GetTempPath(), "CopperSharpCompilerExecutionProbes");
+			Directory.CreateDirectory(root);
+			return root;
+		}
 	}
 
 	private static M68kCompilationResult Compile(

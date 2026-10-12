@@ -179,9 +179,17 @@ foreach ($number in $ShardNumbers) {
     New-Item -ItemType Directory -Path $attemptRoot | Out-Null
     $filter = ($shard.Methods | Sort-Object | ForEach-Object { "FullyQualifiedName=$_" }) -join '|'
     Write-Host "Running shard $number/$ShardCount, attempt $attempt, $($shard.Methods.Count) methods."
-    & dotnet test $project -c $Configuration @artifactArguments --no-build --no-restore --filter $filter --logger 'trx;LogFileName=tests.trx' --results-directory $attemptRoot 2>&1 |
-        Tee-Object -FilePath (Join-Path $attemptRoot 'test.log')
-    $testExitCode = $LASTEXITCODE
+    $previousProbeRoot = $env:COPPERSHARP_TEST_PROBE_ROOT
+    try {
+        # Retain runtime-generated fixtures beside their results, keeping all
+        # frozen DLL inputs covered by the unchanged recursive inventory audit.
+        $env:COPPERSHARP_TEST_PROBE_ROOT = Join-Path $attemptRoot 'generated-artifacts'
+        & dotnet test $project -c $Configuration @artifactArguments --no-build --no-restore --filter $filter --logger 'trx;LogFileName=tests.trx' --results-directory $attemptRoot 2>&1 |
+            Tee-Object -FilePath (Join-Path $attemptRoot 'test.log')
+        $testExitCode = $LASTEXITCODE
+    } finally {
+        $env:COPPERSHARP_TEST_PROBE_ROOT = $previousProbeRoot
+    }
     Assert-BinaryInputs
     $result = Read-ShardResult (Join-Path $attemptRoot 'tests.trx') $shard.Methods $shard.DiscoveredCases (Get-ExpectedCases $shard)
     if (!$result) { $result = [pscustomobject]@{ Passed = $false; Total = 0; Failed = 0; Trx = (Join-Path $attemptRoot 'tests.trx') } }
