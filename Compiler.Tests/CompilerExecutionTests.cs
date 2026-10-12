@@ -109,7 +109,7 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(owners[projection.Uses[1]], provenance[projection.Definitions[0]].OwnerValue);
 	}
 	[Fact]
-	public void GenericIntegerHandlersDoNotImportUnreachableEnumOrCultureDependencies()
+	public void GenericIntegerHandlersUseTargetCultureFallbackWithoutHostDependencies()
 	{
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.Create();
 		var analysis = M68kCompiler.AnalyzeFramework(new M68kCompilationRequest
@@ -119,7 +119,14 @@ public sealed partial class CompilerExecutionTests
 			FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true },
 			ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.ShadowNumberFormatting).Assembly.Location]
 		});
-		Assert.DoesNotContain(analysis.ManagedAllocationSites, site => site.AllocatedType == "System.Globalization.CultureInfo");
+		// The generic handler's Int32.ToString fallback reaches CurrentInfo,
+		// whose target-owned current culture falls back to the invariant singleton.
+		var culture = Assert.Single(analysis.ManagedAllocationSites,
+			static site => site.AllocatedType == "System.Globalization.CultureInfo");
+		Assert.Equal("CopperSharp.Runtime.ShadowCultureInfo::GetInvariantCulture", culture.Caller);
+		Assert.Contains("CopperSharp.Runtime.ShadowCultureInfo::GetCurrentCulture", culture.RootPath);
+		Assert.DoesNotContain(analysis.Members, static member => member.Member.TypeName == "System.Globalization.CultureData" ||
+			member.Member.TypeName == "System.Enum" || member.Member.TypeName.StartsWith("System.Reflection.", StringComparison.Ordinal));
 		Assert.DoesNotContain(analysis.Members, member => member.Member.TypeName.Contains("SharedArrayPool", StringComparison.Ordinal));
 		Assert.True(analysis.IsCompatible, string.Join("\n", analysis.Members.Where(member => member.Status == M68kFrameworkCompatibilityStatus.Unsupported)
 			.Take(12).Select(member => $"{member.Member.TypeName}::{member.Member.Name}: {string.Join(" -> ", member.CallSites[0].RootPath)}")));

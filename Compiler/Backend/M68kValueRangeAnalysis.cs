@@ -170,13 +170,18 @@ internal sealed class M68kValueRangeAnalysis
 			queued[index] = true;
 		}
 
+		// Transfers are consumed synchronously by joins or cloned into a new
+		// successor state. Keep their temporary storage separate from every
+		// retained before-state and reuse it across work-list iterations.
+		var output = AbstractState.CreateEntry();
 		while (pending.Count != 0)
 		{
 			var index = pending.Dequeue();
 			queued[index] = false;
 			var input = before[index]!;
-			var output = Transfer(
+			Transfer(
 				input,
+				output,
 				instructions[index],
 				effects[index],
 				addressFixupOffsets);
@@ -212,11 +217,12 @@ internal sealed class M68kValueRangeAnalysis
 
 	private static AbstractState Transfer(
 		AbstractState input,
+		AbstractState output,
 		M68kEmittedInstruction instruction,
 		M68kInstructionEffects effects,
 		IReadOnlySet<int> addressFixupOffsets)
 	{
-		var output = input.Clone();
+		output.CopyFrom(input);
 		if (effects.IsBarrier)
 		{
 			// Calls obey the compiler/Amiga ABI: D0-D1/A0-A1 are caller-saved,
@@ -665,6 +671,14 @@ internal sealed class M68kValueRangeAnalysis
 			(M68kValueRange[])Data.Clone(),
 			(M68kAddressAlias[])Address.Clone(),
 			new Dictionary<int, M68kValueRange>(StackValues));
+
+		internal void CopyFrom(AbstractState source)
+		{
+			source.Data.CopyTo(Data, 0);
+			source.Address.CopyTo(Address, 0);
+			StackValues.Clear();
+			foreach (var pair in source.StackValues) StackValues.Add(pair.Key, pair.Value);
+		}
 
 		internal bool JoinFrom(AbstractState incoming, bool widen)
 		{

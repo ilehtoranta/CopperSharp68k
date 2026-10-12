@@ -77,12 +77,20 @@ internal sealed class M68kConditionProvenanceAnalysis
 
 		internal State Clone()
 		{
-			var result = new State { Conditions = Conditions };
-			Array.Copy(Data, result.Data, Data.Length);
-			Array.Copy(Address, result.Address, Address.Length);
-			result.KnownZero.UnionWith(KnownZero);
-			result.KnownNonZero.UnionWith(KnownNonZero);
+			var result = new State();
+			result.CopyFrom(this);
 			return result;
+		}
+
+		internal void CopyFrom(State source)
+		{
+			Conditions = source.Conditions;
+			Array.Copy(source.Data, Data, Data.Length);
+			Array.Copy(source.Address, Address, Address.Length);
+			KnownZero.Clear();
+			KnownZero.UnionWith(source.KnownZero);
+			KnownNonZero.Clear();
+			KnownNonZero.UnionWith(source.KnownNonZero);
 		}
 
 		internal bool JoinFrom(State other)
@@ -235,12 +243,16 @@ internal sealed class M68kConditionProvenanceAnalysis
 			queued[index] = true;
 		}
 
+		// SetInitial clones retained inputs, and joins consume their incoming
+		// state synchronously. Neither temporary is stored in the before map.
+		var output = new State();
+		var refined = new State();
 		while (pending.Count != 0)
 		{
 			var index = pending.Dequeue();
 			queued[index] = false;
-			var output = Transfer(
-				before[index]!, instructions[index], effects[index],
+			Transfer(
+				before[index]!, output, instructions[index], effects[index],
 				symbolicOperands.Contains(instructions[index].Offset));
 			if (instructions[index].IsNonReturning)
 			{
@@ -250,6 +262,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 			{
 				var successorState = RefineBranch(
 					output,
+					refined,
 					instructions[index],
 					instructions[successor]);
 				var changed = before[successor] is null
@@ -273,6 +286,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 
 	private static State RefineBranch(
 		State output,
+		State result,
 		M68kEmittedInstruction branch,
 		M68kEmittedInstruction successor)
 	{
@@ -290,7 +304,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 			return output;
 		}
 
-		var result = output.Clone();
+		result.CopyFrom(output);
 		var isTarget = successor.Offset == targetOffset;
 		var isZero = ((branch.Opcode >> 8) & 0x0F) == 7
 			? isTarget
@@ -330,11 +344,12 @@ internal sealed class M68kConditionProvenanceAnalysis
 
 	private static State Transfer(
 		State input,
+		State output,
 		M68kEmittedInstruction instruction,
 		M68kInstructionEffects effects,
 		bool symbolicOperand)
 	{
-		var output = input.Clone();
+		output.CopyFrom(input);
 		UpdateRegisterValues(input, output, instruction, effects);
 		if (effects.IsBarrier)
 		{
