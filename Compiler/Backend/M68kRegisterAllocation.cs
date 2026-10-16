@@ -1365,8 +1365,13 @@ internal static class M68kGraphColoringAllocator
 				return false;
 			}
 		}
-		if (left.AllowedRegisters == M68kRegisterSet.Address ||
-			right.AllowedRegisters == M68kRegisterSet.Address)
+		// Loop-phi cleanup exposes long-lived invariants. Merging their short
+		// An constraints unconditionally can restrict them to the few address
+		// registers surviving calls. Use the conservative test below in that
+		// opt-in policy; preserve the legacy address shortcut otherwise.
+		if (!function.SimplifyLoopPhis &&
+			(left.AllowedRegisters == M68kRegisterSet.Address ||
+			right.AllowedRegisters == M68kRegisterSet.Address))
 		{
 			// Address constraints are short-lived machine requirements, not
 			// independent values. Coalescing them with an already-addressable
