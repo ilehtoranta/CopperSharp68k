@@ -217,6 +217,8 @@ internal sealed class M68kConditionProvenanceAnalysis
 		IReadOnlyList<M68kInstructionEffects> effects,
 		IReadOnlySet<int> addressFixupOffsets)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("dataflow.condition-provenance");
+		var visits = 0;
 		var symbolicOperands = new HashSet<int>();
 		foreach (var instruction in instructions)
 		{
@@ -249,6 +251,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 		var refined = new State();
 		while (pending.Count != 0)
 		{
+			visits++;
 			var index = pending.Dequeue();
 			queued[index] = false;
 			Transfer(
@@ -276,6 +279,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 			}
 		}
 
+		M68kOptimizationProfiler.Count("condition-provenance.visits", visits);
 		return new M68kConditionProvenanceAnalysis(
 			instructions
 				.Select((instruction, index) => (instruction.Offset, State: before[index]))
@@ -747,12 +751,14 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 
 	public void Run()
 	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.condition-code");
 		Changed = false;
 		RewriteCount = 0;
 		bool changed;
 		do
 		{
 			changed = false;
+			M68kOptimizationProfiler.Count("condition-code.analysis-rounds");
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
@@ -779,6 +785,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			}
 		}
 		while (changed);
+		M68kOptimizationProfiler.Count("condition-code.rewrites", RewriteCount);
 	}
 
 	private bool RemoveRedundantConditionInstructions(

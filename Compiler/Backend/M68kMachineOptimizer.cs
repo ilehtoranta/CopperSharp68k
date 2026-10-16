@@ -63,6 +63,7 @@ internal static class M68kMachineOptimizer
 		M68kCpuTarget cpu)
 	{
 		ArgumentNullException.ThrowIfNull(function);
+		using var profile = M68kOptimizationProfiler.Measure("machine.optimizer");
 		_ = cpu;
 		M68kMachineIrVerifier.Verify(function);
 		var statistics = new MutableStatistics();

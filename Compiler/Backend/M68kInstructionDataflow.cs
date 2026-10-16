@@ -127,7 +127,9 @@ internal sealed class M68kInstructionDataflow
 
 	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("dataflow.total");
 		var instructions = assembler.GetInstructionStream();
+		M68kOptimizationProfiler.Count("dataflow.instructions", instructions.Count);
 		if (instructions.Count == 0)
 		{
 			return new M68kInstructionDataflow(
@@ -185,38 +187,44 @@ internal sealed class M68kInstructionDataflow
 		var liveMemoryBefore = new M68kMemorySet[instructions.Count];
 		var liveMemoryAfter = new M68kMemorySet[instructions.Count];
 
-		bool changed;
-		do
+		using (M68kOptimizationProfiler.Measure("dataflow.liveness"))
 		{
-			changed = false;
-			for (var index = instructions.Count - 1; index >= 0; index--)
+			bool changed;
+			var livenessRounds = 0;
+			do
 			{
-				var afterData = Union(successors[index], liveDataBefore);
-				var afterAddress = Union(successors[index], liveAddressBefore);
-				var afterConditions = Union(successors[index], liveConditionsBefore);
-				var afterMemory = Union(successors[index], liveMemoryBefore);
-				var beforeData = (ushort)(effects[index].UsesData |
-					(afterData & (ushort)~effects[index].DefinesData));
-				var beforeAddress = (ushort)(effects[index].UsesAddress |
-					(afterAddress & (ushort)~effects[index].DefinesAddress));
-				var beforeConditions = effects[index].ReadsConditions |
-					(afterConditions & ~effects[index].WritesConditions);
-				var beforeMemory = TransferMemory(
-					afterMemory,
-					effects[index].ReadsMemory,
-					effects[index].WritesMemory);
+				livenessRounds++;
+				changed = false;
+				for (var index = instructions.Count - 1; index >= 0; index--)
+				{
+					var afterData = Union(successors[index], liveDataBefore);
+					var afterAddress = Union(successors[index], liveAddressBefore);
+					var afterConditions = Union(successors[index], liveConditionsBefore);
+					var afterMemory = Union(successors[index], liveMemoryBefore);
+					var beforeData = (ushort)(effects[index].UsesData |
+						(afterData & (ushort)~effects[index].DefinesData));
+					var beforeAddress = (ushort)(effects[index].UsesAddress |
+						(afterAddress & (ushort)~effects[index].DefinesAddress));
+					var beforeConditions = effects[index].ReadsConditions |
+						(afterConditions & ~effects[index].WritesConditions);
+					var beforeMemory = TransferMemory(
+						afterMemory,
+						effects[index].ReadsMemory,
+						effects[index].WritesMemory);
 
-				changed |= Set(ref liveDataAfter[index], afterData);
-				changed |= Set(ref liveAddressAfter[index], afterAddress);
-				changed |= Set(ref liveConditionsAfter[index], afterConditions);
-				changed |= Set(ref liveMemoryAfter[index], afterMemory);
-				changed |= Set(ref liveDataBefore[index], beforeData);
-				changed |= Set(ref liveAddressBefore[index], beforeAddress);
-				changed |= Set(ref liveConditionsBefore[index], beforeConditions);
-				changed |= Set(ref liveMemoryBefore[index], beforeMemory);
+					changed |= Set(ref liveDataAfter[index], afterData);
+					changed |= Set(ref liveAddressAfter[index], afterAddress);
+					changed |= Set(ref liveConditionsAfter[index], afterConditions);
+					changed |= Set(ref liveMemoryAfter[index], afterMemory);
+					changed |= Set(ref liveDataBefore[index], beforeData);
+					changed |= Set(ref liveAddressBefore[index], beforeAddress);
+					changed |= Set(ref liveConditionsBefore[index], beforeConditions);
+					changed |= Set(ref liveMemoryBefore[index], beforeMemory);
+				}
 			}
+			while (changed);
+			M68kOptimizationProfiler.Count("dataflow.liveness-rounds", livenessRounds);
 		}
-		while (changed);
 
 		var stackBefore = new int?[instructions.Count];
 		var stackAfter = new int?[instructions.Count];
@@ -228,32 +236,38 @@ internal sealed class M68kInstructionDataflow
 			stackBefore[index] = 0;
 		}
 
-		bool stackChanged;
-		do
+		using (M68kOptimizationProfiler.Measure("dataflow.stack-depth"))
 		{
-			stackChanged = false;
-			for (var index = 0; index < instructions.Count; index++)
+			bool stackChanged;
+			var stackRounds = 0;
+			do
 			{
-				if (!stackSeen[index])
+				stackRounds++;
+				stackChanged = false;
+				for (var index = 0; index < instructions.Count; index++)
 				{
-					continue;
-				}
+					if (!stackSeen[index])
+					{
+						continue;
+					}
 
-				var before = stackBefore[index];
-				var after = before.HasValue && effects[index].StackDelta.HasValue
-					? (int?)(before.Value + effects[index].StackDelta.GetValueOrDefault())
-					: null;
-				stackChanged |= Set(ref stackAfter[index], after);
-				foreach (var successor in successors[index])
-				{
-					stackChanged |= JoinStack(
-						ref stackSeen[successor],
-						ref stackBefore[successor],
-						after);
+					var before = stackBefore[index];
+					var after = before.HasValue && effects[index].StackDelta.HasValue
+						? (int?)(before.Value + effects[index].StackDelta.GetValueOrDefault())
+						: null;
+					stackChanged |= Set(ref stackAfter[index], after);
+					foreach (var successor in successors[index])
+					{
+						stackChanged |= JoinStack(
+							ref stackSeen[successor],
+							ref stackBefore[successor],
+							after);
+					}
 				}
 			}
+			while (stackChanged);
+			M68kOptimizationProfiler.Count("dataflow.stack-rounds", stackRounds);
 		}
-		while (stackChanged);
 
 		var result = new Dictionary<int, M68kInstructionDataflowFacts>();
 		for (var index = 0; index < instructions.Count; index++)

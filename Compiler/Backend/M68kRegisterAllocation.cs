@@ -825,6 +825,7 @@ internal static class M68kRegisterAllocatorPipeline
 		bool rejectManagedByrefReturn = false,
 		IReadOnlyList<M68kRegister?>? argumentRegisters = null)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("machine.register-allocation");
 		M68kArgumentHomeOptimizer.Run(function, argumentRegisters);
 		M68kByrefOwnerRooting.Insert(
 			function,

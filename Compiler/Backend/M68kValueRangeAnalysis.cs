@@ -155,6 +155,8 @@ internal sealed class M68kValueRangeAnalysis
 		IReadOnlyList<M68kInstructionEffects> effects,
 		IReadOnlySet<int> addressFixupOffsets)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("dataflow.value-ranges");
+		var visits = 0;
 		var before = new AbstractState?[instructions.Count];
 		var pending = new Queue<int>();
 		var queued = new bool[instructions.Count];
@@ -176,6 +178,7 @@ internal sealed class M68kValueRangeAnalysis
 		var output = AbstractState.CreateEntry();
 		while (pending.Count != 0)
 		{
+			visits++;
 			var index = pending.Dequeue();
 			queued[index] = false;
 			var input = before[index]!;
@@ -206,6 +209,7 @@ internal sealed class M68kValueRangeAnalysis
 				result[instructions[index].Offset] = before[index]!;
 			}
 		}
+		M68kOptimizationProfiler.Count("value-ranges.visits", visits);
 		return new M68kValueRangeAnalysis(result);
 	}
 

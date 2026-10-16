@@ -85,6 +85,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	public void Run()
 	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.peephole");
 		Changed = false;
 		RewriteCount = 0;
 		var rewrites = 0;
@@ -92,6 +93,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		do
 		{
 			var appliedRewrites = 0;
+			M68kOptimizationProfiler.Count("peephole.analysis-rounds");
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
@@ -280,6 +282,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 		while (changed);
 		RewriteCount = rewrites;
+		M68kOptimizationProfiler.Count("peephole.rewrites", rewrites);
 	}
 
 	private int ApplyIndependentLocalBatch(
@@ -439,6 +442,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	internal void RunLayoutCleanup()
 	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.layout-cleanup");
 		Changed = false;
 		RewriteCount = 0;
 		bool changed;

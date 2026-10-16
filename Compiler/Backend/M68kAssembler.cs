@@ -991,13 +991,16 @@ internal sealed class M68kAssembler
 		int startOffset,
 		bool executableOnly)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("instructions.decode");
 		var cacheRequested = !executableOnly &&
 			_cacheInstructionStream && startOffset == 0;
 		if (cacheRequested &&
 			_cachedInstructionStream is { } cachedInstructionStream)
 		{
+			M68kOptimizationProfiler.Count("instructions.cache-hits");
 			return cachedInstructionStream;
 		}
+		M68kOptimizationProfiler.Count("instructions.decoded-streams");
 		var (analysisStartOffset, endOffset) = GetAnalysisRange();
 		if (executableOnly && _buffer.DataStartOffset is { } dataStartOffset)
 		{
@@ -1008,16 +1011,17 @@ internal sealed class M68kAssembler
 			startOffset = analysisStartOffset;
 		}
 		var displayLabels = new Dictionary<string, string>(StringComparer.Ordinal);
-		var addresses = _addresses.ToDictionary(static fixup => fixup.Offset);
-		var branches = _branches.ToDictionary(static fixup => fixup.OpcodeOffset);
-		var pcRelative = _pcRelative.ToDictionary(static fixup => fixup.DisplacementOffset);
+		var addresses = IndexInstructionFixups(_addresses, static fixup => fixup.Offset);
+		var branches = IndexInstructionFixups(_branches, static fixup => fixup.OpcodeOffset);
+		var pcRelative = IndexInstructionFixups(_pcRelative, static fixup => fixup.DisplacementOffset);
 		var result = new List<M68kEmittedInstruction>();
 
 		for (var offset = startOffset; offset < endOffset;)
 		{
 			var opcode = _buffer.ReadWord(offset);
 			var length = 2;
-			var decoded = SimpleInstructionOpcodes[opcode] || TryRenderInstruction(
+			var decoded = SimpleInstructionOpcodes[opcode] ||
+				TryDecodeUnrelocatedMoveLength(offset, opcode, addresses, branches, pcRelative, out length) || TryRenderInstruction(
 				offset,
 				displayLabels,
 				addresses,
@@ -1103,6 +1107,34 @@ internal sealed class M68kAssembler
 			_cachedInstructionStream = result;
 		}
 		return result;
+	}
+
+	private static Dictionary<int, T> IndexInstructionFixups<T>(
+		IReadOnlyList<T> fixups, Func<T, int> offset)
+	{
+		using var profile = M68kOptimizationProfiler.Measure("instructions.fixup-index");
+		M68kOptimizationProfiler.Count("instructions.indexed-fixups", fixups.Count);
+		return fixups.ToDictionary(offset);
+	}
+
+	private bool TryDecodeUnrelocatedMoveLength(
+		int offset, ushort opcode,
+		IReadOnlyDictionary<int, AddressFixup> addresses,
+		IReadOnlyDictionary<int, BranchFixup> branches,
+		IReadOnlyDictionary<int, PcRelativeFixup> pcRelative,
+		out int length)
+	{
+		length = 2;
+		// Symbolic operand rendering precedes MOVE decoding and can admit a
+		// truncated operand. Preserve that precedence through the original path.
+		if ((opcode >> 12) is not (1 or 2 or 3) || branches.ContainsKey(offset) ||
+			addresses.ContainsKey(offset + 2) || addresses.ContainsKey(offset + 4) ||
+			addresses.ContainsKey(offset + 6) || pcRelative.ContainsKey(offset + 2) ||
+			!TryDecodeMove(offset, opcode, out var move, renderText: false))
+			return false;
+		length = move.Length;
+		M68kOptimizationProfiler.Count("instructions.moves-without-text");
+		return true;
 	}
 
 	public LinkedCode Link(
@@ -2194,7 +2226,8 @@ internal sealed class M68kAssembler
 	private bool TryDecodeMove(
 		int offset,
 		ushort opcode,
-		out DecodedMove instruction)
+		out DecodedMove instruction,
+		bool renderText = true)
 	{
 		instruction = default;
 		var sizeCode = (opcode >> 12) & 0xF;
@@ -2219,7 +2252,7 @@ internal sealed class M68kAssembler
 			sourceMode,
 			sourceRegister,
 			sizeBytes,
-			out var source))
+			out var source, renderText))
 		{
 			return false;
 		}
@@ -2235,12 +2268,12 @@ internal sealed class M68kAssembler
 			destinationMode,
 			destinationRegister,
 			sizeBytes,
-			out var destination))
+			out var destination, renderText))
 		{
 			return false;
 		}
 
-		var mnemonic = movea
+		var mnemonic = !renderText ? string.Empty : movea
 			? "movea." + (sizeBytes == 2 ? "w" : "l")
 			: "move." + (sizeBytes == 1 ? "b" : sizeBytes == 2 ? "w" : "l");
 		instruction = new DecodedMove(
@@ -2256,7 +2289,8 @@ internal sealed class M68kAssembler
 		int mode,
 		int register,
 		int sizeBytes,
-		out M68kOperand operand)
+		out M68kOperand operand,
+		bool renderText = true)
 	{
 		operand = default;
 		switch (mode)
@@ -2264,31 +2298,31 @@ internal sealed class M68kAssembler
 			case 0:
 				operand = new M68kOperand(
 					M68kOperandKind.DataRegister,
-					"d" + register,
+					renderText ? "d" + register : string.Empty,
 					0);
 				return true;
 			case 1:
 				operand = new M68kOperand(
 					M68kOperandKind.AddressRegister,
-					"a" + register,
+					renderText ? "a" + register : string.Empty,
 					0);
 				return true;
 			case 2:
 				operand = new M68kOperand(
 					M68kOperandKind.Memory,
-					"(a" + register + ")",
+					renderText ? "(a" + register + ")" : string.Empty,
 					0);
 				return true;
 			case 3:
 				operand = new M68kOperand(
 					M68kOperandKind.Memory,
-					"(a" + register + ")+",
+					renderText ? "(a" + register + ")+" : string.Empty,
 					0);
 				return true;
 			case 4:
 				operand = new M68kOperand(
 					M68kOperandKind.Memory,
-					"-(a" + register + ")",
+					renderText ? "-(a" + register + ")" : string.Empty,
 					0);
 				return true;
 			case 5:
@@ -2298,7 +2332,7 @@ internal sealed class M68kAssembler
 				}
 				operand = new M68kOperand(
 					M68kOperandKind.Memory,
-					FormatDisplacement(unchecked((short)displacement), "(a" + register + ")"),
+					renderText ? FormatDisplacement(unchecked((short)displacement), "(a" + register + ")") : string.Empty,
 					2);
 				return true;
 			case 6:
@@ -2309,13 +2343,13 @@ internal sealed class M68kAssembler
 				var indexScale = 1 << ((indexExtension >> 9) & 3);
 				operand = new M68kOperand(
 					M68kOperandKind.Memory,
-					FormatDisplacement(
+					renderText ? FormatDisplacement(
 						unchecked((sbyte)indexExtension),
 						"(a" + register + "," +
 						((indexExtension & 0x8000) != 0 ? "a" : "d") +
 						((indexExtension >> 12) & 7) + "." +
 						((indexExtension & 0x0800) != 0 ? "l" : "w") +
-						(indexScale == 1 ? "" : "*" + indexScale) + ")"),
+						(indexScale == 1 ? "" : "*" + indexScale) + ")") : string.Empty,
 					2);
 				return true;
 			case 7:
@@ -2328,7 +2362,7 @@ internal sealed class M68kAssembler
 						}
 						operand = new M68kOperand(
 							M68kOperandKind.Memory,
-							"$" + absoluteWord.ToString("X4") + ".w",
+							renderText ? "$" + absoluteWord.ToString("X4") + ".w" : string.Empty,
 							2);
 						return true;
 					case 1:
@@ -2338,7 +2372,7 @@ internal sealed class M68kAssembler
 						}
 						operand = new M68kOperand(
 							M68kOperandKind.Memory,
-							"$" + absoluteLong.ToString("X8"),
+							renderText ? "$" + absoluteLong.ToString("X8") : string.Empty,
 							4);
 						return true;
 					case 2:
@@ -2348,7 +2382,7 @@ internal sealed class M68kAssembler
 						}
 						operand = new M68kOperand(
 							M68kOperandKind.Memory,
-							FormatDisplacement(unchecked((short)pcDisplacement), "(pc)"),
+							renderText ? FormatDisplacement(unchecked((short)pcDisplacement), "(pc)") : string.Empty,
 							2);
 						return true;
 					case 3:
@@ -2358,12 +2392,12 @@ internal sealed class M68kAssembler
 						}
 						operand = new M68kOperand(
 							M68kOperandKind.Memory,
-							FormatDisplacement(
+							renderText ? FormatDisplacement(
 								unchecked((sbyte)pcIndexExtension),
 								"(pc," +
 								((pcIndexExtension & 0x8000) != 0 ? "a" : "d") +
 								((pcIndexExtension >> 12) & 7) + "." +
-								((pcIndexExtension & 0x0800) != 0 ? "l" : "w") + ")"),
+								((pcIndexExtension & 0x0800) != 0 ? "l" : "w") + ")") : string.Empty,
 							2);
 						return true;
 					case 4:
@@ -2375,7 +2409,7 @@ internal sealed class M68kAssembler
 							}
 							operand = new M68kOperand(
 								M68kOperandKind.Immediate,
-								"#$" + immediateLong.ToString("X8"),
+								renderText ? "#$" + immediateLong.ToString("X8") : string.Empty,
 								4);
 							return true;
 						}
@@ -2386,9 +2420,9 @@ internal sealed class M68kAssembler
 						}
 						operand = new M68kOperand(
 							M68kOperandKind.Immediate,
-							"#$" + (sizeBytes == 1
+							renderText ? "#$" + (sizeBytes == 1
 								? (immediateWord & 0xFF).ToString("X2")
-								: immediateWord.ToString("X4")),
+								: immediateWord.ToString("X4")) : string.Empty,
 							2);
 						return true;
 				}
