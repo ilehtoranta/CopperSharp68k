@@ -1778,7 +1778,14 @@ internal static class CilStackAnalyzer
 
 		if (op == OpCodes.Shl || op == OpCodes.Shr || op == OpCodes.Shr_Un)
 		{
-			return stack.Length >= 2 && CilStackValueLayout.IsSmall(stack[^2]);
+			if (stack.Length < 2 || !CilStackValueLayout.IsSmall(stack[^2]))
+				return false;
+			// A following byte conversion cannot turn a word right shift into
+			// a byte shift: source bits 8..15 can become the low result byte.
+			// Keep the operation wide, then apply the CIL conversion separately.
+			return op == OpCodes.Shl ||
+				result is CilStackValueKind.UnsignedWord or CilStackValueKind.SignedWord ||
+				stack[^2] is not (CilStackValueKind.UnsignedWord or CilStackValueKind.SignedWord);
 		}
 
 		if (op == OpCodes.Neg || op == OpCodes.Not)
