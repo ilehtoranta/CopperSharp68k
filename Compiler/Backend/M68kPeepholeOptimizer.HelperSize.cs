@@ -64,8 +64,13 @@ internal sealed partial class M68kPeepholeOptimizer
                 var prefix = "generated-inline:" + _assembler.GeneratedCodeSizeStatistics.GetValueOrDefault(nameof(M68kCodeSizeOptions.InlineMemoryHelpers)).Rewrites + ":" + call.Offset + ":";
                 var names = localLabels.ToDictionary(p => p.Key, p => prefix + p.Key);
                 var anchors = _buffer.AnalysisAnchors.Where(p => p.Value >= call.Offset && p.Value <= call.Offset + call.Length).ToArray();
+                // Removal collapses the call's start and continuation onto the
+                // same offset. Keep entry labels at the cloned body, but move
+                // continuation labels past it so branches can still skip it.
+                var continuations = _buffer.Labels.Where(p => p.Value == call.Offset + call.Length).Select(p => p.Key).ToArray();
                 _buffer.RemoveBytes(call.Offset, call.Length);
                 _buffer.InsertBytes(call.Offset, copiedBytes, shiftBoundaryLabels: false, shiftBoundaryAnchors: true);
+                foreach (var label in continuations) _buffer.Labels[label] = call.Offset + copiedBytes;
                 for (var index = 0; index < words.Length; index++) _buffer.WriteWord(call.Offset + index * 2, words[index]);
                 foreach (var label in localLabels) _buffer.Labels[names[label.Key]] = call.Offset + label.Value - start;
                 foreach (var anchor in anchors) _buffer.AnalysisAnchors[anchor.Key] =
