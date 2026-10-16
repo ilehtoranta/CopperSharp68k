@@ -4,6 +4,7 @@
  */
 
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace CopperSharp.Compiler.Backend;
@@ -535,6 +536,9 @@ internal sealed class M68kAssembler
 	private IReadOnlyList<string>? _analysisLabelNames;
 	private bool _cacheInstructionStream;
 	private IReadOnlyList<M68kEmittedInstruction>? _cachedInstructionStream;
+	private Dictionary<int, AddressFixup>? _instructionAddressIndex;
+	private Dictionary<int, BranchFixup>? _instructionBranchIndex;
+	private Dictionary<int, PcRelativeFixup>? _instructionPcRelativeIndex;
 	internal long InstructionAnalysisBytes { get; private set; }
 	internal int InstructionAnalysisRounds { get; private set; }
 	internal M68kPeepholeOptimizationStatistics PeepholeOptimizationStatistics
@@ -1011,9 +1015,9 @@ internal sealed class M68kAssembler
 			startOffset = analysisStartOffset;
 		}
 		var displayLabels = new Dictionary<string, string>(StringComparer.Ordinal);
-		var addresses = IndexInstructionFixups(_addresses, static fixup => fixup.Offset);
-		var branches = IndexInstructionFixups(_branches, static fixup => fixup.OpcodeOffset);
-		var pcRelative = IndexInstructionFixups(_pcRelative, static fixup => fixup.DisplacementOffset);
+		var addresses = IndexInstructionFixups(_addresses, ref _instructionAddressIndex, static fixup => fixup.Offset);
+		var branches = IndexInstructionFixups(_branches, ref _instructionBranchIndex, static fixup => fixup.OpcodeOffset);
+		var pcRelative = IndexInstructionFixups(_pcRelative, ref _instructionPcRelativeIndex, static fixup => fixup.DisplacementOffset);
 		var result = new List<M68kEmittedInstruction>();
 
 		for (var offset = startOffset; offset < endOffset;)
@@ -1110,11 +1114,22 @@ internal sealed class M68kAssembler
 	}
 
 	private static Dictionary<int, T> IndexInstructionFixups<T>(
-		IReadOnlyList<T> fixups, Func<T, int> offset)
+		List<T> fixups, ref Dictionary<int, T>? storage, Func<T, int> offset)
 	{
 		using var profile = M68kOptimizationProfiler.Measure("instructions.fixup-index");
 		M68kOptimizationProfiler.Count("instructions.indexed-fixups", fixups.Count);
-		return fixups.ToDictionary(offset);
+		M68kOptimizationProfiler.Count(storage is null
+			? "instructions.fixup-index.storage-builds"
+			: "instructions.fixup-index.storage-reuses");
+		var result = storage ??= new Dictionary<int, T>();
+		// Only the backing storage survives a decode. Rebuild every entry so
+		// direct fixup edits, retargeting and layout shifts cannot leave stale
+		// lookups. Add retains ToDictionary's rejection of duplicate offsets.
+		result.Clear();
+		result.EnsureCapacity(fixups.Count);
+		foreach (var fixup in CollectionsMarshal.AsSpan(fixups))
+			result.Add(offset(fixup), fixup);
+		return result;
 	}
 
 	private bool TryDecodeUnrelocatedMoveLength(

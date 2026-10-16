@@ -28,6 +28,12 @@ summed. Counters record analysis rounds, rewrites, instructions, work-list visit
 stream-cache hits, decoded streams and indexed fixups. These diagnostics do not
 change optimization order, convergence limits or generated output.
 
+Fixup-index counters distinguish storage builds from storage reuses. Reuse
+keeps dictionary capacity; every entry is rebuilt from the current fixups on
+each uncached decode. The indexed-fixup count still includes every visit, so
+lower allocation must not be interpreted as fewer fixup scans or proven CPU
+time savings.
+
 Compile metrics exclude pack construction, inventory hashing, artifact writing
 and target execution. Instrumented profiles locate costs; qualify performance
 with profiling disabled and matched inputs that differ only in the compiler.
