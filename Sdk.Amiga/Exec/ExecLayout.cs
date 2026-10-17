@@ -216,6 +216,13 @@ public static class ExecLayout
 		public const int Init = 22;
 	}
 
+	/// <summary>MorphOS resident extension, valid only with RTF_EXTENDED.</summary>
+	public static class MorphOSResident
+	{
+		public const int Revision = 26;
+		public const int Tags = 28;
+	}
+
 	public static class ResidentAutoInit
 	{
 		public const int DataSize = 0;

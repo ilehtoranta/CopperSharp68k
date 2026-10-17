@@ -110,6 +110,8 @@ public enum ResidentFlags : byte
 	ColdStart = 1 << 0,
 	SingleTask = 1 << 1,
 	AfterDos = 1 << 2,
+	Ppc = 1 << 3,
+	Extended = 1 << 6,
 	AutoInit = 1 << 7,
 }
 

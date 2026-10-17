@@ -744,3 +744,23 @@ public static class ExecStackSwapCodec
 			value.Pointer.Raw);
 	}
 }
+
+/// <summary>Big-endian guest-memory access for an extended resident.</summary>
+public static class ExecMorphOSResidentCodec
+{
+	public static MorphOSResident Read<TMemory>(ref TMemory memory, APTR address)
+		where TMemory : struct, IAmigaGuestMemory => new()
+	{
+		Header = ExecResidentCodec.Read(ref memory, address),
+		Revision = memory.ReadUInt16(address, ExecLayout.MorphOSResident.Revision),
+		Tags = APTR.FromPointer(memory.ReadUInt32(address, ExecLayout.MorphOSResident.Tags)),
+	};
+
+	public static void Write<TMemory>(ref TMemory memory, APTR address,
+		in MorphOSResident value) where TMemory : struct, IAmigaGuestMemory
+	{
+		ExecResidentCodec.Write(ref memory, address, value.Header);
+		memory.WriteUInt16(address, ExecLayout.MorphOSResident.Revision, value.Revision);
+		memory.WriteUInt32(address, ExecLayout.MorphOSResident.Tags, value.Tags.Raw);
+	}
+}
