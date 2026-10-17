@@ -2859,16 +2859,18 @@ internal sealed class CompilationModule : IDisposable
 		(element.IsSupportedScalar && element.Size == 4 ||
 		 IsTransparentScalarType(element));
 
-	public bool IsValueTypeConstructor(CilMethod method)
+	public bool IsValueTypeConstructor(CilMethod method) =>
+		method.Name == ".ctor" && IsValueTypeMethod(method);
+
+	public bool IsValueTypeMethod(CilMethod method)
 	{
 		if (!string.IsNullOrEmpty(method.ModuleName) &&
 			!string.Equals(method.ModuleName, _assemblyName, StringComparison.Ordinal))
 		{
-			return GetCallerModule(method, 0).IsValueTypeConstructor(method);
+			return GetCallerModule(method, 0).IsValueTypeMethod(method);
 		}
 
-		return method.Name == ".ctor" &&
-			!method.DeclaringType.IsNil &&
+		return !method.DeclaringType.IsNil &&
 			IsValueTypeDefinition(Reader.GetTypeDefinition(method.DeclaringType));
 	}
 

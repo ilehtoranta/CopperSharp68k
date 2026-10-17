@@ -1731,7 +1731,10 @@ internal static class CilStackAnalyzer
 					method.DisplayName.Split("::", StringSplitOptions.None)[0]);
 				return module.IsTransparentScalarType(declaringType)
 					? CilStackValueKind.Int32
-					: CilStackValueKind.Reference;
+					// An unboxed value-type receiver is a byref, not an object header.
+					: module.IsValueTypeMethod(method)
+						? CilStackValueKind.ManagedPointer
+						: CilStackValueKind.Reference;
 			}
 
 			index--;
