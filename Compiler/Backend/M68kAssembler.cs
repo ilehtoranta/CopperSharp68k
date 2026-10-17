@@ -148,6 +148,13 @@ internal sealed class M68kAssembler
 	// Reuse that definition without invoking their text-formatting delegates
 	// on the instruction-analysis path.
 	private static readonly bool[] SimpleInstructionOpcodes = CreateSimpleInstructionOpcodes();
+	private static readonly string[] InstructionAnalysisFamilies =
+	[
+		"analysis.decode.0", "analysis.decode.1", "analysis.decode.2", "analysis.decode.3",
+		"analysis.decode.4", "analysis.decode.5", "analysis.decode.6", "analysis.decode.7",
+		"analysis.decode.8", "analysis.decode.9", "analysis.decode.A", "analysis.decode.B",
+		"analysis.decode.C", "analysis.decode.D", "analysis.decode.E", "analysis.decode.F"
+	];
 
 	private static bool[] CreateSimpleInstructionOpcodes()
 	{
@@ -1024,14 +1031,14 @@ internal sealed class M68kAssembler
 		{
 			var opcode = _buffer.ReadWord(offset);
 			var length = 2;
-			var decoded = SimpleInstructionOpcodes[opcode] ||
-				TryDecodeUnrelocatedMoveLength(offset, opcode, addresses, branches, pcRelative, out length) || TryRenderInstruction(
+			var decoded = (SimpleInstructionOpcodes[opcode] && !branches.ContainsKey(offset)) ||
+				TryDecodeUnrelocatedMoveLength(offset, opcode, addresses, branches, pcRelative, out length) || TryAnalyzeInstruction(
 				offset,
+				opcode,
 				displayLabels,
 				addresses,
 				branches,
 				pcRelative,
-				out _,
 				out length);
 			if (!decoded)
 			{
@@ -1130,6 +1137,19 @@ internal sealed class M68kAssembler
 		foreach (var fixup in CollectionsMarshal.AsSpan(fixups))
 			result.Add(offset(fixup), fixup);
 		return result;
+	}
+
+	private bool TryAnalyzeInstruction(
+		int offset, ushort opcode,
+		IReadOnlyDictionary<string, string> displayLabels,
+		IReadOnlyDictionary<int, AddressFixup> addresses,
+		IReadOnlyDictionary<int, BranchFixup> branches,
+		IReadOnlyDictionary<int, PcRelativeFixup> pcRelative,
+		out int length)
+	{
+		using var profile = M68kOptimizationProfiler.Measure(InstructionAnalysisFamilies[opcode >> 12]);
+		return TryProcessInstruction(offset, displayLabels, addresses, branches, pcRelative,
+			out _, out length, renderText: false);
 	}
 
 	private bool TryDecodeUnrelocatedMoveLength(
@@ -1427,6 +1447,20 @@ internal sealed class M68kAssembler
 		IReadOnlyDictionary<int, PcRelativeFixup> pcRelative,
 		out string instruction,
 		out int length)
+		=> TryProcessInstruction(offset, displayLabels, addresses, branches, pcRelative,
+			out instruction, out length, renderText: true);
+
+	// Rendering and analysis share recognition, family precedence and operand
+	// validation. Analysis requests structure without constructing assembly text.
+	private bool TryProcessInstruction(
+		int offset,
+		IReadOnlyDictionary<string, string> displayLabels,
+		IReadOnlyDictionary<int, AddressFixup> addresses,
+		IReadOnlyDictionary<int, BranchFixup> branches,
+		IReadOnlyDictionary<int, PcRelativeFixup> pcRelative,
+		out string instruction,
+		out int length,
+		bool renderText)
 	{
 		if (offset + 1 >= _bytes.Count)
 		{
@@ -1441,7 +1475,8 @@ internal sealed class M68kAssembler
 			displayLabels,
 			addresses,
 			branches,
-			pcRelative);
+			pcRelative,
+			renderText);
 		if (TryRenderMove16(context, out var rendered) ||
 			TryRenderControlFlow(context, out rendered) ||
 			TryRenderFpu(context, out rendered) ||
@@ -1450,11 +1485,11 @@ internal sealed class M68kAssembler
 			TryRenderMovem(context, out rendered) ||
 			TryRenderDataRegisterArithmetic(context, out rendered) ||
 			TryRenderMemoryDestinationArithmetic(context, out rendered) ||
-			TryRenderSimpleInstruction(context.Opcode, out rendered) ||
-			TryRenderImmediateInstruction(context.Offset, context.Opcode, out rendered) ||
+			TryRenderSimpleInstruction(context.Opcode, out rendered, renderText) ||
+			TryRenderImmediateInstruction(context.Offset, context.Opcode, out rendered, renderText) ||
 			TryRenderStackAdjustment(context, out rendered) ||
 			TryRenderLea(context, out rendered) ||
-			TryRenderDisplacementInstruction(context.Offset, context.Opcode, out rendered) ||
+			TryRenderDisplacementInstruction(context.Offset, context.Opcode, out rendered, renderText) ||
 			TryRenderGeneratedArithmetic(context, out rendered))
 		{
 			instruction = rendered.Text;
@@ -1483,7 +1518,7 @@ internal sealed class M68kAssembler
 		var sourceRegister = context.Opcode & 7;
 		var destinationRegister = (extension >> 12) & 7;
 		rendered = new RenderedInstruction(
-			$"move16\t(a{sourceRegister})+,(a{destinationRegister})+",
+			(context.RenderText ? $"move16\t(a{sourceRegister})+,(a{destinationRegister})+" : string.Empty),
 			4);
 		return true;
 	}
@@ -1510,11 +1545,11 @@ internal sealed class M68kAssembler
 			var suffix = format switch { 1 => "s", 5 => "d", _ => "l" };
 			var fp = (extension >> 7) & 7;
 			var ea = mode == 0
-				? $"d{register}"
+				? (context.RenderText ? $"d{register}" : string.Empty)
 				: mode == 2 && register == 7
 					? "(a7)"
 					: mode == 5 && register == 7 && context.Offset + 5 < _bytes.Count
-						? $"{unchecked((short)((_bytes[context.Offset + 4] << 8) | _bytes[context.Offset + 5]))}(a7)"
+						? (context.RenderText ? $"{unchecked((short)((_bytes[context.Offset + 4] << 8) | _bytes[context.Offset + 5]))}(a7)" : string.Empty)
 						: null;
 			if (ea is null)
 			{
@@ -1523,8 +1558,8 @@ internal sealed class M68kAssembler
 			}
 			rendered = new RenderedInstruction(
 				transfer == 0x4000
-					? $"fmove.{suffix}\t{ea},fp{fp}"
-					: $"fmove.{suffix}\tfp{fp},{ea}",
+					? (context.RenderText ? $"fmove.{suffix}\t{ea},fp{fp}" : string.Empty)
+					: (context.RenderText ? $"fmove.{suffix}\tfp{fp},{ea}" : string.Empty),
 				mode == 5 ? 6 : 4);
 			return true;
 		}
@@ -1552,7 +1587,7 @@ internal sealed class M68kAssembler
 			return false;
 		}
 		rendered = new RenderedInstruction(
-			$"{mnemonic}\tfp{source},fp{destination}",
+			(context.RenderText ? $"{mnemonic}\tfp{source},fp{destination}" : string.Empty),
 			4);
 		return true;
 	}
@@ -1563,44 +1598,45 @@ internal sealed class M68kAssembler
 	{
 		if (context.Branches.TryGetValue(context.Offset, out var branch))
 		{
-			var target = AssemblySymbol(DisplayLabel(branch.Target, context.DisplayLabels));
+			var target = context.RenderText
+				? AssemblySymbol(DisplayLabel(branch.Target, context.DisplayLabels)) : string.Empty;
 			if ((context.Opcode & 0xFFF8) == 0x51C8)
 			{
-				instruction = new($"dbra\td{context.Opcode & 7},{target}", 4);
+				instruction = new((context.RenderText ? $"dbra\td{context.Opcode & 7},{target}" : string.Empty), 4);
 				return true;
 			}
 
 			if ((context.Opcode & 0xFF00) == 0x6100)
 			{
-				instruction = new($"bsr.{(IsShortBranchOpcode(context.Opcode) ? 's' : 'w')}\t{target}",
+				instruction = new((context.RenderText ? $"bsr.{(IsShortBranchOpcode(context.Opcode) ? 's' : 'w')}\t{target}" : string.Empty),
 					IsShortBranchOpcode(context.Opcode) ? 2 : 4);
 				return true;
 			}
 
 			var condition = (M68kCondition)((context.Opcode >> 8) & 0x0F);
 			var suffix = IsShortBranchOpcode(context.Opcode) ? 's' : 'w';
-			instruction = new(condition == M68kCondition.True
-				? $"bra.{suffix}\t{target}"
-				: $"{ConditionMnemonic(condition)}.{suffix}\t{target}",
+			// Retain unsupported-condition rejection even when text is omitted.
+			var mnemonic = condition == M68kCondition.True ? "bra" : ConditionMnemonic(condition);
+			instruction = new(context.RenderText ? $"{mnemonic}.{suffix}\t{target}" : string.Empty,
 				IsShortBranchOpcode(context.Opcode) ? 2 : 4);
 			return true;
 		}
 
 		if (context.Opcode == 0x4EB9 && context.Addresses.TryGetValue(context.Offset + 2, out var call))
 		{
-			instruction = new($"jsr\t{AssemblySymbol(DisplayLabel(call.Target, context.DisplayLabels))}", 6);
+			instruction = new((context.RenderText ? $"jsr\t{AssemblySymbol(DisplayLabel(call.Target, context.DisplayLabels))}" : string.Empty), 6);
 			return true;
 		}
 
 		if (context.Opcode == 0x4EF9 && context.Addresses.TryGetValue(context.Offset + 2, out var jump))
 		{
-			instruction = new($"jmp\t{AssemblySymbol(DisplayLabel(jump.Target, context.DisplayLabels))}", 6);
+			instruction = new((context.RenderText ? $"jmp\t{AssemblySymbol(DisplayLabel(jump.Target, context.DisplayLabels))}" : string.Empty), 6);
 			return true;
 		}
 
 		if (context.Opcode == 0x4878 && TryReadWord(context.Offset + 2, out var absoluteWord))
 		{
-			instruction = new($"pea\t${absoluteWord:X4}.w", 4);
+			instruction = new((context.RenderText ? $"pea\t${absoluteWord:X4}.w" : string.Empty), 4);
 			return true;
 		}
 
@@ -1615,11 +1651,12 @@ internal sealed class M68kAssembler
 		var opcode = context.Opcode;
 		var offset = context.Offset;
 		var labels = context.DisplayLabels;
+		var renderText = context.RenderText;
 		if ((opcode & 0xF1FF) == 0x203A &&
 			context.PcRelative.TryGetValue(offset + 2, out var pcRelativeOperand))
 		{
 			instruction = new(
-				$"move.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),d{(opcode >> 9) & 7}",
+				(context.RenderText ? $"move.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),d{(opcode >> 9) & 7}" : string.Empty),
 				4);
 			return true;
 		}
@@ -1627,21 +1664,21 @@ internal sealed class M68kAssembler
 			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
 		{
 			instruction = new(
-				$"movea.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
+				(context.RenderText ? $"movea.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}" : string.Empty), 4);
 			return true;
 		}
 		if ((opcode & 0xF1FF) == 0x41FA &&
 			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
 		{
 			instruction = new(
-				$"lea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}", 4);
+				(context.RenderText ? $"lea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),a{(opcode >> 9) & 7}" : string.Empty), 4);
 			return true;
 		}
 		if (opcode == 0x2F3A &&
 			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
 		{
 			instruction = new(
-				$"move.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),-(a7)",
+				(context.RenderText ? $"move.l\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),-(a7)" : string.Empty),
 				4);
 			return true;
 		}
@@ -1649,7 +1686,7 @@ internal sealed class M68kAssembler
 			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
 		{
 			instruction = new(
-				$"pea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc)",
+				(context.RenderText ? $"pea\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc)" : string.Empty),
 				4);
 			return true;
 		}
@@ -1658,7 +1695,7 @@ internal sealed class M68kAssembler
 			context.PcRelative.TryGetValue(offset + 2, out pcRelativeOperand))
 		{
 			instruction = new(
-				$"{pcRelativeMnemonic}\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),d{(opcode >> 9) & 7}",
+				(context.RenderText ? $"{pcRelativeMnemonic}\t{AssemblySymbol(DisplayLabel(pcRelativeOperand.Target, context.DisplayLabels))}(pc),d{(opcode >> 9) & 7}" : string.Empty),
 				4);
 			return true;
 		}
@@ -1666,25 +1703,25 @@ internal sealed class M68kAssembler
 		if (opcode == 0x23EF && TryReadWord(offset + 2, out var frameSourceDisplacement) &&
 			context.Addresses.TryGetValue(offset + 4, out var frameToAddress))
 		{
-			instruction = new($"move.l\t{unchecked((short)frameSourceDisplacement)}(a7),{Symbol(frameToAddress)}", 8);
+			instruction = new((context.RenderText ? $"move.l\t{unchecked((short)frameSourceDisplacement)}(a7),{Symbol(frameToAddress)}" : string.Empty), 8);
 			return true;
 		}
 		if (opcode == 0x23F8 && TryReadWord(offset + 2, out var absoluteWordSource) &&
 			context.Addresses.TryGetValue(offset + 4, out var wordMemoryToAddress))
 		{
-			instruction = new($"move.l\t${absoluteWordSource:X4}.w,{Symbol(wordMemoryToAddress)}", 8);
+			instruction = new((context.RenderText ? $"move.l\t${absoluteWordSource:X4}.w,{Symbol(wordMemoryToAddress)}" : string.Empty), 8);
 			return true;
 		}
 		if (opcode == 0x23F9 && TryReadLong(offset + 2, out var absoluteLongSource) &&
 			context.Addresses.TryGetValue(offset + 6, out var longMemoryToAddress))
 		{
-			instruction = new($"move.l\t${absoluteLongSource:X8},{Symbol(longMemoryToAddress)}", 10);
+			instruction = new((context.RenderText ? $"move.l\t${absoluteLongSource:X8},{Symbol(longMemoryToAddress)}" : string.Empty), 10);
 			return true;
 		}
 		if (opcode == 0x23FC && TryReadLong(offset + 2, out var absoluteLongImmediate) &&
 			context.Addresses.TryGetValue(offset + 6, out var immediateToLongMemory))
 		{
-			instruction = new($"move.l\t#${absoluteLongImmediate:X8},{Symbol(immediateToLongMemory)}", 10);
+			instruction = new((context.RenderText ? $"move.l\t#${absoluteLongImmediate:X8},{Symbol(immediateToLongMemory)}" : string.Empty), 10);
 			return true;
 		}
 
@@ -1693,11 +1730,11 @@ internal sealed class M68kAssembler
 			if (TryGetLongMemoryDestinationArithmetic(
 					opcode,
 					out var destinationArithmeticMnemonic,
-					out var destinationArithmeticSource) &&
+					out var destinationArithmeticSource, context.RenderText) &&
 				(opcode & 0x003F) == 0x0039)
 			{
 				instruction = new(
-					$"{destinationArithmeticMnemonic}\t{destinationArithmeticSource},{Symbol(addressOperand)}",
+					(context.RenderText ? $"{destinationArithmeticMnemonic}\t{destinationArithmeticSource},{Symbol(addressOperand)}" : string.Empty),
 					6);
 				return true;
 			}
@@ -1706,37 +1743,37 @@ internal sealed class M68kAssembler
 				(opcode & 0x003F) == 0x0039)
 			{
 				instruction = new(
-					$"{addressArithmeticMnemonic}\t{Symbol(addressOperand)},d{(opcode >> 9) & 7}",
+					(context.RenderText ? $"{addressArithmeticMnemonic}\t{Symbol(addressOperand)},d{(opcode >> 9) & 7}" : string.Empty),
 					6);
 				return true;
 			}
 
 			if ((opcode & 0xF1FF) == 0x217C && TryReadWord(offset + 6, out var displacement))
 			{
-				instruction = new($"move.l\t#{Symbol(addressOperand)},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})", 8);
+				instruction = new((context.RenderText ? $"move.l\t#{Symbol(addressOperand)},{unchecked((short)displacement)}(a{(opcode >> 9) & 7})" : string.Empty), 8);
 				return true;
 			}
 
 			var target = Symbol(addressOperand);
 			var text = opcode switch
 			{
-				0x2EBC => $"move.l\t#{target},(a7)",
+				0x2EBC => (context.RenderText ? $"move.l\t#{target},(a7)" : string.Empty),
 				_ when (opcode & 0xF1FF) == 0x20BC =>
-					$"move.l\t#{target},(a{(opcode >> 9) & 7})",
-				0x2F3C => $"move.l\t#{target},-(a7)",
-				0x2F39 => $"move.l\t{target},-(a7)",
-				0x23DF => $"move.l\t(a7)+,{target}",
-				0x42B9 => $"clr.l\t{target}",
-				0x4879 => $"pea\t{target}",
-				0x2C79 => $"movea.l\t{target},a6",
-				_ when (opcode & 0xF1FF) == 0x2039 => $"move.l\t{target},d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0x2079 => $"movea.l\t{target},a{(opcode >> 9) & 7}",
-				_ when (opcode & 0xFFF8) == 0x23C0 => $"move.l\td{opcode & 7},{target}",
-				_ when (opcode & 0xFFF8) == 0x23C8 => $"move.l\ta{opcode & 7},{target}",
-				_ when (opcode & 0xF1FF) == 0x203C => $"move.l\t#{target},d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0x207C => $"movea.l\t#{target},a{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0xB0BC => $"cmp.l\t#{target},d{(opcode >> 9) & 7}",
-				_ when (opcode & 0xF1FF) == 0xB1FC => $"cmpa.l\t#{target},a{(opcode >> 9) & 7}",
+					(context.RenderText ? $"move.l\t#{target},(a{(opcode >> 9) & 7})" : string.Empty),
+				0x2F3C => (context.RenderText ? $"move.l\t#{target},-(a7)" : string.Empty),
+				0x2F39 => (context.RenderText ? $"move.l\t{target},-(a7)" : string.Empty),
+				0x23DF => (context.RenderText ? $"move.l\t(a7)+,{target}" : string.Empty),
+				0x42B9 => (context.RenderText ? $"clr.l\t{target}" : string.Empty),
+				0x4879 => (context.RenderText ? $"pea\t{target}" : string.Empty),
+				0x2C79 => (context.RenderText ? $"movea.l\t{target},a6" : string.Empty),
+				_ when (opcode & 0xF1FF) == 0x2039 => (context.RenderText ? $"move.l\t{target},d{(opcode >> 9) & 7}" : string.Empty),
+				_ when (opcode & 0xF1FF) == 0x2079 => (context.RenderText ? $"movea.l\t{target},a{(opcode >> 9) & 7}" : string.Empty),
+				_ when (opcode & 0xFFF8) == 0x23C0 => (context.RenderText ? $"move.l\td{opcode & 7},{target}" : string.Empty),
+				_ when (opcode & 0xFFF8) == 0x23C8 => (context.RenderText ? $"move.l\ta{opcode & 7},{target}" : string.Empty),
+				_ when (opcode & 0xF1FF) == 0x203C => (context.RenderText ? $"move.l\t#{target},d{(opcode >> 9) & 7}" : string.Empty),
+				_ when (opcode & 0xF1FF) == 0x207C => (context.RenderText ? $"movea.l\t#{target},a{(opcode >> 9) & 7}" : string.Empty),
+				_ when (opcode & 0xF1FF) == 0xB0BC => (context.RenderText ? $"cmp.l\t#{target},d{(opcode >> 9) & 7}" : string.Empty),
+				_ when (opcode & 0xF1FF) == 0xB1FC => (context.RenderText ? $"cmpa.l\t#{target},a{(opcode >> 9) & 7}" : string.Empty),
 				_ => null
 			};
 			if (text is not null)
@@ -1749,7 +1786,7 @@ internal sealed class M68kAssembler
 		if ((opcode & 0xF1FF) == 0x217C && TryReadLong(offset + 2, out var immediate) &&
 			TryReadWord(offset + 6, out var immediateDisplacement))
 		{
-			instruction = new($"move.l\t#${immediate:X8},{unchecked((short)immediateDisplacement)}(a{(opcode >> 9) & 7})", 8);
+			instruction = new((context.RenderText ? $"move.l\t#${immediate:X8},{unchecked((short)immediateDisplacement)}(a{(opcode >> 9) & 7})" : string.Empty), 8);
 			return true;
 		}
 
@@ -1757,12 +1794,12 @@ internal sealed class M68kAssembler
 		return false;
 
 		string Symbol(AddressFixup fixup) =>
-			AssemblySymbol(DisplayLabel(fixup.Target, labels));
+			renderText ? AssemblySymbol(DisplayLabel(fixup.Target, labels)) : string.Empty;
 	}
 
 	private bool TryRenderMove(in InstructionRenderContext context, out RenderedInstruction instruction)
 	{
-		if (TryRenderMove(context.Offset, context.Opcode, out var text, out var length))
+		if (TryRenderMove(context.Offset, context.Opcode, out var text, out var length, context.RenderText))
 		{
 			instruction = new(text, length);
 			return true;
@@ -1782,15 +1819,15 @@ internal sealed class M68kAssembler
 				(context.Opcode >> 3) & 7,
 				context.Opcode & 7,
 				4,
-				out var memory) &&
+				out var memory, context.RenderText) &&
 			memory.Kind == M68kOperandKind.Memory)
 		{
 			var predecrement = isStore && ((context.Opcode >> 3) & 7) == 4;
-			var registers = MovemRegisterList(registerMask, predecrement);
+			var registers = context.RenderText ? MovemRegisterList(registerMask, predecrement) : string.Empty;
 			instruction = new(
 				isStore
-					? $"movem.l\t{registers},{memory.Text}"
-					: $"movem.l\t{memory.Text},{registers}",
+					? (context.RenderText ? $"movem.l\t{registers},{memory.Text}" : string.Empty)
+					: (context.RenderText ? $"movem.l\t{memory.Text},{registers}" : string.Empty),
 				4 + memory.ExtensionBytes);
 			return true;
 		}
@@ -1799,10 +1836,10 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
-	private static bool TryRenderSimpleInstruction(ushort opcode, out RenderedInstruction instruction)
+	private static bool TryRenderSimpleInstruction(ushort opcode, out RenderedInstruction instruction, bool renderText)
 	{
 		string text;
-		if (TryRenderSimpleInstruction(opcode, out text))
+		if (TryRenderSimpleInstruction(opcode, out text, renderText))
 		{
 			instruction = new(text, 2);
 			return true;
@@ -1811,9 +1848,9 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
-	private bool TryRenderImmediateInstruction(int offset, ushort opcode, out RenderedInstruction instruction)
+	private bool TryRenderImmediateInstruction(int offset, ushort opcode, out RenderedInstruction instruction, bool renderText)
 	{
-		if (TryRenderImmediateInstruction(offset, opcode, out var text, out var length))
+		if (TryRenderImmediateInstruction(offset, opcode, out var text, out var length, renderText))
 		{
 			instruction = new(text, length);
 			return true;
@@ -1827,13 +1864,13 @@ internal sealed class M68kAssembler
 		if ((context.Opcode & 0xF1FF) == 0x50AF &&
 			TryReadWord(context.Offset + 2, out var addDisplacement))
 		{
-			instruction = new($"addq.l\t#{QuickCount(context.Opcode)},{unchecked((short)addDisplacement)}(a7)", 4);
+			instruction = new((context.RenderText ? $"addq.l\t#{QuickCount(context.Opcode)},{unchecked((short)addDisplacement)}(a7)" : string.Empty), 4);
 			return true;
 		}
 		if ((context.Opcode & 0xF1FF) == 0x51AF &&
 			TryReadWord(context.Offset + 2, out var subDisplacement))
 		{
-			instruction = new($"subq.l\t#{QuickCount(context.Opcode)},{unchecked((short)subDisplacement)}(a7)", 4);
+			instruction = new((context.RenderText ? $"subq.l\t#{QuickCount(context.Opcode)},{unchecked((short)subDisplacement)}(a7)" : string.Empty), 4);
 			return true;
 		}
 
@@ -1849,11 +1886,11 @@ internal sealed class M68kAssembler
 				(context.Opcode >> 3) & 7,
 				context.Opcode & 7,
 				4,
-				out var source) &&
+				out var source, context.RenderText) &&
 			source.Kind == M68kOperandKind.Memory)
 		{
 			instruction = new(
-				$"lea\t{source.Text},a{(context.Opcode >> 9) & 7}",
+				(context.RenderText ? $"lea\t{source.Text},a{(context.Opcode >> 9) & 7}" : string.Empty),
 				2 + source.ExtensionBytes);
 			return true;
 		}
@@ -1873,7 +1910,7 @@ internal sealed class M68kAssembler
 				(context.Opcode >> 3) & 7,
 				context.Opcode & 7,
 				4,
-				out var source) ||
+				out var source, context.RenderText) ||
 			source.Kind == M68kOperandKind.Immediate)
 		{
 			instruction = default;
@@ -1881,7 +1918,7 @@ internal sealed class M68kAssembler
 		}
 
 		instruction = new(
-			$"{mnemonic}\t{source.Text},d{(context.Opcode >> 9) & 7}",
+			(context.RenderText ? $"{mnemonic}\t{source.Text},d{(context.Opcode >> 9) & 7}" : string.Empty),
 			2 + source.ExtensionBytes);
 		return true;
 	}
@@ -1903,13 +1940,13 @@ internal sealed class M68kAssembler
 		if (!TryGetLongMemoryDestinationArithmetic(
 				context.Opcode,
 				out var mnemonic,
-				out var source) ||
+				out var source, context.RenderText) ||
 			!TryDecodeEffectiveAddress(
 				context.Offset + 2,
 				(context.Opcode >> 3) & 7,
 				context.Opcode & 7,
 				4,
-				out var destination) ||
+				out var destination, context.RenderText) ||
 			destination.Kind != M68kOperandKind.Memory)
 		{
 			instruction = default;
@@ -1917,7 +1954,7 @@ internal sealed class M68kAssembler
 		}
 
 		instruction = new(
-			$"{mnemonic}\t{source},{destination.Text}",
+			(context.RenderText ? $"{mnemonic}\t{source},{destination.Text}" : string.Empty),
 			2 + destination.ExtensionBytes);
 		return true;
 	}
@@ -1925,7 +1962,8 @@ internal sealed class M68kAssembler
 	private static bool TryGetLongMemoryDestinationArithmetic(
 		ushort opcode,
 		out string mnemonic,
-		out string source)
+		out string source,
+		bool renderText = true)
 	{
 		var operation = opcode & 0xF1C0;
 		mnemonic = operation switch
@@ -1943,14 +1981,14 @@ internal sealed class M68kAssembler
 		}
 
 		source = operation is 0x5080 or 0x5180
-			? $"#{QuickCount(opcode)}"
-			: $"d{(opcode >> 9) & 7}";
+			? (renderText ? $"#{QuickCount(opcode)}" : string.Empty)
+			: (renderText ? $"d{(opcode >> 9) & 7}" : string.Empty);
 		return true;
 	}
 
-	private bool TryRenderDisplacementInstruction(int offset, ushort opcode, out RenderedInstruction instruction)
+	private bool TryRenderDisplacementInstruction(int offset, ushort opcode, out RenderedInstruction instruction, bool renderText)
 	{
-		if (TryRenderDisplacementInstruction(offset, opcode, out var text, out var length))
+		if (TryRenderDisplacementInstruction(offset, opcode, out var text, out var length, renderText))
 		{
 			instruction = new(text, length);
 			return true;
@@ -1968,7 +2006,7 @@ internal sealed class M68kAssembler
 			TryReadWord(context.Offset + 2, out var stackDisplacement))
 		{
 			instruction = new(
-				$"add.b\td{(opcode >> 9) & 7},{unchecked((short)stackDisplacement)}(a7)",
+				(context.RenderText ? $"add.b\td{(opcode >> 9) & 7},{unchecked((short)stackDisplacement)}(a7)" : string.Empty),
 				4);
 			return true;
 		}
@@ -2000,8 +2038,8 @@ internal sealed class M68kAssembler
 				_ => "eor.l"
 			};
 			instruction = binary is 0xB100 or 0xB140 or 0xB180
-				? new($"{mnemonic}\td{(opcode >> 9) & 7},d{opcode & 7}", 2)
-				: new($"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
+				? new((context.RenderText ? $"{mnemonic}\td{(opcode >> 9) & 7},d{opcode & 7}" : string.Empty), 2)
+				: new((context.RenderText ? $"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}" : string.Empty), 2);
 			return true;
 		}
 		if (binary is 0xB000 or 0xB040 or 0xB080)
@@ -2012,13 +2050,13 @@ internal sealed class M68kAssembler
 				0xB040 => "cmp.w",
 				_ => "cmp.l"
 			};
-			instruction = new($"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}", 2);
+			instruction = new((context.RenderText ? $"{mnemonic}\td{opcode & 7},d{(opcode >> 9) & 7}" : string.Empty), 2);
 			return true;
 		}
 		var wordArithmetic = opcode & 0xF1C0;
 		if (wordArithmetic is 0xC0C0 or 0xC1C0 or 0x80C0 or 0x81C0 &&
 			((opcode >> 3) & 7) != 1 &&
-			TryDecodeEffectiveAddress(context.Offset + 2, (opcode >> 3) & 7, opcode & 7, 2, out var wordSource))
+			TryDecodeEffectiveAddress(context.Offset + 2, (opcode >> 3) & 7, opcode & 7, 2, out var wordSource, context.RenderText))
 		{
 			var mnemonic = wordArithmetic switch
 			{
@@ -2027,7 +2065,7 @@ internal sealed class M68kAssembler
 				0x80C0 => "divu.w",
 				_ => "divs.w"
 			};
-			instruction = new($"{mnemonic}\t{wordSource.Text},d{(opcode >> 9) & 7}", 2 + wordSource.ExtensionBytes);
+			instruction = new((context.RenderText ? $"{mnemonic}\t{wordSource.Text},d{(opcode >> 9) & 7}" : string.Empty), 2 + wordSource.ExtensionBytes);
 			return true;
 		}
 
@@ -2049,14 +2087,14 @@ internal sealed class M68kAssembler
 		if ((immediateOperation is 0x0800 or 0x0840 or 0x0880 or 0x08C0) &&
 			TryReadWord(context.Offset + 2, out var bit))
 		{
-			instruction = new($"{BitMnemonic((ushort)immediateOperation)}\t#{bit},d{opcode & 7}", 4);
+			instruction = new((context.RenderText ? $"{BitMnemonic((ushort)immediateOperation)}\t#{bit},d{opcode & 7}" : string.Empty), 4);
 			return true;
 		}
 
 		var registerOperation = opcode & 0xF1F8;
 		if (registerOperation is 0x0100 or 0x0140 or 0x0180 or 0x01C0)
 		{
-			instruction = new($"{BitMnemonic((ushort)registerOperation)}\td{(opcode >> 9) & 7},d{opcode & 7}", 2);
+			instruction = new((context.RenderText ? $"{BitMnemonic((ushort)registerOperation)}\td{(opcode >> 9) & 7},d{opcode & 7}" : string.Empty), 2);
 			return true;
 		}
 
@@ -2088,9 +2126,9 @@ internal sealed class M68kAssembler
 		if (mnemonic is not null)
 		{
 			var count = (context.Opcode & 0x20) != 0
-				? $"d{(context.Opcode >> 9) & 7}"
-				: $"#{QuickCount(context.Opcode)}";
-			instruction = new($"{mnemonic}\t{count},d{context.Opcode & 7}", 2);
+				? (context.RenderText ? $"d{(context.Opcode >> 9) & 7}" : string.Empty)
+				: (context.RenderText ? $"#{QuickCount(context.Opcode)}" : string.Empty);
+			instruction = new((context.RenderText ? $"{mnemonic}\t{count},d{context.Opcode & 7}" : string.Empty), 2);
 			return true;
 		}
 
@@ -2130,13 +2168,14 @@ internal sealed class M68kAssembler
 
 	private static bool TryRenderSimpleInstruction(
 		ushort opcode,
-		out string instruction)
+		out string instruction,
+		bool renderText = true)
 	{
 		foreach (var rule in SimpleInstructionRules)
 		{
 			if ((opcode & rule.Mask) == rule.Value)
 			{
-				instruction = rule.Render(opcode);
+				instruction = renderText ? rule.Render(opcode) : string.Empty;
 				return true;
 			}
 		}
@@ -2149,7 +2188,8 @@ internal sealed class M68kAssembler
 		int offset,
 		ushort opcode,
 		out string instruction,
-		out int length)
+		out int length,
+		bool renderText = true)
 	{
 		foreach (var rule in ImmediateInstructionRules)
 		{
@@ -2172,7 +2212,7 @@ internal sealed class M68kAssembler
 				break;
 			}
 
-			instruction = rule.Render(opcode, value);
+			instruction = renderText ? rule.Render(opcode, value) : string.Empty;
 			length = 2 + rule.ImmediateBytes;
 			return true;
 		}
@@ -2186,7 +2226,8 @@ internal sealed class M68kAssembler
 		int offset,
 		ushort opcode,
 		out string instruction,
-		out int length)
+		out int length,
+		bool renderText = true)
 	{
 		instruction = string.Empty;
 		length = 2;
@@ -2196,25 +2237,26 @@ internal sealed class M68kAssembler
 		}
 
 		var value = unchecked((short)displacement);
-		instruction = opcode switch
+		var text = opcode switch
 		{
-			0x4EAE => $"jsr\t{value}(a6)",
-			_ when (opcode & 0xFFF8) == 0x4EA8 => $"jsr\t{value}(a{opcode & 7})",
-			_ when (opcode & 0xFFF8) == 0x4EE8 => $"jmp\t{value}(a{opcode & 7})",
+			0x4EAE => (renderText ? $"jsr\t{value}(a6)" : string.Empty),
+			_ when (opcode & 0xFFF8) == 0x4EA8 => (renderText ? $"jsr\t{value}(a{opcode & 7})" : string.Empty),
+			_ when (opcode & 0xFFF8) == 0x4EE8 => (renderText ? $"jmp\t{value}(a{opcode & 7})" : string.Empty),
 			_ when (opcode & 0xFFF8) == 0x42A8 =>
-				$"clr.l\t{value}(a{opcode & 7})",
-			0x486F => $"pea\t{value}(a7)",
+				(renderText ? $"clr.l\t{value}(a{opcode & 7})" : string.Empty),
+			0x486F => (renderText ? $"pea\t{value}(a7)" : string.Empty),
 			_ when (opcode & 0xF1FF) == 0x41EF =>
-				$"lea\t{value}(a7),a{(opcode >> 9) & 7}",
+				(renderText ? $"lea\t{value}(a7),a{(opcode >> 9) & 7}" : string.Empty),
 			_ when (opcode & 0xF1FF) == 0xB0AF =>
-				$"cmp.l\t{value}(a7),d{(opcode >> 9) & 7}",
-			_ => string.Empty
+				(renderText ? $"cmp.l\t{value}(a7),d{(opcode >> 9) & 7}" : string.Empty),
+			_ => null
 		};
-		if (instruction.Length == 0)
+		if (text is null)
 		{
 			return false;
 		}
 
+		instruction = text;
 		length = 4;
 		return true;
 	}
@@ -2223,17 +2265,18 @@ internal sealed class M68kAssembler
 		int offset,
 		ushort opcode,
 		out string instruction,
-		out int length)
+		out int length,
+		bool renderText = true)
 	{
-		if (!TryDecodeMove(offset, opcode, out var decoded))
+		if (!TryDecodeMove(offset, opcode, out var decoded, renderText))
 		{
 			instruction = string.Empty;
 			length = 2;
 			return false;
 		}
 
-		instruction = decoded.Mnemonic + "\t" +
-			decoded.Source.Text + "," + decoded.Destination.Text;
+		instruction = renderText ? decoded.Mnemonic + "\t" +
+			decoded.Source.Text + "," + decoded.Destination.Text : string.Empty;
 		length = decoded.Length;
 		return true;
 	}
@@ -2691,7 +2734,8 @@ internal sealed class M68kAssembler
 		IReadOnlyDictionary<string, string> DisplayLabels,
 		IReadOnlyDictionary<int, AddressFixup> Addresses,
 		IReadOnlyDictionary<int, BranchFixup> Branches,
-		IReadOnlyDictionary<int, PcRelativeFixup> PcRelative);
+		IReadOnlyDictionary<int, PcRelativeFixup> PcRelative,
+		bool RenderText);
 
 	private readonly record struct RenderedInstruction(string Text, int Length);
 

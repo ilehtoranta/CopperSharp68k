@@ -34,6 +34,14 @@ each uncached decode. The indexed-fixup count still includes every visit, so
 lower allocation must not be interpreted as fewer fixup scans or proven CPU
 time savings.
 
+The `analysis.decode.0` through `analysis.decode.F` measurements group the
+remaining analysis-dispatch calls by opcode high nibble. Simple one-word
+instructions and the existing unrelocated MOVE fast path bypass these scopes.
+These are allocation/time measurements of the shared recognition path, not
+counts of emitted instruction families. Text rendering requests formatted
+operands; instruction analysis uses the same handler order and validation with
+text construction disabled.
+
 Compile metrics exclude pack construction, inventory hashing, artifact writing
 and target execution. Instrumented profiles locate costs; qualify performance
 with profiling disabled and matched inputs that differ only in the compiler.
