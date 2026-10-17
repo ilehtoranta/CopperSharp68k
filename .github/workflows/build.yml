@@ -33,12 +33,12 @@ jobs:
         run: dotnet restore CopperSharp68k.slnx
 
       - name: Build
-        run: dotnet build CopperSharp68k.slnx --configuration Debug --no-restore
+        run: dotnet build CopperSharp68k.slnx --configuration Release --no-restore
 
       - name: Test
         run: >-
           dotnet test CopperSharp68k.slnx
-          --configuration Debug
+          --configuration Release
           --no-build
           --filter "Category!=Emulator&FullyQualifiedName!~CompilerExecutionTests"
           --logger "trx;LogFileName=tests.trx"
@@ -77,7 +77,7 @@ jobs:
         run: dotnet restore CopperSharp68k.slnx
 
       - name: Build
-        run: dotnet build CopperSharp68k.slnx --configuration Debug --no-restore
+        run: dotnet build CopperSharp68k.slnx --configuration Release --no-restore
 
       - name: Test shard
         shell: pwsh
@@ -85,7 +85,7 @@ jobs:
           ./scripts/run-test-shard.ps1
           -ShardNumber ${{ matrix.shard }}
           -ShardCount 16
-          -Configuration Debug
+          -Configuration Release
           -ResultsDirectory TestResults
 
       - name: Upload test results
