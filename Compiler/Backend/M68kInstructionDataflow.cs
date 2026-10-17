@@ -85,48 +85,99 @@ internal sealed class M68kInstructionDataflow
 
 	private readonly IReadOnlyList<M68kEmittedInstruction> _instructions;
 	private readonly IReadOnlyDictionary<int, M68kInstructionDataflowFacts> _facts;
-	private readonly M68kValueRangeAnalysis _values;
-	private readonly M68kConditionProvenanceAnalysis _conditions;
+	private readonly IReadOnlyList<int>[] _successors;
+	private readonly IReadOnlyList<int>[] _predecessors;
+	private readonly M68kInstructionEffects[] _effects;
+	private readonly IReadOnlySet<int> _addressFixupOffsets;
+	private M68kValueRangeAnalysis? _values;
+	private M68kConditionProvenanceAnalysis? _conditions;
+	private bool _factsRequested;
+	private bool _valuesRequested;
+	private bool _conditionsRequested;
 
 	private M68kInstructionDataflow(
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyDictionary<int, M68kInstructionDataflowFacts> facts,
-		M68kValueRangeAnalysis values,
-		M68kConditionProvenanceAnalysis conditions)
+		IReadOnlyList<int>[] successors,
+		IReadOnlyList<int>[] predecessors,
+		M68kInstructionEffects[] effects,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
 		_instructions = instructions;
 		_facts = facts;
-		_values = values;
-		_conditions = conditions;
+		_successors = successors;
+		_predecessors = predecessors;
+		_effects = effects;
+		_addressFixupOffsets = addressFixupOffsets;
+		if (instructions.Count == 0)
+		{
+			_values = M68kValueRangeAnalysis.Empty;
+			_conditions = M68kConditionProvenanceAnalysis.Empty;
+		}
 	}
 
 	internal IReadOnlyList<M68kEmittedInstruction> Instructions => _instructions;
 
-	internal bool TryGetFacts(int offset, out M68kInstructionDataflowFacts facts) =>
-		_facts.TryGetValue(offset, out facts);
+	internal bool TryGetFacts(int offset, out M68kInstructionDataflowFacts facts)
+	{
+		RecordRequest(ref _factsRequested, "dataflow.requested-facts");
+		return _facts.TryGetValue(offset, out facts);
+	}
+
+	private static void RecordRequest(ref bool requested, string name)
+	{
+		if (requested) return;
+		requested = true;
+		M68kOptimizationProfiler.Count(name);
+	}
 
 	internal static M68kInstructionEffects GetEffects(
 		M68kEmittedInstruction instruction) =>
 		Classify(instruction);
 
-	internal M68kValueRange GetDataValueBefore(int offset, int register) =>
-		_values.GetDataValueBefore(offset, register);
+	internal M68kValueRange GetDataValueBefore(int offset, int register)
+	{
+		RecordRequest(ref _valuesRequested, "dataflow.requested-values");
+		return Values.GetDataValueBefore(offset, register);
+	}
 
-	internal M68kAddressAlias GetAddressAliasBefore(int offset, int register) =>
-		_values.GetAddressAliasBefore(offset, register);
+	internal M68kAddressAlias GetAddressAliasBefore(int offset, int register)
+	{
+		RecordRequest(ref _valuesRequested, "dataflow.requested-values");
+		return Values.GetAddressAliasBefore(offset, register);
+	}
 
 	internal bool IsConditionInstructionRedundant(
 		M68kEmittedInstruction instruction,
-		M68kConditionCodeSet required) =>
-		_conditions.IsRedundant(instruction, required);
+		M68kConditionCodeSet required)
+	{
+		RecordRequest(ref _conditionsRequested, "dataflow.requested-conditions");
+		return Conditions.IsRedundant(instruction, required);
+	}
 
 	internal bool TryGetKnownZeroTest(
 		M68kEmittedInstruction instruction,
-		out bool nonZero) =>
-		_conditions.TryGetKnownZeroTest(instruction, out nonZero);
-
-	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler)
+		out bool nonZero)
 	{
+		RecordRequest(ref _conditionsRequested, "dataflow.requested-conditions");
+		return Conditions.TryGetKnownZeroTest(instruction, out nonZero);
+	}
+
+	// Each analysis owns its instruction, effect, graph and relocation snapshots.
+	// Deferred propagation must never consult an assembler that a rewrite may
+	// already have changed. Reuse is confined to this result, not later rounds.
+	private M68kValueRangeAnalysis Values => _values ??=
+		M68kValueRangeAnalysis.Analyze(_instructions, _successors,
+			_predecessors, _effects, _addressFixupOffsets);
+
+	private M68kConditionProvenanceAnalysis Conditions => _conditions ??=
+		M68kConditionProvenanceAnalysis.Analyze(_instructions, _successors,
+			_predecessors, _effects, _addressFixupOffsets);
+
+	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler,
+		string caller = "dataflow.caller.direct")
+	{
+		using var callerProfile = M68kOptimizationProfiler.Measure(caller);
 		using var profile = M68kOptimizationProfiler.Measure("dataflow.total");
 		var instructions = assembler.GetInstructionStream();
 		M68kOptimizationProfiler.Count("dataflow.instructions", instructions.Count);
@@ -135,8 +186,7 @@ internal sealed class M68kInstructionDataflow
 			return new M68kInstructionDataflow(
 				instructions,
 				new Dictionary<int, M68kInstructionDataflowFacts>(),
-				M68kValueRangeAnalysis.Empty,
-				M68kConditionProvenanceAnalysis.Empty);
+				[], [], [], new HashSet<int>());
 		}
 
 		var indexByOffset = instructions
@@ -289,17 +339,7 @@ internal sealed class M68kInstructionDataflow
 		return new M68kInstructionDataflow(
 			instructions,
 			result,
-			M68kValueRangeAnalysis.Analyze(
-				instructions,
-				successors,
-				predecessors,
-				effects,
-				assembler.AddressFixupOffsets),
-			M68kConditionProvenanceAnalysis.Analyze(
-				instructions,
-				successors,
-				predecessors,
-				effects, assembler.AddressFixupOffsets));
+			successors, predecessors, effects, assembler.AddressFixupOffsets);
 	}
 
 	private static IReadOnlyList<int>[] BuildSuccessors(

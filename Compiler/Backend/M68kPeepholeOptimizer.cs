@@ -106,7 +106,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_addressFixupOffsets = _buffer.Addresses
 					.Select(static address => address.Offset)
 					.ToHashSet();
-				var dataflow = M68kInstructionDataflow.Analyze(_assembler);
+				var dataflow = M68kInstructionDataflow.Analyze(_assembler, "dataflow.caller.peephole");
 				var groupedTransfer = _rewriteBudget == int.MaxValue &&
 					(TryGroupContiguousLongMemoryPush(dataflow) ||
 					 TryGroupContiguousLongMemoryCopy(dataflow));
@@ -251,7 +251,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceCompareRegisterZeroWithTest(dataflow) ||
 				TryFoldCopyMoveQuickCompare(dataflow) ||
 				TryFoldMoveQuickIntoCompareImmediate(dataflow) ||
-				TryRemoveRedundantRegisterSpill() ||
+				TryRemoveRedundantRegisterSpill(dataflow) ||
 				TryRemoveUnusedRegisterStackPreservation() ||
 				TryFoldAdjacentStackReleases() ||
 					TryCanonicalizeZeroDisplacementEffectiveAddress();
@@ -6257,10 +6257,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryRemoveRedundantRegisterSpill()
+	private bool TryRemoveRedundantRegisterSpill(M68kInstructionDataflow dataflow)
 	{
-		var instructions = _assembler.GetInstructionStream();
-		var dataflow = M68kInstructionDataflow.Analyze(_assembler);
+		// Earlier successful rewrites short-circuit the round before this check.
+		// The round's original snapshot is therefore still the current input.
+		var instructions = dataflow.Instructions;
+		M68kOptimizationProfiler.Count("dataflow.spill-snapshot-reuses");
 
 		for (var pushIndex = 0; pushIndex + 2 < instructions.Count; pushIndex++)
 		{

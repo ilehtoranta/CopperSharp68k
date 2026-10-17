@@ -42,6 +42,21 @@ counts of emitted instruction families. Text rendering requests formatted
 operands; instruction analysis uses the same handler order and validation with
 text construction disabled.
 
+The `dataflow.caller.*` scopes identify snapshot construction requested by the
+peephole and condition-code passes (or direct callers). `dataflow.total` now
+covers snapshot construction, liveness and stack depth. Value ranges and
+condition provenance run on their first query and retain their own scopes;
+they are no longer nested inside `dataflow.total`. When comparing an older
+eager profile with a deferred profile, do not compare `dataflow.total` alone
+or add the older nested propagation allocations a second time.
+
+The `dataflow.requested-facts`, `dataflow.requested-values` and
+`dataflow.requested-conditions` counters count results queried for each component,
+once per result rather than once per query. `dataflow.spill-snapshot-reuses`
+counts spill checks that consume the current peephole round's result. A successful
+earlier rewrite short-circuits that round before the spill check. Deferred
+propagation uses captured inputs and does not reuse results across rounds.
+
 Compile metrics exclude pack construction, inventory hashing, artifact writing
 and target execution. Instrumented profiles locate costs; qualify performance
 with profiling disabled and matched inputs that differ only in the compiler.

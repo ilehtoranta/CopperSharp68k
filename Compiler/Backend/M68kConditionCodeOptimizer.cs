@@ -762,7 +762,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
-				var dataflow = M68kInstructionDataflow.Analyze(_assembler);
+				var dataflow = M68kInstructionDataflow.Analyze(_assembler, "dataflow.caller.condition-code");
 				if (FoldKnownZeroBranches(dataflow) ||
 					TryRewriteSingleBitTest(dataflow))
 				{
