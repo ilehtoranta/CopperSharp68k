@@ -1196,6 +1196,13 @@ internal static class M68kGraphColoringAllocator
 			if (!CandidateIsAvailable(group, selected, forbidden) ||
 				!group.AllowedRegisters.Contains(selected))
 			{
+				if (function.SimplifyLoopPhis && TryReassignScalarNeighbor(
+					function, group, groups, groupNeighbors, allocatedGroups,
+					out selected))
+				{
+					allocatedGroups.Add(groupId, new M68kAllocatedLocation(selected, false));
+					continue;
+				}
 				spilledGroups.Add(groupId);
 				continue;
 			}
@@ -1220,6 +1227,88 @@ internal static class M68kGraphColoringAllocator
 			}
 		}
 		return new M68kAllocationResult(allocated, spilled);
+	}
+
+	private static bool TryReassignScalarNeighbor(
+		M68kMachineFunction function,
+		AllocationGroup group,
+		IReadOnlyDictionary<int, AllocationGroup> groups,
+		IReadOnlyDictionary<int, HashSet<int>> neighbors,
+		Dictionary<int, M68kAllocatedLocation> allocated,
+		out M68kRegister selected)
+	{
+		selected = default;
+		if (group.Width is not (M68kMachineValueWidth.Byte or M68kMachineValueWidth.Word) ||
+			group.AllowedRegisters.Overlaps(M68kRegisterSet.Address))
+		{
+			return false;
+		}
+		// Repair one greedy color choice only after ordinary coloring fails.
+		// A scalar eligible for both banks can occupy the last data register
+		// while a data-only neighbor spills, even though an address color is free.
+		// Do not move fixed values, pairs, reload temporaries or GC/byref values.
+		AllocationGroup? bestBlocker = null;
+		var bestAlternative = default(M68kRegister);
+		foreach (var candidate in CandidateRegisters(group))
+		{
+			if (!CandidateIsAvailable(group, candidate, group.ForbiddenRegisters))
+			{
+				continue;
+			}
+			var blockers = neighbors[group.Id]
+				.Where(id => allocated.TryGetValue(id, out var location) &&
+					location.OccupiedRegisters.Contains(candidate))
+				.OrderBy(static id => id)
+				.Take(2)
+				.ToArray();
+			if (blockers.Length != 1)
+			{
+				continue;
+			}
+			var blocker = groups[blockers[0]];
+			if (blocker.Width != M68kMachineValueWidth.Long ||
+				blocker.PrecoloredRegister is not null || blocker.IsSpillTemporary ||
+				!blocker.AllowedRegisters.Overlaps(M68kRegisterSet.Data) ||
+				!blocker.AllowedRegisters.Overlaps(M68kRegisterSet.Address) ||
+				blocker.Members.Any(id => function.Values[id].IsGcReference ||
+					function.Values[id].Kind != CilStackValueKind.Int32))
+			{
+				continue;
+			}
+			var forbidden = new M68kRegisterSet((ushort)(
+				blocker.ForbiddenRegisters.Bits | M68kRegisterSet.From(candidate).Bits));
+			foreach (var neighbor in neighbors[blocker.Id])
+			{
+				if (allocated.TryGetValue(neighbor, out var location))
+				{
+					forbidden = new M68kRegisterSet((ushort)(
+						forbidden.Bits | location.OccupiedRegisters.Bits));
+				}
+			}
+			foreach (var alternative in CandidateRegisters(blocker))
+			{
+				if (!M68kRegisterSet.Address.Contains(alternative) ||
+					!CandidateIsAvailable(blocker, alternative, forbidden))
+				{
+					continue;
+				}
+				// An can require Dn transfers at arithmetic consumers. Prefer the
+				// scalar with the least loop-weighted demand, not the first color.
+				if (bestBlocker is null || blocker.SpillWeight < bestBlocker.SpillWeight)
+				{
+					bestBlocker = blocker;
+					bestAlternative = alternative;
+					selected = candidate;
+				}
+				break;
+			}
+		}
+		if (bestBlocker is null)
+		{
+			return false;
+		}
+		allocated[bestBlocker.Id] = new M68kAllocatedLocation(bestAlternative, false);
+		return true;
 	}
 
 	private static Dictionary<int, AllocationGroup> BuildCoalescedGroups(

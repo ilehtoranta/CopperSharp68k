@@ -72,3 +72,27 @@ Future allocator work must preserve:
 - explicit documentation for any method-level performance regression accepted for correctness or code-size reasons.
 
 See [the machine optimizer documentation](PeepholeOptimizations.md) for the passes that run after allocated emission.
+
+## Bounded repair for data-only narrow values
+
+With the opt-in `SimplifyLoopPhis` size policy, a failed byte/word color can
+recover a data register by relocating one eligible long scalar to an address
+register. This addresses a greedy bank choice: a value legal in either bank
+can consume the last Dn color while a narrow value spills and An colors remain.
+Successful ordinary coloring and compiler-wide default policies are unchanged.
+
+The repair considers a single interfering group per candidate data register.
+The moved group must contain only non-GC Int32 values, admit both banks, and
+have long width. Fixed registers, register pairs, reload temporaries, references
+and managed byrefs are excluded. Its destination must satisfy every allocated
+neighbor and all forbidden registers, including reserved registers and call
+clobbers; the narrow value's candidate is also reserved during the search.
+Choose the feasible scalar with lowest loop-weighted demand to limit added
+An-to-Dn transfers. No assignment changes unless a complete repair succeeds.
+Normal allocation verification and preservation/frame planning still run.
+
+Whole-executable measurement remains necessary: broad first-fit and wide-value
+repairs can remove spills yet increase encoded bytes. CopperOS Search's cached
+boolean reproduction and current index-based matcher qualify the restricted
+repair on MC68000 HUNK images in both profiles; the companion dated allocator
+report records source/toolchain hashes, CPU execution checks and size results.
