@@ -57,6 +57,16 @@ counts spill checks that consume the current peephole round's result. A successf
 earlier rewrite short-circuits that round before the spill check. Deferred
 propagation uses captured inputs and does not reuse results across rounds.
 
+The `allocation.*` scopes separate machine block liveness, instruction liveness,
+interference construction, coloring, coalescing, individual coalescing checks and
+verification. Coalescing checks nest inside coalescing and coloring; inclusive
+allocations must not be added together. Liveness helpers can also be called by
+other machine passes, so their whole-compilation call counts may exceed allocator
+iteration counts. Counters track allocator iterations, liveness rounds/block
+visits and interference instructions. Coalescing uses two run-local scratch sets,
+cleared and recomputed for each candidate/neighbor; it does not cache group
+membership or degrees across merges.
+
 Compile metrics exclude pack construction, inventory hashing, artifact writing
 and target execution. Instrumented profiles locate costs; qualify performance
 with profiling disabled and matched inputs that differ only in the compiler.

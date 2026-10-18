@@ -362,6 +362,7 @@ internal static class M68kLivenessAnalysis
 {
 	public static M68kLivenessInfo Analyze(M68kMachineFunction function)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.block-liveness");
 		M68kMachineIrVerifier.Verify(function);
 		var result = new M68kLivenessInfo();
 		foreach (var block in function.Blocks)
@@ -392,10 +393,12 @@ internal static class M68kLivenessAnalysis
 		var changed = true;
 		while (changed)
 		{
+			M68kOptimizationProfiler.Count("allocation.liveness-rounds");
 			changed = false;
 			for (var index = function.Blocks.Count - 1; index >= 0; index--)
 			{
 				var block = function.Blocks[index];
+				M68kOptimizationProfiler.Count("allocation.liveness-block-visits");
 				var liveOut = new HashSet<int>();
 				foreach (var edge in block.SuccessorEdges)
 				{
@@ -437,6 +440,7 @@ internal static class M68kLivenessAnalysis
 		M68kMachineFunction function,
 		M68kLivenessInfo blockLiveness)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.instruction-liveness");
 		var liveBefore = new Dictionary<int, HashSet<int>>();
 		var liveAfter = new Dictionary<int, HashSet<int>>();
 		foreach (var block in function.Blocks)
@@ -572,6 +576,7 @@ internal static class M68kInterferenceBuilder
 		M68kMachineFunction function,
 		M68kLivenessInfo liveness)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.interference");
 		var graph = new M68kInterferenceGraph(function.Values.Keys);
 		if (!function.ReservedRegisters.IsEmpty)
 		{
@@ -590,6 +595,7 @@ internal static class M68kInterferenceBuilder
 			{
 				var instruction = block.Instructions[index];
 				var liveAfter = new HashSet<int>(live);
+				M68kOptimizationProfiler.Count("allocation.interference-instructions");
 				var copySource = instruction.Operation == M68kMachineOperation.Copy &&
 					instruction.AllowCopyCoalescing &&
 					instruction.Uses.Length == 1 &&
@@ -843,6 +849,7 @@ internal static class M68kRegisterAllocatorPipeline
 			iteration <= MaximumAllocationIterations;
 			iteration++)
 		{
+			M68kOptimizationProfiler.Count("allocation.iterations");
 			M68kControlFlowAnalysis.ComputeLoopDepths(function);
 			M68kMachineCostAnalysis.Apply(function);
 			var blockLiveness = M68kLivenessAnalysis.Analyze(function);
@@ -1108,6 +1115,7 @@ internal static class M68kGraphColoringAllocator
 		M68kMachineFunction function,
 		M68kInterferenceGraph graph)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.coloring");
 		M68kMachineIrVerifier.Verify(function);
 		var groups = BuildCoalescedGroups(function, graph);
 		var groupForValue = groups.Values
@@ -1308,6 +1316,7 @@ internal static class M68kGraphColoringAllocator
 		M68kMachineFunction function,
 		M68kInterferenceGraph graph)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.coalescing");
 		var groups = new Dictionary<int, AllocationGroup>();
 		var groupForValue = new Dictionary<int, int>();
 		foreach (var value in function.Values.Values)
@@ -1352,6 +1361,10 @@ internal static class M68kGraphColoringAllocator
 			groupForValue.Add(value.Id, group.Id);
 		}
 
+		// Scratch membership only: recompute after every merge, since group
+		// ownership and allowed registers may have changed. No set escapes this run.
+		var neighborGroups = new HashSet<int>();
+		var degreeNeighbors = new HashSet<int>();
 		foreach (var (left, right) in graph.CopyPreferences
 			.OrderByDescending(pair =>
 				function.Values[pair.Left].AllowedRegisters == M68kRegisterSet.Address ||
@@ -1373,7 +1386,9 @@ internal static class M68kGraphColoringAllocator
 					groups,
 					groupForValue,
 					leftGroup,
-					rightGroup))
+					rightGroup,
+					neighborGroups,
+					degreeNeighbors))
 			{
 				continue;
 			}
@@ -1417,8 +1432,11 @@ internal static class M68kGraphColoringAllocator
 		IReadOnlyDictionary<int, AllocationGroup> groups,
 		IReadOnlyDictionary<int, int> groupForValue,
 		AllocationGroup left,
-		AllocationGroup right)
+		AllocationGroup right,
+		HashSet<int> neighborGroups,
+		HashSet<int> degreeNeighbors)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.coalescing-candidate");
 		if (left.Width != right.Width ||
 			(left.PrecoloredRegister is { } leftRegister &&
 			 right.PrecoloredRegister is { } rightRegister &&
@@ -1442,30 +1460,30 @@ internal static class M68kGraphColoringAllocator
 		}
 		foreach (var leftMember in left.Members)
 		{
-			if (right.Members.Any(graph.Neighbors(leftMember).Contains))
+			if (graph.Neighbors(leftMember).Overlaps(right.Members))
 			{
 				return false;
 			}
 		}
-		var neighborGroups = left.Members
-			.Concat(right.Members)
-			.SelectMany(graph.Neighbors)
-			.Select(value => groupForValue[value])
-			.Where(group => group != left.Id && group != right.Id)
-			.Distinct()
-			.ToArray();
+		neighborGroups.Clear();
+		AddNeighborGroups(left);
+		AddNeighborGroups(right);
+		neighborGroups.Remove(left.Id);
+		neighborGroups.Remove(right.Id);
 		if (fixedRegister is { } fixedColor)
 		{
 			var occupied = left.IsPair
 				? M68kRegisterSet.From(fixedColor, fixedColor + 1)
 				: M68kRegisterSet.From(fixedColor);
-			if (neighborGroups.Any(id =>
-				groups[id].PrecoloredRegister is { } neighborColor &&
-				occupied.Overlaps(groups[id].IsPair
-					? M68kRegisterSet.From(neighborColor, neighborColor + 1)
-					: M68kRegisterSet.From(neighborColor))))
+			foreach (var id in neighborGroups)
 			{
-				return false;
+				if (groups[id].PrecoloredRegister is { } neighborColor &&
+					occupied.Overlaps(groups[id].IsPair
+						? M68kRegisterSet.From(neighborColor, neighborColor + 1)
+						: M68kRegisterSet.From(neighborColor)))
+				{
+					return false;
+				}
 			}
 		}
 		if (left.AllowedRegisters == M68kRegisterSet.Address ||
@@ -1475,21 +1493,36 @@ internal static class M68kGraphColoringAllocator
 			// coalescing before merging an address copy into a fixed ABI register.
 			return true;
 		}
-		var highDegree = neighborGroups.Count(groupId =>
+		var highDegree = 0;
+		foreach (var groupId in neighborGroups)
 		{
 			var neighbor = groups[groupId];
 			if (!allowed.Overlaps(neighbor.AllowedRegisters))
 			{
-				return false;
+				continue;
 			}
-			var degree = neighbor.Members
-				.SelectMany(graph.Neighbors)
-				.Select(value => groupForValue[value])
-				.Distinct()
-				.Count();
-			return degree >= allowed.Count;
-		});
+			degreeNeighbors.Clear();
+			foreach (var member in neighbor.Members)
+			{
+				foreach (var value in graph.Neighbors(member))
+				{
+					degreeNeighbors.Add(groupForValue[value]);
+				}
+			}
+			if (degreeNeighbors.Count >= allowed.Count) highDegree++;
+		}
 		return highDegree < allowed.Count;
+
+		void AddNeighborGroups(AllocationGroup group)
+		{
+			foreach (var member in group.Members)
+			{
+				foreach (var value in graph.Neighbors(member))
+				{
+					neighborGroups.Add(groupForValue[value]);
+				}
+			}
+		}
 	}
 
 	public static void VerifyAllocation(
@@ -1498,6 +1531,7 @@ internal static class M68kGraphColoringAllocator
 		M68kAllocationResult allocation,
 		M68kInstructionLiveness? instructionLiveness = null)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.verification");
 		foreach (var (valueId, location) in allocation.Registers)
 		{
 			var value = function.Values[valueId];
