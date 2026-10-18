@@ -99,6 +99,53 @@ public sealed class M68kScalarRecoloringTests
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, result);
 	}
 
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(true, false)]
+	[InlineData(false, true)]
+	[InlineData(true, true)]
+	public void RepairLeavesThePreferredAddressColorForPendingNeighbor(bool copyPreference, bool forbiddenPreference)
+	{
+		var function = new M68kMachineFunction("pending-address-bank-repair", 0)
+		{
+			SimplifyLoopPhis = true
+		};
+		var address = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long,
+			copyPreference ? M68kRegisterSet.From(M68kRegister.D3, M68kRegister.A2, M68kRegister.A3) :
+				M68kRegisterSet.From(M68kRegister.A2, M68kRegister.A3), spillWeight: 10);
+		var flag = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Byte,
+			M68kRegisterSet.From(M68kRegister.D2), spillWeight: 1);
+		var scalar = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.D2, M68kRegister.A0, M68kRegister.A2, M68kRegister.A3), spillWeight: 10);
+		var leaves = Enumerable.Range(0, 3).Select(_ => function.CreateValue(
+			CilStackValueKind.Int32, M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.A0), spillWeight: 10)).ToArray();
+		var source = copyPreference ? function.CreateValue(CilStackValueKind.Int32,
+			M68kMachineValueWidth.Long, M68kRegisterSet.From(M68kRegister.A2),
+			precoloredRegister: M68kRegister.A2) : null;
+		var block = new M68kMachineBlock(0, 0);
+		function.Blocks.Add(block);
+		foreach (var value in function.Values.Values)
+			block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other,
+				block.Instructions.Count, definitions: [value.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return,
+			block.Instructions.Count));
+		var graph = new M68kInterferenceGraph(function.Values.Keys);
+		graph.AddEdge(address.Id, scalar.Id);
+		graph.AddEdge(flag.Id, scalar.Id);
+		foreach (var leaf in leaves) graph.AddEdge(scalar.Id, leaf.Id);
+		if (source is not null) graph.AddCopyPreference(address.Id, source.Id);
+		if (forbiddenPreference) graph.AddForbidden(address.Id, M68kRegisterSet.From(M68kRegister.A2));
+		var result = M68kGraphColoringAllocator.Allocate(function, graph);
+		Assert.Empty(result.SpilledValues);
+		Assert.Equal(M68kRegister.D2, result.Registers[flag.Id].Register);
+		Assert.Equal(forbiddenPreference ? M68kRegister.A2 : M68kRegister.A3,
+			result.Registers[scalar.Id].Register);
+		Assert.Equal(forbiddenPreference ? copyPreference ? M68kRegister.D3 : M68kRegister.A3 : M68kRegister.A2,
+			result.Registers[address.Id].Register);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, result);
+	}
+
 	[Fact]
 	public void RepairIsDeterministic()
 	{

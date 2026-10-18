@@ -1169,25 +1169,8 @@ internal static class M68kGraphColoringAllocator
 				}
 			}
 
-			var preferredCopyRegisters = graph.CopyPreferences
-				.Select(pair =>
-				{
-					var leftGroup = groupForValue[pair.Left];
-					var rightGroup = groupForValue[pair.Right];
-					if (leftGroup == groupId &&
-						allocatedGroups.TryGetValue(rightGroup, out var rightLocation))
-					{
-						return (M68kRegister?)rightLocation.Register;
-					}
-					if (rightGroup == groupId &&
-						allocatedGroups.TryGetValue(leftGroup, out var leftLocation))
-					{
-						return (M68kRegister?)leftLocation.Register;
-					}
-					return null;
-				})
-				.Where(static register => register is not null)
-				.Select(static register => register!.Value);
+			var preferredCopyRegisters = AllocatedCopyRegisters(
+				graph, groupForValue, allocatedGroups, groupId);
 			var selected = preferredCopyRegisters
 				.Concat(CandidateRegisters(group))
 				.Distinct()
@@ -1198,7 +1181,7 @@ internal static class M68kGraphColoringAllocator
 			{
 				if (function.SimplifyLoopPhis && TryReassignScalarNeighbor(
 					function, group, groups, groupNeighbors, allocatedGroups,
-					out selected))
+					stack, graph, groupForValue, out selected))
 				{
 					allocatedGroups.Add(groupId, new M68kAllocatedLocation(selected, false));
 					continue;
@@ -1229,12 +1212,32 @@ internal static class M68kGraphColoringAllocator
 		return new M68kAllocationResult(allocated, spilled);
 	}
 
+	private static IEnumerable<M68kRegister> AllocatedCopyRegisters(
+		M68kInterferenceGraph graph,
+		IReadOnlyDictionary<int, int> groupForValue,
+		IReadOnlyDictionary<int, M68kAllocatedLocation> allocated,
+		int groupId)
+	{
+		foreach (var (left, right) in graph.CopyPreferences)
+		{
+			var leftGroup = groupForValue[left];
+			var rightGroup = groupForValue[right];
+			if (leftGroup == groupId && allocated.TryGetValue(rightGroup, out var rightLocation))
+				yield return rightLocation.Register;
+			if (rightGroup == groupId && allocated.TryGetValue(leftGroup, out var leftLocation))
+				yield return leftLocation.Register;
+		}
+	}
+
 	private static bool TryReassignScalarNeighbor(
 		M68kMachineFunction function,
 		AllocationGroup group,
 		IReadOnlyDictionary<int, AllocationGroup> groups,
 		IReadOnlyDictionary<int, HashSet<int>> neighbors,
 		Dictionary<int, M68kAllocatedLocation> allocated,
+		IEnumerable<int> pendingGroups,
+		M68kInterferenceGraph graph,
+		IReadOnlyDictionary<int, int> groupForValue,
 		out M68kRegister selected)
 	{
 		selected = default;
@@ -1249,6 +1252,8 @@ internal static class M68kGraphColoringAllocator
 		// Do not move fixed values, pairs, reload temporaries or GC/byref values.
 		AllocationGroup? bestBlocker = null;
 		var bestAlternative = default(M68kRegister);
+		var bestAddressDemand = long.MaxValue;
+		var pending = pendingGroups.ToHashSet();
 		foreach (var candidate in CandidateRegisters(group))
 		{
 			if (!CandidateIsAvailable(group, candidate, group.ForbiddenRegisters))
@@ -1294,13 +1299,19 @@ internal static class M68kGraphColoringAllocator
 				}
 				// An can require Dn transfers at arithmetic consumers. Prefer the
 				// scalar with the least loop-weighted demand, not the first color.
-				if (bestBlocker is null || blocker.SpillWeight < bestBlocker.SpillWeight)
+				// Preserve an upcoming neighbor's preferred copy home when a
+				// different legal An is equally good for this scalar. Domain size
+				// alone misses long values with an already colored phi/copy source.
+				var addressDemand = PendingAddressDemand(alternative, blocker.Id,
+					groups, neighbors, allocated, pending, graph, groupForValue);
+				if (bestBlocker is null || blocker.SpillWeight < bestBlocker.SpillWeight ||
+					(blocker.SpillWeight == bestBlocker.SpillWeight && addressDemand < bestAddressDemand))
 				{
 					bestBlocker = blocker;
 					bestAlternative = alternative;
+					bestAddressDemand = addressDemand;
 					selected = candidate;
 				}
-				break;
 			}
 		}
 		if (bestBlocker is null)
@@ -1309,6 +1320,40 @@ internal static class M68kGraphColoringAllocator
 		}
 		allocated[bestBlocker.Id] = new M68kAllocatedLocation(bestAlternative, false);
 		return true;
+	}
+
+	private static long PendingAddressDemand(
+		M68kRegister candidate,
+		int blocker,
+		IReadOnlyDictionary<int, AllocationGroup> groups,
+		IReadOnlyDictionary<int, HashSet<int>> neighbors,
+		IReadOnlyDictionary<int, M68kAllocatedLocation> allocated,
+		IReadOnlySet<int> pending,
+		M68kInterferenceGraph graph,
+		IReadOnlyDictionary<int, int> groupForValue)
+	{
+		var demand = 0L;
+		foreach (var neighbor in neighbors[blocker].Where(pending.Contains))
+		{
+			var future = groups[neighbor];
+			var forbidden = future.ForbiddenRegisters;
+			foreach (var occupied in neighbors[neighbor])
+			{
+				if (allocated.TryGetValue(occupied, out var location))
+				{
+					forbidden = new M68kRegisterSet((ushort)(
+						forbidden.Bits | location.OccupiedRegisters.Bits));
+				}
+			}
+			var preferred = AllocatedCopyRegisters(graph, groupForValue, allocated, future.Id)
+				.Concat(CandidateRegisters(future)).Distinct().FirstOrDefault(register =>
+					CandidateIsAvailable(future, register, forbidden));
+			if (preferred == candidate && CandidateIsAvailable(future, preferred, forbidden))
+			{
+				demand = Math.Min(long.MaxValue - future.SpillWeight, demand) + future.SpillWeight;
+			}
+		}
+		return demand;
 	}
 
 	private static Dictionary<int, AllocationGroup> BuildCoalescedGroups(

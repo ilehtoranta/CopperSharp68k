@@ -96,3 +96,28 @@ repairs can remove spills yet increase encoded bytes. CopperOS Search's cached
 boolean reproduction and current index-based matcher qualify the restricted
 repair on MC68000 HUNK images in both profiles; the companion dated allocator
 report records source/toolchain hashes, CPU execution checks and size results.
+
+### Preserve pending copy homes during a bank repair
+
+Among repairs moving equally weighted scalars, rank every legal address color
+by the loop-weighted demand of its uncolored interfering neighbors. Reuse the
+ordinary allocator's copy preferences, candidate order and forbidden-register
+checks to predict each neighbor's next choice. Prefer the color that disturbs
+less of that demand, retaining the original stable order on ties. Long values
+with a preferred address-register copy home participate even when their legal
+domain also includes data registers. Looking only for address-only neighbors
+misses this source of extra phi-edge moves.
+
+The pending set is the remaining coloring stack; already spilled groups do not
+reserve colors. This is a bounded ranking heuristic, not an allocation or byte
+cost proof. It does not loosen any register, clobber, alias or ownership rule;
+every successful repair and final allocation still undergo normal verification.
+
+CopperOS Type reproduces why the choice matters. The initial repair moves the
+loop index from D6 to A2 to retain the NUMBER flag, spills its line counter
+instead, and disturbs later copy homes. Choosing another legal An avoids two
+register-copy instructions. The text helper is 604 bytes before bank repair,
+606 with the initial repair, and 602 with pending-copy demand. Both complete
+profiles return from 4,700 to 4,696 bytes after HUNK alignment, tying the already
+installed pre-repair image. This is a compiler regression fix, not a new
+installed-byte saving. Whole-image measurements remain the adoption criterion.
