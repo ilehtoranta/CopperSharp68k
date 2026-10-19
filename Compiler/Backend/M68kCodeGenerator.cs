@@ -201,6 +201,8 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_module = module;
 		_request = request;
+		_assembler.CompactApplicationAddresses = UsesApplicationSizeOptimizations &&
+			request.CodeSizeOptimizations!.CompactApplicationAddresses;
 		_exports = exports;
 		_memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
 		_managedPoolRuntime = managedPoolRuntime;
@@ -385,6 +387,7 @@ internal sealed partial class M68kCodeGenerator
 		EmitTypeInitializationFailureThunks();
 		EmitBoxedInterfaceThunks();
 		EmitBoxedFormattingVirtuals(methods);
+		PrepareApplicationExceptionLayout();
 		if (_usesExceptionRuntime &&
 			!M68kCompiler.IsManagedRuntime(_request) &&
 			_exceptionStates.Count == 0 &&
@@ -477,6 +480,30 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.MethodLocalTerminalRanges = reusableMethodRanges;
 			if (_assembler.EnableIdenticalMethodThunks)
 				_assembler.IdenticalMethodRanges = reusableMethodRanges;
+		}
+		if (UsesApplicationSizeOptimizations)
+		{
+			var collectorCanRun = M68kCompiler.IsManagedRuntime(_request) ||
+				_request.Imports.ContainsKey(M68kRuntimeImports.GcCollect);
+			var applicationRanges = methods
+				.Where(method => rawFunctions.TryGetValue(method.Identity, out var function) &&
+					IsApplicationMethodSizeEligible(function, collectorCanRun))
+				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
+			if (_request.CodeSizeOptimizations!.RemoveApplicationRegisterMoves)
+			{
+				// Reuse only the register rewrites. Other generated-size policies,
+				// including private-memory transformations, keep their original gates.
+				_assembler.GeneratedCodeSizeOptions = new() { RemoveRedundantTransport = true };
+				_assembler.GeneratedTransportRegistersOnly = true;
+				_assembler.GeneratedCodeSizeRanges = applicationRanges;
+			}
+			if (_request.CodeSizeOptimizations!.ShareReturnSequences)
+			{
+				_assembler.EnableMethodLocalTerminalReuse = true;
+				_assembler.EnableMethodLocalTerminalSuffixReuse = true;
+				_assembler.MethodLocalTerminalReuseOnly = true;
+				_assembler.MethodLocalTerminalRanges = applicationRanges;
+			}
 		}
 		_assembler.OptimizeForCpu(
 			_request.Cpu,
@@ -9959,36 +9986,56 @@ internal sealed partial class M68kCodeGenerator
 			.OrderBy(item => _assembler.Labels[item.Site.ResumeLabel]).ThenBy(item => item.Index);
 		foreach (var (site, index) in orderedSites)
 		{
-			_assembler.EmitAddress(site.ResumeLabel);
-			_assembler.EmitAddress(RuntimeMethodDescriptorLabel(site.Method));
-			if (site.ExceptionStateLabel is null)
+			var rowLabel = $"application-unwind-row:{index}";
+			if (_compactApplicationExceptionSites) _assembler.Mark(rowLabel);
+			EmitSitePointer(site.ResumeLabel, MethodTableLabel);
+			EmitSitePointer(RuntimeMethodDescriptorLabel(site.Method), rowLabel);
+			if (!_omitApplicationUnwindState)
+			{
+				if (site.ExceptionStateLabel is { } stateLabel) EmitSitePointer(stateLabel, rowLabel);
+				else EmitSiteValue(0);
+			}
+			EmitSiteValue(site.StackAdjustment);
+			if (!_compactApplicationExceptionSites && site.RootOffsets.IsEmpty)
 			{
 				_assembler.EmitLong(0);
 			}
-			else
-			{
-				_assembler.EmitAddress(site.ExceptionStateLabel);
-			}
-			_assembler.EmitLong(unchecked((uint)site.StackAdjustment));
-			if (site.RootOffsets.IsEmpty)
-			{
-				_assembler.EmitLong(0);
-			}
-			else
+			else if (!_compactApplicationExceptionSites)
 			{
 				_assembler.EmitAddress(RuntimeRootMapLabel(index));
 			}
-			if (UnwindSiteEntryBytes > 20)
+			if (UsesExtendedUnwindMetadata)
 			{
 				if (site.ExceptionCleanupLabel is null)
 				{
-					_assembler.EmitLong(0);
+					EmitSiteValue(0);
 				}
 				else
 				{
-					_assembler.EmitAddress(site.ExceptionCleanupLabel);
+					EmitSitePointer(site.ExceptionCleanupLabel, rowLabel);
 				}
 			}
+		}
+
+		void EmitSitePointer(string target, string basis)
+		{
+			if (_narrowApplicationExceptionSites) _assembler.EmitRelativeDataWord(target, basis);
+			else if (_compactApplicationExceptionSites) _assembler.EmitRelativeDataLong(target, basis);
+			else _assembler.EmitAddress(target);
+		}
+		void EmitSiteValue(int value)
+		{
+			if (_narrowApplicationExceptionSites) _assembler.EmitWord(unchecked((ushort)(short)value));
+			else _assembler.EmitLong(unchecked((uint)value));
+		}
+		if (_narrowApplicationExceptionSites)
+			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.NarrowApplicationExceptionSites),
+				_unwindSites.Count * UnwindSiteEntryBytes);
+
+		if (UsesApplicationSizeOptimizations && _request.CodeSizeOptimizations!.ShareApplicationRuntimeMetadata)
+		{
+			EmitSharedApplicationUnwindMetadata();
+			return;
 		}
 
 		for (var index = 0; index < _unwindSites.Count; index++)
@@ -10006,7 +10053,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		foreach (var layout in _unwindMethodLayouts.Values)
+		foreach (var layout in ReferencedApplicationUnwindLayouts())
 		{
 			_assembler.AlignWord();
 			_assembler.Mark(RuntimeMethodDescriptorLabel(layout.Method));

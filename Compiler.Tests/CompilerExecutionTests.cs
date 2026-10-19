@@ -24655,7 +24655,8 @@ public sealed partial class CompilerExecutionTests
 		byte[] input,
 		uint expectedReturn,
 		int expectedOutputCalls,
-		Action<ExecutionMeasurement>? measure = null)
+		Action<ExecutionMeasurement>? measure = null,
+		M68kCodeSizeOptions? sizeOptions = null)
 	{
 		const uint execBase = 0x0000_3000;
 		const uint dosBase = 0x0000_5000;
@@ -24665,6 +24666,7 @@ public sealed partial class CompilerExecutionTests
 		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = Path.Combine(AppContext.BaseDirectory, "ConsoleIO.dll"),
+			CodeSizeOptimizations = sizeOptions,
 			EntryPoint = "ConsoleIOExample.Program::Main",
 			Cpu = target,
 			ExceptionMode = M68kExceptionMode.Full,

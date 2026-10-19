@@ -84,6 +84,204 @@ HUNK output includes method symbols by default. Pass `--symbols off` to omit
 `HUNK_SYMBOL` records from release executables. The equivalent response
 manifest entry is `symbols=off`.
 
+## Executable size investigation (2026-10-19)
+
+Omitting embedded HUNK symbols exceeded the 10% executable-file-size target
+for every bundled example measured: **48,520 -> 38,928 bytes in total (19.77%)**.
+This is a reduction in the executable container; generated instructions and
+runtime data do not shrink. The compiler still writes a separate `.map` with
+symbol names and addresses. Embedded debugger symbol lookup is unavailable in
+the stripped executable.
+
+| Example | Symbols on (bytes) | Symbols off (bytes) | Reduction |
+| --- | ---: | ---: | ---: |
+| DOS | 876 | 708 | 19.18% |
+| FileStats | 1,280 | 1,048 | 18.12% |
+| CopperBars | 2,244 | 1,324 | 41.00% |
+| ConsoleIO | 8,624 | 7,268 | 15.72% |
+| StopwatchBenchmark | 15,396 | 12,776 | 17.02% |
+| Polymorphism | 7,332 | 5,720 | 21.99% |
+| IFFInspect | 8,168 | 6,692 | 18.07% |
+| MUISunflower | 1,488 | 1,012 | 31.99% |
+| MUITaskList | 3,112 | 2,380 | 23.52% |
+
+These paired measurements use the same Release IL, MC68000, application
+lifetime, fixed-point peepholes, and unchanged exception/memory settings.
+ConsoleIO and StopwatchBenchmark use full exceptions and external allocation;
+Polymorphism and IFFInspect use full exceptions and a 32 KiB managed pool;
+the remaining examples use YOLO exceptions and external allocation. Both MUI
+examples use the existing baseline's fixed test import addresses and are size
+fixtures, not deployable images. No pinned CoreLib implementation is selected.
+Measurements are from the current working tree, built with SDK 10.0.401; the
+repository's SDK 10.0.301 pin was not changed. Exact sizes can change with source
+or toolchain changes.
+
+Reproduce with the repository's SDK available:
+
+```powershell
+.\scripts\measure-executable-size.ps1
+```
+
+The script builds the CLI and examples, writes three executables per example
+under `artifacts/executable-size/Release`, and records CSV/JSON results and
+compiler/input fingerprints. `-NoBuild` reuses existing outputs;
+`-Configuration Debug` measures Debug IL separately. It parses the serialized
+HUNK records and verifies that removing only `HUNK_SYMBOL` leaves identical
+code/data, relocations, hunk layout and allocation sizes for each pair.
+
+Use `--symbols off` with the CLI, or
+`dotnet publish -c Release -p:CopperSharpSymbols=off` with the updated SDK.
+The SDK property also applies to `CopperSharpCompileOnBuild`; its default
+remains `on`.
+
+### Application code generation
+
+With the same example sources and settings above, the initial application passes reduced the
+already stripped executables from **38,928 to 34,032 bytes (12.58%)**. This
+exceeds the 10% target across the suite; individual reductions range from
+5.21% to 16.53%, so the target is not achieved by every example.
+All nine freshly built stripped baselines are byte-identical to the original
+baseline executables. Each comparison uses one unchanged Release input assembly.
+
+| Example | Stripped baseline (bytes) | Optimized (bytes) | Reduction |
+| --- | ---: | ---: | ---: |
+| DOS | 708 | 616 | 12.99% |
+| FileStats | 1,048 | 988 | 5.73% |
+| CopperBars | 1,324 | 1,252 | 5.44% |
+| ConsoleIO | 7,268 | 6,232 | 14.25% |
+| StopwatchBenchmark | 12,776 | 10,664 | 16.53% |
+| Polymorphism | 5,720 | 5,036 | 11.96% |
+| IFFInspect | 6,692 | 6,100 | 8.85% |
+| MUISunflower | 1,012 | 888 | 12.25% |
+| MUITaskList | 2,380 | 2,256 | 5.21% |
+
+Method-level register-move cleanup and return sharing further reduce this suite
+from **34,032 to 33,936 bytes: 96 bytes (0.28%)**. This falls short of the additional
+10% target. Against the original stripped baseline, the combined reduction is
+**12.82%**. These measurements predate the further metadata changes below.
+
+| Example | Previous policy (bytes) | With method passes (bytes) | Saved (bytes) |
+| --- | ---: | ---: | ---: |
+| DOS | 616 | 612 | 4 |
+| FileStats | 988 | 980 | 8 |
+| CopperBars | 1,252 | 1,248 | 4 |
+| ConsoleIO | 6,232 | 6,216 | 16 |
+| StopwatchBenchmark | 10,664 | 10,632 | 32 |
+| Polymorphism | 5,036 | 5,024 | 12 |
+| IFFInspect | 6,100 | 6,088 | 12 |
+| MUISunflower | 888 | 888 | 0 |
+| MUITaskList | 2,256 | 2,248 | 8 |
+
+The next investigation found **20,692 bytes of instructions**, **9,122 bytes
+classified as read-only data**, and **820 relocations** in the 33,936-byte suite.
+Read-only data includes the emitted unwind restore thunks. Console support
+accounts for 4,636 instruction bytes across the examples, integer formatting
+for 2,862, and the managed-pool runtime for 2,624. The largest individual bodies
+include MUITaskList's `Run` (742 bytes), console `Read` (680), and decimal packing
+(528). Unwind metadata offered savings without rewriting these algorithms.
+
+Removing unused unwind records, narrowing eligible private exception tables and
+sharing more restore routines reduces **33,936 to 32,192 bytes**, saving **1,744
+bytes (5.14%)**. The additional 10% suite target remains unmet. The cumulative
+reduction from the original stripped 38,928-byte suite is **17.30%**.
+
+| Affected example | Previous policy (bytes) | Current policy (bytes) | Additional reduction |
+| --- | ---: | ---: | ---: |
+| ConsoleIO | 6,216 | 5,824 | 6.31% |
+| StopwatchBenchmark | 10,632 | 9,504 | 10.61% |
+| Polymorphism | 5,024 | 4,932 | 1.83% |
+| IFFInspect | 6,088 | 5,956 | 2.17% |
+
+The other five examples retain their previous sizes. Run
+`scripts/measure-executable-size.ps1 -CompareApplicationMetadata` to compare the
+current policy with the five-pass 33,936-byte baseline. `-CompareApplicationMethods`
+instead compares with the older three-pass policy. The reports record executable
+and input hashes; each comparison uses one unchanged input assembly. `-NoBuild`
+reuses existing builds. With `-NoBuild`, `-CompilerPath` can select a separately
+built compiler DLL, avoiding interference with another compiler process.
+
+`--symbols off --code-size-optimizations on` enables these application
+passes for MC68000 HUNK output. The default remains off; the API equivalent is
+`CodeSizeOptimizations = new M68kCodeSizeOptions()`. SDK build and publish accept
+`-p:CopperSharpSymbols=off -p:CopperSharpCodeSizeOptimizations=on`.
+
+- `CompactApplicationAddresses` replaces local immediate address loads with
+  PC-relative LEA and permits PC-relative loads from initialized writable data
+  in the same hunk. Final displacement and alignment checks retain absolute
+  forms when necessary. BSS, external imports and address addends retain their
+  existing forms.
+- `ShareApplicationRuntimeMetadata` aliases identical immutable GC root maps
+  and unwind descriptors, shares restore routines, and uses MOVEM for eligible
+  register restores. Frame sizes, exact saved-register order, dynamic-stack
+  flags and frame-anchor offsets participate in the sharing decision.
+- `CompactApplicationExceptionSites` omits unused root-map columns and, when
+  every state is null, the state column. It encodes table pointers as signed
+  32-bit relative offsets, removing their loader relocations. This applies only
+  when there is no built-in collector, external GC import or nonempty root map.
+  GC-visible tables retain their existing 20/24-byte format. Relative offsets
+  add a few instructions to exception dispatch; this is a size tradeoff, not a
+  claim of faster exception handling.
+- `RemoveApplicationRegisterMoves` removes dead register moves using control-flow
+  liveness and forwards redundant register copies into eligible consumers. Live
+  condition codes, partial-register values, call effects and metadata boundaries
+  remain protected. It does not enable private-stack or guest-memory rewrites.
+- `ShareReturnSequences` reuses exact terminal sequences and suffixes within each
+  eligible method. Application sharing never pools returns across methods and
+  retains unwind resume addresses. Exception-handler and dynamic-stack methods
+  are excluded from both method passes. If a built-in or external collector can
+  run, methods with GC references, root spills or managed byrefs are also excluded.
+  The collector's root-map ABI and frame layout remain unchanged.
+- `PruneApplicationUnwindMetadata` omits descriptors and restore routines with
+  no remaining references. Site records, root maps and directly referenced
+  descriptors remain available, including descriptors used by finally/resume paths.
+- `NarrowApplicationExceptionSites` uses signed 16-bit fields in private compact
+  tables with at least eight sites and representable stack adjustments. Final
+  pointer offsets are checked after layout. An overflow recompiles with this
+  pass disabled, preserving every other option. The lookup rejects out-of-range
+  PCs before comparing 16-bit keys. Built-in and external GC tables remain in
+  their original 20/24-byte format.
+- `ShareApplicationUnwindRestores`, together with `ShareApplicationRuntimeMetadata`,
+  shares restore routines across different frame sizes when the saved-register
+  order matches. It reads the frame size from the existing exception descriptor.
+  Descriptor fields, GC roots, frame anchors and register snapshot locations are
+  unchanged. This adds instructions during exceptional unwinding only.
+
+Select passes individually with `--code-size-passes` and a comma-separated list
+of these names. Exception mode, memory management and application lifetime are
+unchanged. Existing ROM/resident/freestanding transformations retain their
+original eligibility checks.
+
+The focused execution tests compare baseline, individual passes and combined
+passes with peepholes enabled and disabled. Serialized HUNKs are loaded at two
+addresses with separately placed BSS and executed on 68000/68020/68040 models.
+Coverage includes nested exceptions, rethrows, finally blocks, saved registers,
+dynamic stack allocation, forced collection, interior byrefs and finalizers.
+ConsoleIO output and shutdown are compared on input and EOF paths. Additional
+checks cover all condition codes for address loads, relocation fallbacks,
+long relative offsets, and the external collector's unchanged table format.
+The initial application passes passed 26 focused execution/relocation tests plus 1,294 selected
+branch-relaxation, generated/resident-size, root-lookup, frame-preservation and
+external-collector regression tests. SDK build and publish both produced the
+expected 616-byte stripped, optimized DOS executable before the method passes.
+
+With the method passes implemented, validation passed **1,407 selected tests**:
+23 application execution/policy cases, 1,380 optimizer/relocation regressions,
+and four root-lookup cases. New coverage checks live flags, partial writes,
+values live on only one branch, protected resume addresses, method ownership,
+independent pass controls and unchanged output when peepholes are disabled.
+All nine previous-policy executables and input assemblies match the frozen
+first-stage baseline hashes.
+
+The subsequent metadata changes passed **1,419 selected tests**: 39 application,
+GC/root-lookup and metadata boundary cases plus the 1,380 optimizer/relocation
+regressions. Coverage includes all eight combinations of the three new passes,
+forced collection, nested exceptions and dynamic frames, every saved-register
+snapshot, signed 16-bit boundaries, rejected PCs with matching low bits, and
+byte-identical fallback for oversized tables. All nine previous-policy images
+and input assemblies match the frozen 33,936-byte baseline hashes. Measurement
+and tests used the same compiler binary, built in an isolated output directory
+because another compiler process held the usual CLI build files open.
+
 `--code-size-optimizations on --code-size-passes SimplifyLoopPhis` selects the
 default-off trivial-loop-phi cleanup. Append `SimplifyLoopPhis` to an existing
 comma-separated pass selection to preserve that selection. The pass applies

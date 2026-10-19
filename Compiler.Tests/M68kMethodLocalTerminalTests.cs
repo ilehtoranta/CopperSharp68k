@@ -13,6 +13,50 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kMethodLocalTerminalTests
 {
 	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void ApplicationLocalModeProtectsUnownedMethodsAndUnwindResumeAddresses(bool protectResume)
+	{
+		var before = Create(invert: true);
+		var after = Create(invert: true);
+		foreach (var fixture in new[] { before, after })
+		{
+			// Bring all exits within reach of the global pool to prove that the
+			// application mode disables it, rather than merely failing its range check.
+			var padding = fixture.Buffer.Labels["unowned-padding"];
+			fixture.Buffer.RemoveBytes(padding, fixture.Buffer.Bytes.Count - padding);
+			fixture.Assembler.MethodLocalTerminalReuseOnly = true;
+			fixture.Assembler.MethodLocalTerminalRanges = [("first", "first:end")];
+			if (protectResume)
+				for (var index = 0; index < 3; index++)
+				{
+					var label = "resume" + index;
+					fixture.Assembler.MarkReturnAddress(label);
+					fixture.Buffer.Labels[label] = fixture.Buffer.Labels["first_error" + index];
+				}
+		}
+		var originalSecond = before.Buffer.Bytes.GetRange(before.Buffer.Labels["second"],
+			before.Buffer.Labels["second:end"] - before.Buffer.Labels["second"]).ToArray();
+		var statistics = new M68kTerminalEpilogueMerger(after.Assembler, after.Buffer,
+			enableMethodLocalReuse: true, enableRegionalReuse: true).Run();
+		Assert.Equal(!protectResume, statistics.NetBytesSaved > 0);
+		Assert.Equal(originalSecond, after.Buffer.Bytes.GetRange(after.Buffer.Labels["second"],
+			after.Buffer.Labels["second:end"] - after.Buffer.Labels["second"]).ToArray());
+		Assert.DoesNotContain(after.Buffer.Labels.Keys, label => label.StartsWith("__m68k_shared_epilogue_", StringComparison.Ordinal));
+		foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
+		foreach (var name in new[] { "first", "second" })
+		foreach (var value in new uint[] { 0, 1, 2, 3, 0xffffffff })
+		foreach (var flags in Enumerable.Range(0, 32))
+		{
+			var original = Execute(before, model, name, value, 0, (ushort)flags);
+			var optimized = Execute(after, model, name, value, 0, (ushort)flags);
+			Assert.Equal(original.Data, optimized.Data);
+			Assert.Equal(original.Addresses, optimized.Addresses);
+			Assert.Equal(original.Flags, optimized.Flags);
+		}
+	}
+
+	[Theory]
 	[InlineData(M68kCpuModel.M68000, false)]
 	[InlineData(M68kCpuModel.M68000, true)]
 	[InlineData(M68kCpuModel.M68020, false)]

@@ -563,9 +563,23 @@ public sealed record M68kRomSizeOptions
 
 }
 
-/// <summary>Opt-in size policy for eligible MC68000 ROM and resident HUNK images.</summary>
+/// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Omit unreferenced application unwind descriptors and their restore routines.</summary>
+	public bool PruneApplicationUnwindMetadata { get; init; } = true;
+	/// <summary>Use signed 16-bit fields in private application exception tables when all final offsets fit. Collector-visible tables retain their ABI.</summary>
+	public bool NarrowApplicationExceptionSites { get; init; } = true;
+	/// <summary>Share application unwind restore routines across frame sizes by reading the existing descriptor at runtime.</summary>
+	public bool ShareApplicationUnwindRestores { get; init; } = true;
+	/// <summary>Remove redundant register-only moves in MC68000 application methods without handlers or dynamic frames. When a collector can run, methods with GC references or managed byrefs are excluded.</summary>
+	public bool RemoveApplicationRegisterMoves { get; init; } = true;
+	/// <summary>Use short PC-relative address loads in MC68000 application HUNKs when the target remains in the initialized hunk and is in range.</summary>
+	public bool CompactApplicationAddresses { get; init; } = true;
+	/// <summary>Share identical private unwind descriptors, restore routines and GC root maps in MC68000 application HUNKs without changing their runtime format.</summary>
+	public bool ShareApplicationRuntimeMetadata { get; init; } = true;
+	/// <summary>Use relative pointers and omit unused root-map and all-null state columns in private exception tables in MC68000 application HUNKs without a built-in or external GC reader.</summary>
+	public bool CompactApplicationExceptionSites { get; init; } = true;
 	/// <summary>Compatibility switch retained for existing clients. Literal provenance is now always validated; literal-only merges are supported.</summary>
 	public bool ValidateLiteralOperands { get; init; }
 	/// <summary>Remove proven redundant register and private stack transport.</summary>
@@ -718,7 +732,7 @@ public sealed record M68kCompilationRequest
 		M68kPeepholeOptimizationMode.FixedPoint;
 
 	/// <summary>
-	/// Explicit ROM code-size policy. Null preserves the default lowering.
+	/// Explicit code-size policy. Null preserves the default lowering.
 	/// Measure execution and stack budgets before enabling shared return paths.
 	/// </summary>
 	public M68kRomSizeOptions? RomSizeOptimizations { get; init; }

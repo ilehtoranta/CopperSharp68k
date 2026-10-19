@@ -28,12 +28,20 @@ internal sealed partial class M68kPeepholeOptimizer
 		// control-flow targets. They are hidden by assembly rendering, but still
 		// need to be moved when their original instruction is replaced. A named
 		// block/method entry or any referenced IL marker remains a hard boundary.
-		var boundaries = _addressFixupOffsets is null
-			? BuildFoldBoundaryLabelOffsets()
-			: _foldBoundaryLabelOffsets ??= BuildFoldBoundaryLabelOffsets();
-		var boundary = Array.BinarySearch(boundaries, startOffset);
-		boundary = boundary < 0 ? ~boundary : boundary + 1;
-		if (boundary < boundaries.Length && boundaries[boundary] < endOffset) return false;
+		if (!allowUnreferencedMarkers)
+		{
+			var boundaries = _addressFixupOffsets is null
+				? BuildFoldBoundaryLabelOffsets()
+				: _foldBoundaryLabelOffsets ??= BuildFoldBoundaryLabelOffsets();
+			var boundary = Array.BinarySearch(boundaries, startOffset);
+			boundary = boundary < 0 ? ~boundary : boundary + 1;
+			if (boundary < boundaries.Length && boundaries[boundary] < endOffset) return false;
+		}
+		else
+		{
+			foreach (var name in _unrelocatableLabelNames)
+				if (_buffer.Labels.TryGetValue(name, out var offset) && offset > startOffset && offset < endOffset) return false;
+		}
 		// An address can enter through a label plus an addend without naming an
 		// interior marker. Even a target after the replacement is unsafe when
 		// the label and target straddle the bytes being shortened: its literal

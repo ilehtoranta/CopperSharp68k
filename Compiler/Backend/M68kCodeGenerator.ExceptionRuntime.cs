@@ -29,7 +29,7 @@ internal sealed partial class M68kCodeGenerator
 		_unwindSites.Any(static site => site.ExceptionCleanupLabel is not null);
 
 	private int UnwindSiteEntryBytes =>
-		UsesExtendedUnwindMetadata ? 24 : 20;
+		UnwindCleanupOffset + (UsesExtendedUnwindMetadata ? UnwindSiteFieldBytes : 0);
 
 	private sealed record UnwindMethodLayout(
 		CilMethod Method,
@@ -769,17 +769,19 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.Equal, RuntimeExceptionUnhandledLabel);
 		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextSiteOffset);
-		_assembler.EmitWord(0x2069); // MOVEA.L 4(A1),A0 descriptor
-		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0x3069 : (ushort)0x2069); // MOVEA.W/L descriptor,A0
+		_assembler.EmitWord(checked((ushort)UnwindSiteFieldBytes));
+		if (_compactApplicationExceptionSites) _assembler.EmitWord(0xD1C9); // ADDA.L A1,A0
 		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
-		if (UnwindSiteEntryBytes > 20)
+		if (UsesExtendedUnwindMetadata)
 		{
 			var noCleanup = UniqueLabel("exception-no-cleanup");
-			_assembler.EmitWord(0x2069); // MOVEA.L 20(A1),A0 cleanup thunk
-			_assembler.EmitWord(0x0014);
+			_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0x3069 : (ushort)0x2069); // MOVEA.W/L cleanup,A0
+			_assembler.EmitWord(checked((ushort)UnwindCleanupOffset));
 			EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
 			_assembler.EmitWord(0x4A80); // TST.L D0
 			_assembler.EmitBranch(M68kCondition.Equal, noCleanup);
+			if (_compactApplicationExceptionSites) _assembler.EmitWord(0xD1C9); // ADDA.L A1,A0
 			_assembler.EmitWord(0x4E90); // JSR (A0)
 			_assembler.Mark(noCleanup);
 		}
@@ -799,19 +801,36 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitBranch(M68kCondition.True, haveFrameBase);
 			_assembler.Mark(staticFrameBase);
 			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
-			_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
-			_assembler.EmitWord(0x000C);
+			EmitAddUnwindStackAdjustment();
 			_assembler.Mark(haveFrameBase);
 		}
 		else
 		{
 			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
-			_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
-			_assembler.EmitWord(0x000C);
+			EmitAddUnwindStackAdjustment();
 		}
 		EmitStoreExceptionContextRegister(M68kRegister.D0, ExceptionContextFrameBaseOffset);
-		_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
-		_assembler.EmitWord(0x0008);
+		if (_omitApplicationUnwindState)
+		{
+			_assembler.EmitWord(0x327C); // MOVEA.W #0,A1: every site's state is null
+			_assembler.EmitWord(0);
+		}
+		else if (_compactApplicationExceptionSites)
+		{
+			var nullState = UniqueLabel("exception-null-relative-state");
+			_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0x3029 : (ushort)0x2029); // MOVE.W/L relative state,D0
+			_assembler.EmitWord(checked((ushort)(2 * UnwindSiteFieldBytes)));
+			if (_narrowApplicationExceptionSites) _assembler.EmitWord(0x48C0); // EXT.L D0; zero remains null
+			_assembler.EmitBranch(M68kCondition.Equal, nullState);
+			_assembler.EmitWord(0xD089); // ADD.L A1,D0
+			_assembler.Mark(nullState);
+			_assembler.EmitWord(0x2240); // MOVEA.L D0,A1
+		}
+		else
+		{
+			_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
+			_assembler.EmitWord(0x0008);
+		}
 		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
 		EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
 		_assembler.EmitWord(0x4A80); // TST.L D0
@@ -902,11 +921,24 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeFindUnwindSiteLabel);
 		EmitAddressImmediateToRegister(M68kRegister.A1, MethodTableLabel);
+		if (_compactApplicationExceptionSites)
+		{
+			_assembler.EmitWord(0x2009); // MOVE.L A1,D0 table base
+			_assembler.EmitWord(0x9280); // SUB.L D0,D1 resume PC relative to table
+		}
+		if (_narrowApplicationExceptionSites)
+		{
+			// Do not let an unrelated PC with identical low bits match a narrow key.
+			_assembler.EmitWord(0x3001); // MOVE.W D1,D0
+			_assembler.EmitWord(0x48C0); // EXT.L D0
+			_assembler.EmitWord(0xB280); // CMP.L D0,D1
+			_assembler.EmitBranch(M68kCondition.NotEqual, missing);
+		}
 		_assembler.EmitWord(0x2019); // MOVE.L (A1)+,D0 count
 		_assembler.Mark(loop);
 		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.Equal, missing);
-		_assembler.EmitWord(0xB291); // CMP.L (A1),D1
+		_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0xB251 : (ushort)0xB291); // CMP.W/L (A1),D1
 		_assembler.EmitBranch(M68kCondition.Equal, found);
 		_assembler.EmitWord(0x43E9); // LEA next-entry(A1),A1
 		_assembler.EmitWord(checked((ushort)UnwindSiteEntryBytes));
@@ -918,6 +950,21 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(missing);
 		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
 		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitAddUnwindStackAdjustment()
+	{
+		if (_narrowApplicationExceptionSites)
+		{
+			_assembler.EmitWord(0x3069); // MOVEA.W adjustment(A1),A0, sign extended
+			_assembler.EmitWord(checked((ushort)UnwindStackAdjustmentOffset));
+			_assembler.EmitWord(0xD088); // ADD.L A0,D0
+		}
+		else
+		{
+			_assembler.EmitWord(0xD0A9); // ADD.L adjustment(A1),D0
+			_assembler.EmitWord(checked((ushort)UnwindStackAdjustmentOffset));
+		}
 	}
 
 	private void EmitStoreExceptionContextRegister(M68kRegister register, short displacement)

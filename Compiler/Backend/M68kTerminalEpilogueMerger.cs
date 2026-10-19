@@ -83,11 +83,11 @@ internal sealed partial class M68kTerminalEpilogueMerger
 		// terminal copy with a four-byte word branch (or an inverted predecessor),
 		// while regional reuse needs a fixed six-byte absolute JMP. Let regional
 		// reuse consider only the copies that remain after the local pass.
-		var global = RunGlobal();
+		var global = _assembler.MethodLocalTerminalReuseOnly ? Statistics.Empty : RunGlobal();
 		var local = _enableMethodLocalReuse
 			? RunMethodLocalReuse()
 			: Statistics.Empty;
-		var regional = _enableRegionalReuse
+		var regional = _enableRegionalReuse && !_assembler.MethodLocalTerminalReuseOnly
 			? RunRegionalGlobalReuse()
 			: Statistics.Empty;
 		return Add(Add(global, local), regional);

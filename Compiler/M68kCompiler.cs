@@ -55,6 +55,18 @@ public static class M68kCompiler
 	/// <summary>Compiles and links one assembly.</summary>
 	public static M68kCompilationResult Compile(M68kCompilationRequest request)
 	{
+		try { return CompileCore(request); }
+		catch (M68kNarrowDataOverflowException) when (request.CodeSizeOptimizations?.NarrowApplicationExceptionSites == true)
+		{
+			// Retry from fresh compiler state. Only the speculative table width is
+			// disabled; preserve every other requested policy and runtime option.
+			return CompileCore(request with { CodeSizeOptimizations = request.CodeSizeOptimizations with {
+				NarrowApplicationExceptionSites = false } });
+		}
+	}
+
+	private static M68kCompilationResult CompileCore(M68kCompilationRequest request)
+	{
 		ArgumentNullException.ThrowIfNull(request);
 		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
 		ValidateRuntimeOptions(request);
@@ -853,7 +865,9 @@ public static class M68kCompiler
 		map.AppendLine($"RESIDENT-CONTEXT bytes={program.ResidentContextBytes} placement=" +
 			(program.ResidentContextBytes == 0 ? "none" : program.ResidentContextOnHeap ? "heap" : "stack"));
 		map.AppendLine($"CODE-SIZE mode={(request.CodeSizeOptimizations is not null ? "general" : request.RomSizeOptimizations is not null ? "rom" : "off")}");
-		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
+		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedTransportRegistersOnly
+			? nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves)
+			: program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
 			? string.Join(',', typeof(M68kCodeSizeOptions).GetProperties().Where(p => (bool)p.GetValue(generatedPolicy)!).Select(p => p.Name))
 			: "none"));
 		foreach (var (pass, statistics) in program.Assembler.GeneratedCodeSizeStatistics.OrderBy(p => p.Key, StringComparer.Ordinal))

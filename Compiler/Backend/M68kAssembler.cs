@@ -53,6 +53,7 @@ internal enum M68kFpuOperation : byte
 
 internal sealed class M68kAssembler
 {
+	internal bool CompactApplicationAddresses { get; set; }
 	private readonly M68kAssemblyBuffer _buffer = new();
 	private List<byte> _bytes => _buffer.Bytes;
 	private M68kOffsetMap _labels => _buffer.Labels;
@@ -62,6 +63,7 @@ internal sealed class M68kAssembler
 	private readonly HashSet<string> _longAlignmentLabels = new(StringComparer.Ordinal);
 	private readonly HashSet<string> _longAlignmentPaddingLabels = new(StringComparer.Ordinal);
 	private readonly HashSet<string> _returnAddressLabels = new(StringComparer.Ordinal);
+	private readonly List<(string Position, string Target, string Base, bool Narrow)> _relativeDataLongs = [];
 
 	internal IReadOnlySet<int> AddressFixupOffsets
 	{
@@ -275,12 +277,14 @@ internal sealed class M68kAssembler
 	public bool ReferencesTargetPrefix(string prefix) =>
 		_branches.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal)) ||
 		_addresses.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal)) ||
-		_pcRelative.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal));
+		_pcRelative.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal)) ||
+		_relativeDataLongs.Any(fixup => fixup.Target.StartsWith(prefix, StringComparison.Ordinal) || fixup.Base.StartsWith(prefix, StringComparison.Ordinal));
 
 	public bool ReferencesTarget(string target) =>
 		_branches.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target)) ||
 		_addresses.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target)) ||
-		_pcRelative.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target));
+		_pcRelative.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target)) ||
+		_relativeDataLongs.Any(fixup => StringComparer.Ordinal.Equals(fixup.Target, target) || StringComparer.Ordinal.Equals(fixup.Base, target));
 
 	internal bool HasPcRelativeRelaxationCandidate(string targetPrefix) =>
 		_addresses.Any(address =>
@@ -320,6 +324,7 @@ internal sealed class M68kAssembler
 
 	internal bool EnableRepeatedCallResultTestOptimization { get; set; }
 	internal M68kCodeSizeOptions? GeneratedCodeSizeOptions { get; set; }
+	internal bool GeneratedTransportRegistersOnly { get; set; }
 	internal IReadOnlyList<(string StartLabel, string EndLabel)> GeneratedCodeSizeRanges { get; set; } = [];
 	internal IReadOnlyList<(string StartLabel, string EndLabel)> GeneratedPrivateHelperRanges { get; set; } = [];
 	internal Dictionary<string, (int Rewrites, int Bytes)> GeneratedCodeSizeStatistics { get; } = new(StringComparer.Ordinal);
@@ -330,6 +335,9 @@ internal sealed class M68kAssembler
 	}
 
 	internal bool EnableMethodLocalTerminalReuse { get; set; }
+	internal bool MethodLocalTerminalReuseOnly { get; set; }
+	internal bool HasReturnAddressInRange(int start, int end) =>
+		_returnAddressLabels.Any(label => _labels.TryGetValue(label, out var offset) && offset >= start && offset < end);
 
 	internal bool EnableMethodLocalTerminalSuffixReuse { get; set; }
 
@@ -580,6 +588,21 @@ internal sealed class M68kAssembler
 		_pcRelative.Add(new PcRelativeFixup(displacementOffset, target));
 	}
 
+	// Data-only, same CODE hunk offsets. Label anchors follow every subsequent
+	// layout change; no absolute pointer or loader relocation is emitted.
+	internal void EmitRelativeDataLong(string target, string baseLabel) => EmitRelativeData(target, baseLabel, narrow: false);
+
+	internal void EmitRelativeDataWord(string target, string baseLabel) => EmitRelativeData(target, baseLabel, narrow: true);
+
+	private void EmitRelativeData(string target, string baseLabel, bool narrow)
+	{
+		if (_buffer.DataStartOffset is null) throw new InvalidOperationException("Relative data requires the data section.");
+		var position = $"relative-data:{_relativeDataLongs.Count}";
+		Mark(position);
+		_relativeDataLongs.Add((position, target, baseLabel, narrow));
+		if (narrow) EmitWord(0); else EmitLong(0);
+	}
+
 	internal void MarkDataStart() => _buffer.MarkDataStart();
 
 	internal void MarkWritableDataStart() => _buffer.MarkWritableDataStart();
@@ -779,11 +802,12 @@ internal sealed class M68kAssembler
 			var opcodeOffset = address.Offset - 2;
 			if (address.External ||
 				!address.CanRelaxToPcRelative ||
+				address.Addend != 0 ||
 				opcodeOffset < 0 ||
 				_buffer.DataStartOffset is { } dataStartOffset && opcodeOffset >= dataStartOffset ||
 				!_labels.TryGetValue(address.Target, out var targetOffset) ||
-				_buffer.WritableDataStartOffset is { } writableDataStartOffset &&
-					targetOffset >= writableDataStartOffset ||
+				(CompactApplicationAddresses ? _buffer.BssStartOffset : _buffer.WritableDataStartOffset)
+					is { } separateDataStartOffset && targetOffset >= separateDataStartOffset ||
 				!TryGetPcRelativeAddressingOpcode(
 					_buffer.ReadWord(opcodeOffset),
 					out var pcRelativeOpcode))
@@ -813,10 +837,17 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
-	private static bool TryGetPcRelativeAddressingOpcode(
+	private bool TryGetPcRelativeAddressingOpcode(
 		ushort opcode,
 		out ushort pcRelativeOpcode)
 	{
+		// MOVEA immediate and LEA both preserve every condition code and perform
+		// no data-memory access. The label is resolved only after final layout.
+		if (CompactApplicationAddresses && (opcode & 0xF1FF) == 0x207C)
+		{
+			pcRelativeOpcode = (ushort)(0x41FA | (opcode & 0x0E00));
+			return true;
+		}
 		if ((opcode & 0xF1FF) == 0x2039)
 		{
 			pcRelativeOpcode = (ushort)((opcode & 0xFFC0) | 0x003A);
@@ -1536,6 +1567,23 @@ internal sealed class M68kAssembler
 			BinaryPrimitives.WriteInt16BigEndian(
 				code.AsSpan(fixup.DisplacementOffset, 2),
 				(short)displacement);
+		}
+
+		foreach (var fixup in _relativeDataLongs)
+		{
+			var target = _labels[fixup.Target];
+			var basis = _labels[fixup.Base];
+			var position = _labels[fixup.Position];
+			if (_buffer.BssStartOffset is { } bss && (target >= bss || basis >= bss || position >= bss))
+				throw new InvalidOperationException("Relative data cannot cross into a separately loaded BSS hunk.");
+			var displacement = checked(target - basis);
+			if (fixup.Narrow)
+			{
+				if (displacement is < short.MinValue or > short.MaxValue)
+					throw new M68kNarrowDataOverflowException();
+				BinaryPrimitives.WriteInt16BigEndian(code.AsSpan(position, 2), (short)displacement);
+			}
+			else BinaryPrimitives.WriteInt32BigEndian(code.AsSpan(position, 4), displacement);
 		}
 
 		var relocations = new List<M68kRelocation>();

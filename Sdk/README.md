@@ -12,6 +12,41 @@ framework-contract, target-package, profile, CPU, and format provenance, and a
 `.framework.json` compatibility report from the same closed-world analysis.
 An unchanged second publish skips target compilation.
 
+Set `CopperSharpSymbols=off` to omit embedded `HUNK_SYMBOL` records from HUNK
+executables. Both publish and opt-in target builds support this property; the
+default remains `on`. The separate `.map` file retains method names and
+addresses. This reduces the executable's file size without changing generated
+instructions, data, exception handling, or memory management.
+
+```powershell
+dotnet publish -c Release -p:CopperSharpSymbols=off
+```
+
+Set `CopperSharpCodeSizeOptimizations=on` to enable the opt-in code-size policy
+for build and publish (default: `off`). MC68000 application HUNKs use shorter
+local address loads, shared immutable unwind/GC records and smaller unwind
+routines. Applications without a collector also use compact relative exception
+tables, with 16-bit fields when every final offset fits and automatic 32-bit
+fallback otherwise. Unreferenced unwind records are omitted; restore routines
+can share code across frame sizes without changing the descriptor or GC ABI.
+Eligible methods also remove redundant register moves and share identical
+return sequences within the method. Methods with exception handlers or dynamic
+stack allocation are excluded from these two passes; when a collector can run,
+methods with GC references or managed byrefs are excluded too. Exception handling
+and memory-management settings remain unchanged.
+
+```powershell
+dotnet publish -c Release -p:CopperSharpSymbols=off -p:CopperSharpCodeSizeOptimizations=on
+```
+
+To apply it only to Release configurations in a project:
+
+```xml
+<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+  <CopperSharpSymbols>off</CopperSharpSymbols>
+</PropertyGroup>
+```
+
 Ordinary `dotnet build` intentionally emits only managed IL. Set
 `CopperSharpCompileOnBuild=true` to opt into a separate target artifact under
 the build output directory. The former `Copper68k*` properties route through

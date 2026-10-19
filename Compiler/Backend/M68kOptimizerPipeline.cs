@@ -255,6 +255,10 @@ internal sealed class M68kOptimizerPipeline
 		// boundaries that prevent identical terminal sequences from being shared.
 		foreach (var offset in _buffer.InstructionEffectOverrides.Keys.ToArray())
 		{
+			if (_assembler.MethodLocalTerminalReuseOnly &&
+				!_assembler.MethodLocalTerminalRanges.Any(range =>
+					_buffer.Labels.TryGetValue(range.StartLabel, out var start) &&
+					_buffer.Labels.TryGetValue(range.EndLabel, out var end) && offset >= start && offset < end)) continue;
 			if (offset >= 0 && offset + 1 < _buffer.Bytes.Count &&
 				_buffer.ReadWord(offset) == 0x4E75)
 			{
