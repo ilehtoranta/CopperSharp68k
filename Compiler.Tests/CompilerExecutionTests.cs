@@ -19897,7 +19897,7 @@ public sealed partial class CompilerExecutionTests
 			Assert.True(
 				cycles <= 10_000,
 				$"Console.Read grew to {cycles} MC68000 cycles.");
-			Assert.Equal(8, result.AllocationStatistics.Count);
+			Assert.Equal(10, result.AllocationStatistics.Count);
 			Assert.All(
 				result.AllocationStatistics,
 				item => Assert.Equal(0, item.SpillFrameBytes));
@@ -20100,7 +20100,7 @@ public sealed partial class CompilerExecutionTests
 				cycles <= 50_000,
 				$"Console.ReadLine grew to {cycles} MC68000 cycles.");
 			// Root-site lookup and bitmap scanning are separate compiled GC helpers.
-			Assert.Equal(29, result.AllocationStatistics.Count);
+			Assert.Equal(31, result.AllocationStatistics.Count);
 			Assert.Contains(result.AllocationStatistics, static item => item.Method == "CopperSharp.Runtime.ManagedPool::FindRootSite");
 			Assert.Contains(result.AllocationStatistics, static item => item.Method == "CopperSharp.Runtime.ManagedPool::TraceFields");
 			Assert.All(
@@ -22428,7 +22428,7 @@ public sealed partial class CompilerExecutionTests
 			cycles <= 13_000,
 			$"Portable console grew to {cycles} MC68000 compiler/emulator cycles.");
 		Assert.Equal(0, nativeAllocations);
-		Assert.Equal(8, result.AllocationStatistics.Count);
+		Assert.Equal(11, result.AllocationStatistics.Count);
 		Assert.Equal(0, maximumSpillBytes);
 	}
 
@@ -22478,7 +22478,7 @@ public sealed partial class CompilerExecutionTests
 			$"Primitive console grew to {cycles} MC68000 compiler/emulator cycles.");
 		Assert.DoesNotContain(M68kRuntimeImports.Allocate, result.Map);
 		Assert.Equal(0, nativeAllocations);
-		Assert.Equal(17, result.AllocationStatistics.Count);
+		Assert.Equal(19, result.AllocationStatistics.Count);
 		Assert.Equal(0, maximumSpillBytes);
 	}
 
@@ -22498,7 +22498,7 @@ public sealed partial class CompilerExecutionTests
 			$"Boolean console grew to {measurement.Cycles} MC68000 cycles.");
 		Assert.DoesNotContain(M68kRuntimeImports.Allocate, measurement.Result.Map);
 		Assert.Equal(0, measurement.NativeAllocations);
-		Assert.Equal(9, measurement.Result.AllocationStatistics.Count);
+		Assert.Equal(11, measurement.Result.AllocationStatistics.Count);
 		Assert.Equal(0, measurement.MaximumSpillBytes);
 	}
 
@@ -22518,7 +22518,7 @@ public sealed partial class CompilerExecutionTests
 			$"Character console grew to {measurement.Cycles} MC68000 cycles.");
 		Assert.DoesNotContain(M68kRuntimeImports.Allocate, measurement.Result.Map);
 		Assert.Equal(0, measurement.NativeAllocations);
-		Assert.Equal(10, measurement.Result.AllocationStatistics.Count);
+		Assert.Equal(12, measurement.Result.AllocationStatistics.Count);
 		Assert.Equal(0, measurement.MaximumSpillBytes);
 	}
 

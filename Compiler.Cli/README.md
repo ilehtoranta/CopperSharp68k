@@ -282,6 +282,51 @@ and input assemblies match the frozen 33,936-byte baseline hashes. Measurement
 and tests used the same compiler binary, built in an isolated output directory
 because another compiler process held the usual CLI build files open.
 
+### Console I/O and packed integer formatting
+
+Sharing DOS acquisition/restoration and the native byte writer removes repeated
+console exception paths. `Write` and `WriteLine` share string handling; packed
+32/64-bit values use private stack buffers and the same checked writer. Empty
+`Write` remains a no-op, while null `WriteLine` writes a newline. Output handles
+are acquired once per call; newline writes remain separate and only occur after
+the preceding write succeeds. Every installed DOS base is restored in `finally`.
+
+Integer packing now prepends bytes with fixed shifts. The 32-bit path uses an
+exact shift/add division by ten with a remainder correction, avoiding a software
+division loop. The 64-bit path retains base-10000 division, trims only the final
+chunk and no longer links the general digit counter or byte-position helper.
+No managed or native allocations are added. These runtime improvements apply
+without requiring the optional compiler size policy.
+
+With the same nine Release inputs, MC68000, stripped HUNKs and the existing
+application size policy, the additional runtime reduction against main at
+`d94cb27` is:
+
+| Example | Previous runtime | Updated runtime | Reduction |
+| --- | ---: | ---: | ---: |
+| ConsoleIO | 5,824 | 4,888 | 16.07% |
+| StopwatchBenchmark | 9,504 | 7,144 | 24.83% |
+| Seven other examples combined | 17,204 | 17,204 | 0% |
+| **Total** | **32,532** | **29,236** | **10.13%** |
+
+The method inventory attributes 1,216 saved instruction bytes to console code
+and 1,462 to packing; the remaining savings come from smaller unwind metadata
+and relocation records. Existing cycle, spill and allocation budgets are
+retained. Only expected linked-method counts change to reflect shared helpers.
+
+`measure-executable-size.ps1 -NoBuild -CompilerPath <compiler.dll>
+-RuntimeDirectory <updated-runtime-directory> -CompareRuntimeDirectory
+<previous-runtime-directory>` compares both runtime pairs with one compiler
+and unchanged sample assemblies. Both directories must contain
+`CopperSharp.Runtime.Managed.dll` and `CopperSharp.Runtime.AmigaPal.dll`.
+The report includes runtime hashes and previous-runtime executable sizes/hashes.
+
+Regression coverage includes invariant formatting and zero padding at decimal
+boundaries and 10,000 deterministic random values, allocation-free packing,
+generated execution on 68000/68020/68040 with two load bases and peepholes on/off,
+every write failure in mixed console output, application and scoped DOS
+ownership, buffered input/EOF, and existing exception/forced-GC cases.
+
 `--code-size-optimizations on --code-size-passes SimplifyLoopPhis` selects the
 default-off trivial-loop-phi cleanup. Append `SimplifyLoopPhis` to an existing
 comma-separated pass selection to preserve that selection. The pass applies

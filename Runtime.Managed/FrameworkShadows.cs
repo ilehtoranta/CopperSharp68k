@@ -2226,75 +2226,44 @@ public static class ShadowIntegerFormatter
 		out uint word3,
 		out uint word4)
 	{
-		var digitCount = CountDecimalDigits64(high, low);
-		var length = digitCount + (negative ? 1 : 0);
-		word0 = 0;
-		word1 = 0;
-		word2 = 0;
-		word3 = 0;
-		word4 = 0;
-		var index = length - 1;
+		word0 = word1 = word2 = word3 = word4 = 0;
+		var length = 0;
 		var currentHigh = high;
 		var currentLow = low;
-		var remainingDigits = digitCount;
 		do
 		{
-			var chunk = DivideUInt64By10000(
-				currentHigh,
-				currentLow,
-				out currentHigh,
-				out currentLow);
+			var chunk = DivideUInt64By10000(currentHigh, currentLow, out currentHigh, out currentLow);
+			var chunkDigits = 4;
+			if (currentHigh == 0 && currentLow == 0)
+			{
+				// A base-10000 remainder needs at most four decimal digits.
+				if (chunk < 10) chunkDigits = 1;
+				else if (chunk < 100) chunkDigits = 2;
+				else if (chunk < 1000) chunkDigits = 3;
+			}
 			var packedChunk = PackFourDecimalDigits(chunk);
-			var chunkDigits = remainingDigits >= 4 ? 4 : remainingDigits;
-			var outputIndex = index - chunkDigits + 1;
-			if (chunkDigits == 4)
+			for (var remaining = chunkDigits; remaining != 0; remaining--)
 			{
-				PackDecimalByte(
-					outputIndex++, packedChunk >> 24,
-					ref word0, ref word1, ref word2, ref word3, ref word4);
+				word4 = (word4 >> 8) | (word3 << 24);
+				word3 = (word3 >> 8) | (word2 << 24);
+				word2 = (word2 >> 8) | (word1 << 24);
+				word1 = (word1 >> 8) | (word0 << 24);
+				word0 = (word0 >> 8) | (packedChunk << 24);
+				packedChunk >>= 8;
 			}
-			if (chunkDigits >= 3)
-			{
-				PackDecimalByte(
-					outputIndex++, (packedChunk >> 16) & 0xffu,
-					ref word0, ref word1, ref word2, ref word3, ref word4);
-			}
-			if (chunkDigits >= 2)
-			{
-				PackDecimalByte(
-					outputIndex++, (packedChunk >> 8) & 0xffu,
-					ref word0, ref word1, ref word2, ref word3, ref word4);
-			}
-			PackDecimalByte(
-				outputIndex, packedChunk & 0xffu,
-				ref word0, ref word1, ref word2, ref word3, ref word4);
-			index -= chunkDigits;
-			remainingDigits -= chunkDigits;
+			length += chunkDigits;
 		}
 		while (currentHigh != 0 || currentLow != 0);
-
 		if (negative)
 		{
-			word0 |= (uint)'-' << 24;
+			word4 = (word4 >> 8) | (word3 << 24);
+			word3 = (word3 >> 8) | (word2 << 24);
+			word2 = (word2 >> 8) | (word1 << 24);
+			word1 = (word1 >> 8) | (word0 << 24);
+			word0 = (word0 >> 8) | ((uint)'-' << 24);
+			length++;
 		}
 		return length;
-	}
-
-	private static void PackDecimalByte(
-		int index,
-		uint encoded,
-		ref uint word0,
-		ref uint word1,
-		ref uint word2,
-		ref uint word3,
-		ref uint word4)
-	{
-		var shift = (3 - (index & 3)) * 8;
-		if (index < 4) word0 |= encoded << shift;
-		else if (index < 8) word1 |= encoded << shift;
-		else if (index < 12) word2 |= encoded << shift;
-		else if (index < 16) word3 |= encoded << shift;
-		else word4 |= encoded << shift;
 	}
 
 	private static uint PackFourDecimalDigits(uint value)
@@ -2332,61 +2301,36 @@ public static class ShadowIntegerFormatter
 		out uint word1,
 		out uint word2)
 	{
-		var digitCount = CountDecimalDigits(value);
-		var length = digitCount + (negative ? 1 : 0);
-		word0 = 0;
-		word1 = 0;
-		word2 = 0;
-		var index = negative ? 1 : 0;
+		word0 = word1 = word2 = 0;
+		var length = 0;
+		// Prepend digits to the packed big-endian lanes. Fixed byte shifts avoid
+		// a digit-count pass, decimal-place ladder and per-digit lane selection.
 		var remainder = value;
-		var place = 1u;
-		if (digitCount == 10) place = 1_000_000_000u;
-		else if (digitCount == 9) place = 100_000_000u;
-		else if (digitCount == 8) place = 10_000_000u;
-		else if (digitCount == 7) place = 1_000_000u;
-		else if (digitCount == 6) place = 100_000u;
-		else if (digitCount == 5) place = 10_000u;
-		else if (digitCount == 4) place = 1_000u;
-		else if (digitCount == 3) place = 100u;
-		else if (digitCount == 2) place = 10u;
-		while (place != 0)
+		do
 		{
-			var digit = 0u;
-			while (remainder >= place)
-			{
-				remainder -= place;
-				digit++;
-			}
-			var encoded = '0' + digit;
-			var shift = (3 - (index & 3)) * 8;
-			if (index < 4)
-			{
-				word0 |= encoded << shift;
-			}
-			else if (index < 8)
-			{
-				word1 |= encoded << shift;
-			}
-			else
-			{
-				word2 |= encoded << shift;
-			}
-			index++;
-			if (place == 1_000_000_000u) place = 100_000_000u;
-			else if (place == 100_000_000u) place = 10_000_000u;
-			else if (place == 10_000_000u) place = 1_000_000u;
-			else if (place == 1_000_000u) place = 100_000u;
-			else if (place == 100_000u) place = 10_000u;
-			else if (place == 10_000u) place = 1_000u;
-			else if (place == 1_000u) place = 100u;
-			else if (place == 100u) place = 10u;
-			else if (place == 10u) place = 1u;
-			else place = 0;
+			// Approximate value / 10 from below, then correct its remainder.
+			// All intermediate sums fit UInt32, including UInt32.MaxValue.
+			var quotient = (remainder >> 1) + (remainder >> 2);
+			quotient += quotient >> 4;
+			quotient += quotient >> 8;
+			quotient += quotient >> 16;
+			quotient >>= 3;
+			var digit = remainder - quotient * 10;
+			if (digit >= 10) { quotient++; digit -= 10; }
+			var encoded = (uint)'0' + digit;
+			word2 = (word2 >> 8) | (word1 << 24);
+			word1 = (word1 >> 8) | (word0 << 24);
+			word0 = (word0 >> 8) | (encoded << 24);
+			length++;
+			remainder = quotient;
 		}
-
+		while (remainder != 0);
 		if (negative)
 		{
-			word0 |= (uint)'-' << 24;
+			word2 = (word2 >> 8) | (word1 << 24);
+			word1 = (word1 >> 8) | (word0 << 24);
+			word0 = (word0 >> 8) | ((uint)'-' << 24);
+			length++;
 		}
 		return length;
 	}

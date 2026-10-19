@@ -4,6 +4,8 @@ param(
     [string] $Configuration = 'Release',
     [string] $OutputDirectory,
     [string] $CompilerPath,
+    [string] $RuntimeDirectory,
+    [string] $CompareRuntimeDirectory,
     [switch] $NoBuild,
     [switch] $CompareApplicationMethods,
     [switch] $CompareApplicationMetadata
@@ -107,12 +109,21 @@ $rows = foreach ($sample in $samples) {
     }
     $paths = @{}
     $variants = @('symbols', 'stripped', 'policy')
+    if ($CompareRuntimeDirectory) { $variants += 'previous-runtime' }
     if ($CompareApplicationMethods -or $CompareApplicationMetadata) { $variants += 'previous-policy' }
     foreach ($variant in $variants) {
         $output = Join-Path $OutputDirectory "$($sample.Name).$variant"
         $paths[$variant] = $output
         $arguments = $common + @('--output', $output, '--symbols', $(if ($variant -eq 'symbols') { 'on' } else { 'off' }))
-        if ($variant -eq 'policy') { $arguments += @('--code-size-optimizations', 'on') }
+        if ($variant -in @('policy', 'previous-runtime')) { $arguments += @('--code-size-optimizations', 'on') }
+        $runtime = if ($variant -eq 'previous-runtime') { $CompareRuntimeDirectory } else { $RuntimeDirectory }
+        if ($runtime) {
+            foreach ($name in @('CopperSharp.Runtime.Managed.dll', 'CopperSharp.Runtime.AmigaPal.dll')) {
+                $runtimeAssembly = [IO.Path]::GetFullPath((Join-Path $runtime $name))
+                if (-not (Test-Path -LiteralPath $runtimeAssembly)) { throw "Missing runtime: $runtimeAssembly" }
+                $arguments += @('--managed-assembly', $runtimeAssembly)
+            }
+        }
         if ($variant -eq 'previous-policy') {
             $previousPasses = 'CompactApplicationAddresses,ShareApplicationRuntimeMetadata,CompactApplicationExceptionSites'
             if ($CompareApplicationMetadata) { $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences' }
@@ -157,16 +168,30 @@ $rows = foreach ($sample in $samples) {
         PolicySha256 = (Get-FileHash -LiteralPath $paths.policy -Algorithm SHA256).Hash
         PreviousPolicyBytes = $(if ($CompareApplicationMethods -or $CompareApplicationMetadata) { (Get-Item -LiteralPath $paths['previous-policy']).Length } else { $null })
         PreviousPolicySha256 = $(if ($CompareApplicationMethods -or $CompareApplicationMetadata) { (Get-FileHash -LiteralPath $paths['previous-policy'] -Algorithm SHA256).Hash } else { $null })
+        PreviousRuntimeBytes = $(if ($CompareRuntimeDirectory) { (Get-Item -LiteralPath $paths['previous-runtime']).Length } else { $null })
+        PreviousRuntimeSha256 = $(if ($CompareRuntimeDirectory) { (Get-FileHash -LiteralPath $paths['previous-runtime'] -Algorithm SHA256).Hash } else { $null })
     }
 }
 $rows | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'measurements.csv') -NoTypeInformation
 [ordered]@{
     CompilerSha256 = (Get-FileHash -LiteralPath (Join-Path (Split-Path $compiler) 'CopperSharp.Compiler.dll') -Algorithm SHA256).Hash
+    RuntimeHashes = @($(foreach ($directory in @($RuntimeDirectory, $CompareRuntimeDirectory) | Where-Object { $_ }) {
+        foreach ($name in @('CopperSharp.Runtime.Managed.dll', 'CopperSharp.Runtime.AmigaPal.dll')) {
+            $path = [IO.Path]::GetFullPath((Join-Path $directory $name))
+            [pscustomobject]@{ Path = $path; Sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+        }
+    }))
     Samples = @($rows)
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'measurements.json')
 $rows | Format-Table Example, SymbolsBytes, StrippedBytes, SavedPercent, PolicyBytes, PolicySavedPercent
 $totalBefore = ($rows | Measure-Object SymbolsBytes -Sum).Sum
 $totalAfter = ($rows | Measure-Object StrippedBytes -Sum).Sum
+if ($CompareRuntimeDirectory) {
+    $runtimeBefore = ($rows | Measure-Object PreviousRuntimeBytes -Sum).Sum
+    $runtimeAfter = ($rows | Measure-Object PolicyBytes -Sum).Sum
+    Write-Host ('Runtime changes: {0} -> {1} bytes ({2:N2}% smaller)' -f $runtimeBefore, $runtimeAfter,
+        (100 * ($runtimeBefore - $runtimeAfter) / $runtimeBefore))
+}
 Write-Host ('Total: {0} -> {1} bytes ({2:N2}% smaller)' -f $totalBefore, $totalAfter, (100 * ($totalBefore - $totalAfter) / $totalBefore))
 $totalPolicy = ($rows | Measure-Object PolicyBytes -Sum).Sum
 Write-Host ('Code generation against stripped baseline: {0} -> {1} bytes ({2:N2}% smaller)' -f $totalAfter, $totalPolicy, (100 * ($totalAfter - $totalPolicy) / $totalAfter))
