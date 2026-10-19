@@ -19,7 +19,21 @@ public sealed class TransparentPointerFieldLoweringTests
 		Assert.True(module.IsTransparentScalarField(field),
 			$"Field={field.DisplayName}, Type={field.Type}, IL={string.Join("; ", method.Instructions.Select(i => $"{i.Offset:X4} {i.OpCode} {i.Operand}"))}");
 		var function = CilMachineIrBuilder.Build(method, module);
-		Assert.Contains(function.Blocks.SelectMany(b => b.Instructions),
-			i => i.IlOffset == load.Offset && i.Operation == M68kMachineOperation.Copy);
+		var instructions = function.Blocks.SelectMany(b => b.Instructions).ToArray();
+		var argument = Assert.Single(instructions,
+			i => i.Operation == M68kMachineOperation.Argument && i.ArgumentIndex == 4);
+		var store = Assert.Single(method.Instructions,
+			i => i.OpCode == OpCodes.Stfld && i.Offset == load.NextOffset);
+		var loweredStore = Assert.Single(instructions,
+			i => i.IlOffset == store.Offset && i.Operation == M68kMachineOperation.Store);
+
+		// Transparent field extraction is a copy, but Build propagates that copy
+		// away. Verify the stored pointer is the original argument payload rather
+		// than requiring an intermediate instruction that no longer survives.
+		Assert.Equal(2, loweredStore.Uses.Length);
+		Assert.Equal(Assert.Single(argument.Definitions), loweredStore.Uses[1]);
+		Assert.DoesNotContain(instructions,
+			i => i.IlOffset == load.Offset &&
+				(i.MemoryEffect & M68kMachineMemoryEffect.Read) != 0);
 	}
 }

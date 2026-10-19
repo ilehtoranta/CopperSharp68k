@@ -42,8 +42,9 @@ profiles continue to diagnose reachable finalizable allocations.
 
 Finalizer support is linked only when a reachable `newobj` creates a type with
 an effective finalizer, including an inherited one. Programs without such an
-allocation retain the original collector, 20-byte class descriptors, and
-single mark/trace/sweep pass.
+allocation retain the single mark/trace/sweep pass. Small classes retain
+20-byte descriptors; larger class payloads append the reference bitmap words
+described below independently of finalizer support.
 
 ## Sweep Strategies
 
@@ -195,13 +196,22 @@ TypeDescriptor:
   +8  base type descriptor pointer
   +12 class vtable pointer, or zero when the type has no virtual slots
   +16 interface map pointer, or zero when no reachable interface call applies
-  +20 finalizer code pointer, only when finalizer support is linked
+  +20 finalizer code pointer when finalizer support is linked;
+      otherwise zero padding for classes with more than 128 payload bytes
+  +24 additional class reference bitmap words, for payloads over 128 bytes
 ```
 
-The first 20 bytes remain the common class-descriptor prefix. The `+20`
-extension is emitted for every fixed-size class descriptor only in a closed
-world that contains a reachable finalizable allocation. Variable-size array
-and string descriptors keep their existing layout.
+The first 20 bytes remain the common class-descriptor prefix. Finalizer support
+adds the `+20` slot to every fixed-size class descriptor. Independently, a class
+payload larger than 128 bytes reserves that slot and appends
+`ceil((objectSize - 8) / 128) - 1` bitmap words at `+24`. The bitmap at `+4`
+describes payload words 0 through 31; the first additional word describes
+words 32 through 63. The collector scans each word at its corresponding
+128-byte payload offset. Zero words preserve gaps and reference-free payloads.
+Inherited and generic class layouts carry their complete bitmap tails.
+Variable-size array and string descriptors keep their existing layout;
+reference-bearing value-type transport and aggregate-array element bitmaps
+retain their existing 32-position limit.
 
 Finalizable objects are registered after their descriptor and size fields are
 initialized and before their constructor runs. The allocation header stores

@@ -63,7 +63,7 @@ public sealed class FramePreservationEmissionTests
 	}
 
 	[Fact]
-	public void SelectedConstantMultiplyAndAddDoNotSaveUnusedD3OrD5()
+	public void SelectedConstantArithmeticSavesOnlyRegistersWrittenByTheMethod()
 	{
 		var result = Compile(nameof(FramePreservationFixtures.StoreAndRead), M68kCpuTarget.M68000,
 			M68kPeepholeOptimizationMode.Disabled);
@@ -72,10 +72,17 @@ public sealed class FramePreservationEmissionTests
 		var assembler = new M68kAssembler();
 		for (var offset = 0; offset < bytes.Length; offset += 2)
 			assembler.EmitWord(System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(bytes[offset..]));
-		var savedData = assembler.GetInstructionStream().Select(M68kInstructionDataflow.GetEffects)
+		var effects = assembler.GetInstructionStream().Select(M68kInstructionDataflow.GetEffects).ToArray();
+		var savedData = effects
 			.Where(effect => effect.StackDelta < 0 && (effect.WritesMemory & M68kMemorySet.Stack) != 0)
 			.Aggregate(0, (mask, effect) => mask | effect.UsesData);
-		Assert.Equal(0, savedData & ((1 << 3) | (1 << 5)));
+		// Exclude epilogue restores: they write every saved register by definition.
+		// Allocation may use D5 for an incoming argument even when a folded constant
+		// no longer needs it, so verify actual writes rather than fixed register names.
+		var writtenData = effects.Where(effect => effect.StackDelta is null or <= 0)
+			.Aggregate(0, (mask, effect) => mask | effect.DefinesData);
+		Assert.Equal(0, savedData & ~writtenData);
+		Assert.Equal(0, savedData & (1 << 3));
 		Assert.NotEqual(0, savedData & (1 << 2)); // The selected multiply really writes D2.
 	}
 

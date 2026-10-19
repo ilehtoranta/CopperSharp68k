@@ -29,12 +29,21 @@ internal static class M68kRuntimeAbi
 	public const int TypeDescriptorBytes = 20;
 	public const short ClassFinalizerOffset = 20;
 	public const int FinalizableClassDescriptorBytes = 24;
+	// Classes with more than 32 payload words append bitmap words after the
+	// finalizer slot (zero when finalization is unused). Size determines count.
+	public const short ClassAdditionalReferenceBitmapsOffset = 24;
+	public const int ClassInlineReferenceBytes = 128;
 
 	public const short ArrayElementTypeOffset = 20;
 	public const short ArrayElementKindOffset = 24;
 	public const int ReferenceArrayDescriptorBytes = 28;
 	public const uint ArrayElementKindClass = 0;
 	public const uint ArrayElementKindInterface = 1;
+	public const uint AggregateArrayReferenceFlag = 0x8000_0000;
+	public const uint ArrayElementKindAggregate = 2;
+	public const short AggregateArrayElementSizeOffset = 28;
+	public const short AggregateArrayElementBitmapOffset = 32;
+	public const int AggregateArrayDescriptorBytes = 36;
 
 	public const short DelegateTargetOffset = 8;
 	public const short DelegateThunkOffset = 12;

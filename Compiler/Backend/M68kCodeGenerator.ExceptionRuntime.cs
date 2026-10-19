@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using CopperSharp.Compiler.Framework;
 using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Backend;
@@ -266,7 +267,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var label = UniqueLabel("unwind_site");
-		_assembler.Mark(label);
+		_assembler.MarkReturnAddress(label);
 		var state = exception
 			? RegisterExceptionState(
 				method,
@@ -621,7 +622,7 @@ internal sealed partial class M68kCodeGenerator
 		// Retain the exception runtime so that table is materialized.
 		_usesExceptionRuntime = true;
 		var token = MetadataTokens.GetToken(method.Handle);
-		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{string.Join(",", groups.Select(static group => group.Id))}";
+		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}{ConstructionLabelSuffix(method.Construction)}:{string.Join(",", groups.Select(static group => group.Id))}";
 		if (!_exceptionStates.TryGetValue(key, out var state))
 		{
 			state = new ExceptionState(
@@ -654,7 +655,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var token = MetadataTokens.GetToken(method.Handle);
-		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{leaveOffset:X4}:{targetOffset:X4}";
+		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}{ConstructionLabelSuffix(method.Construction)}:{leaveOffset:X4}:{targetOffset:X4}";
 		if (!_normalLeaveChains.TryGetValue(key, out var chain))
 		{
 			chain = new NormalLeaveChain(key, method, targetOffset, finallyRegions);
@@ -1586,6 +1587,16 @@ internal sealed partial class M68kCodeGenerator
 				.DistinctBy(static layout => layout.Identity));
 		while (pending.TryDequeue(out var layout))
 		{
+			if (_module.GetExperimentalListBase(layout) is { } listBase)
+			{
+				_constructedTypeDescriptors.TryAdd(listBase.ConstructedType!.DisplayName, (listBase.ConstructedType, listBase));
+				if (_usedTypeLayouts.TryAdd(listBase.Identity, listBase)) pending.Enqueue(listBase);
+			}
+			if (_module.GetExperimentalCharacterMemoryManagerBase(layout) is { } memoryBase)
+			{
+				_constructedTypeDescriptors.TryAdd(memoryBase.ConstructedType!.DisplayName, (memoryBase.ConstructedType, memoryBase));
+				if (_usedTypeLayouts.TryAdd(memoryBase.Identity, memoryBase)) pending.Enqueue(memoryBase);
+			}
 			var baseType = _module.GetBaseType(layout);
 			if (baseType.IsNil)
 			{
@@ -1603,12 +1614,27 @@ internal sealed partial class M68kCodeGenerator
 			else if (baseType.Kind == HandleKind.TypeReference)
 			{
 				RegisterRuntimeTypeDescriptor(_module.GetTypeDisplayName(baseType, layout));
+				if (_module.GetExperimentalCultureBase(layout) is { } cultureBase &&
+					_usedTypeLayouts.TryAdd(cultureBase.Identity, cultureBase))
+				{
+					pending.Enqueue(cultureBase);
+				}
 			}
 		}
 	}
 
 	private void EmitTypeDescriptorBase(CilTypeLayout layout)
 	{
+		if (_module.GetExperimentalListBase(layout) is { } listBase)
+		{
+			_assembler.EmitAddress(ConstructedTypeDescriptorLabel(listBase, listBase.ConstructedType!));
+			return;
+		}
+		if (_module.GetExperimentalCharacterMemoryManagerBase(layout) is { } memoryBase)
+		{
+			_assembler.EmitAddress(ConstructedTypeDescriptorLabel(memoryBase, memoryBase.ConstructedType!));
+			return;
+		}
 		var baseType = _module.GetBaseType(layout);
 		if (baseType.IsNil)
 		{
@@ -1634,6 +1660,9 @@ internal sealed partial class M68kCodeGenerator
 	{
 		foreach (var typeName in _runtimeTypeDescriptors.Order(StringComparer.Ordinal))
 		{
+			if (_usedTypeLayouts.Values.Any(layout =>
+				layout.DisplayName == typeName && IsCoreLibRuntimeDescriptorAlias(layout)))
+				continue;
 			_assembler.AlignWord();
 			_assembler.Mark(RuntimeTypeDescriptorLabel(typeName));
 			_assembler.EmitLong(8);
@@ -1672,13 +1701,30 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
+	// Catch clauses and allocated CoreLib exceptions share one descriptor.
+	// Object array checks also need the same root identity for CoreLib classes
+	// whose base is a local Object TypeDef and classes whose base is a TypeRef.
+	// StringBuilder casts must use its allocated descriptor as well.
+	private bool IsCoreLibRuntimeDescriptorAlias(CilTypeLayout layout) =>
+		(_module.FrameworkImplementationPack?.EnableUnlistedManagedBodies == true ||
+		 _module.FrameworkImplementationPack?.IsPinnedStringBuilderInput == true &&
+		 (layout.DisplayName is "System.Object" or "System.Text.StringBuilder" ||
+		  StringBuilderExceptionSurface.Members.Any(member => member.DeclaringType.FullMetadataName == layout.DisplayName))) &&
+		layout.ModuleName == "System.Private.CoreLib" &&
+		_runtimeTypeDescriptors.Contains(layout.DisplayName);
+
 	private static string? RuntimeBaseTypeName(string typeName) =>
 		typeName switch
 		{
 			"System.Object" => null,
+			"System.RuntimeType" => "System.Reflection.TypeInfo",
+			"System.Reflection.TypeInfo" => "System.Type",
+			"System.Type" => "System.Reflection.MemberInfo",
+			"System.Reflection.MemberInfo" => "System.Object",
 			"System.Delegate" => "System.Object",
 			"System.MulticastDelegate" => "System.Delegate",
 			"System.ValueType" => "System.Object",
+			"System.Enum" => "System.ValueType",
 			"System.Exception" => "System.Object",
 			"System.SystemException" => "System.Exception",
 			"System.ArithmeticException" => "System.SystemException",

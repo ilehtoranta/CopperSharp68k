@@ -6,6 +6,93 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kRegisterAllocationTests
 {
+	[Theory]
+	[InlineData((int)M68kMachineOperation.Add)]
+	[InlineData((int)M68kMachineOperation.And)]
+	[InlineData((int)M68kMachineOperation.Or)]
+	[InlineData((int)M68kMachineOperation.Xor)]
+	public void CommutativePairResultCannotPartiallyOverwriteTheRightOperand(int operationId)
+	{
+		var operation = (M68kMachineOperation)operationId;
+		var function = new M68kMachineFunction("pair-binary-overlap", 0);
+		var block = AddBlock(function, 0, 0);
+		var left = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.DataPairStarts, precoloredRegister: M68kRegister.D4);
+		var right = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.From(M68kRegister.D1, M68kRegister.D2));
+		var result = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.DataPairStarts, precoloredRegister: M68kRegister.D0);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Constant, 0, definitions: [left.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Constant, 1, definitions: [right.Id]));
+		block.Instructions.Add(function.CreateInstruction(operation, 2, uses: [left.Id, right.Id], definitions: [result.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 3, uses: [result.Id]));
+		var allocation = Allocate(function, out var graph);
+		Assert.Empty(allocation.SpilledValues);
+		Assert.Equal(M68kRegister.D2, allocation.Registers[right.Id].Register);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+		var corrupt = new M68kAllocationResult(new Dictionary<int, M68kAllocatedLocation> {
+			[left.Id] = new(M68kRegister.D4, true), [right.Id] = new(M68kRegister.D1, true), [result.Id] = new(M68kRegister.D0, true)
+		}, new HashSet<int>());
+		Assert.Throws<InvalidOperationException>(() => M68kGraphColoringAllocator.VerifyAllocation(function, graph, corrupt));
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void PairReloadEvictsOrdinaryValuesButPreservesFixedLocations(bool fixedNeighbors)
+	{
+		var function = new M68kMachineFunction("fragmented-pair-reload", 0);
+		var block = AddBlock(function, 0, 0);
+		var reload = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.DataPairStarts, isSpillTemporary: true);
+		var neighbors = new[] { M68kRegister.D0, M68kRegister.D2, M68kRegister.D4, M68kRegister.D6 }
+			.Select(register => function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long,
+				M68kRegisterSet.From(register), precoloredRegister: fixedNeighbors ? register : null)).ToArray();
+		foreach (var value in neighbors.Append(reload))
+			block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 0, definitions: [value.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 1));
+		var graph = new M68kInterferenceGraph(function.Values.Keys);
+		foreach (var neighbor in neighbors) graph.AddEdge(reload.Id, neighbor.Id);
+		var allocation = M68kGraphColoringAllocator.Allocate(function, graph);
+		if (fixedNeighbors)
+		{
+			Assert.Equal(new[] { reload.Id }, allocation.SpilledValues);
+			Assert.All(neighbors, neighbor => Assert.Equal(neighbor.PrecoloredRegister, allocation.Registers[neighbor.Id].Register));
+		}
+		else
+		{
+			Assert.Contains(reload.Id, allocation.Registers.Keys);
+			Assert.Single(allocation.SpilledValues);
+			Assert.DoesNotContain(reload.Id, allocation.SpilledValues);
+		}
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+	}
+
+	[Fact]
+	public void EquivalentLongPairsUseIdenticalOrDisjointRegisters()
+	{
+		var function = new M68kMachineFunction("pair-copy-overlap", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.From(M68kRegister.D1, M68kRegister.D2));
+		var copy = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
+			M68kRegisterSet.DataPairStarts, precoloredRegister: M68kRegister.D0);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Constant, 0, definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 1, uses: [source.Id], definitions: [copy.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.OutgoingArgumentPush, 2,
+			uses: [copy.Id], memoryEffect: M68kMachineMemoryEffect.Write, argumentIndex: 4));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 3, uses: [source.Id]));
+		var allocation = Allocate(function, out var graph);
+		Assert.Empty(allocation.SpilledValues);
+		Assert.Equal(M68kRegister.D2, allocation.Registers[source.Id].Register);
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
+		var corrupt = new M68kAllocationResult(new Dictionary<int, M68kAllocatedLocation>
+		{
+			[source.Id] = new(M68kRegister.D1, true), [copy.Id] = new(M68kRegister.D0, true)
+		}, new HashSet<int>());
+		Assert.Throws<InvalidOperationException>(() => M68kGraphColoringAllocator.VerifyAllocation(function, graph, corrupt));
+	}
+
 	[Fact]
 	public void LoopFootprintDetectsInstructionCacheIndexConflicts()
 	{
@@ -296,6 +383,22 @@ public sealed class M68kRegisterAllocationTests
 				NeedsTemporarySlot: false));
 
 		Assert.Equal([M68kRegister.D2], frame.CalleeSavedRegisters);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void ZeroSizedHomesCannotResetFrameAllocation(bool argument)
+	{
+		var function = new M68kMachineFunction("zero-home", 0);
+		function.LocalHomes.Add(0, new M68kFrameHome(0, 12, false, false));
+		var homes = argument ? function.ArgumentHomes : function.LocalHomes;
+		homes.Add(1, new M68kFrameHome(1, 0, false, false));
+		Assert.Throws<InvalidOperationException>(() => M68kAllocatedFramePlanner.Create(function,
+			new M68kAllocationResult(new Dictionary<int, M68kAllocatedLocation>(), new HashSet<int>()),
+			new M68kSpillLayout(new Dictionary<int, M68kSpillSlot>(), new HashSet<int>(), 0),
+			new M68kSafepointPlan([], new Dictionary<int, int>(), 0, 0),
+			new M68kParallelCopyPlan(new Dictionary<(int From, int To), IReadOnlyList<M68kParallelCopy>>(), false)));
 	}
 
 	[Fact]
@@ -1719,6 +1822,81 @@ public sealed class M68kRegisterAllocationTests
 	}
 
 	[Fact]
+	public void AddressCoalescingRespectsNeighborGroupsThatAcquireFixedRegisters()
+	{
+		var function = new M68kMachineFunction("transitive-fixed-address", 0);
+		AddBlock(function, 0, 0);
+		M68kMachineValue Address(M68kRegister? fixedRegister = null) => function.CreateValue(
+			CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long,
+			fixedRegister is { } register ? M68kRegisterSet.From(register) : M68kRegisterSet.Address,
+			precoloredRegister: fixedRegister);
+		var first = Address();
+		var firstAbi = Address(M68kRegister.A0);
+		var second = Address();
+		var secondAbi = Address(M68kRegister.A0);
+		var graph = new M68kInterferenceGraph(function.Values.Keys);
+		graph.AddEdge(first.Id, second.Id);
+		graph.AddCopyPreference(first.Id, firstAbi.Id);
+		graph.AddCopyPreference(second.Id, secondAbi.Id);
+
+		var allocation = M68kGraphColoringAllocator.Allocate(function, graph);
+
+		Assert.Equal(M68kRegister.A0, allocation.Registers[firstAbi.Id].Register);
+		Assert.Equal(M68kRegister.A0, allocation.Registers[secondAbi.Id].Register);
+		Assert.NotEqual(allocation.Registers[first.Id], allocation.Registers[second.Id]);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void SpillClearPreservesLiveCopyInReusedRootSlot(bool sourceHasLaterUse)
+	{
+		var function = new M68kMachineFunction("spill-copy-root", 0);
+		var block = AddBlock(function, 0, 0);
+		var source = CreateReference(function);
+		var copy = CreateReference(function);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 0, definitions: [source.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 1, uses: [source.Id], definitions: [copy.Id]));
+		if (sourceHasLaterUse)
+			block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 2, uses: [source.Id]));
+		var consume = function.CreateInstruction(M68kMachineOperation.Other, 3, uses: [copy.Id]);
+		block.Instructions.Add(consume);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 4));
+		var liveness = M68kLivenessAnalysis.AnalyzeInstructions(function, M68kLivenessAnalysis.Analyze(function));
+		var slot = new M68kSpillSlot(0, 0, 4, true);
+		var layout = new M68kSpillLayout(new Dictionary<int, M68kSpillSlot> { [source.Id] = slot, [copy.Id] = slot }, new HashSet<int>(), 4);
+
+		M68kSpillRewriter.Rewrite(function, layout, liveness);
+
+		var clear = Assert.Single(block.Instructions.Where(instruction => instruction.Operation == M68kMachineOperation.SpillClear));
+		Assert.True(block.Instructions.IndexOf(clear) > block.Instructions.FindIndex(instruction => instruction.Id == consume.Id));
+	}
+
+	[Fact]
+	public void SpillClearPreservesPhiDestinationInReusedRootSlot()
+	{
+		var function = new M68kMachineFunction("spill-phi-root", 0);
+		var predecessor = AddBlock(function, 0, 0);
+		var successor = AddBlock(function, 1, 10);
+		Connect(predecessor, successor);
+		var source = CreateReference(function);
+		var destination = CreateReference(function);
+		predecessor.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 0, definitions: [source.Id]));
+		predecessor.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Branch, 1));
+		successor.Phis.Add(new M68kMachinePhi(destination.Id, new Dictionary<int, int> { [predecessor.Id] = source.Id }));
+		successor.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 10, uses: [destination.Id]));
+		successor.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 11));
+		var liveness = M68kLivenessAnalysis.AnalyzeInstructions(function, M68kLivenessAnalysis.Analyze(function));
+		var slot = new M68kSpillSlot(0, 0, 4, true);
+		var layout = new M68kSpillLayout(new Dictionary<int, M68kSpillSlot> { [source.Id] = slot, [destination.Id] = slot }, new HashSet<int>(), 4);
+
+		M68kSpillRewriter.Rewrite(function, layout, liveness);
+
+		Assert.DoesNotContain(predecessor.Instructions, instruction => instruction.Operation == M68kMachineOperation.SpillClear);
+		Assert.Contains(successor.Instructions, instruction => instruction.Operation == M68kMachineOperation.SpillClear);
+	}
+
+	[Fact]
 	public void RootSynchronizerStoresLiveRegisterReferenceAndClearsItAfterDeath()
 	{
 		var function = new M68kMachineFunction("root-sync", 0);
@@ -1788,8 +1966,10 @@ public sealed class M68kRegisterAllocationTests
 			static item => item.Operation == M68kMachineOperation.RootClear));
 	}
 
-	[Fact]
-	public void RootSynchronizerCarriesProvenRootStateAcrossCfgEdge()
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void RootSynchronizerCarriesProvenRootStateAcrossCfgEdge(bool successorFirst)
 	{
 		var function = new M68kMachineFunction("root-edge-state", 0);
 		var predecessor = AddBlock(function, 0, 0);
@@ -1816,6 +1996,7 @@ public sealed class M68kRegisterAllocationTests
 		successor.Instructions.Add(function.CreateInstruction(
 			M68kMachineOperation.Return,
 			11));
+		if (successorFirst) function.Blocks.Reverse();
 
 		M68kRegisterAllocatorPipeline.Run(function);
 

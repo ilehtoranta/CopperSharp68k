@@ -251,6 +251,13 @@ internal static class M68kMemoryPromotionPass
 					context.LocallyOwnedGlobalObjects.Contains(memoryObject),
 			_ => false
 		};
+		if (memoryObject.Kind == M68kMemoryObjectKind.ArgumentHome && seed is null)
+		{
+			// The prologue may initialize the home without an incoming SSA value.
+			// A loop header then reloads concrete memory on its first incoming path;
+			// retain assignments so that reload also observes every backedge update.
+			removeStores = false;
+		}
 		if (removeStores && function.Blocks
 			.SelectMany(static block => block.Instructions)
 			.Any(instruction => IsBarrier(instruction, memoryObject, context)))
@@ -941,7 +948,10 @@ internal static class M68kMemoryPromotionPass
 		MutableStatistics statistics)
 	{
 		var sourceValue = function.Values[source];
-		if (SameRepresentation(sourceValue, prototype))
+		// A memory version can outlive the store or load's fixed ABI operand.
+		// Give it an ordinary SSA value so later uses of that register do not
+		// conflict with forwarded reads or roots retained across safepoints.
+		if (SameRepresentation(sourceValue, prototype) && sourceValue.PrecoloredRegister is null)
 		{
 			return source;
 		}

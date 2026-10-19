@@ -60,6 +60,7 @@ public sealed class Net10ProfileBaselineTests
 		{
 			AssemblyPath = Assembly.GetExecutingAssembly().Location,
 			EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
+			IncludedExportNames = ["fixture.add"],
 			Cpu = M68kCpuTarget.M68000,
 			OutputFormat = format,
 			RuntimeProfile = M68kRuntimeProfile.Application

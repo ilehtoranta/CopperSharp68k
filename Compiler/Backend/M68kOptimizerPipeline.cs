@@ -99,6 +99,7 @@ internal sealed class M68kOptimizerPipeline
 
 	public void Run()
 	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.pipeline");
 		_assembler.ResetInstructionAnalysisStatistics();
 		if (_peepholeOptimization == M68kPeepholeOptimizationMode.Disabled)
 		{
@@ -353,6 +354,7 @@ internal sealed class M68kOptimizerPipeline
 					$"Peephole passes did not converge for {scope} after " +
 					$"{MaximumCombinedFixedPointRounds} combined rounds.");
 			}
+			M68kOptimizationProfiler.Count("post-emission.combined-rounds");
 			foreach (var pass in _passes)
 			{
 				pass.Run();

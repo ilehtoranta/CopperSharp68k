@@ -43,11 +43,16 @@ public sealed class GuestMemoryWrapperFoldingTests
 			foldedState.GuestBytes);
 	}
 
-	[Fact]
-	public void EveryReadWriteWidthWrapperIsRemovedWithoutInliningAttribute()
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000)]
+	[InlineData(M68kCpuTarget.M68020)]
+	[InlineData(M68kCpuTarget.M68040)]
+	[InlineData(M68kCpuTarget.M68060)]
+	public void EveryReadWriteWidthWrapperIsRemovedWithoutInliningAttribute(
+		M68kCpuTarget target)
 	{
 		var result = Compile(
-			M68kCpuTarget.M68000,
+			target,
 			M68kOutputFormat.Assembly,
 			"EligibleEntry");
 
@@ -75,15 +80,19 @@ public sealed class GuestMemoryWrapperFoldingTests
 		Assert.Contains("inlined-calls=2", result.Map, StringComparison.Ordinal);
 	}
 
-	[Fact]
-	public void FoldedMachineCallRetainsIntrinsicFaultMemoryAndCcrMetadata()
+	[Theory]
+	[InlineData("ReadUInt8Caller")]
+	[InlineData("EligibleEntry")]
+	public void FoldedMachineCallRetainsIntrinsicFaultMemoryAndCcrMetadata(string entry)
 	{
 		using var module = new CompilationModule(Assembly.GetExecutingAssembly().Location);
 		var callerMethod = module.ResolveEntryPoint(
 			"CopperSharp.Compiler.Tests.GuestMemoryWrapperFoldingFixtures::" +
-			"ReadUInt8Caller");
+			entry);
 		var callSource = callerMethod.Instructions.Single(instruction =>
-			instruction.OpCode == OpCodes.Call);
+			instruction.OpCode == OpCodes.Call &&
+			module.ResolveMethodToken((int)instruction.Operand!, callerMethod,
+				instruction.Offset).Definition?.Name == "ReadUInt8");
 		var targetMethod = module.ResolveMethodToken(
 			(int)callSource.Operand!,
 			callerMethod,
@@ -112,7 +121,8 @@ public sealed class GuestMemoryWrapperFoldingTests
 		Assert.True(
 			statistics.InlinedCalls == 1,
 			$"Target instance={targetMethod.Signature.Header.IsInstance}, " +
-			$"parameters={targetMethod.Signature.ParameterTypes.Length}\n" +
+			$"parameters={targetMethod.Signature.ParameterTypes.Length}, " +
+			$"address={targetMethod.Signature.ParameterTypes[0]}, transparent={module.IsTransparentScalarType(targetMethod.Signature.ParameterTypes[0])}\n" +
 			Describe(target) + "\nCALLER\n" + Describe(caller));
 		var foldedIntrinsic = Assert.Single(caller.Blocks
 			.SelectMany(static block => block.Instructions)
@@ -167,6 +177,48 @@ public sealed class GuestMemoryWrapperFoldingTests
 			.Where(instruction => instruction.LogicalCall?.ResolvedTargets.Contains(
 				targetMethod.Identity) == true));
 		Assert.True(retainedCall.LogicalCall!.RequiresNullCheck);
+	}
+
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void AddressRepresentationEquivalenceDoesNotAdmitGcReferencesOrPointerOffsets(
+		bool gcAddress)
+	{
+		using var module = new CompilationModule(Assembly.GetExecutingAssembly().Location);
+		var callerMethod = module.ResolveEntryPoint(
+			"CopperSharp.Compiler.Tests.GuestMemoryWrapperFoldingFixtures::EligibleEntry");
+		var callSource = callerMethod.Instructions.Single(instruction =>
+			instruction.OpCode == OpCodes.Call &&
+			module.ResolveMethodToken((int)instruction.Operand!, callerMethod,
+				instruction.Offset).Definition?.Name == "ReadUInt8");
+		var targetMethod = module.ResolveMethodToken(
+			(int)callSource.Operand!, callerMethod, callSource.Offset).Definition!;
+		var caller = CilMachineIrBuilder.Build(callerMethod, module);
+		var target = CilMachineIrBuilder.Build(targetMethod, module,
+			argumentRegisters: [M68kRegister.A0, M68kRegister.A1, M68kRegister.D0]);
+		var call = Assert.Single(caller.Blocks.SelectMany(block => block.Instructions),
+			instruction => instruction.LogicalCall?.ResolvedTargets.Contains(targetMethod.Identity) == true);
+		var argumentId = call.LogicalCall!.ArgumentValueIds[gcAddress ? 1 : 2];
+		caller.Values[argumentId] = caller.Values[argumentId] with
+		{
+			Kind = CilStackValueKind.ManagedPointer,
+			IsGcReference = gcAddress
+		};
+		M68kMachineIrVerifier.Verify(caller);
+
+		var statistics = M68kMachineModuleOptimizer.Run(
+			[callerMethod, targetMethod],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction>
+			{
+				[callerMethod.Identity] = caller,
+				[targetMethod.Identity] = target
+			}, module, M68kCpuTarget.M68000,
+			new HashSet<CilMethodIdentity> { callerMethod.Identity });
+
+		Assert.Equal(0, statistics.InlinedCalls);
+		Assert.Contains(caller.Blocks.SelectMany(block => block.Instructions),
+			instruction => instruction.LogicalCall?.ResolvedTargets.Contains(targetMethod.Identity) == true);
 	}
 
 	[Fact]

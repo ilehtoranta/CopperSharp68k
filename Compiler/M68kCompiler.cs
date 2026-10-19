@@ -33,7 +33,7 @@ public static class M68kCompiler
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
 			GetManagedAssemblyPaths(request),
-			implementationPack);
+			implementationPack, request.FloatingPoint);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
@@ -67,7 +67,7 @@ public static class M68kCompiler
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
 			managedAssemblyPaths,
-			implementationPack);
+			implementationPack, request.FloatingPoint);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);

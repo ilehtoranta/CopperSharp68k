@@ -35,6 +35,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private HashSet<int>? _labelOffsets;
 	private HashSet<int>? _addressFixupOffsets;
 	private AddressEntryBoundaryIndex? _addressEntryBoundaryIndex;
+	private int[]? _foldBoundaryLabelOffsets;
 
 	private readonly record struct TerminalBlockLookup(
 		int[] MethodEndOffsets,
@@ -84,6 +85,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	public void Run()
 	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.peephole");
 		Changed = false;
 		RewriteCount = 0;
 		var rewrites = 0;
@@ -91,10 +93,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		do
 		{
 			var appliedRewrites = 0;
+			M68kOptimizationProfiler.Count("peephole.analysis-rounds");
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true);
@@ -102,7 +106,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_addressFixupOffsets = _buffer.Addresses
 					.Select(static address => address.Offset)
 					.ToHashSet();
-				var dataflow = M68kInstructionDataflow.Analyze(_assembler);
+				var dataflow = M68kInstructionDataflow.Analyze(_assembler, "dataflow.caller.peephole");
 				var groupedTransfer = _rewriteBudget == int.MaxValue &&
 					(TryGroupContiguousLongMemoryPush(dataflow) ||
 					 TryGroupContiguousLongMemoryCopy(dataflow));
@@ -247,7 +251,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryReplaceCompareRegisterZeroWithTest(dataflow) ||
 				TryFoldCopyMoveQuickCompare(dataflow) ||
 				TryFoldMoveQuickIntoCompareImmediate(dataflow) ||
-				TryRemoveRedundantRegisterSpill() ||
+				TryRemoveRedundantRegisterSpill(dataflow) ||
 				TryRemoveUnusedRegisterStackPreservation() ||
 				TryFoldAdjacentStackReleases() ||
 					TryCanonicalizeZeroDisplacementEffectiveAddress();
@@ -266,6 +270,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_labelOffsets = null;
 				_addressFixupOffsets = null;
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -280,6 +285,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 		while (changed);
 		RewriteCount = rewrites;
+		M68kOptimizationProfiler.Count("peephole.rewrites", rewrites);
 	}
 
 	private int ApplyIndependentLocalBatch(
@@ -439,6 +445,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	internal void RunLayoutCleanup()
 	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.layout-cleanup");
 		Changed = false;
 		RewriteCount = 0;
 		bool changed;
@@ -448,6 +455,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			try
 			{
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true);
@@ -468,6 +476,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_labelOffsets = null;
 				_addressFixupOffsets = null;
 				_addressEntryBoundaryIndex = null;
+				_foldBoundaryLabelOffsets = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -6251,10 +6260,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
-	private bool TryRemoveRedundantRegisterSpill()
+	private bool TryRemoveRedundantRegisterSpill(M68kInstructionDataflow dataflow)
 	{
-		var instructions = _assembler.GetInstructionStream();
-		var dataflow = M68kInstructionDataflow.Analyze(_assembler);
+		// Earlier successful rewrites short-circuit the round before this check.
+		// The round's original snapshot is therefore still the current input.
+		var instructions = dataflow.Instructions;
+		M68kOptimizationProfiler.Count("dataflow.spill-snapshot-reuses");
 
 		for (var pushIndex = 0; pushIndex + 2 < instructions.Count; pushIndex++)
 		{
@@ -7660,6 +7671,55 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		return false;
 	}
 
+	// These rotate temporaries are changed only in their low words. A MOVE.W
+	// into one can therefore kill the changed bits while preserving its high word.
+	private static bool IsDataLowWordReadBeforeOverwrite(
+		IReadOnlyList<M68kEmittedInstruction> instructions,
+		int startIndex,
+		int register,
+		M68kInstructionDataflow dataflow)
+	{
+		var indexByOffset = instructions.Select((instruction, index) => (instruction.Offset, index))
+			.ToDictionary(item => item.Offset, item => item.index);
+		var pending = new Stack<int>();
+		var visited = new HashSet<int>();
+		pending.Push(startIndex);
+		var mask = 1 << register;
+		while (pending.Count != 0)
+		{
+			var index = pending.Pop();
+			if (index >= instructions.Count || !visited.Add(index)) continue;
+			var instruction = instructions[index];
+			if (instruction.Kind == M68kInstructionKind.Return) continue;
+			if (!dataflow.TryGetFacts(instruction.Offset, out var facts) || facts.Effects.IsBarrier)
+				return true;
+
+			var opcode = instruction.Opcode;
+			if ((opcode & 0xFFC0) == (0x3000 | (register << 9)))
+			{
+				var sourceMode = (opcode >> 3) & 7;
+				var sourceRegister = opcode & 7;
+				// Indexed operands can consume the very word being overwritten.
+				if (sourceMode == 0 && sourceRegister != register ||
+					sourceMode is >= 1 and <= 5 ||
+					sourceMode == 7 && sourceRegister is 0 or 1 or 2 or 4)
+					continue;
+			}
+			if ((facts.Effects.UsesData & mask) != 0) return true;
+			if ((facts.Effects.DefinesData & mask) != 0) continue;
+			if (instruction.Kind is M68kInstructionKind.ConditionalBranch or
+				M68kInstructionKind.UnconditionalBranch or M68kInstructionKind.Dbcc)
+			{
+				if (instruction.ExternalTarget || instruction.TargetOffset is not { } target ||
+					!indexByOffset.TryGetValue(target, out var targetIndex)) return true;
+				pending.Push(targetIndex);
+				if (instruction.Kind == M68kInstructionKind.UnconditionalBranch) continue;
+			}
+			pending.Push(index + 1);
+		}
+		return false;
+	}
+
 	private bool TryFoldDeferredWordRotateAdd(
 		M68kInstructionDataflow dataflow,
 		IReadOnlyList<M68kEmittedInstruction> instructions)
@@ -7741,12 +7801,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				!hasResultMask &&
 					(!dataflow.TryGetFacts(copyBack.Offset, out var copyBackFacts) ||
 					 copyBackFacts.LiveConditionsAfter != M68kConditionCodeSet.None) ||
-				IsDataRegisterReadBeforeOverwrite(
+				IsDataLowWordReadBeforeOverwrite(
 					instructions,
 					index + patternLength,
 					temporary,
 					dataflow) ||
-				IsDataRegisterReadBeforeOverwrite(
+				IsDataLowWordReadBeforeOverwrite(
 					instructions,
 					index + patternLength,
 					savedLeft,
@@ -7763,7 +7823,26 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var endOffset = lastInstruction.Offset + lastInstruction.Length;
 			MoveLabelsToOffset(offset + firstMove.Length, endOffset, offset);
 			var rotateOffset = 0;
-			if (result != source)
+			var sameUpperWord =
+				TrySplitWordRange(dataflow.GetDataValueBefore(offset, source), out _, out _, out var sourceUpper) &&
+				TrySplitWordRange(dataflow.GetDataValueBefore(offset, combined), out _, out _, out var combinedUpper) &&
+				sourceUpper == combinedUpper;
+			if (!hasResultMask && !sameUpperWord)
+			{
+				// The original MOVE.L copies the combined scratch's upper word.
+				// Preserve it even when it differs from the source's upper word.
+				var lowSource = source;
+				if (result == source)
+				{
+					lowSource = combined == temporary ? savedLeft : temporary;
+					_buffer.WriteWord(offset, 0x3000 | (lowSource << 9) | source);
+					rotateOffset = 2;
+				}
+				_buffer.WriteWord(offset + rotateOffset, 0x2000 | (result << 9) | combined);
+				_buffer.WriteWord(offset + rotateOffset + 2, 0x3000 | (result << 9) | lowSource);
+				rotateOffset += 4;
+			}
+			else if (result != source)
 			{
 				_buffer.WriteWord(
 					offset,
@@ -9808,11 +9887,14 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	private bool TryReplaceCompareZeroWithTest()
 	{
-		var (startOffset, endOffset) = _assembler.GetAnalysisRange();
-		for (var offset = startOffset; offset + 3 < endOffset; offset += 2)
+		foreach (var instruction in _assembler.GetExecutableInstructionStream())
 		{
-			var opcode = _buffer.ReadWord(offset);
-			if ((opcode & 0xFFF8) == 0x0C80 &&
+			// Operand words can look like CMPI #0. Rewriting them would corrupt
+			// immediate constants or addressing extensions and destroy boundaries.
+			if (!instruction.IsDecoded) continue;
+			var offset = instruction.Offset;
+			var opcode = instruction.Opcode;
+			if (instruction.Length == 6 && (opcode & 0xFFF8) == 0x0C80 &&
 				!HasAddressFixupAt(offset + 2) &&
 				_buffer.ReadLong(offset + 2) == 0)
 			{
@@ -9821,7 +9903,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				return true;
 			}
 
-			if ((opcode & 0xFFF8) == 0x0C40 &&
+			if (instruction.Length == 4 && (opcode & 0xFFF8) == 0x0C40 &&
 				_buffer.ReadWord(offset + 2) == 0)
 			{
 				_buffer.WriteWord(offset, (ushort)(0x4A40 | (opcode & 7))); // CMPI.W #0,Dn -> TST.W Dn
@@ -9829,7 +9911,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				return true;
 			}
 
-			if ((opcode & 0xFFF8) == 0x0C00 &&
+			if (instruction.Length == 4 && (opcode & 0xFFF8) == 0x0C00 &&
 				_buffer.ReadWord(offset + 2) == 0)
 			{
 				_buffer.WriteWord(offset, (ushort)(0x4A00 | (opcode & 7))); // CMPI.B #0,Dn -> TST.B Dn

@@ -85,56 +85,108 @@ internal sealed class M68kInstructionDataflow
 
 	private readonly IReadOnlyList<M68kEmittedInstruction> _instructions;
 	private readonly IReadOnlyDictionary<int, M68kInstructionDataflowFacts> _facts;
-	private readonly M68kValueRangeAnalysis _values;
-	private readonly M68kConditionProvenanceAnalysis _conditions;
+	private readonly IReadOnlyList<int>[] _successors;
+	private readonly IReadOnlyList<int>[] _predecessors;
+	private readonly M68kInstructionEffects[] _effects;
+	private readonly IReadOnlySet<int> _addressFixupOffsets;
+	private M68kValueRangeAnalysis? _values;
+	private M68kConditionProvenanceAnalysis? _conditions;
+	private bool _factsRequested;
+	private bool _valuesRequested;
+	private bool _conditionsRequested;
 
 	private M68kInstructionDataflow(
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyDictionary<int, M68kInstructionDataflowFacts> facts,
-		M68kValueRangeAnalysis values,
-		M68kConditionProvenanceAnalysis conditions)
+		IReadOnlyList<int>[] successors,
+		IReadOnlyList<int>[] predecessors,
+		M68kInstructionEffects[] effects,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
 		_instructions = instructions;
 		_facts = facts;
-		_values = values;
-		_conditions = conditions;
+		_successors = successors;
+		_predecessors = predecessors;
+		_effects = effects;
+		_addressFixupOffsets = addressFixupOffsets;
+		if (instructions.Count == 0)
+		{
+			_values = M68kValueRangeAnalysis.Empty;
+			_conditions = M68kConditionProvenanceAnalysis.Empty;
+		}
 	}
 
 	internal IReadOnlyList<M68kEmittedInstruction> Instructions => _instructions;
 
-	internal bool TryGetFacts(int offset, out M68kInstructionDataflowFacts facts) =>
-		_facts.TryGetValue(offset, out facts);
+	internal bool TryGetFacts(int offset, out M68kInstructionDataflowFacts facts)
+	{
+		RecordRequest(ref _factsRequested, "dataflow.requested-facts");
+		return _facts.TryGetValue(offset, out facts);
+	}
+
+	private static void RecordRequest(ref bool requested, string name)
+	{
+		if (requested) return;
+		requested = true;
+		M68kOptimizationProfiler.Count(name);
+	}
 
 	internal static M68kInstructionEffects GetEffects(
 		M68kEmittedInstruction instruction) =>
 		Classify(instruction);
 
-	internal M68kValueRange GetDataValueBefore(int offset, int register) =>
-		_values.GetDataValueBefore(offset, register);
+	internal M68kValueRange GetDataValueBefore(int offset, int register)
+	{
+		RecordRequest(ref _valuesRequested, "dataflow.requested-values");
+		return Values.GetDataValueBefore(offset, register);
+	}
 
-	internal M68kAddressAlias GetAddressAliasBefore(int offset, int register) =>
-		_values.GetAddressAliasBefore(offset, register);
+	internal M68kAddressAlias GetAddressAliasBefore(int offset, int register)
+	{
+		RecordRequest(ref _valuesRequested, "dataflow.requested-values");
+		return Values.GetAddressAliasBefore(offset, register);
+	}
 
 	internal bool IsConditionInstructionRedundant(
 		M68kEmittedInstruction instruction,
-		M68kConditionCodeSet required) =>
-		_conditions.IsRedundant(instruction, required);
+		M68kConditionCodeSet required)
+	{
+		RecordRequest(ref _conditionsRequested, "dataflow.requested-conditions");
+		return Conditions.IsRedundant(instruction, required);
+	}
 
 	internal bool TryGetKnownZeroTest(
 		M68kEmittedInstruction instruction,
-		out bool nonZero) =>
-		_conditions.TryGetKnownZeroTest(instruction, out nonZero);
-
-	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler)
+		out bool nonZero)
 	{
+		RecordRequest(ref _conditionsRequested, "dataflow.requested-conditions");
+		return Conditions.TryGetKnownZeroTest(instruction, out nonZero);
+	}
+
+	// Each analysis owns its instruction, effect, graph and relocation snapshots.
+	// Deferred propagation must never consult an assembler that a rewrite may
+	// already have changed. Reuse is confined to this result, not later rounds.
+	private M68kValueRangeAnalysis Values => _values ??=
+		M68kValueRangeAnalysis.Analyze(_instructions, _successors,
+			_predecessors, _effects, _addressFixupOffsets);
+
+	private M68kConditionProvenanceAnalysis Conditions => _conditions ??=
+		M68kConditionProvenanceAnalysis.Analyze(_instructions, _successors,
+			_predecessors, _effects, _addressFixupOffsets);
+
+	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler,
+		string caller = "dataflow.caller.direct")
+	{
+		using var callerProfile = M68kOptimizationProfiler.Measure(caller);
+		using var profile = M68kOptimizationProfiler.Measure("dataflow.total");
 		var instructions = assembler.GetInstructionStream();
+		M68kOptimizationProfiler.Count("dataflow.instructions", instructions.Count);
 		if (instructions.Count == 0)
 		{
 			return new M68kInstructionDataflow(
 				instructions,
 				new Dictionary<int, M68kInstructionDataflowFacts>(),
-				M68kValueRangeAnalysis.Empty,
-				M68kConditionProvenanceAnalysis.Empty);
+				[], [], [], new HashSet<int>());
 		}
 
 		var indexByOffset = instructions
@@ -185,38 +237,56 @@ internal sealed class M68kInstructionDataflow
 		var liveMemoryBefore = new M68kMemorySet[instructions.Count];
 		var liveMemoryAfter = new M68kMemorySet[instructions.Count];
 
-		bool changed;
-		do
+		using (M68kOptimizationProfiler.Measure("dataflow.liveness"))
 		{
-			changed = false;
-			for (var index = instructions.Count - 1; index >= 0; index--)
+			bool changed;
+			var livenessRounds = 0;
+			do
 			{
-				var afterData = Union(successors[index], liveDataBefore);
-				var afterAddress = Union(successors[index], liveAddressBefore);
-				var afterConditions = Union(successors[index], liveConditionsBefore);
-				var afterMemory = Union(successors[index], liveMemoryBefore);
-				var beforeData = (ushort)(effects[index].UsesData |
-					(afterData & (ushort)~effects[index].DefinesData));
-				var beforeAddress = (ushort)(effects[index].UsesAddress |
-					(afterAddress & (ushort)~effects[index].DefinesAddress));
-				var beforeConditions = effects[index].ReadsConditions |
-					(afterConditions & ~effects[index].WritesConditions);
-				var beforeMemory = TransferMemory(
-					afterMemory,
-					effects[index].ReadsMemory,
-					effects[index].WritesMemory);
+				livenessRounds++;
+				changed = false;
+				for (var index = instructions.Count - 1; index >= 0; index--)
+				{
+					var afterData = (ushort)0;
+					var afterAddress = (ushort)0;
+					var afterConditions = M68kConditionCodeSet.None;
+					var afterMemory = M68kMemorySet.None;
+					var next = successors[index];
+					// Combine every resource in one pass without boxing a List
+					// enumerator through the IReadOnlyList interface. Publish the
+					// before/after facts only after all successor masks are read.
+					for (var edge = 0; edge < next.Count; edge++)
+					{
+						var successor = next[edge];
+						afterData |= liveDataBefore[successor];
+						afterAddress |= liveAddressBefore[successor];
+						afterConditions |= liveConditionsBefore[successor];
+						afterMemory |= liveMemoryBefore[successor];
+					}
+					var beforeData = (ushort)(effects[index].UsesData |
+						(afterData & (ushort)~effects[index].DefinesData));
+					var beforeAddress = (ushort)(effects[index].UsesAddress |
+						(afterAddress & (ushort)~effects[index].DefinesAddress));
+					var beforeConditions = effects[index].ReadsConditions |
+						(afterConditions & ~effects[index].WritesConditions);
+					var beforeMemory = TransferMemory(
+						afterMemory,
+						effects[index].ReadsMemory,
+						effects[index].WritesMemory);
 
-				changed |= Set(ref liveDataAfter[index], afterData);
-				changed |= Set(ref liveAddressAfter[index], afterAddress);
-				changed |= Set(ref liveConditionsAfter[index], afterConditions);
-				changed |= Set(ref liveMemoryAfter[index], afterMemory);
-				changed |= Set(ref liveDataBefore[index], beforeData);
-				changed |= Set(ref liveAddressBefore[index], beforeAddress);
-				changed |= Set(ref liveConditionsBefore[index], beforeConditions);
-				changed |= Set(ref liveMemoryBefore[index], beforeMemory);
+					changed |= Set(ref liveDataAfter[index], afterData);
+					changed |= Set(ref liveAddressAfter[index], afterAddress);
+					changed |= Set(ref liveConditionsAfter[index], afterConditions);
+					changed |= Set(ref liveMemoryAfter[index], afterMemory);
+					changed |= Set(ref liveDataBefore[index], beforeData);
+					changed |= Set(ref liveAddressBefore[index], beforeAddress);
+					changed |= Set(ref liveConditionsBefore[index], beforeConditions);
+					changed |= Set(ref liveMemoryBefore[index], beforeMemory);
+				}
 			}
+			while (changed);
+			M68kOptimizationProfiler.Count("dataflow.liveness-rounds", livenessRounds);
 		}
-		while (changed);
 
 		var stackBefore = new int?[instructions.Count];
 		var stackAfter = new int?[instructions.Count];
@@ -228,32 +298,38 @@ internal sealed class M68kInstructionDataflow
 			stackBefore[index] = 0;
 		}
 
-		bool stackChanged;
-		do
+		using (M68kOptimizationProfiler.Measure("dataflow.stack-depth"))
 		{
-			stackChanged = false;
-			for (var index = 0; index < instructions.Count; index++)
+			bool stackChanged;
+			var stackRounds = 0;
+			do
 			{
-				if (!stackSeen[index])
+				stackRounds++;
+				stackChanged = false;
+				for (var index = 0; index < instructions.Count; index++)
 				{
-					continue;
-				}
+					if (!stackSeen[index])
+					{
+						continue;
+					}
 
-				var before = stackBefore[index];
-				var after = before.HasValue && effects[index].StackDelta.HasValue
-					? (int?)(before.Value + effects[index].StackDelta.GetValueOrDefault())
-					: null;
-				stackChanged |= Set(ref stackAfter[index], after);
-				foreach (var successor in successors[index])
-				{
-					stackChanged |= JoinStack(
-						ref stackSeen[successor],
-						ref stackBefore[successor],
-						after);
+					var before = stackBefore[index];
+					var after = before.HasValue && effects[index].StackDelta.HasValue
+						? (int?)(before.Value + effects[index].StackDelta.GetValueOrDefault())
+						: null;
+					stackChanged |= Set(ref stackAfter[index], after);
+					foreach (var successor in successors[index])
+					{
+						stackChanged |= JoinStack(
+							ref stackSeen[successor],
+							ref stackBefore[successor],
+							after);
+					}
 				}
 			}
+			while (stackChanged);
+			M68kOptimizationProfiler.Count("dataflow.stack-rounds", stackRounds);
 		}
-		while (stackChanged);
 
 		var result = new Dictionary<int, M68kInstructionDataflowFacts>();
 		for (var index = 0; index < instructions.Count; index++)
@@ -275,17 +351,7 @@ internal sealed class M68kInstructionDataflow
 		return new M68kInstructionDataflow(
 			instructions,
 			result,
-			M68kValueRangeAnalysis.Analyze(
-				instructions,
-				successors,
-				predecessors,
-				effects,
-				assembler.AddressFixupOffsets),
-			M68kConditionProvenanceAnalysis.Analyze(
-				instructions,
-				successors,
-				predecessors,
-				effects));
+			successors, predecessors, effects, assembler.AddressFixupOffsets);
 	}
 
 	private static IReadOnlyList<int>[] BuildSuccessors(
@@ -556,40 +622,6 @@ internal sealed class M68kInstructionDataflow
 		return true;
 	}
 
-	private static ushort Union(IReadOnlyList<int> successors, ushort[] values)
-	{
-		var result = (ushort)0;
-		foreach (var successor in successors)
-		{
-			result |= values[successor];
-		}
-		return result;
-	}
-
-	private static M68kConditionCodeSet Union(
-		IReadOnlyList<int> successors,
-		M68kConditionCodeSet[] values)
-	{
-		var result = M68kConditionCodeSet.None;
-		foreach (var successor in successors)
-		{
-			result |= values[successor];
-		}
-		return result;
-	}
-
-	private static M68kMemorySet Union(
-		IReadOnlyList<int> successors,
-		M68kMemorySet[] values)
-	{
-		var result = M68kMemorySet.None;
-		foreach (var successor in successors)
-		{
-			result |= values[successor];
-		}
-		return result;
-	}
-
 	private static bool JoinStack(ref bool seen, ref int? target, int? value)
 	{
 		if (!seen)
@@ -654,8 +686,10 @@ internal sealed class M68kInstructionDataflow
 			}
 
 			if ((opcode & 0xF1FF) == 0x41EF || opcode == 0x4FEF ||
-				(opcode & 0xF1C0) == 0x41C0)
+				(opcode & 0xF1C0) == 0x41C0 && ((opcode >> 3) & 7) >= 2)
 			{
+				// EXTB.L Dn shares LEA's broad opcode mask but has a data-register
+				// effective address. It writes Dn and CCR, never A4.
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.AddressOnly);
 				var destination = (opcode >> 9) & 7;
 				DefineAddress(destination);
@@ -1041,9 +1075,12 @@ internal sealed class M68kInstructionDataflow
 				else
 				{
 					UseData((opcode >> 9) & 7);
-					AddEffectiveAddress((ushort)(((opcode >> 9) & 7) | (operationMode << 3)), EffectiveAddressAccess.ReadWrite);
+					// EOR's destination is the low six-bit effective address,
+					// not the source register and operation-mode fields.
+					AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				}
-				WriteArithmeticConditions();
+				// CMP, CMPA and EOR preserve the extend bit.
+				WriteMoveConditions();
 				return;
 			}
 

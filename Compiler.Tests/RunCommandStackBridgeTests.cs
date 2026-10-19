@@ -331,6 +331,10 @@ public sealed class RunCommandStackBridgeTests
 			M68kBusAccessKind kind)
 		{
 			var invocation = Active ?? throw new InvalidOperationException("No active invocation.");
+			// The advanced core can fetch an aligned instruction word preceding
+			// the host gateway while filling its instruction pipeline.
+			if (!write && kind == M68kBusAccessKind.CpuInstructionFetch &&
+				Inside(address, size, StackSwapVector & ~31u, StackSwapVector + 32)) return;
 			if (Inside(address, size, invocation.OldLower, invocation.OldUpper) ||
 				Inside(address, size, invocation.NewLower, invocation.NewUpper) ||
 				Inside(address, size, invocation.Swap, invocation.Swap + 12) ||
