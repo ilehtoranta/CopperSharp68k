@@ -21,7 +21,8 @@ internal sealed partial class M68kPeepholeOptimizer
 		instruction.Kind is M68kInstructionKind.Call or M68kInstructionKind.UnconditionalBranch &&
 		_buffer.Addresses.Any(address => address.Offset == instruction.Offset + 2 && address.Addend != 0);
 
-	private bool CanFoldAcrossUnreferencedIlLabels(int startOffset, int endOffset)
+	private bool CanFoldAcrossUnreferencedIlLabels(int startOffset, int endOffset,
+		bool allowUnreferencedMarkers = false)
 	{
 		// The allocated emitter records IL positions even when they are not
 		// control-flow targets. They are hidden by assembly rendering, but still
