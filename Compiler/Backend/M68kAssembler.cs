@@ -55,7 +55,7 @@ internal sealed class M68kAssembler
 {
 	private readonly M68kAssemblyBuffer _buffer = new();
 	private List<byte> _bytes => _buffer.Bytes;
-	private Dictionary<string, int> _labels => _buffer.Labels;
+	private M68kOffsetMap _labels => _buffer.Labels;
 	private List<BranchFixup> _branches => _buffer.Branches;
 	private List<AddressFixup> _addresses => _buffer.Addresses;
 	private List<PcRelativeFixup> _pcRelative => _buffer.PcRelative;
@@ -63,8 +63,60 @@ internal sealed class M68kAssembler
 	private readonly HashSet<string> _longAlignmentPaddingLabels = new(StringComparer.Ordinal);
 	private readonly HashSet<string> _returnAddressLabels = new(StringComparer.Ordinal);
 
-	internal IReadOnlySet<int> AddressFixupOffsets =>
-		_addresses.Select(static address => address.Offset).ToHashSet();
+	internal IReadOnlySet<int> AddressFixupOffsets
+	{
+		get
+		{
+			if (HasAnalysisScope)
+			{
+				var range = GetAnalysisRange();
+				// Include operand lookahead at the end of a decoded scope.
+				return new ScopedAddressFixupSnapshot(_addresses, range.Start, (long)range.End + 6);
+			}
+
+			// Every caller receives a fresh snapshot, including same-count edits.
+			// Size it from the list rather than growing through a Select iterator.
+			var offsets = new HashSet<int>(_addresses.Count);
+			foreach (var address in _addresses) offsets.Add(address.Offset);
+			return offsets;
+		}
+	}
+
+	private sealed class ScopedAddressFixupSnapshot : IReadOnlySet<int>
+	{
+		private readonly int _start;
+		private readonly long _end;
+		private readonly HashSet<int> _scoped = new();
+		private readonly Lazy<HashSet<int>> _all;
+
+		internal ScopedAddressFixupSnapshot(List<AddressFixup> addresses, int start, long end)
+		{
+			_start = start;
+			_end = end;
+			// Own all offsets now: deferred global queries must survive direct
+			// fixup replacements and byte edits, including same-count changes.
+			var offsets = new int[addresses.Count];
+			for (var index = 0; index < offsets.Length; index++)
+			{
+				var offset = offsets[index] = addresses[index].Offset;
+				if (offset >= start && offset < end) _scoped.Add(offset);
+			}
+			_all = new(() => new HashSet<int>(offsets));
+		}
+
+		private HashSet<int> All => _all.Value;
+		public int Count => All.Count;
+		// The range selects the fast lookup; it never limits membership.
+		public bool Contains(int value) => value >= _start && value < _end ? _scoped.Contains(value) : All.Contains(value);
+		public bool IsProperSubsetOf(IEnumerable<int> other) => All.IsProperSubsetOf(other);
+		public bool IsProperSupersetOf(IEnumerable<int> other) => All.IsProperSupersetOf(other);
+		public bool IsSubsetOf(IEnumerable<int> other) => All.IsSubsetOf(other);
+		public bool IsSupersetOf(IEnumerable<int> other) => All.IsSupersetOf(other);
+		public bool Overlaps(IEnumerable<int> other) => All.Overlaps(other);
+		public bool SetEquals(IEnumerable<int> other) => All.SetEquals(other);
+		public IEnumerator<int> GetEnumerator() => All.GetEnumerator();
+		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+	}
 
 	internal void SetInstructionEffects(
 		int offset,
@@ -552,6 +604,8 @@ internal sealed class M68kAssembler
 	private IReadOnlyList<string>? _analysisLabelNames;
 	private bool _cacheInstructionStream;
 	private IReadOnlyList<M68kEmittedInstruction>? _cachedInstructionStream;
+	private Dictionary<(int Start, int End), IReadOnlyList<M68kEmittedInstruction>>?
+		_roundInstructionStreams;
 	private Dictionary<int, AddressFixup>? _instructionAddressIndex;
 	private Dictionary<int, BranchFixup>? _instructionBranchIndex;
 	private Dictionary<int, PcRelativeFixup>? _instructionPcRelativeIndex;
@@ -600,10 +654,23 @@ internal sealed class M68kAssembler
 		return (start, end);
 	}
 
-	internal void BeginInstructionAnalysisRound()
+	internal void BeginInstructionAnalysisRound() =>
+		BeginInstructionAnalysisRoundWithInitialInstructions(null);
+
+	internal void BeginInstructionAnalysisRoundWithInitialInstructions(
+		IReadOnlyList<M68kEmittedInstruction>? initialInstructions)
 	{
 		_cacheInstructionStream = true;
-		_cachedInstructionStream = null;
+		_cachedInstructionStream = initialInstructions;
+		_roundInstructionStreams = null;
+		if (initialInstructions is not null)
+		{
+			// Only the adjacent condition-code/peephole handoff supplies this
+			// unchanged scoped stream. Callee and executable bounds keep their
+			// own cache entries, and End still accounts for this round's bytes.
+			var range = GetAnalysisRange();
+			_roundInstructionStreams = new() { [range] = initialInstructions };
+		}
 	}
 
 	internal void EndInstructionAnalysisRound()
@@ -616,6 +683,7 @@ internal sealed class M68kAssembler
 		}
 		_cacheInstructionStream = false;
 		_cachedInstructionStream = null;
+		_roundInstructionStreams = null;
 	}
 
 	internal void ResetInstructionAnalysisStatistics()
@@ -656,12 +724,14 @@ internal sealed class M68kAssembler
 		// range decisions always see the aligned layout rather than a transiently
 		// smaller one.
 		ApplyRequestedAlignments();
+		var wordBranches = new WordBranchWorklist(this);
+		var absoluteTransfers = new AbsoluteTransferWorklist(this);
 		while (true)
 		{
-			if (TryRelaxShortBranches() ||
-				TryRelaxLocalAbsoluteControlTransfer() ||
-				TryRemoveBranchToNextInstruction() ||
-				TryRelaxLocalAbsoluteLoad())
+			if (TryRelaxShortBranches(wordBranches) ||
+				TryRelaxLocalAbsoluteControlTransfer(wordBranches, absoluteTransfers) ||
+				TryRemoveBranchToNextInstruction(wordBranches) ||
+				TryRelaxLocalAbsoluteLoad(absoluteTransfers))
 			{
 				ApplyRequestedAlignments();
 				continue;
@@ -670,7 +740,7 @@ internal sealed class M68kAssembler
 		}
 	}
 
-	private bool TryRemoveBranchToNextInstruction()
+	private bool TryRemoveBranchToNextInstruction(WordBranchWorklist? wordBranches = null)
 	{
 		for (var index = 0; index < _branches.Count; index++)
 		{
@@ -692,6 +762,7 @@ internal sealed class M68kAssembler
 			}
 
 			_branches.RemoveAt(index);
+			wordBranches?.Removed(index);
 			_buffer.RemoveBytes(branch.OpcodeOffset, length);
 			return true;
 		}
@@ -699,7 +770,7 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
-	private bool TryRelaxLocalAbsoluteLoad()
+	private bool TryRelaxLocalAbsoluteLoad(AbsoluteTransferWorklist? absoluteTransfers = null)
 	{
 		var alignmentOffsets = GetSortedAlignmentOffsets();
 		for (var index = 0; index < _addresses.Count; index++)
@@ -733,6 +804,7 @@ internal sealed class M68kAssembler
 			}
 			_buffer.WriteWord(opcodeOffset, pcRelativeOpcode);
 			_addresses.RemoveAt(index);
+			absoluteTransfers?.Removed(index);
 			_buffer.RemoveBytes(opcodeOffset + 4, 2);
 			_pcRelative.Add(new PcRelativeFixup(opcodeOffset + 2, address.Target));
 			return true;
@@ -772,15 +844,18 @@ internal sealed class M68kAssembler
 		return pcRelativeOpcode != 0;
 	}
 
-	private bool TryRelaxShortBranches()
+	private bool TryRelaxShortBranches(WordBranchWorklist? wordBranches = null)
 	{
 		// The layout stays fixed while candidates are collected.  Taking a
 		// sorted snapshot avoids scanning every requested alignment label for
 		// every branch in large production images.
 		var alignmentOffsets = GetSortedAlignmentOffsets();
 		var candidates = new List<(BranchFixup Branch, ushort Opcode)>();
-		for (var index = 0; index < _branches.Count; index++)
+		var worklist = wordBranches?.GetIndexes();
+		for (var position = 0; position < (worklist?.Count ?? _branches.Count); position++)
 		{
+			var index = worklist is null ? position : worklist[position];
+			if (wordBranches is not null && !wordBranches.ShouldRetry(index)) continue;
 			var branch = _branches[index];
 			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
 			if (!branch.CanRelaxToShort ||
@@ -799,6 +874,7 @@ internal sealed class M68kAssembler
 			var displacement = relaxedTargetOffset - (branch.OpcodeOffset + 2);
 			if (displacement is < sbyte.MinValue or > sbyte.MaxValue || displacement == 0)
 			{
+				wordBranches?.Defer(index, displacement, targetOffset);
 				continue;
 			}
 			candidates.Add((branch, opcode));
@@ -849,6 +925,7 @@ internal sealed class M68kAssembler
 					candidate.Branch.OpcodeOffset,
 					(candidate.Opcode & 0xFF00) | unchecked((byte)displacement));
 			}
+			wordBranches?.Shortened();
 			_buffer.RemoveByteRanges(removalOffsets
 				.Select(static offset => (offset, 2))
 				.ToArray());
@@ -898,11 +975,16 @@ internal sealed class M68kAssembler
 		return low;
 	}
 
-	private bool TryRelaxLocalAbsoluteControlTransfer()
+	private bool TryRelaxLocalAbsoluteControlTransfer(
+		WordBranchWorklist? wordBranches = null,
+		AbsoluteTransferWorklist? absoluteTransfers = null)
 	{
 		var alignmentOffsets = GetSortedAlignmentOffsets();
-		for (var index = 0; index < _addresses.Count; index++)
+		var worklist = absoluteTransfers?.GetIndexes();
+		for (var position = 0; position < (worklist?.Count ?? _addresses.Count); position++)
 		{
+			var index = worklist is null ? position : worklist[position];
+			if (absoluteTransfers is not null && !absoluteTransfers.ShouldRetry(index)) continue;
 			var address = _addresses[index];
 			var opcodeOffset = address.Offset - 2;
 			var opcode = opcodeOffset < 0
@@ -926,6 +1008,7 @@ internal sealed class M68kAssembler
 			var displacement = relaxedTargetOffset - (opcodeOffset + 2);
 			if (displacement < short.MinValue || displacement > short.MaxValue)
 			{
+				absoluteTransfers?.Defer(index, displacement, targetOffset);
 				continue;
 			}
 			_buffer.WriteWord(
@@ -933,15 +1016,183 @@ internal sealed class M68kAssembler
 				opcode == 0x4EB9 ? 0x6100 : 0x6000); // JSR/JMP -> BSR.W/BRA.W
 			_buffer.WriteWord(opcodeOffset + 2, 0);
 			_addresses.RemoveAt(index);
+			absoluteTransfers?.Removed(index);
 			_buffer.RemoveBytes(opcodeOffset + 4, 2);
 			_branches.Add(new BranchFixup(
 				opcodeOffset,
 				address.Target,
 				CanRelaxToShort: opcode == 0x4EB9));
+			wordBranches?.Appended();
 			return true;
 		}
 
 		return false;
+	}
+
+	// Address-list order determines which absolute transfer relaxes first. Keep
+	// only permanent opcode/flag candidates, but resolve current offsets and all
+	// other eligibility checks when their deletion budget expires.
+	internal sealed class AbsoluteTransferWorklist
+	{
+		private readonly M68kAssembler _owner;
+		private readonly List<int> _indexes = [];
+		private readonly List<int> _retryAtSize = [];
+		private int _addressCount;
+
+		internal AbsoluteTransferWorklist(M68kAssembler owner)
+		{
+			_owner = owner;
+			Rebuild();
+		}
+
+		private void Rebuild()
+		{
+			_indexes.Clear();
+			_retryAtSize.Clear();
+			_addressCount = _owner._addresses.Count;
+			for (var index = 0; index < _addressCount; index++)
+			{
+				_retryAtSize.Add(int.MaxValue);
+				var address = _owner._addresses[index];
+				if (!address.External && address.CanRelaxToPcRelative && address.Offset >= 2 &&
+					_owner._buffer.ReadWord(address.Offset - 2) is 0x4EB9 or 0x4EF9)
+				{
+					_indexes.Add(index);
+				}
+			}
+		}
+
+		internal IReadOnlyList<int> GetIndexes()
+		{
+			// Byte compaction may discard additional fixups. Count checks are
+			// sufficient only within this call's audited mutation scope.
+			if (_addressCount != _owner._addresses.Count) Rebuild();
+			return _indexes;
+		}
+
+		internal bool ShouldRetry(int index) =>
+			_owner._longAlignmentLabels.Count != 0 || _owner.Offset <= _retryAtSize[index];
+
+		internal void Defer(int index, int displacement, int targetOffset)
+		{
+			if (_owner.GetRetryImageSize(displacement, targetOffset, short.MinValue, short.MaxValue) is { } size)
+				_retryAtSize[index] = size;
+		}
+
+		internal void Removed(int index)
+		{
+			if (_owner._addresses.Count != _addressCount - 1)
+			{
+				Rebuild();
+				return;
+			}
+			_addressCount--;
+			_retryAtSize.RemoveAt(index);
+			_indexes.Remove(index);
+			for (var position = 0; position < _indexes.Count; position++)
+			{
+				if (_indexes[position] > index) _indexes[position]--;
+			}
+		}
+	}
+
+	// Scoped to one final-layout pass: the only same-count edits are offset
+	// rebases and notified word-to-short rewrites. Read current fixups through
+	// their indexes so rebasing never leaves cached offsets behind. Pending
+	// branches keep their original list order, including appended local calls.
+	internal sealed class WordBranchWorklist
+	{
+		private readonly M68kAssembler _owner;
+		private readonly List<int> _indexes = [];
+		private readonly Dictionary<int, int> _retryAtSize = [];
+		private int _branchCount;
+
+		internal WordBranchWorklist(M68kAssembler owner)
+		{
+			_owner = owner;
+			Rebuild();
+		}
+
+		private bool IsCandidate(int index)
+		{
+			var branch = _owner._branches[index];
+			return branch.CanRelaxToShort &&
+				IsWordBranchOpcode(_owner._buffer.ReadWord(branch.OpcodeOffset));
+		}
+
+		private void Rebuild()
+		{
+			_indexes.Clear();
+			_retryAtSize.Clear();
+			_branchCount = _owner._branches.Count;
+			for (var index = 0; index < _branchCount; index++)
+			{
+				if (IsCandidate(index)) _indexes.Add(index);
+			}
+		}
+
+		internal IReadOnlyList<int> GetIndexes()
+		{
+			// Buffer compaction can discard overlapping fixups in addition to
+			// the explicitly removed branch. Rebuild before using shifted indexes.
+			if (_branchCount != _owner._branches.Count) Rebuild();
+			return _indexes;
+		}
+
+		internal bool ShouldRetry(int index) =>
+			_owner._longAlignmentLabels.Count != 0 ||
+			!_retryAtSize.TryGetValue(index, out var size) || _owner.Offset <= size;
+
+		internal void Defer(int index, int displacement, int targetOffset)
+		{
+			if (_owner.GetRetryImageSize(displacement, targetOffset, sbyte.MinValue, sbyte.MaxValue) is { } size)
+				_retryAtSize[index] = size;
+		}
+
+		internal void Appended()
+		{
+			if (_owner._branches.Count != _branchCount + 1)
+			{
+				Rebuild();
+				return;
+			}
+			var index = _branchCount++;
+			if (IsCandidate(index)) _indexes.Add(index);
+		}
+
+		internal void Removed(int index)
+		{
+			// Deleting an entry shifts indexes. Clearing these bounds is cheap
+			// compared with remapping every key, and can only cause early retries.
+			_retryAtSize.Clear();
+			if (_owner._branches.Count != _branchCount - 1)
+			{
+				Rebuild();
+				return;
+			}
+			_branchCount--;
+			_indexes.Remove(index);
+			for (var position = 0; position < _indexes.Count; position++)
+			{
+				if (_indexes[position] > index) _indexes[position]--;
+			}
+		}
+
+		internal void Shortened() => _indexes.RemoveAll(index => !IsCandidate(index));
+	}
+
+	private int? GetRetryImageSize(int displacement, int targetOffset, int minimum, int maximum)
+	{
+		// Without alignment, final layout only deletes bytes. After R removed
+		// bytes each coordinate has moved back by 0..R, so their difference can
+		// change by at most R. Reserve another two bytes for the hypothetical
+		// shortening's target adjustment changing between zero and minus two.
+		// Alignment can insert compensating padding with no net size change;
+		// retain the original checks in that case. Out-of-image labels and zero
+		// or already-valid displacements are also checked on every round.
+		if (_longAlignmentLabels.Count != 0 || targetOffset < 0 || targetOffset > Offset) return null;
+		var margin = displacement < minimum ? minimum - displacement : displacement - maximum;
+		return margin > 0 ? Offset - Math.Max(1, margin - 2) : null;
 	}
 
 	private int GetTargetOffsetAfterTwoByteRelaxation(
@@ -1007,21 +1258,20 @@ internal sealed class M68kAssembler
 	internal IReadOnlyList<M68kEmittedInstruction> GetExecutableInstructionStream() =>
 		GetInstructionStreamCore(startOffset: 0, executableOnly: true);
 
+	internal IReadOnlyList<M68kEmittedInstruction> GetExecutableInstructionRange(
+		int startOffset, int endOffset) =>
+		GetInstructionStreamCore(startOffset, executableOnly: true,
+			wholeImageRange: (startOffset, endOffset));
+
 	private IReadOnlyList<M68kEmittedInstruction> GetInstructionStreamCore(
 		int startOffset,
-		bool executableOnly)
+		bool executableOnly,
+		(int Start, int End)? wholeImageRange = null)
 	{
 		using var profile = M68kOptimizationProfiler.Measure("instructions.decode");
-		var cacheRequested = !executableOnly &&
-			_cacheInstructionStream && startOffset == 0;
-		if (cacheRequested &&
-			_cachedInstructionStream is { } cachedInstructionStream)
-		{
-			M68kOptimizationProfiler.Count("instructions.cache-hits");
-			return cachedInstructionStream;
-		}
-		M68kOptimizationProfiler.Count("instructions.decoded-streams");
-		var (analysisStartOffset, endOffset) = GetAnalysisRange();
+		var cacheRequested = _cacheInstructionStream &&
+			(startOffset == 0 || wholeImageRange.HasValue);
+		var (analysisStartOffset, endOffset) = wholeImageRange ?? GetAnalysisRange();
 		if (executableOnly && _buffer.DataStartOffset is { } dataStartOffset)
 		{
 			endOffset = Math.Min(endOffset, dataStartOffset);
@@ -1030,10 +1280,59 @@ internal sealed class M68kAssembler
 		{
 			startOffset = analysisStartOffset;
 		}
+		// Analysis rounds are immutable snapshots until a rewrite commits and
+		// ends the round. Queries with identical bounds share a snapshot; keep
+		// scoped, callee and whole-image queries in separate slots.
+		var range = (startOffset, endOffset);
+		if (cacheRequested && _roundInstructionStreams is { } streams &&
+			streams.TryGetValue(range, out var cached))
+		{
+			M68kOptimizationProfiler.Count("instructions.cache-hits");
+			if (!executableOnly) _cachedInstructionStream = cached;
+			return cached;
+		}
+		M68kOptimizationProfiler.Count("instructions.decoded-streams");
 		var displayLabels = new Dictionary<string, string>(StringComparer.Ordinal);
-		var addresses = IndexInstructionFixups(_addresses, ref _instructionAddressIndex, static fixup => fixup.Offset);
-		var branches = IndexInstructionFixups(_branches, ref _instructionBranchIndex, static fixup => fixup.OpcodeOffset);
-		var pcRelative = IndexInstructionFixups(_pcRelative, ref _instructionPcRelativeIndex, static fixup => fixup.DisplacementOffset);
+		Dictionary<int, AddressFixup> addresses;
+		Dictionary<int, BranchFixup> branches;
+		Dictionary<int, PcRelativeFixup> pcRelative;
+		// Include operand lookahead without overflowing at the end of a range.
+		var fixupEnd = (long)endOffset + 6;
+		using (M68kOptimizationProfiler.Measure("instructions.fixup-index"))
+		{
+			addresses = PrepareInstructionFixupIndex(_addresses.Count, ref _instructionAddressIndex);
+			// No list mutation occurs while these spans are in use. Inspect records
+			// by reference so rejecting a fixup does not copy the whole record.
+			foreach (ref readonly var fixup in CollectionsMarshal.AsSpan(_addresses))
+			{
+				if (fixup.Offset >= startOffset && fixup.Offset < fixupEnd)
+				{
+					addresses.Add(fixup.Offset, fixup);
+				}
+			}
+		}
+		using (M68kOptimizationProfiler.Measure("instructions.fixup-index"))
+		{
+			branches = PrepareInstructionFixupIndex(_branches.Count, ref _instructionBranchIndex);
+			foreach (ref readonly var fixup in CollectionsMarshal.AsSpan(_branches))
+			{
+				if (fixup.OpcodeOffset >= startOffset && fixup.OpcodeOffset < fixupEnd)
+				{
+					branches.Add(fixup.OpcodeOffset, fixup);
+				}
+			}
+		}
+		using (M68kOptimizationProfiler.Measure("instructions.fixup-index"))
+		{
+			pcRelative = PrepareInstructionFixupIndex(_pcRelative.Count, ref _instructionPcRelativeIndex);
+			foreach (ref readonly var fixup in CollectionsMarshal.AsSpan(_pcRelative))
+			{
+				if (fixup.DisplacementOffset >= startOffset && fixup.DisplacementOffset < fixupEnd)
+				{
+					pcRelative.Add(fixup.DisplacementOffset, fixup);
+				}
+			}
+		}
 		var result = new List<M68kEmittedInstruction>();
 
 		for (var offset = startOffset; offset < endOffset;)
@@ -1124,27 +1423,25 @@ internal sealed class M68kAssembler
 
 		if (cacheRequested)
 		{
-			_cachedInstructionStream = result;
+			(_roundInstructionStreams ??= new())[range] = result;
+			if (!executableOnly) _cachedInstructionStream = result;
 		}
 		return result;
 	}
 
-	private static Dictionary<int, T> IndexInstructionFixups<T>(
-		List<T> fixups, ref Dictionary<int, T>? storage, Func<T, int> offset)
+	private static Dictionary<int, T> PrepareInstructionFixupIndex<T>(
+		int fixupCount, ref Dictionary<int, T>? storage)
 	{
-		using var profile = M68kOptimizationProfiler.Measure("instructions.fixup-index");
-		M68kOptimizationProfiler.Count("instructions.indexed-fixups", fixups.Count);
+		M68kOptimizationProfiler.Count("instructions.indexed-fixups", fixupCount);
 		M68kOptimizationProfiler.Count(storage is null
 			? "instructions.fixup-index.storage-builds"
 			: "instructions.fixup-index.storage-reuses");
 		var result = storage ??= new Dictionary<int, T>();
-		// Only the backing storage survives a decode. Rebuild every entry so
+		// Only the backing storage survives a decode. Rebuild selected entries so
 		// direct fixup edits, retargeting and layout shifts cannot leave stale
-		// lookups. Add retains ToDictionary's rejection of duplicate offsets.
+		// lookups. Add retains duplicate-offset rejection within the range.
 		result.Clear();
-		result.EnsureCapacity(fixups.Count);
-		foreach (var fixup in CollectionsMarshal.AsSpan(fixups))
-			result.Add(offset(fixup), fixup);
+		result.EnsureCapacity(fixupCount);
 		return result;
 	}
 

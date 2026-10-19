@@ -323,19 +323,50 @@ internal sealed class M68kOptimizerPipeline
 		IReadOnlyList<string> methodEnds)
 	{
 		var result = new MethodAnalysisScope[methodEnds.Count];
+		if (result.Length == 0) return result;
+		var endOffsets = methodEnds.Select(label => _assembler.Labels[label]).ToArray();
+		var labelNames = new List<string>?[result.Length];
+		var bounds = new (int Start, int End)[checked(result.Length * 4)];
+		BuildBounds(1, 0, result.Length - 1);
+		// Assign in dictionary order, not offset order. Closed intervals retain
+		// aliases at shared boundaries in every adjoining/zero-width scope.
+		foreach (var label in _assembler.Labels)
+			AssignLabel(1, 0, result.Length - 1, label.Key, label.Value);
 		for (var index = 0; index < methodEnds.Count; index++)
 		{
 			var startLabel = index == 0 ? null : methodEnds[index - 1];
-			var startOffset = startLabel is null ? 0 : _assembler.Labels[startLabel];
 			var endLabel = methodEnds[index];
-			var endOffset = _assembler.Labels[endLabel];
-			var labelNames = _assembler.Labels
-				.Where(label => label.Value >= startOffset && label.Value <= endOffset)
-				.Select(static label => label.Key)
-				.ToArray();
-			result[index] = new(startLabel, endLabel, labelNames);
+			// Keep names rather than offsets: later rewrites rebase the labels.
+			result[index] = new(startLabel, endLabel, labelNames[index]?.ToArray() ?? []);
 		}
 		return result;
+
+		void BuildBounds(int node, int first, int last)
+		{
+			if (first == last)
+			{
+				bounds[node] = (first == 0 ? 0 : endOffsets[first - 1], endOffsets[first]);
+				return;
+			}
+			var middle = first + (last - first) / 2;
+			BuildBounds(node * 2, first, middle);
+			BuildBounds(node * 2 + 1, middle + 1, last);
+			bounds[node] = (Math.Min(bounds[node * 2].Start, bounds[node * 2 + 1].Start),
+				Math.Max(bounds[node * 2].End, bounds[node * 2 + 1].End));
+		}
+
+		void AssignLabel(int node, int first, int last, string name, int offset)
+		{
+			if (offset < bounds[node].Start || offset > bounds[node].End) return;
+			if (first == last)
+			{
+				(labelNames[first] ??= []).Add(name);
+				return;
+			}
+			var middle = first + (last - first) / 2;
+			AssignLabel(node * 2, first, middle, name, offset);
+			AssignLabel(node * 2 + 1, middle + 1, last, name, offset);
+		}
 	}
 
 	private void RunPassesToFixedPoint(
@@ -355,19 +386,41 @@ internal sealed class M68kOptimizerPipeline
 					$"{MaximumCombinedFixedPointRounds} combined rounds.");
 			}
 			M68kOptimizationProfiler.Count("post-emission.combined-rounds");
-			foreach (var pass in _passes)
+			for (var index = 0; index < _passes.Count; index++)
 			{
-				pass.Run();
-				rounds++;
-				if (pass.Changed)
+				var pass = _passes[index];
+				if (pass is M68kConditionCodeOptimizer conditions &&
+					index + 1 < _passes.Count &&
+					_passes[index + 1] is M68kPeepholeOptimizer peephole)
 				{
-					batches++;
-					rewrites += pass.RewriteCount;
+					// RunThen owns the unchanged final-analysis lifetime. Preserve
+					// both passes' order, counters and the combined convergence test.
+					conditions.RunThen(peephole);
+					RecordPass(conditions, ref batches, ref rewrites, ref rounds);
+					RecordPass(peephole, ref batches, ref rewrites, ref rounds);
+					index++;
+					continue;
 				}
+				pass.Run();
+				RecordPass(pass, ref batches, ref rewrites, ref rounds);
 			}
 			changed = _passes.Any(static pass => pass.Changed);
 		}
 		while (changed);
+	}
+
+	private static void RecordPass(
+		IM68kOptimizerPass pass,
+		ref int batches,
+		ref int rewrites,
+		ref int rounds)
+	{
+		rounds++;
+		if (pass.Changed)
+		{
+			batches++;
+			rewrites += pass.RewriteCount;
+		}
 	}
 
 	private void RunLayoutCleanup(

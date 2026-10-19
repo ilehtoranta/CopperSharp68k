@@ -128,7 +128,9 @@ public sealed class M68kDataflowDemandTests
 		assembler.OptimizeForM68000();
 		var snapshot = session.GetSnapshot();
 		Assert.True(snapshot.Counters["dataflow.spill-snapshot-reuses"] > 0);
-		Assert.Equal(snapshot.Counters["peephole.analysis-rounds"] + snapshot.Counters["condition-code.analysis-rounds"],
+		Assert.True(snapshot.Counters["dataflow.condition-peephole-handoffs"] > 0);
+		Assert.Equal(snapshot.Counters["peephole.analysis-rounds"] + snapshot.Counters["condition-code.analysis-rounds"] -
+			snapshot.Counters["dataflow.condition-peephole-handoffs"],
 			Assert.Single(snapshot.Measurements, item => item.Name == "dataflow.total").Calls);
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.DoesNotContain("move.l\td0,-(a7)", assembly);

@@ -135,11 +135,12 @@ internal sealed partial class M68kPeepholeOptimizer
 	private bool CallTargetReadsConditionsBeforeOverwrite(int targetOffset,
 		M68kConditionCodeSet conditions, IReadOnlyList<M68kEmittedInstruction> instructions)
 	{
-		var end = NextOffsetAfter(ControlFlowMethodEnds(), targetOffset, int.MaxValue);
+		var end = _buffer.Labels.MethodEndAfter(targetOffset) ?? int.MaxValue;
 		if (end == int.MaxValue) return true;
-		foreach (var instruction in instructions.Where(instruction =>
-			instruction.Offset >= targetOffset && instruction.Offset < end))
+		for (var index = InstructionIndexAtOrAfter(instructions, targetOffset);
+			index < instructions.Count && instructions[index].Offset < end; index++)
 		{
+			var instruction = instructions[index];
 			// A simple callee prefix is sufficient for this extension. Do not
 			// assume a call kills incoming NZVC merely because the normal call
 			// ABI marks them clobbered: a callee can first consume them with Scc.
@@ -263,7 +264,16 @@ internal sealed partial class M68kPeepholeOptimizer
 	{
 		var instructions = _assembler.GetExecutableInstructionStream();
 		var byOffset = instructions.ToDictionary(static instruction => instruction.Offset);
-		var labelsByOffset = _buffer.Labels.GroupBy(static label => label.Value)
+		var switchOffsets = _buffer.Labels
+			.Where(static label => label.Key.StartsWith(
+				"generated:allocated-switch-edge:", StringComparison.Ordinal))
+			.Select(static label => label.Value).ToHashSet();
+		if (!instructions.Any(instruction => (instruction.Opcode & 0xFF00) == 0x6000 &&
+			switchOffsets.Contains(instruction.Offset))) return false;
+		// Only switch entries need groups, but retain every alias at each entry
+		// in dictionary order: a public alias can forbid redirecting the block.
+		var labelsByOffset = _buffer.Labels.Where(label => switchOffsets.Contains(label.Value))
+			.GroupBy(static label => label.Value)
 			.ToDictionary(static group => group.Key,
 				static group => group.Select(static label => label.Key).ToArray());
 		var methodEnds = ControlFlowMethodEnds();
@@ -418,10 +428,8 @@ internal sealed partial class M68kPeepholeOptimizer
 	private bool CanTailCallWithSharedReturn(string label)
 	{
 		if (!_buffer.Labels.TryGetValue(label, out var targetOffset)) return false;
-		var instructions = _assembler.GetExecutableInstructionStream()
-			.ToDictionary(static instruction => instruction.Offset);
-		var end = NextOffsetAfter(ControlFlowMethodEnds(), targetOffset, int.MaxValue);
-		if (end == int.MaxValue) return false;
+		var instructions = GetCallTargetInstructions(targetOffset, out var end);
+		if (instructions is null) return false;
 		var pending = new Stack<int>();
 		var visited = new HashSet<int>();
 		pending.Push(targetOffset);
@@ -429,8 +437,10 @@ internal sealed partial class M68kPeepholeOptimizer
 		{
 			if (!visited.Add(offset)) continue;
 			if (offset < targetOffset || offset >= end ||
-				!instructions.TryGetValue(offset, out var instruction) || !instruction.IsDecoded)
+				!TryGetInstructionIndex(instructions, offset, out var index))
 				return false;
+			var instruction = instructions[index];
+			if (!instruction.IsDecoded) return false;
 			if (instruction.Opcode == 0x4E75) continue;
 			if (instruction.Kind is M68kInstructionKind.Call or M68kInstructionKind.Return ||
 				instruction.IsNonReturning) return false;
@@ -456,9 +466,23 @@ internal sealed partial class M68kPeepholeOptimizer
 		return true;
 	}
 
-	private int[] ControlFlowMethodEnds() => _buffer.Labels
-		.Where(static label => label.Key.EndsWith(":end", StringComparison.Ordinal))
-		.Select(static label => label.Value).Distinct().Order().ToArray();
+	private int[] ControlFlowMethodEnds() => _addressFixupOffsets is null
+		? BuildControlFlowMethodEnds()
+		: _controlFlowMethodEnds ??= BuildControlFlowMethodEnds();
+
+	private int[] BuildControlFlowMethodEnds() => _buffer.Labels.MethodEndLabelNames
+		.Select(name => _buffer.Labels[name]).Distinct().Order().ToArray();
+
+	private IReadOnlyList<M68kEmittedInstruction>? GetCallTargetInstructions(
+		int targetOffset, out int end)
+	{
+		end = _buffer.Labels.MethodEndAfter(targetOffset) ?? -1;
+		if (end < 0) return null;
+		var start = _buffer.Labels.MethodEndAtOrBefore(targetOffset) ?? 0;
+		// Decode from the emitted method boundary, never from the target:
+		// exact-offset lookups must reject targets inside instruction operands.
+		return _assembler.GetExecutableInstructionRange(start, end);
+	}
 
 	private static bool TryFollowPlainBranches(
 		M68kEmittedInstruction branch,
