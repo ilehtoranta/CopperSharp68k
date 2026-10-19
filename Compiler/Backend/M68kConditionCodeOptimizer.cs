@@ -749,11 +749,23 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 	public bool Changed { get; private set; }
 	public int RewriteCount { get; private set; }
 
-	public void Run()
+	public void Run() => RunCore();
+
+	// Keep the handoff inside this synchronous call: no client can retain the
+	// final analysis and edit bytes, fixups, annotations or the scope before use.
+	internal void RunThen(M68kPeepholeOptimizer peephole)
+	{
+		var analysis = RunCore();
+		M68kOptimizationProfiler.Count("dataflow.condition-peephole-handoffs");
+		peephole.RunAfterConditionCodes(_assembler, analysis);
+	}
+
+	private M68kInstructionDataflow RunCore()
 	{
 		using var profile = M68kOptimizationProfiler.Measure("post-emission.condition-code");
 		Changed = false;
 		RewriteCount = 0;
+		M68kInstructionDataflow? finalAnalysis = null;
 		bool changed;
 		do
 		{
@@ -763,7 +775,8 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			try
 			{
 				var dataflow = M68kInstructionDataflow.Analyze(_assembler, "dataflow.caller.condition-code");
-				if (FoldKnownZeroBranches(dataflow) ||
+				var labelOffsets = CreateLabelOffsetSnapshot(dataflow.Instructions.Count);
+				if (FoldKnownZeroBranches(dataflow, labelOffsets) ||
 					TryRewriteSingleBitTest(dataflow))
 				{
 					changed = true;
@@ -772,11 +785,15 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 					continue;
 				}
 
-				if (RemoveRedundantConditionInstructions(dataflow))
+				if (RemoveRedundantConditionInstructions(dataflow, labelOffsets))
 				{
 					changed = true;
 					Changed = true;
 					RewriteCount++;
+				}
+				if (!changed)
+				{
+					finalAnalysis = dataflow;
 				}
 			}
 			finally
@@ -786,15 +803,24 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 		}
 		while (changed);
 		M68kOptimizationProfiler.Count("condition-code.rewrites", RewriteCount);
+		return finalAnalysis!;
 	}
 
+	private HashSet<int>? CreateLabelOffsetSnapshot(int instructionCount) =>
+		// Small scopes need only a few exact tree queries. Retain the hash
+		// snapshot when the query volume can amortize scanning all labels.
+		instructionCount <= _buffer.Labels.Count / 64 ? null : _buffer.Labels.Values.ToHashSet();
+
+	private bool HasLabelAt(int offset, HashSet<int>? labelOffsets) =>
+		labelOffsets?.Contains(offset) ?? _buffer.Labels.HasOffset(offset);
+
 	private bool RemoveRedundantConditionInstructions(
-		M68kInstructionDataflow dataflow)
+		M68kInstructionDataflow dataflow, HashSet<int>? labelOffsets)
 	{
 		var redundant = new List<M68kEmittedInstruction>();
 		foreach (var instruction in dataflow.Instructions)
 		{
-			if (_buffer.HasLabelAt(instruction.Offset) ||
+			if (HasLabelAt(instruction.Offset, labelOffsets) ||
 				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
 				!dataflow.IsConditionInstructionRedundant(
 					instruction,
@@ -804,11 +830,12 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			}
 			redundant.Add(instruction);
 		}
-		for (var index = redundant.Count - 1; index >= 0; index--)
-		{
-			var instruction = redundant[index];
-			_buffer.RemoveBytes(instruction.Offset, instruction.Length);
-		}
+		// Label queries above observe the same pre-rewrite state, whether
+		// indexed or snapshotted. Compact only after collecting all candidates.
+		// All decisions use the same pre-rewrite dataflow. Compact and remap
+		// metadata once for exactly the ranges previously removed in reverse.
+		_buffer.RemoveByteRanges(redundant.Select(static instruction =>
+			(instruction.Offset, instruction.Length)).ToArray());
 		return redundant.Count != 0;
 	}
 
@@ -817,7 +844,8 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 		M68kEmittedInstruction Branch,
 		bool BranchTaken);
 
-	private bool FoldKnownZeroBranches(M68kInstructionDataflow dataflow)
+	private bool FoldKnownZeroBranches(M68kInstructionDataflow dataflow,
+		HashSet<int>? labelOffsets)
 	{
 		var instructions = dataflow.Instructions;
 		var instructionByOffset = instructions.ToDictionary(
@@ -830,8 +858,8 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			if (branch.Kind != M68kInstructionKind.ConditionalBranch ||
 				((branch.Opcode >> 8) & 0x0F) is not (6 or 7) ||
 				branch.TargetOffset is null ||
-				_buffer.HasLabelAt(test.Offset) ||
-				_buffer.HasLabelAt(branch.Offset) ||
+				HasLabelAt(test.Offset, labelOffsets) ||
+				HasLabelAt(branch.Offset, labelOffsets) ||
 				!dataflow.TryGetKnownZeroTest(test, out var nonZero))
 			{
 				continue;
@@ -855,6 +883,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			folds.Add(new KnownZeroBranchFold(test, branch, branchTaken));
 		}
 
+		// Finish all label queries before the first edit can move an entry.
 		for (var index = folds.Count - 1; index >= 0; index--)
 		{
 			var fold = folds[index];
@@ -1029,15 +1058,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 	}
 
 	private void MoveLabelsAt(int sourceOffset, int destinationOffset)
-	{
-		foreach (var label in _buffer.Labels.Keys.ToArray())
-		{
-			if (_buffer.Labels[label] == sourceOffset)
-			{
-				_buffer.Labels[label] = destinationOffset;
-			}
-		}
-	}
+		=> _buffer.Labels.MoveOffsetsAt(sourceOffset, destinationOffset);
 
 	private static bool TryGetSingleBit(int mask, out int bit)
 	{

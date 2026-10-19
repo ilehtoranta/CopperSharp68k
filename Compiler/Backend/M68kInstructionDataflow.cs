@@ -175,6 +175,11 @@ internal sealed class M68kInstructionDataflow
 			_predecessors, _effects, _addressFixupOffsets);
 
 	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler,
+		string caller = "dataflow.caller.direct") =>
+		Analyze(assembler, null, caller);
+
+	internal static M68kInstructionDataflow Analyze(
+		M68kAssembler assembler, IReadOnlySet<int>? addressFixupOffsets,
 		string caller = "dataflow.caller.direct")
 	{
 		using var callerProfile = M68kOptimizationProfiler.Measure(caller);
@@ -348,10 +353,29 @@ internal sealed class M68kInstructionDataflow
 				stackAfter[index]);
 		}
 
+		// Deferred work must not observe later assembler or caller-set edits.
+		// Effects and graph arrays are privately owned; freeze instructions and
+		// only the operand-offset membership that either analysis can inspect.
+		addressFixupOffsets ??= assembler.AddressFixupOffsets;
+		var frozenInstructions = instructions.ToArray();
+		var symbolicOffsets = new HashSet<int>();
+		foreach (var instruction in frozenInstructions)
+		{
+			// Value analysis checks opcode+2 even for truncated immediates.
+			if (addressFixupOffsets.Contains(instruction.Offset + 2))
+			{
+				symbolicOffsets.Add(instruction.Offset + 2);
+			}
+			for (var offset = instruction.Offset + 4;
+				offset < instruction.Offset + instruction.Length; offset += 2)
+			{
+				if (addressFixupOffsets.Contains(offset)) symbolicOffsets.Add(offset);
+			}
+		}
 		return new M68kInstructionDataflow(
-			instructions,
+			frozenInstructions,
 			result,
-			successors, predecessors, effects, assembler.AddressFixupOffsets);
+			successors, predecessors, effects, symbolicOffsets);
 	}
 
 	private static IReadOnlyList<int>[] BuildSuccessors(
