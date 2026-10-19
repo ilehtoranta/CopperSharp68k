@@ -247,10 +247,22 @@ internal sealed class M68kInstructionDataflow
 				changed = false;
 				for (var index = instructions.Count - 1; index >= 0; index--)
 				{
-					var afterData = Union(successors[index], liveDataBefore);
-					var afterAddress = Union(successors[index], liveAddressBefore);
-					var afterConditions = Union(successors[index], liveConditionsBefore);
-					var afterMemory = Union(successors[index], liveMemoryBefore);
+					var afterData = (ushort)0;
+					var afterAddress = (ushort)0;
+					var afterConditions = M68kConditionCodeSet.None;
+					var afterMemory = M68kMemorySet.None;
+					var next = successors[index];
+					// Combine every resource in one pass without boxing a List
+					// enumerator through the IReadOnlyList interface. Publish the
+					// before/after facts only after all successor masks are read.
+					for (var edge = 0; edge < next.Count; edge++)
+					{
+						var successor = next[edge];
+						afterData |= liveDataBefore[successor];
+						afterAddress |= liveAddressBefore[successor];
+						afterConditions |= liveConditionsBefore[successor];
+						afterMemory |= liveMemoryBefore[successor];
+					}
 					var beforeData = (ushort)(effects[index].UsesData |
 						(afterData & (ushort)~effects[index].DefinesData));
 					var beforeAddress = (ushort)(effects[index].UsesAddress |
@@ -608,40 +620,6 @@ internal sealed class M68kInstructionDataflow
 		}
 		target = value;
 		return true;
-	}
-
-	private static ushort Union(IReadOnlyList<int> successors, ushort[] values)
-	{
-		var result = (ushort)0;
-		foreach (var successor in successors)
-		{
-			result |= values[successor];
-		}
-		return result;
-	}
-
-	private static M68kConditionCodeSet Union(
-		IReadOnlyList<int> successors,
-		M68kConditionCodeSet[] values)
-	{
-		var result = M68kConditionCodeSet.None;
-		foreach (var successor in successors)
-		{
-			result |= values[successor];
-		}
-		return result;
-	}
-
-	private static M68kMemorySet Union(
-		IReadOnlyList<int> successors,
-		M68kMemorySet[] values)
-	{
-		var result = M68kMemorySet.None;
-		foreach (var successor in successors)
-		{
-			result |= values[successor];
-		}
-		return result;
 	}
 
 	private static bool JoinStack(ref bool seen, ref int? target, int? value)

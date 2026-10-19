@@ -57,6 +57,14 @@ counts spill checks that consume the current peephole round's result. A successf
 earlier rewrite short-circuits that round before the spill check. Deferred
 propagation uses captured inputs and does not reuse results across rounds.
 
+Emitted-instruction liveness combines data, address, condition-code and memory
+masks in one indexed successor pass. This avoids interface-enumerator boxing
+without changing the reverse instruction sweep or fixed-point transfer rules.
+The `dataflow.liveness` scope isolates this traversal; warmed regression cases
+require zero allocation there, while graph and snapshot construction remain in
+`dataflow.total`. Compare `dataflow.liveness-rounds` and exact facts as well as
+allocation bytes when validating a traversal change.
+
 The `allocation.*` scopes separate machine block liveness, instruction liveness,
 interference construction, coloring, coalescing, individual coalescing checks and
 verification. Coalescing checks nest inside coalescing and coloring; inclusive
