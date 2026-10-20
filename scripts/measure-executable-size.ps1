@@ -8,10 +8,12 @@ param(
     [string] $CompareRuntimeDirectory,
     [switch] $NoBuild,
     [switch] $CompareApplicationMethods,
-    [switch] $CompareApplicationMetadata
+    [switch] $CompareApplicationMetadata,
+    [switch] $CompareApplicationGcSites
 )
 
 $ErrorActionPreference = 'Stop'
+$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot "artifacts/executable-size/$Configuration"
@@ -110,7 +112,7 @@ $rows = foreach ($sample in $samples) {
     $paths = @{}
     $variants = @('symbols', 'stripped', 'policy')
     if ($CompareRuntimeDirectory) { $variants += 'previous-runtime' }
-    if ($CompareApplicationMethods -or $CompareApplicationMetadata) { $variants += 'previous-policy' }
+    if ($comparePolicy) { $variants += 'previous-policy' }
     foreach ($variant in $variants) {
         $output = Join-Path $OutputDirectory "$($sample.Name).$variant"
         $paths[$variant] = $output
@@ -127,6 +129,9 @@ $rows = foreach ($sample in $samples) {
         if ($variant -eq 'previous-policy') {
             $previousPasses = 'CompactApplicationAddresses,ShareApplicationRuntimeMetadata,CompactApplicationExceptionSites'
             if ($CompareApplicationMetadata) { $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences' }
+            if ($CompareApplicationGcSites) {
+                $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences,PruneApplicationUnwindMetadata,NarrowApplicationExceptionSites,ShareApplicationUnwindRestores'
+            }
             $arguments += @('--code-size-optimizations', 'on', '--code-size-passes',
                 $previousPasses)
         }
@@ -166,8 +171,8 @@ $rows = foreach ($sample in $samples) {
         InputSha256 = $inputHash
         ExecutableSha256 = (Get-FileHash -LiteralPath $paths.stripped -Algorithm SHA256).Hash
         PolicySha256 = (Get-FileHash -LiteralPath $paths.policy -Algorithm SHA256).Hash
-        PreviousPolicyBytes = $(if ($CompareApplicationMethods -or $CompareApplicationMetadata) { (Get-Item -LiteralPath $paths['previous-policy']).Length } else { $null })
-        PreviousPolicySha256 = $(if ($CompareApplicationMethods -or $CompareApplicationMetadata) { (Get-FileHash -LiteralPath $paths['previous-policy'] -Algorithm SHA256).Hash } else { $null })
+        PreviousPolicyBytes = $(if ($comparePolicy) { (Get-Item -LiteralPath $paths['previous-policy']).Length } else { $null })
+        PreviousPolicySha256 = $(if ($comparePolicy) { (Get-FileHash -LiteralPath $paths['previous-policy'] -Algorithm SHA256).Hash } else { $null })
         PreviousRuntimeBytes = $(if ($CompareRuntimeDirectory) { (Get-Item -LiteralPath $paths['previous-runtime']).Length } else { $null })
         PreviousRuntimeSha256 = $(if ($CompareRuntimeDirectory) { (Get-FileHash -LiteralPath $paths['previous-runtime'] -Algorithm SHA256).Hash } else { $null })
     }
@@ -195,7 +200,7 @@ if ($CompareRuntimeDirectory) {
 Write-Host ('Total: {0} -> {1} bytes ({2:N2}% smaller)' -f $totalBefore, $totalAfter, (100 * ($totalBefore - $totalAfter) / $totalBefore))
 $totalPolicy = ($rows | Measure-Object PolicyBytes -Sum).Sum
 Write-Host ('Code generation against stripped baseline: {0} -> {1} bytes ({2:N2}% smaller)' -f $totalAfter, $totalPolicy, (100 * ($totalAfter - $totalPolicy) / $totalAfter))
-if ($CompareApplicationMethods -or $CompareApplicationMetadata) {
+if ($comparePolicy) {
     $previousPolicy = ($rows | Measure-Object PreviousPolicyBytes -Sum).Sum
     Write-Host ('Against previous application policy: {0} -> {1} bytes ({2:N2}% smaller)' -f $previousPolicy, $totalPolicy, (100 * ($previousPolicy - $totalPolicy) / $previousPolicy))
 }

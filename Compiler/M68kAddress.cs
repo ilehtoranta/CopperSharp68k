@@ -19,6 +19,10 @@ public readonly struct M68kAddress
 
 	public static uint ToUInt32(M68kAddress address) => address._value;
 
+	public static ushort ReadUInt16(M68kAddress address, int offset) =>
+		throw new PlatformNotSupportedException(
+			"M68kAddress.ReadUInt16 is lowered by CopperSharp.");
+
 	public static uint ReadUInt32(M68kAddress address, int offset) =>
 		throw new PlatformNotSupportedException(
 			"M68kAddress.ReadUInt32 is lowered by CopperSharp.");

@@ -39,7 +39,7 @@ public static class M68kCompiler
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
-				? ResolveManagedPoolRuntime(module)
+				? ResolveManagedPoolRuntime(module, request)
 				: null;
 
 		var (analysis, _) = AnalyzeFrameworkAndLifecycles(
@@ -56,12 +56,13 @@ public static class M68kCompiler
 	public static M68kCompilationResult Compile(M68kCompilationRequest request)
 	{
 		try { return CompileCore(request); }
-		catch (M68kNarrowDataOverflowException) when (request.CodeSizeOptimizations?.NarrowApplicationExceptionSites == true)
+		catch (M68kNarrowDataOverflowException) when (request.CodeSizeOptimizations is { } options &&
+			(options.NarrowApplicationExceptionSites || options.CompactApplicationGcSites))
 		{
 			// Retry from fresh compiler state. Only the speculative table width is
 			// disabled; preserve every other requested policy and runtime option.
 			return CompileCore(request with { CodeSizeOptimizations = request.CodeSizeOptimizations with {
-				NarrowApplicationExceptionSites = false } });
+				NarrowApplicationExceptionSites = false, CompactApplicationGcSites = false } });
 		}
 	}
 
@@ -85,7 +86,7 @@ public static class M68kCompiler
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
-				? ResolveManagedPoolRuntime(module)
+				? ResolveManagedPoolRuntime(module, request)
 				: null;
 		var (frameworkAnalysis, managedLifecycles) = AnalyzeFrameworkAndLifecycles(
 			module,
@@ -285,7 +286,14 @@ public static class M68kCompiler
 		return managedAssemblyPaths;
 	}
 
-	private static ManagedPoolRuntimeModule ResolveManagedPoolRuntime(CompilationModule module)
+	internal static bool UsesCompactApplicationGcSites(M68kCompilationRequest request) =>
+		request.CodeSizeOptimizations?.CompactApplicationGcSites == true &&
+		request.RuntimeProfile == M68kRuntimeProfile.Application &&
+		request.OutputFormat == M68kOutputFormat.Hunk && request.Cpu == M68kCpuTarget.M68000 &&
+		GetEffectiveMemoryManagement(request) == M68kMemoryManagement.ManagedPoolMarkSweepGc &&
+		!request.Imports.ContainsKey(M68kRuntimeImports.GcCollect);
+
+	private static ManagedPoolRuntimeModule ResolveManagedPoolRuntime(CompilationModule module, M68kCompilationRequest request)
 	{
 		const string assembly = "CopperSharp.Runtime.Managed";
 		const string type = "CopperSharp.Runtime.ManagedPool";
@@ -293,6 +301,8 @@ public static class M68kCompiler
 			module.ResolveManagedMethod(assembly, $"{type}::{name}");
 		CilField Field(string name) =>
 			module.ResolveManagedField(assembly, type, name);
+		CilMethod RootMethod(string name) =>
+			Method(UsesCompactApplicationGcSites(request) ? name + "Compact" : name);
 
 		return new ManagedPoolRuntimeModule(
 			Method("Initialize"),
@@ -301,16 +311,16 @@ public static class M68kCompiler
 			Method("Allocate"),
 			Method("Dispose"),
 			Method("Mark"),
-			Method("MarkRoots"),
-			Method("MarkRootsExtended"),
-			Method("CollectWithRoots"),
-			Method("CollectWithRootsExtended"),
+			RootMethod("MarkRoots"),
+			RootMethod("MarkRootsExtended"),
+			RootMethod("CollectWithRoots"),
+			RootMethod("CollectWithRootsExtended"),
 			Method("Collect"),
 			Method("RegisterFinalizer"),
 			Method("SuppressFinalizer"),
 			Method("ReRegisterFinalizer"),
-			Method("CollectFinalizableWithRoots"),
-			Method("CollectFinalizableWithRootsExtended"),
+			RootMethod("CollectFinalizableWithRoots"),
+			RootMethod("CollectFinalizableWithRootsExtended"),
 			Method("CollectFinalizable"),
 			Method("DrainFinalizers"),
 			Method("PrepareShutdownFinalizers"),

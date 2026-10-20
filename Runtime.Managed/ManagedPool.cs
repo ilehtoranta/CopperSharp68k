@@ -955,4 +955,126 @@ public static class ManagedPool
 		}
 		FreeHead = blockAddress;
 	}
+
+	// Compiler-private application table: uint count, then signed word fields
+	// [PC relative to table, descriptor relative to row, exception state relative
+	// to row, stack adjustment, root map relative to row, optional cleanup].
+	// Root maps and descriptors retain their public layout. The compiler retries
+	// with the legacy readers if any final relative displacement cannot fit.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void MarkRootsCompact(
+		uint cursorAddress, uint resumePc, M68kAddress methodTable, M68kAddress staticRoots)
+	{
+		var cursor = cursorAddress;
+		var currentPc = resumePc;
+		while (cursor != 0)
+		{
+			var siteAddress = FindRootSiteCompact(methodTable, currentPc, 10);
+			if (siteAddress == 0) break;
+			var site = M68kAddress.FromUInt32(siteAddress);
+			var descriptor = M68kAddress.FromUInt32(unchecked(siteAddress + (uint)(short)M68kAddress.ReadUInt16(site, 2)));
+			var frameBase = unchecked(cursor + (uint)(short)M68kAddress.ReadUInt16(site, 6));
+			MarkCompactFrameRoots(siteAddress, frameBase);
+			cursor = frameBase + M68kAddress.ReadUInt32(descriptor, 0) + M68kAddress.ReadUInt32(descriptor, 4);
+			currentPc = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(cursor), 0);
+		}
+		MarkStaticRoots(staticRoots);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void MarkRootsExtendedCompact(
+		uint cursorAddress, uint resumePc, M68kAddress methodTable, M68kAddress staticRoots, uint frameAnchor)
+	{
+		var cursor = cursorAddress;
+		var currentPc = resumePc;
+		var currentFrameAnchor = frameAnchor;
+		while (cursor != 0)
+		{
+			var siteAddress = FindRootSiteCompact(methodTable, currentPc, 12);
+			if (siteAddress == 0) break;
+			var site = M68kAddress.FromUInt32(siteAddress);
+			var descriptor = M68kAddress.FromUInt32(unchecked(siteAddress + (uint)(short)M68kAddress.ReadUInt16(site, 2)));
+			var frameBase = (M68kAddress.ReadUInt32(descriptor, 12) & 1) != 0
+				? currentFrameAnchor : unchecked(cursor + (uint)(short)M68kAddress.ReadUInt16(site, 6));
+			MarkCompactFrameRoots(siteAddress, frameBase);
+			var savedFrameAnchorOffset = M68kAddress.ReadUInt32(descriptor, 16);
+			if (savedFrameAnchorOffset != 0)
+				currentFrameAnchor = M68kAddress.ReadUInt32(
+					M68kAddress.FromUInt32(frameBase + savedFrameAnchorOffset - 1), 0);
+			cursor = frameBase + M68kAddress.ReadUInt32(descriptor, 0) + M68kAddress.ReadUInt32(descriptor, 4);
+			currentPc = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(cursor), 0);
+		}
+		MarkStaticRoots(staticRoots);
+	}
+
+	private static void MarkCompactFrameRoots(uint siteAddress, uint frameBase)
+	{
+		var displacement = (short)M68kAddress.ReadUInt16(M68kAddress.FromUInt32(siteAddress), 8);
+		if (displacement == 0) return;
+		var rootMap = unchecked(siteAddress + (uint)displacement);
+		var count = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(rootMap), 0);
+		var offsets = rootMap + 4;
+		while (count != 0)
+		{
+			var offset = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(offsets), 0);
+			Mark(M68kAddress.ReadUInt32(M68kAddress.FromUInt32(unchecked(frameBase + offset)), 0));
+			offsets += 4;
+			count--;
+		}
+	}
+
+	private static uint FindRootSiteCompact(M68kAddress methodTable, uint resumePc, uint entryBytes)
+	{
+		var table = M68kAddress.ToUInt32(methodTable);
+		var key = unchecked((int)(resumePc - table));
+		// Reject out-of-range PCs instead of aliasing their low sixteen bits.
+		if (key != (short)key) return 0;
+		var count = M68kAddress.ReadUInt32(methodTable, 0);
+		var start = table + 4;
+		uint low = 0;
+		var high = count;
+		while (low < high)
+		{
+			var middle = low + ((high - low) >> 1);
+			var address = start + middle * entryBytes;
+			if ((short)M68kAddress.ReadUInt16(M68kAddress.FromUInt32(address), 0) < key)
+				low = middle + 1;
+			else high = middle;
+		}
+		if (low == count) return 0;
+		var site = start + low * entryBytes;
+		return (short)M68kAddress.ReadUInt16(M68kAddress.FromUInt32(site), 0) == key ? site : 0;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectWithRootsCompact(
+		uint cursorAddress, uint resumePc, M68kAddress methodTable, M68kAddress staticRoots)
+	{
+		MarkRootsCompact(cursorAddress, resumePc, methodTable, staticRoots);
+		Collect();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectWithRootsExtendedCompact(
+		uint cursorAddress, uint resumePc, M68kAddress methodTable, M68kAddress staticRoots, uint frameAnchor)
+	{
+		MarkRootsExtendedCompact(cursorAddress, resumePc, methodTable, staticRoots, frameAnchor);
+		Collect();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectFinalizableWithRootsCompact(
+		uint cursorAddress, uint resumePc, M68kAddress methodTable, M68kAddress staticRoots)
+	{
+		MarkRootsCompact(cursorAddress, resumePc, methodTable, staticRoots);
+		CollectFinalizable();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static void CollectFinalizableWithRootsExtendedCompact(
+		uint cursorAddress, uint resumePc, M68kAddress methodTable, M68kAddress staticRoots, uint frameAnchor)
+	{
+		MarkRootsExtendedCompact(cursorAddress, resumePc, methodTable, staticRoots, frameAnchor);
+		CollectFinalizable();
+	}
 }

@@ -6238,7 +6238,11 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		_assembler.EmitCall(MethodLabel(definition));
-		RegisterCurrentUnwindSite(instruction.MayThrow, instruction.IsSafepoint);
+		if (!_applicationLeafMethods.Contains(definition.Identity))
+			RegisterCurrentUnwindSite(instruction.MayThrow, instruction.IsSafepoint);
+		else if (instruction.MayThrow && _usesExceptionRuntime ||
+			instruction.IsSafepoint && M68kCompiler.IsManagedRuntime(_request))
+			_applicationLeafSitesRemoved++;
 		PreservePlatformBaseAcrossInternalCall();
 	}
 

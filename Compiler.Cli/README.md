@@ -218,7 +218,7 @@ passes for MC68000 HUNK output. The default remains off; the API equivalent is
   every state is null, the state column. It encodes table pointers as signed
   32-bit relative offsets, removing their loader relocations. This applies only
   when there is no built-in collector, external GC import or nonempty root map.
-  GC-visible tables retain their existing 20/24-byte format. Relative offsets
+  This pass leaves GC tables in their existing 20/24-byte format. Relative offsets
   add a few instructions to exception dispatch; this is a size tradeoff, not a
   claim of faster exception handling.
 - `RemoveApplicationRegisterMoves` removes dead register moves using control-flow
@@ -237,9 +237,18 @@ passes for MC68000 HUNK output. The default remains off; the API equivalent is
 - `NarrowApplicationExceptionSites` uses signed 16-bit fields in private compact
   tables with at least eight sites and representable stack adjustments. Final
   pointer offsets are checked after layout. An overflow recompiles with this
-  pass disabled, preserving every other option. The lookup rejects out-of-range
-  PCs before comparing 16-bit keys. Built-in and external GC tables remain in
-  their original 20/24-byte format.
+  speculative narrow table passes disabled. The lookup rejects out-of-range
+  PCs before comparing 16-bit keys.
+- `CompactApplicationGcSites` selects matching private readers in the built-in
+  collector and emits 10/12-byte site rows with signed relative word fields.
+  Root maps, descriptors, frame anchors and static roots retain their layouts.
+  The final linker checks every displacement and retries with legacy readers
+  on overflow. External collectors always keep the public 20/24-byte format.
+- `PruneApplicationLeafSites` omits sites only for direct callees whose complete
+  call graph cannot throw or collect. Opaque calls, indirect dispatch, handlers,
+  dynamic frames and collector entry points remain barriers. The six raw
+  address read/write intrinsics are recognized by their exact lowering.
+  Instructions, safepoint liveness and root spills remain unchanged.
 - `ShareApplicationUnwindRestores`, together with `ShareApplicationRuntimeMetadata`,
   shares restore routines across different frame sizes when the saved-register
   order matches. It reads the frame size from the existing exception descriptor.
@@ -336,3 +345,45 @@ type, register, GC, and managed-byref constraints still apply. It does not
 enable loop copy substitution or loop memory optimization. Other targets and
 runtime profiles retain their existing lowering. API clients select
 `M68kCodeSizeOptions.SimplifyLoopPhis = true`.
+
+### Compact collector tables and proven-safe call sites
+
+Against main at `439c1e8`, the next pass keeps the same nine Release inputs,
+MC68000 target, stripped HUNK format, exception modes and heap settings:
+
+| Example | Previous policy | Updated policy | Reduction |
+| --- | ---: | ---: | ---: |
+| ConsoleIO | 4,888 | 4,872 | 0.33% |
+| StopwatchBenchmark | 7,144 | 7,104 | 0.56% |
+| Polymorphism | 5,100 | 4,028 | 21.02% |
+| IFFInspect | 6,128 | 4,972 | 18.86% |
+| Five other examples combined | 5,976 | 5,976 | 0% |
+| **Total** | **29,236** | **26,952** | **7.81%** |
+
+Compact GC tables alone save 1,372 bytes. Removing proven-safe call sites and
+their now-unused metadata saves another 912 bytes. This round saves 2,284 bytes,
+short of the additional 10% target. The two collector examples contain the
+largest remaining avoidable metadata, so they receive most of the reduction.
+Bypassing unwinding in programs without handlers was considered but not used:
+unwinding also restores registers observable when the error requester returns.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<compiler.dll> -RuntimeDirectory <matching-runtime-directory>
+-CompareApplicationGcSites`. The previous-policy variant disables only
+`CompactApplicationGcSites` and `PruneApplicationLeafSites`; the report records
+both executable hashes, unchanged input hashes, compiler/runtime hashes,
+instruction/data bytes and relocations. The updated compiler and managed runtime
+must be used together for the private compact readers.
+
+Coverage includes both optimizer modes, relocated serialized HUNKs on
+68000/68020/68040, signed lookup boundaries and duplicate keys, 64-KiB PC aliases,
+automatic wide-table fallback, external collector ABI preservation,
+type-initializer cleanup, recursive safe/throwing call graphs, opaque native
+calls, dynamic frames, interior/byref roots, finalizers, forced collection and
+console output/failure paths.
+
+The wider console regression run passes its output checks but exposes an
+existing pinned-cost failure in `ConsoleIoInputAndEofPathsHavePinnedMc68000Costs`:
+32,262 input cycles versus the expected 30,992. The same test reproduces the
+identical failure with the frozen compiler and runtime from `439c1e8`, with size
+optimizations disabled. This round leaves that benchmark expectation unchanged.

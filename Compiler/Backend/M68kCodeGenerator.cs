@@ -326,6 +326,7 @@ internal sealed partial class M68kCodeGenerator
 		RunTerminalDeadStoreElimination(methods, rawFunctions);
 		MaterializeSurvivingPlatformBases(methods, rawFunctions);
 		ElideUnusedRegisterArguments(methods, rawFunctions);
+		AnalyzeApplicationLeafSites(rawFunctions);
 		methods = OrderMethodsForRomSize(methods, rawFunctions);
 		PlanResidentInvocationContext();
 		if (UsesResidentInvocationContext)
@@ -9996,13 +9997,13 @@ internal sealed partial class M68kCodeGenerator
 				else EmitSiteValue(0);
 			}
 			EmitSiteValue(site.StackAdjustment);
-			if (!_compactApplicationExceptionSites && site.RootOffsets.IsEmpty)
+			if ((!_compactApplicationExceptionSites || UsesCompactApplicationGcSites) && site.RootOffsets.IsEmpty)
 			{
-				_assembler.EmitLong(0);
+				EmitSiteValue(0);
 			}
-			else if (!_compactApplicationExceptionSites)
+			else if (!_compactApplicationExceptionSites || UsesCompactApplicationGcSites)
 			{
-				_assembler.EmitAddress(RuntimeRootMapLabel(index));
+				EmitSitePointer(RuntimeRootMapLabel(index), rowLabel);
 			}
 			if (UsesExtendedUnwindMetadata)
 			{
@@ -10029,7 +10030,8 @@ internal sealed partial class M68kCodeGenerator
 			else _assembler.EmitLong(unchecked((uint)value));
 		}
 		if (_narrowApplicationExceptionSites)
-			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.NarrowApplicationExceptionSites),
+			_assembler.RecordCodeSizeRewrite(UsesCompactApplicationGcSites
+				? nameof(M68kCodeSizeOptions.CompactApplicationGcSites) : nameof(M68kCodeSizeOptions.NarrowApplicationExceptionSites),
 				_unwindSites.Count * UnwindSiteEntryBytes);
 
 		if (UsesApplicationSizeOptimizations && _request.CodeSizeOptimizations!.ShareApplicationRuntimeMetadata)

@@ -115,6 +115,8 @@ public sealed partial class CompilerExecutionTests
 			new() { PruneApplicationUnwindMetadata = false, NarrowApplicationExceptionSites = false },
 			new() { PruneApplicationUnwindMetadata = false },
 			new() { NarrowApplicationExceptionSites = false },
+			new() { CompactApplicationGcSites = false },
+			new() { PruneApplicationLeafSites = false },
 			new()
 		})
 		{

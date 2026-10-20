@@ -566,6 +566,10 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Use private signed 16-bit relative site tables with the built-in collector in MC68000 application HUNKs. Oversized tables fall back to the public format; external collectors always retain that format.</summary>
+	public bool CompactApplicationGcSites { get; init; } = true;
+	/// <summary>Omit application call-site metadata when the complete direct callee graph cannot throw, collect or call opaque native code.</summary>
+	public bool PruneApplicationLeafSites { get; init; } = true;
 	/// <summary>Omit unreferenced application unwind descriptors and their restore routines.</summary>
 	public bool PruneApplicationUnwindMetadata { get; init; } = true;
 	/// <summary>Use signed 16-bit fields in private application exception tables when all final offsets fit. Collector-visible tables retain their ABI.</summary>
