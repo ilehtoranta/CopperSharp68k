@@ -9958,12 +9958,21 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		_exceptionRaiseReasons.Add(reason);
-		if (!hasException)
+		if (!hasException && UsesApplicationSizeOptimizations &&
+			_request.CodeSizeOptimizations!.CompactApplicationExceptionRuntime)
 		{
-			EmitImmediateToRegister(M68kRegister.A0, 0);
+			_applicationExceptionFaultReasons.Add(reason);
+			// The stub tail-jumps into cursor creation: this call's return slot
+			// remains the exact PC described by the original unwind site.
+			_assembler.EmitJsr(ApplicationExceptionFaultLabel(reason), external: false);
 		}
-		EmitImmediateToRegister(M68kRegister.D0, reason);
-		_assembler.EmitJsr(RuntimeExceptionRaiseLabel, external: false);
+		else
+		{
+			_genericExceptionRaiseReasons.Add(reason);
+			if (!hasException) EmitImmediateToRegister(M68kRegister.A0, 0);
+			EmitImmediateToRegister(M68kRegister.D0, reason);
+			_assembler.EmitJsr(RuntimeExceptionRaiseLabel, external: false);
+		}
 		RegisterCurrentUnwindSite(exception: true, gc: false);
 		_loadedPlatformBase = null;
 	}

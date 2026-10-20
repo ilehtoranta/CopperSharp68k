@@ -249,6 +249,11 @@ passes for MC68000 HUNK output. The default remains off; the API equivalent is
   dynamic frames and collector entry points remain barriers. The six raw
   address read/write intrinsics are recognized by their exact lowering.
   Instructions, safepoint liveness and root spills remain unchanged.
+- `CompactApplicationExceptionRuntime` shares compiler-generated fault entries
+  and repeated catch/finally entry sequences. Fault stubs tail-jump into cursor
+  creation, preserving the original caller return address and unwind metadata.
+  Images with no exception states omit resume/state dispatch, while retaining
+  the full stack walk, register restoration and unhandled-exception lifecycle.
 - `ShareApplicationUnwindRestores`, together with `ShareApplicationRuntimeMetadata`,
   shares restore routines across different frame sizes when the saved-register
   order matches. It reads the frame size from the existing exception descriptor.
@@ -387,3 +392,51 @@ existing pinned-cost failure in `ConsoleIoInputAndEofPathsHavePinnedMc68000Costs
 32,262 input cycles versus the expected 30,992. The same test reproduces the
 identical failure with the frozen compiler and runtime from `439c1e8`, with size
 optimizations disabled. This round leaves that benchmark expectation unchanged.
+
+### Smaller runtime code
+
+The next investigation starts at `3dafa84` (26,952 bytes). Across the nine
+examples, emitted named runtime methods account for 3,420 bytes in ConsolePal,
+2,924 in ManagedPool, 1,400 in integer formatting and 748 in ClockPal. The largest
+individual routines are console Read (600), PackDecimal64 (364), string output
+(300 per using image), DivideUInt64By10000 (282) and object tracing (196 per
+collector image). Generated exception handling also repeats across these images.
+
+The retained changes share fault and catch/finally entry code, omit unused
+exception-state dispatch, read console bytes directly, and share the GC loop
+that marks slots from static and compact frame root maps. Static slots use a
+zero base; signed frame offsets use the original frame base. Root-map formats,
+collection triggers, exception identities and unwind register restoration are
+unchanged.
+
+| Example | Previous policy | Updated policy | Reduction |
+| --- | ---: | ---: | ---: |
+| ConsoleIO | 4,872 | 4,628 | 5.01% |
+| StopwatchBenchmark | 7,104 | 6,984 | 1.69% |
+| Polymorphism | 4,028 | 3,864 | 4.07% |
+| IFFInspect | 4,972 | 4,828 | 2.90% |
+| Five other examples combined | 5,976 | 5,976 | 0% |
+| **Total** | **26,952** | **26,280** | **2.49%** |
+
+This is below the additional 10% target. A shared string/native output owner
+was rejected because it pulled the string writer into boolean and character
+only programs. Splitting console input saved little after helper metadata.
+Smaller decimal-division loops and word helpers exceeded the existing
+four-byte register-spill budget, so integer formatting remains unchanged.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<compiler.dll> -RuntimeDirectory <matching-runtime-directory>
+-CompareApplicationRuntime -CompareRuntimeDirectory <3dafa84-runtime-directory>`.
+The previous-policy variant disables `CompactApplicationExceptionRuntime`.
+Together with the comparison runtime directory, the previous-runtime variant
+reconstructs the previous complete baseline. All nine reconstructed images
+are byte-identical to the frozen `3dafa84` images.
+
+Coverage adds all supported explicit runtime fault reasons and null throws,
+comparing the unhandled hook's preserved registers against the previous
+dispatcher at two load addresses, on three CPU models, with both optimizer
+modes. Existing catch/finally, dynamic frame, finalizer, forced-GC, output,
+short-write and resource-ownership checks remain in the regression set.
+The pre-existing pinned console-input timing failure remains: direct byte
+loads improve its measured path from 32,262 to 31,758 cycles, still above
+the unchanged 30,992 expectation.

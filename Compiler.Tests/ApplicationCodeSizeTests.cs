@@ -54,7 +54,7 @@ public sealed partial class CompilerExecutionTests
 		var compact = M68kCompiler.Compile(request with { CodeSizeOptimizations = new() {
 			CompactApplicationAddresses = false, ShareApplicationRuntimeMetadata = false,
 			RemoveApplicationRegisterMoves = false, ShareReturnSequences = false,
-			PruneApplicationUnwindMetadata = false } });
+			PruneApplicationUnwindMetadata = false, CompactApplicationExceptionRuntime = false } });
 		Assert.Equal(baseline.Image, compact.Image);
 	}
 
@@ -117,6 +117,7 @@ public sealed partial class CompilerExecutionTests
 			new() { NarrowApplicationExceptionSites = false },
 			new() { CompactApplicationGcSites = false },
 			new() { PruneApplicationLeafSites = false },
+			new() { CompactApplicationExceptionRuntime = false },
 			new()
 		})
 		{

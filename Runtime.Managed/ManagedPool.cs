@@ -530,21 +530,21 @@ public static class ManagedPool
 		return M68kAddress.ReadUInt32(M68kAddress.FromUInt32(site), 0) == resumePc ? site : 0;
 	}
 
-	private static void MarkStaticRoots(M68kAddress staticRoots)
+	private static void MarkStaticRoots(M68kAddress staticRoots) =>
+		MarkRootSlots(M68kAddress.ToUInt32(staticRoots), 0);
+
+	// A static table holds absolute slot addresses; a frame table holds signed
+	// offsets. Adding a zero base lets both use the same exact-root traversal.
+	private static void MarkRootSlots(uint rootMap, uint frameBase)
 	{
-		var staticRootsAddress = M68kAddress.ToUInt32(staticRoots);
-		var staticRootCount = M68kAddress.ReadUInt32(staticRoots, 0);
-		var rootAddress = staticRootsAddress + 4;
-		while (staticRootCount != 0)
+		var count = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(rootMap), 0);
+		var offsets = rootMap + 4;
+		while (count != 0)
 		{
-			var slotAddress = M68kAddress.ReadUInt32(
-				M68kAddress.FromUInt32(rootAddress),
-				0);
-			Mark(M68kAddress.ReadUInt32(
-				M68kAddress.FromUInt32(slotAddress),
-				0));
-			rootAddress += 4;
-			staticRootCount--;
+			var offset = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(offsets), 0);
+			Mark(M68kAddress.ReadUInt32(M68kAddress.FromUInt32(unchecked(frameBase + offset)), 0));
+			offsets += 4;
+			count--;
 		}
 	}
 
@@ -1010,17 +1010,8 @@ public static class ManagedPool
 	private static void MarkCompactFrameRoots(uint siteAddress, uint frameBase)
 	{
 		var displacement = (short)M68kAddress.ReadUInt16(M68kAddress.FromUInt32(siteAddress), 8);
-		if (displacement == 0) return;
-		var rootMap = unchecked(siteAddress + (uint)displacement);
-		var count = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(rootMap), 0);
-		var offsets = rootMap + 4;
-		while (count != 0)
-		{
-			var offset = M68kAddress.ReadUInt32(M68kAddress.FromUInt32(offsets), 0);
-			Mark(M68kAddress.ReadUInt32(M68kAddress.FromUInt32(unchecked(frameBase + offset)), 0));
-			offsets += 4;
-			count--;
-		}
+		if (displacement != 0)
+			MarkRootSlots(unchecked(siteAddress + (uint)displacement), frameBase);
 	}
 
 	private static uint FindRootSiteCompact(M68kAddress methodTable, uint resumePc, uint entryBytes)

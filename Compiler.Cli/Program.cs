@@ -59,6 +59,7 @@ static int Run(string[] args)
 				NarrowApplicationExceptionSites = selected.Contains(nameof(M68kCodeSizeOptions.NarrowApplicationExceptionSites)),
 				CompactApplicationGcSites = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationGcSites)),
 				PruneApplicationLeafSites = selected.Contains(nameof(M68kCodeSizeOptions.PruneApplicationLeafSites)),
+				CompactApplicationExceptionRuntime = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationExceptionRuntime)),
 				ShareApplicationUnwindRestores = selected.Contains(nameof(M68kCodeSizeOptions.ShareApplicationUnwindRestores)),
 				CompactApplicationAddresses = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationAddresses)),
 				ShareApplicationRuntimeMetadata = selected.Contains(nameof(M68kCodeSizeOptions.ShareApplicationRuntimeMetadata)),

@@ -9,11 +9,12 @@ param(
     [switch] $NoBuild,
     [switch] $CompareApplicationMethods,
     [switch] $CompareApplicationMetadata,
-    [switch] $CompareApplicationGcSites
+    [switch] $CompareApplicationGcSites,
+    [switch] $CompareApplicationRuntime
 )
 
 $ErrorActionPreference = 'Stop'
-$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites
+$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot "artifacts/executable-size/$Configuration"
@@ -126,12 +127,13 @@ $rows = foreach ($sample in $samples) {
                 $arguments += @('--managed-assembly', $runtimeAssembly)
             }
         }
-        if ($variant -eq 'previous-policy') {
+        if ($variant -eq 'previous-policy' -or ($variant -eq 'previous-runtime' -and $CompareApplicationRuntime)) {
             $previousPasses = 'CompactApplicationAddresses,ShareApplicationRuntimeMetadata,CompactApplicationExceptionSites'
             if ($CompareApplicationMetadata) { $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences' }
-            if ($CompareApplicationGcSites) {
+            if ($CompareApplicationGcSites -or $CompareApplicationRuntime) {
                 $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences,PruneApplicationUnwindMetadata,NarrowApplicationExceptionSites,ShareApplicationUnwindRestores'
             }
+            if ($CompareApplicationRuntime) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
             $arguments += @('--code-size-optimizations', 'on', '--code-size-passes',
                 $previousPasses)
         }

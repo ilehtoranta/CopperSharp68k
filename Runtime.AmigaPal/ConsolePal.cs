@@ -416,13 +416,8 @@ public static class ConsolePal
 		return result;
 	}
 
-	private static int ReadNativeByte(uint pointer, int offset)
-	{
-		var alignedOffset = offset & ~3;
-		var packed = APTR.ReadUInt32(APTR.FromPointer(pointer), alignedOffset);
-		var shift = (3 - (offset & 3)) * 8;
-		return (int)((packed >> shift) & 0xffu);
-	}
+	private static int ReadNativeByte(uint pointer, int offset) =>
+		APTR.ReadUInt8(APTR.FromPointer(pointer), offset);
 
 	private static void WriteBoolean(bool value, bool appendNewLine)
 	{
