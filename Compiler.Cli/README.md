@@ -344,7 +344,9 @@ ownership, buffered input/EOF, and existing exception/forced-GC cases.
 `--code-size-optimizations on --code-size-passes SimplifyLoopPhis` selects the
 default-off trivial-loop-phi cleanup. Append `SimplifyLoopPhis` to an existing
 comma-separated pass selection to preserve that selection. The pass applies
-only to MC68000 resident HUNKs with YOLO exceptions and `--memory none`.
+to MC68000 resident HUNKs and ROM-profile ROM/assembly output with YOLO exceptions
+and `--memory none`. The other opt-in generated size passes use the same gate;
+`--rom-size-optimizations on` retains its existing policy.
 It removes phis with one distinct non-self input before register allocation;
 type, register, GC, and managed-byref constraints still apply. It does not
 enable loop copy substitution or loop memory optimization. Other targets and
