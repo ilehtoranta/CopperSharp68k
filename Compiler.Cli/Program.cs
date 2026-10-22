@@ -54,6 +54,20 @@ static int Run(string[] args)
 				throw new ArgumentException("Unknown or empty code size pass selection.");
 			codeSizeOptimizations = new M68kCodeSizeOptions
 			{
+				OptimizeApplicationRegisterCopies = selected.Contains(nameof(M68kCodeSizeOptions.OptimizeApplicationRegisterCopies)),
+				RemoveApplicationDeadArithmetic = selected.Contains(nameof(M68kCodeSizeOptions.RemoveApplicationDeadArithmetic)),
+				TrackApplicationNarrowValues = selected.Contains(nameof(M68kCodeSizeOptions.TrackApplicationNarrowValues)),
+				FoldApplicationMemoryOperands = selected.Contains(nameof(M68kCodeSizeOptions.FoldApplicationMemoryOperands)),
+				RemoveApplicationRegisterMoves = selected.Contains(nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves)),
+				PruneApplicationUnwindMetadata = selected.Contains(nameof(M68kCodeSizeOptions.PruneApplicationUnwindMetadata)),
+				NarrowApplicationExceptionSites = selected.Contains(nameof(M68kCodeSizeOptions.NarrowApplicationExceptionSites)),
+				CompactApplicationGcSites = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationGcSites)),
+				PruneApplicationLeafSites = selected.Contains(nameof(M68kCodeSizeOptions.PruneApplicationLeafSites)),
+				CompactApplicationExceptionRuntime = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationExceptionRuntime)),
+				ShareApplicationUnwindRestores = selected.Contains(nameof(M68kCodeSizeOptions.ShareApplicationUnwindRestores)),
+				CompactApplicationAddresses = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationAddresses)),
+				ShareApplicationRuntimeMetadata = selected.Contains(nameof(M68kCodeSizeOptions.ShareApplicationRuntimeMetadata)),
+				CompactApplicationExceptionSites = selected.Contains(nameof(M68kCodeSizeOptions.CompactApplicationExceptionSites)),
 				ValidateLiteralOperands = selected.Contains(nameof(M68kCodeSizeOptions.ValidateLiteralOperands)),
 				RemoveRedundantTransport = selected.Contains(nameof(M68kCodeSizeOptions.RemoveRedundantTransport)),
 				CompactPrivateStackCopies = selected.Contains(nameof(M68kCodeSizeOptions.CompactPrivateStackCopies)),

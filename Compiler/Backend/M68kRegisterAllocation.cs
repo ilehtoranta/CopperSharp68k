@@ -48,6 +48,10 @@ internal static class M68kControlFlowAnalysis
 					: new HashSet<int>(reachable));
 		}
 
+		// This scratch set is never retained in the result while it is mutated.
+		// On a change, exchange it with the block's former set so convergence
+		// does not allocate a new copy for every predecessor or unchanged pass.
+		var intersection = new HashSet<int>();
 		var changed = true;
 		while (changed)
 		{
@@ -58,19 +62,23 @@ internal static class M68kControlFlowAnalysis
 				{
 					continue;
 				}
-				HashSet<int>? intersection = null;
+				intersection.Clear();
+				var firstPredecessor = true;
 				foreach (var predecessor in block.ControlFlowPredecessors)
 				{
-					intersection = intersection is null
-						? new HashSet<int>(dominators[predecessor])
-						: new HashSet<int>(
-							intersection.Intersect(dominators[predecessor]));
+					if (firstPredecessor)
+					{
+						intersection.UnionWith(dominators[predecessor]);
+						firstPredecessor = false;
+					}
+					else intersection.IntersectWith(dominators[predecessor]);
 				}
-				intersection ??= new HashSet<int>();
 				intersection.Add(block.Id);
 				if (!intersection.SetEquals(dominators[block.Id]))
 				{
+					var previous = dominators[block.Id];
 					dominators[block.Id] = intersection;
+					intersection = previous;
 					changed = true;
 				}
 			}
@@ -354,6 +362,7 @@ internal static class M68kLivenessAnalysis
 {
 	public static M68kLivenessInfo Analyze(M68kMachineFunction function)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.block-liveness");
 		M68kMachineIrVerifier.Verify(function);
 		var result = new M68kLivenessInfo();
 		foreach (var block in function.Blocks)
@@ -384,10 +393,12 @@ internal static class M68kLivenessAnalysis
 		var changed = true;
 		while (changed)
 		{
+			M68kOptimizationProfiler.Count("allocation.liveness-rounds");
 			changed = false;
 			for (var index = function.Blocks.Count - 1; index >= 0; index--)
 			{
 				var block = function.Blocks[index];
+				M68kOptimizationProfiler.Count("allocation.liveness-block-visits");
 				var liveOut = new HashSet<int>();
 				foreach (var edge in block.SuccessorEdges)
 				{
@@ -429,6 +440,7 @@ internal static class M68kLivenessAnalysis
 		M68kMachineFunction function,
 		M68kLivenessInfo blockLiveness)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.instruction-liveness");
 		var liveBefore = new Dictionary<int, HashSet<int>>();
 		var liveAfter = new Dictionary<int, HashSet<int>>();
 		foreach (var block in function.Blocks)
@@ -451,6 +463,9 @@ internal sealed class M68kInterferenceGraph
 {
 	private readonly Dictionary<int, HashSet<int>> _neighbors;
 	private readonly HashSet<(int Left, int Right)> _coalescableCopies = new();
+	private readonly HashSet<(int Left, int Right)> _equivalentCopies = new();
+	private readonly HashSet<(int Left, int Right)> _wholePairOverlaps = new();
+	private readonly Dictionary<(int Left, int Right), int> _copyPreferenceWeights = new();
 
 	public M68kInterferenceGraph(IEnumerable<int> values)
 	{
@@ -462,6 +477,15 @@ internal sealed class M68kInterferenceGraph
 	public Dictionary<int, M68kRegisterSet> ForbiddenRegisters { get; } = new();
 
 	public HashSet<(int Left, int Right)> CopyPreferences { get; } = new();
+	public int CopyPreferenceWeight(int left, int right) =>
+		_copyPreferenceWeights.GetValueOrDefault(Order(left, right));
+	public IReadOnlySet<(int Left, int Right)> EquivalentCopies => _equivalentCopies;
+	public IReadOnlySet<(int Left, int Right)> WholePairOverlaps => _wholePairOverlaps;
+
+	public void RequireWholePairOverlap(int left, int right)
+	{
+		if (left != right) _wholePairOverlaps.Add(Order(left, right));
+	}
 
 	public IReadOnlySet<int> Neighbors(int value) => _neighbors[value];
 
@@ -486,7 +510,10 @@ internal sealed class M68kInterferenceGraph
 	{
 		if (left != right)
 		{
-			CopyPreferences.Add(Order(left, right));
+			var pair = Order(left, right);
+			CopyPreferences.Add(pair);
+			_copyPreferenceWeights.TryGetValue(pair, out var prior);
+			_copyPreferenceWeights[pair] = prior == int.MaxValue ? prior : prior + 1;
 		}
 	}
 
@@ -498,7 +525,7 @@ internal sealed class M68kInterferenceGraph
 		}
 		var pair = Order(left, right);
 		_coalescableCopies.Add(pair);
-		CopyPreferences.Add(pair);
+		AddCopyPreference(left, right);
 		_neighbors[left].Remove(right);
 		_neighbors[right].Remove(left);
 	}
@@ -539,6 +566,7 @@ internal sealed class M68kInterferenceGraph
 				foreach (var right in component)
 				{
 					_neighbors[left].Remove(right);
+					if (left != right) _equivalentCopies.Add(Order(left, right));
 				}
 			}
 		}
@@ -554,6 +582,7 @@ internal static class M68kInterferenceBuilder
 		M68kMachineFunction function,
 		M68kLivenessInfo liveness)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.interference");
 		var graph = new M68kInterferenceGraph(function.Values.Keys);
 		if (!function.ReservedRegisters.IsEmpty)
 		{
@@ -572,6 +601,7 @@ internal static class M68kInterferenceBuilder
 			{
 				var instruction = block.Instructions[index];
 				var liveAfter = new HashSet<int>(live);
+				M68kOptimizationProfiler.Count("allocation.interference-instructions");
 				var copySource = instruction.Operation == M68kMachineOperation.Copy &&
 					instruction.AllowCopyCoalescing &&
 					instruction.Uses.Length == 1 &&
@@ -638,6 +668,16 @@ internal static class M68kInterferenceBuilder
 					graph.AddCopyPreference(
 						instruction.Definitions[0],
 						instruction.Uses[0]);
+					if (instruction.Operation != M68kMachineOperation.Subtract &&
+						instruction.Uses.Length == 2 &&
+						function.Values[instruction.Definitions[0]].IsRegisterPair &&
+						function.Values[instruction.Uses[1]].IsRegisterPair)
+					{
+						// The result may reuse the entire right pair (the emitter swaps
+						// commutative operands), but a shifted overlap destroys a word
+						// when the left pair is copied into the result first.
+						graph.RequireWholePairOverlap(instruction.Definitions[0], instruction.Uses[1]);
+					}
 				}
 				live.ExceptWith(instruction.Definitions);
 				live.UnionWith(instruction.Uses);
@@ -805,6 +845,7 @@ internal static class M68kRegisterAllocatorPipeline
 		bool rejectManagedByrefReturn = false,
 		IReadOnlyList<M68kRegister?>? argumentRegisters = null)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("machine.register-allocation");
 		M68kArgumentHomeOptimizer.Run(function, argumentRegisters);
 		M68kByrefOwnerRooting.Insert(
 			function,
@@ -822,6 +863,7 @@ internal static class M68kRegisterAllocatorPipeline
 			iteration <= MaximumAllocationIterations;
 			iteration++)
 		{
+			M68kOptimizationProfiler.Count("allocation.iterations");
 			M68kControlFlowAnalysis.ComputeLoopDepths(function);
 			M68kMachineCostAnalysis.Apply(function);
 			var blockLiveness = M68kLivenessAnalysis.Analyze(function);
@@ -1087,6 +1129,7 @@ internal static class M68kGraphColoringAllocator
 		M68kMachineFunction function,
 		M68kInterferenceGraph graph)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.coloring");
 		M68kMachineIrVerifier.Verify(function);
 		var groups = BuildCoalescedGroups(function, graph);
 		var groupForValue = groups.Values
@@ -1109,38 +1152,54 @@ internal static class M68kGraphColoringAllocator
 			}
 		}
 
+		// Equivalent pairs may share their complete location. A shifted overlap
+		// corrupts one word of the original when the copy is materialized.
+		var pairAliases = groups.Keys.ToDictionary(id => id, _ => new HashSet<int>());
+		foreach (var (left, right) in graph.EquivalentCopies.Concat(graph.WholePairOverlaps))
+		{
+			var leftGroup = groupForValue[left]; var rightGroup = groupForValue[right];
+			if (leftGroup != rightGroup && groups[leftGroup].IsPair && groups[rightGroup].IsPair)
+			{
+				pairAliases[leftGroup].Add(rightGroup);
+				pairAliases[rightGroup].Add(leftGroup);
+			}
+		}
 		var remaining = groups.Values
 			.Where(static group => group.PrecoloredRegister is null)
 			.Select(static group => group.Id)
 			.ToHashSet();
 		var stack = new Stack<int>();
+		// The coalesced graph and color constraints do not change while
+		// simplifying. Only removal of a neighbor changes an effective degree.
+		// Preserve the original ordering while updating those degrees locally.
+		var degrees = remaining.ToDictionary(id => id,
+			id => EffectiveDegree(groups, groupNeighbors, remaining, groups[id]));
+		var colors = remaining.ToDictionary(id => id, id => AvailableColorCount(groups[id]));
+		var simplifiableGroups = new SortedSet<(bool SpillTemporary, int Id)>();
+		var spillCandidates = new SortedSet<(double Priority, int Id)>();
+		foreach (var id in remaining)
+		{
+			if (degrees[id] < colors[id]) simplifiableGroups.Add((groups[id].IsSpillTemporary, id));
+			spillCandidates.Add((SpillPriority(groups[id], degrees[id]), id));
+		}
 		while (remaining.Count != 0)
 		{
-			var simplifiable = remaining
-				.Select(group => groups[group])
-				.Where(group =>
-					EffectiveDegree(groups, groupNeighbors, remaining, group) <
-					AvailableColorCount(group))
-				// Spill-generated reload/store scratch values must be colored before
-				// their live-through neighbors. Push them last so stack coloring pops
-				// them first and spills an ordinary neighbor when pressure is exact.
-				.OrderBy(static group => group.IsSpillTemporary)
-				.ThenBy(static group => group.Id)
-				.FirstOrDefault();
-			var selected = simplifiable?.Id ??
-				remaining
-					.Select(group => groups[group])
-					.OrderBy(group => SpillPriority(
-						group,
-						EffectiveDegree(
-							groups,
-							groupNeighbors,
-							remaining,
-							group)))
-					.ThenBy(static group => group.Id)
-					.First()
-					.Id;
+			// Push spill temporaries last so they are colored first, as before.
+			var selected = simplifiableGroups.Count != 0
+				? simplifiableGroups.Min.Id : spillCandidates.Min.Id;
+			simplifiableGroups.Remove((groups[selected].IsSpillTemporary, selected));
+			spillCandidates.Remove((SpillPriority(groups[selected], degrees[selected]), selected));
 			remaining.Remove(selected);
+			foreach (var neighbor in groupNeighbors[selected])
+			{
+				if (!remaining.Contains(neighbor) ||
+					!groups[neighbor].AllowedRegisters.Overlaps(groups[selected].AllowedRegisters)) continue;
+				spillCandidates.Remove((SpillPriority(groups[neighbor], degrees[neighbor]), neighbor));
+				degrees[neighbor]--;
+				spillCandidates.Add((SpillPriority(groups[neighbor], degrees[neighbor]), neighbor));
+				if (degrees[neighbor] < colors[neighbor])
+					simplifiableGroups.Add((groups[neighbor].IsSpillTemporary, neighbor));
+			}
 			stack.Push(selected);
 		}
 
@@ -1170,13 +1229,14 @@ internal static class M68kGraphColoringAllocator
 			}
 
 			var preferredCopyRegisters = AllocatedCopyRegisters(
-				graph, groupForValue, allocatedGroups, groupId);
+				graph, groupForValue, allocatedGroups, groupId,
+				function.OptimizeRegisterCopies);
 			var selected = preferredCopyRegisters
 				.Concat(CandidateRegisters(group))
 				.Distinct()
 				.FirstOrDefault(register =>
-					CandidateIsAvailable(group, register, forbidden));
-			if (!CandidateIsAvailable(group, selected, forbidden) ||
+					CandidateIsAvailable(group, register, forbidden) && PairAliasesAllow(register));
+			if (!CandidateIsAvailable(group, selected, forbidden) || !PairAliasesAllow(selected) ||
 				!group.AllowedRegisters.Contains(selected))
 			{
 				if (function.SimplifyLoopPhis && TryReassignScalarNeighbor(
@@ -1186,12 +1246,63 @@ internal static class M68kGraphColoringAllocator
 					allocatedGroups.Add(groupId, new M68kAllocatedLocation(selected, false));
 					continue;
 				}
+
+				// A spill reload must get a location to make progress. Pair locations
+				// can be fragmented even when the graph's color count looks sufficient.
+				// Evict ordinary live-through values instead of spilling the reload again.
+				var eviction = group.IsSpillTemporary
+					? CandidateRegisters(group)
+						.Where(register => CandidateIsAvailable(group, register, group.ForbiddenRegisters))
+						.Select(register =>
+						{
+							var occupied = new M68kAllocatedLocation(register, group.IsPair).OccupiedRegisters;
+							var conflicts = groupNeighbors[groupId]
+								.Concat(pairAliases[groupId].Where(alias =>
+									allocatedGroups.TryGetValue(alias, out var aliasLocation) &&
+									aliasLocation.Register != register))
+								.Distinct()
+								.Where(neighbor => allocatedGroups.TryGetValue(neighbor, out var location) &&
+									location.OccupiedRegisters.Overlaps(occupied))
+								.ToArray();
+							return (Register: register, Conflicts: conflicts);
+						})
+						.Where(candidate => candidate.Conflicts.Length != 0 &&
+							candidate.Conflicts.All(neighbor =>
+								!groups[neighbor].IsSpillTemporary && groups[neighbor].PrecoloredRegister is null))
+						.OrderBy(candidate => candidate.Conflicts.Length)
+						.ThenBy(candidate => candidate.Conflicts.Sum(neighbor => (double)groups[neighbor].SpillWeight))
+						.ThenBy(candidate => candidate.Register)
+						.FirstOrDefault()
+					: default;
+				if (eviction.Conflicts is not null)
+				{
+					foreach (var neighbor in eviction.Conflicts)
+					{
+						allocatedGroups.Remove(neighbor);
+						spilledGroups.Add(neighbor);
+					}
+					allocatedGroups.Add(groupId, new M68kAllocatedLocation(eviction.Register, group.IsPair));
+					continue;
+				}
 				spilledGroups.Add(groupId);
 				continue;
 			}
 			allocatedGroups.Add(
 				groupId,
 				new M68kAllocatedLocation(selected, group.IsPair));
+
+			bool PairAliasesAllow(M68kRegister register)
+			{
+				var candidate = new M68kAllocatedLocation(register, group.IsPair);
+				return pairAliases[groupId].All(alias =>
+					!allocatedGroups.TryGetValue(alias, out var location) ||
+					location.Register == register || !location.OccupiedRegisters.Overlaps(candidate.OccupiedRegisters));
+			}
+		}
+		if (function.OptimizeRegisterCopies && spilledGroups.Count == 0)
+		{
+			ImproveCopyLocations(function, groups, groupForValue, groupNeighbors,
+				pairAliases, graph, allocatedGroups);
 		}
 
 		var allocated = new Dictionary<int, M68kAllocatedLocation>();
@@ -1216,9 +1327,14 @@ internal static class M68kGraphColoringAllocator
 		M68kInterferenceGraph graph,
 		IReadOnlyDictionary<int, int> groupForValue,
 		IReadOnlyDictionary<int, M68kAllocatedLocation> allocated,
-		int groupId)
+		int groupId,
+		bool optimizeRegisterCopies = false)
 	{
-		foreach (var (left, right) in graph.CopyPreferences)
+		IEnumerable<(int Left, int Right)> preferences = optimizeRegisterCopies
+			? graph.CopyPreferences.OrderByDescending(pair =>
+				graph.CopyPreferenceWeight(pair.Left, pair.Right))
+			: graph.CopyPreferences;
+		foreach (var (left, right) in preferences)
 		{
 			var leftGroup = groupForValue[left];
 			var rightGroup = groupForValue[right];
@@ -1226,6 +1342,102 @@ internal static class M68kGraphColoringAllocator
 				yield return rightLocation.Register;
 			if (rightGroup == groupId && allocated.TryGetValue(leftGroup, out var leftLocation))
 				yield return leftLocation.Register;
+		}
+	}
+
+	private static void ImproveCopyLocations(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, AllocationGroup> groups,
+		IReadOnlyDictionary<int, int> groupForValue,
+		IReadOnlyDictionary<int, HashSet<int>> groupNeighbors,
+		IReadOnlyDictionary<int, HashSet<int>> pairAliases,
+		M68kInterferenceGraph graph,
+		Dictionary<int, M68kAllocatedLocation> allocated)
+	{
+		// Recoloring a group cannot create a spill. Keep the existing save mask
+		// as an upper bound: a new callee-saved register can cost more at entry
+		// and return than the copy it removes.
+		var referencedValues = function.Blocks
+			.SelectMany(static block =>
+				block.Phis.SelectMany(static phi =>
+					phi.Inputs.Values.Append(phi.Definition))
+				.Concat(block.Instructions.SelectMany(static instruction =>
+					instruction.Uses.Concat(instruction.Definitions))))
+			.ToHashSet();
+		var usedCalleeSaved = allocated
+			.Where(location => groups[location.Key].Members.Overlaps(referencedValues))
+			.Select(static location => location.Value)
+			.SelectMany(static location => location.OccupiedRegisters.Enumerate())
+			.Where(static register => register is
+				>= M68kRegister.D2 and <= M68kRegister.D7 or
+				>= M68kRegister.A2 and <= M68kRegister.A6)
+			.ToHashSet();
+		var preferences = groups.Keys.ToDictionary(static id => id,
+			static _ => new List<(int Other, int Weight)>());
+		foreach (var (left, right) in graph.CopyPreferences)
+		{
+			var leftGroup = groupForValue[left];
+			var rightGroup = groupForValue[right];
+			if (leftGroup == rightGroup) continue;
+			var weight = graph.CopyPreferenceWeight(left, right);
+			preferences[leftGroup].Add((rightGroup, weight));
+			preferences[rightGroup].Add((leftGroup, weight));
+		}
+		if (preferences.Values.All(static related => related.Count == 0)) return;
+
+		for (var pass = 0; pass < 4; pass++)
+		{
+			var changed = false;
+			foreach (var group in groups.Values.OrderBy(static group => group.Id))
+			{
+				if (group.PrecoloredRegister is not null || group.IsSpillTemporary)
+					continue;
+				var related = preferences[group.Id];
+				if (related.Count == 0) continue;
+				var current = allocated[group.Id];
+				var currentCost = CopyCost(current);
+				if (currentCost == 0) continue;
+				var forbidden = group.ForbiddenRegisters;
+				foreach (var neighbor in groupNeighbors[group.Id])
+				{
+					forbidden = new M68kRegisterSet((ushort)(forbidden.Bits |
+						allocated[neighbor].OccupiedRegisters.Bits));
+				}
+				foreach (var candidateRegister in CandidateRegisters(group))
+				{
+					if (candidateRegister == current.Register ||
+						!CandidateIsAvailable(group, candidateRegister, forbidden))
+						continue;
+					var candidate = new M68kAllocatedLocation(candidateRegister,
+						group.IsPair);
+					if (candidate.OccupiedRegisters.Enumerate().Any(register =>
+						(register is >= M68kRegister.D2 and <= M68kRegister.D7 or
+							>= M68kRegister.A2 and <= M68kRegister.A6) &&
+						!usedCalleeSaved.Contains(register)))
+						continue;
+					if (pairAliases[group.Id].Any(alias =>
+						allocated[alias].Register != candidateRegister &&
+						allocated[alias].OccupiedRegisters.Overlaps(candidate.OccupiedRegisters)))
+						continue;
+					var cost = CopyCost(candidate);
+					if (cost >= currentCost) continue;
+					allocated[group.Id] = candidate;
+					currentCost = cost;
+					changed = true;
+				}
+
+				long CopyCost(M68kAllocatedLocation location)
+				{
+					var cost = 0L;
+					foreach (var (otherId, weight) in related)
+					{
+						var other = allocated[otherId];
+						if (location != other) cost += weight;
+					}
+					return cost;
+				}
+			}
+			if (!changed) break;
 		}
 	}
 
@@ -1360,6 +1572,7 @@ internal static class M68kGraphColoringAllocator
 		M68kMachineFunction function,
 		M68kInterferenceGraph graph)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.coalescing");
 		var groups = new Dictionary<int, AllocationGroup>();
 		var groupForValue = new Dictionary<int, int>();
 		foreach (var value in function.Values.Values)
@@ -1404,10 +1617,16 @@ internal static class M68kGraphColoringAllocator
 			groupForValue.Add(value.Id, group.Id);
 		}
 
+		// Scratch membership only: recompute after every merge, since group
+		// ownership and allowed registers may have changed. No set escapes this run.
+		var neighborGroups = new HashSet<int>();
+		var degreeNeighbors = new HashSet<int>();
 		foreach (var (left, right) in graph.CopyPreferences
 			.OrderByDescending(pair =>
 				function.Values[pair.Left].AllowedRegisters == M68kRegisterSet.Address ||
 				function.Values[pair.Right].AllowedRegisters == M68kRegisterSet.Address)
+			.ThenByDescending(pair => function.OptimizeRegisterCopies
+				? graph.CopyPreferenceWeight(pair.Left, pair.Right) : 0)
 			.ThenBy(static pair => pair.Left)
 			.ThenBy(static pair => pair.Right))
 		{
@@ -1425,7 +1644,9 @@ internal static class M68kGraphColoringAllocator
 					groups,
 					groupForValue,
 					leftGroup,
-					rightGroup))
+					rightGroup,
+					neighborGroups,
+					degreeNeighbors))
 			{
 				continue;
 			}
@@ -1469,8 +1690,11 @@ internal static class M68kGraphColoringAllocator
 		IReadOnlyDictionary<int, AllocationGroup> groups,
 		IReadOnlyDictionary<int, int> groupForValue,
 		AllocationGroup left,
-		AllocationGroup right)
+		AllocationGroup right,
+		HashSet<int> neighborGroups,
+		HashSet<int> degreeNeighbors)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.coalescing-candidate");
 		if (left.Width != right.Width ||
 			(left.PrecoloredRegister is { } leftRegister &&
 			 right.PrecoloredRegister is { } rightRegister &&
@@ -1494,7 +1718,7 @@ internal static class M68kGraphColoringAllocator
 		}
 		foreach (var leftMember in left.Members)
 		{
-			if (right.Members.Any(graph.Neighbors(leftMember).Contains))
+			if (graph.Neighbors(leftMember).Overlaps(right.Members))
 			{
 				return false;
 			}
@@ -1503,38 +1727,65 @@ internal static class M68kGraphColoringAllocator
 		// An constraints unconditionally can restrict them to the few address
 		// registers surviving calls. Use the conservative test below in that
 		// opt-in policy; preserve the legacy address shortcut otherwise.
+		neighborGroups.Clear();
+		AddNeighborGroups(left);
+		AddNeighborGroups(right);
+		neighborGroups.Remove(left.Id);
+		neighborGroups.Remove(right.Id);
+		if (fixedRegister is { } fixedColor)
+		{
+			var occupied = left.IsPair
+				? M68kRegisterSet.From(fixedColor, fixedColor + 1)
+				: M68kRegisterSet.From(fixedColor);
+			foreach (var id in neighborGroups)
+			{
+				if (groups[id].PrecoloredRegister is { } neighborColor &&
+					occupied.Overlaps(groups[id].IsPair
+						? M68kRegisterSet.From(neighborColor, neighborColor + 1)
+						: M68kRegisterSet.From(neighborColor)))
+				{
+					return false;
+				}
+			}
+		}
 		if (!function.SimplifyLoopPhis &&
 			(left.AllowedRegisters == M68kRegisterSet.Address ||
 			right.AllowedRegisters == M68kRegisterSet.Address))
 		{
-			// Address constraints are short-lived machine requirements, not
-			// independent values. Coalescing them with an already-addressable
-			// source removes the otherwise unavoidable An-to-A0 base copy.
+			// Account for colors acquired by neighboring groups through earlier
+			// coalescing before merging an address copy into a fixed ABI register.
 			return true;
 		}
-
-		var neighborGroups = left.Members
-			.Concat(right.Members)
-			.SelectMany(graph.Neighbors)
-			.Select(value => groupForValue[value])
-			.Where(group => group != left.Id && group != right.Id)
-			.Distinct()
-			.ToArray();
-		var highDegree = neighborGroups.Count(groupId =>
+		var highDegree = 0;
+		foreach (var groupId in neighborGroups)
 		{
 			var neighbor = groups[groupId];
 			if (!allowed.Overlaps(neighbor.AllowedRegisters))
 			{
-				return false;
+				continue;
 			}
-			var degree = neighbor.Members
-				.SelectMany(graph.Neighbors)
-				.Select(value => groupForValue[value])
-				.Distinct()
-				.Count();
-			return degree >= allowed.Count;
-		});
+			degreeNeighbors.Clear();
+			foreach (var member in neighbor.Members)
+			{
+				foreach (var value in graph.Neighbors(member))
+				{
+					degreeNeighbors.Add(groupForValue[value]);
+				}
+			}
+			if (degreeNeighbors.Count >= allowed.Count) highDegree++;
+		}
 		return highDegree < allowed.Count;
+
+		void AddNeighborGroups(AllocationGroup group)
+		{
+			foreach (var member in group.Members)
+			{
+				foreach (var value in graph.Neighbors(member))
+				{
+					neighborGroups.Add(groupForValue[value]);
+				}
+			}
+		}
 	}
 
 	public static void VerifyAllocation(
@@ -1543,6 +1794,7 @@ internal static class M68kGraphColoringAllocator
 		M68kAllocationResult allocation,
 		M68kInstructionLiveness? instructionLiveness = null)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("allocation.verification");
 		foreach (var (valueId, location) in allocation.Registers)
 		{
 			var value = function.Values[valueId];
@@ -1593,6 +1845,15 @@ internal static class M68kGraphColoringAllocator
 						$"v{valueId} sites={leftSites}; v{neighbor} sites={rightSites}.");
 				}
 			}
+		}
+
+		foreach (var (left, right) in graph.WholePairOverlaps)
+		{
+			if (allocation.Registers.TryGetValue(left, out var leftLocation) &&
+				allocation.Registers.TryGetValue(right, out var rightLocation) &&
+				leftLocation.Register != rightLocation.Register &&
+				leftLocation.OccupiedRegisters.Overlaps(rightLocation.OccupiedRegisters))
+				throw new InvalidOperationException($"{function.DisplayName}: pair result v{left} partially overlaps operand v{right}.");
 		}
 
 		VerifySimultaneouslyLiveLocations(
@@ -1695,7 +1956,7 @@ internal static class M68kGraphColoringAllocator
 				{
 					var right = allocated[rightIndex];
 					var rightLocation = allocation.Registers[right];
-					if (Find(left) == Find(right) ||
+					if ((Find(left) == Find(right) && leftLocation == rightLocation) ||
 						!leftLocation.OccupiedRegisters.Overlaps(
 							rightLocation.OccupiedRegisters))
 					{

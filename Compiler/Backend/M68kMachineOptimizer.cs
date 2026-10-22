@@ -63,6 +63,7 @@ internal static class M68kMachineOptimizer
 		M68kCpuTarget cpu)
 	{
 		ArgumentNullException.ThrowIfNull(function);
+		using var profile = M68kOptimizationProfiler.Measure("machine.optimizer");
 		_ = cpu;
 		M68kMachineIrVerifier.Verify(function);
 		var statistics = new MutableStatistics();
@@ -73,7 +74,8 @@ internal static class M68kMachineOptimizer
 			rounds++;
 			changed = SeedExplicitConstants(function);
 			changed |= CanonicalizeScalarZeroComparisons(function);
-			if (function.Blocks.All(static block => block.LoopDepth == 0))
+			if (function.OptimizeRegisterCopies ||
+				function.Blocks.All(static block => block.LoopDepth == 0))
 			{
 				changed |= SimplifyCopiesAndPhis(function, statistics);
 			}

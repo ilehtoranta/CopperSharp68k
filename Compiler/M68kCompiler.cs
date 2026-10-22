@@ -33,13 +33,13 @@ public static class M68kCompiler
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
 			GetManagedAssemblyPaths(request),
-			implementationPack);
+			implementationPack, request.FloatingPoint);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
-				? ResolveManagedPoolRuntime(module)
+				? ResolveManagedPoolRuntime(module, request)
 				: null;
 
 		var (analysis, _) = AnalyzeFrameworkAndLifecycles(
@@ -55,6 +55,19 @@ public static class M68kCompiler
 	/// <summary>Compiles and links one assembly.</summary>
 	public static M68kCompilationResult Compile(M68kCompilationRequest request)
 	{
+		try { return CompileCore(request); }
+		catch (M68kNarrowDataOverflowException) when (request.CodeSizeOptimizations is { } options &&
+			(options.NarrowApplicationExceptionSites || options.CompactApplicationGcSites))
+		{
+			// Retry from fresh compiler state. Only the speculative table width is
+			// disabled; preserve every other requested policy and runtime option.
+			return CompileCore(request with { CodeSizeOptimizations = request.CodeSizeOptimizations with {
+				NarrowApplicationExceptionSites = false, CompactApplicationGcSites = false } });
+		}
+	}
+
+	private static M68kCompilationResult CompileCore(M68kCompilationRequest request)
+	{
 		ArgumentNullException.ThrowIfNull(request);
 		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
 		ValidateRuntimeOptions(request);
@@ -67,13 +80,13 @@ public static class M68kCompiler
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
 			managedAssemblyPaths,
-			implementationPack);
+			implementationPack, request.FloatingPoint);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
 		var managedPoolRuntime = GetEffectiveMemoryManagement(request) ==
 				M68kMemoryManagement.ManagedPoolMarkSweepGc
-				? ResolveManagedPoolRuntime(module)
+				? ResolveManagedPoolRuntime(module, request)
 				: null;
 		var (frameworkAnalysis, managedLifecycles) = AnalyzeFrameworkAndLifecycles(
 			module,
@@ -273,7 +286,14 @@ public static class M68kCompiler
 		return managedAssemblyPaths;
 	}
 
-	private static ManagedPoolRuntimeModule ResolveManagedPoolRuntime(CompilationModule module)
+	internal static bool UsesCompactApplicationGcSites(M68kCompilationRequest request) =>
+		request.CodeSizeOptimizations?.CompactApplicationGcSites == true &&
+		request.RuntimeProfile == M68kRuntimeProfile.Application &&
+		request.OutputFormat == M68kOutputFormat.Hunk && request.Cpu == M68kCpuTarget.M68000 &&
+		GetEffectiveMemoryManagement(request) == M68kMemoryManagement.ManagedPoolMarkSweepGc &&
+		!request.Imports.ContainsKey(M68kRuntimeImports.GcCollect);
+
+	private static ManagedPoolRuntimeModule ResolveManagedPoolRuntime(CompilationModule module, M68kCompilationRequest request)
 	{
 		const string assembly = "CopperSharp.Runtime.Managed";
 		const string type = "CopperSharp.Runtime.ManagedPool";
@@ -281,6 +301,8 @@ public static class M68kCompiler
 			module.ResolveManagedMethod(assembly, $"{type}::{name}");
 		CilField Field(string name) =>
 			module.ResolveManagedField(assembly, type, name);
+		CilMethod RootMethod(string name) =>
+			Method(UsesCompactApplicationGcSites(request) ? name + "Compact" : name);
 
 		return new ManagedPoolRuntimeModule(
 			Method("Initialize"),
@@ -289,16 +311,16 @@ public static class M68kCompiler
 			Method("Allocate"),
 			Method("Dispose"),
 			Method("Mark"),
-			Method("MarkRoots"),
-			Method("MarkRootsExtended"),
-			Method("CollectWithRoots"),
-			Method("CollectWithRootsExtended"),
+			RootMethod("MarkRoots"),
+			RootMethod("MarkRootsExtended"),
+			RootMethod("CollectWithRoots"),
+			RootMethod("CollectWithRootsExtended"),
 			Method("Collect"),
 			Method("RegisterFinalizer"),
 			Method("SuppressFinalizer"),
 			Method("ReRegisterFinalizer"),
-			Method("CollectFinalizableWithRoots"),
-			Method("CollectFinalizableWithRootsExtended"),
+			RootMethod("CollectFinalizableWithRoots"),
+			RootMethod("CollectFinalizableWithRootsExtended"),
 			Method("CollectFinalizable"),
 			Method("DrainFinalizers"),
 			Method("PrepareShutdownFinalizers"),
@@ -853,7 +875,14 @@ public static class M68kCompiler
 		map.AppendLine($"RESIDENT-CONTEXT bytes={program.ResidentContextBytes} placement=" +
 			(program.ResidentContextBytes == 0 ? "none" : program.ResidentContextOnHeap ? "heap" : "stack"));
 		map.AppendLine($"CODE-SIZE mode={(request.CodeSizeOptimizations is not null ? "general" : request.RomSizeOptimizations is not null ? "rom" : "off")}");
-		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
+		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedTransportRegistersOnly
+			? string.Join(',', new[] {
+				request.CodeSizeOptimizations?.RemoveApplicationRegisterMoves == true ? nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves) : null,
+				request.CodeSizeOptimizations?.RemoveApplicationDeadArithmetic == true ? nameof(M68kCodeSizeOptions.RemoveApplicationDeadArithmetic) : null,
+				request.CodeSizeOptimizations?.TrackApplicationNarrowValues == true ? nameof(M68kCodeSizeOptions.TrackApplicationNarrowValues) : null,
+				request.CodeSizeOptimizations?.FoldApplicationMemoryOperands == true ? nameof(M68kCodeSizeOptions.FoldApplicationMemoryOperands) : null
+			}.Where(name => name is not null))
+			: program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
 			? string.Join(',', typeof(M68kCodeSizeOptions).GetProperties().Where(p => (bool)p.GetValue(generatedPolicy)!).Select(p => p.Name))
 			: "none"));
 		foreach (var (pass, statistics) in program.Assembler.GeneratedCodeSizeStatistics.OrderBy(p => p.Key, StringComparer.Ordinal))

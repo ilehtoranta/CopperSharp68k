@@ -563,9 +563,37 @@ public sealed record M68kRomSizeOptions
 
 }
 
-/// <summary>Opt-in size policy for eligible MC68000 ROM and resident HUNK images.</summary>
+/// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Reduce loop copies and prefer register assignments that eliminate more static copy sites in eligible MC68000 application methods. Handler, dynamic-frame and collector-visible methods retain their existing allocation.</summary>
+	public bool OptimizeApplicationRegisterCopies { get; init; } = true;
+	/// <summary>Remove dead non-trapping arithmetic in eligible MC68000 application methods using control-flow liveness.</summary>
+	public bool RemoveApplicationDeadArithmetic { get; init; } = true;
+	/// <summary>Track unobserved upper bits across control flow to remove redundant normalization in eligible application methods.</summary>
+	public bool TrackApplicationNarrowValues { get; init; } = true;
+	/// <summary>Fold byte, word and long memory operands into arithmetic in eligible application methods without moving memory accesses.</summary>
+	public bool FoldApplicationMemoryOperands { get; init; } = true;
+	/// <summary>Share compiler-generated fault and handler entries and omit unused exception-state dispatch in MC68000 application HUNKs. Unwind return addresses and register restoration are preserved.</summary>
+	public bool CompactApplicationExceptionRuntime { get; init; } = true;
+	/// <summary>Use private signed 16-bit relative site tables with the built-in collector in MC68000 application HUNKs. Oversized tables fall back to the public format; external collectors always retain that format.</summary>
+	public bool CompactApplicationGcSites { get; init; } = true;
+	/// <summary>Omit application call-site metadata when the complete direct callee graph cannot throw, collect or call opaque native code.</summary>
+	public bool PruneApplicationLeafSites { get; init; } = true;
+	/// <summary>Omit unreferenced application unwind descriptors and their restore routines.</summary>
+	public bool PruneApplicationUnwindMetadata { get; init; } = true;
+	/// <summary>Use signed 16-bit fields in private application exception tables when all final offsets fit. Collector-visible tables retain their ABI.</summary>
+	public bool NarrowApplicationExceptionSites { get; init; } = true;
+	/// <summary>Share application unwind restore routines across frame sizes by reading the existing descriptor at runtime.</summary>
+	public bool ShareApplicationUnwindRestores { get; init; } = true;
+	/// <summary>Remove redundant register-only moves in MC68000 application methods without handlers or dynamic frames. When a collector can run, methods with GC references or managed byrefs are excluded.</summary>
+	public bool RemoveApplicationRegisterMoves { get; init; } = true;
+	/// <summary>Use short PC-relative address loads in MC68000 application HUNKs when the target remains in the initialized hunk and is in range.</summary>
+	public bool CompactApplicationAddresses { get; init; } = true;
+	/// <summary>Share identical private unwind descriptors, restore routines and GC root maps in MC68000 application HUNKs without changing their runtime format.</summary>
+	public bool ShareApplicationRuntimeMetadata { get; init; } = true;
+	/// <summary>Use relative pointers and omit unused root-map and all-null state columns in private exception tables in MC68000 application HUNKs without a built-in or external GC reader.</summary>
+	public bool CompactApplicationExceptionSites { get; init; } = true;
 	/// <summary>Compatibility switch retained for existing clients. Literal provenance is now always validated; literal-only merges are supported.</summary>
 	public bool ValidateLiteralOperands { get; init; }
 	/// <summary>Remove proven redundant register and private stack transport.</summary>
@@ -718,7 +746,7 @@ public sealed record M68kCompilationRequest
 		M68kPeepholeOptimizationMode.FixedPoint;
 
 	/// <summary>
-	/// Explicit ROM code-size policy. Null preserves the default lowering.
+	/// Explicit code-size policy. Null preserves the default lowering.
 	/// Measure execution and stack budgets before enabling shared return paths.
 	/// </summary>
 	public M68kRomSizeOptions? RomSizeOptimizations { get; init; }

@@ -8,8 +8,10 @@ internal sealed partial class M68kPeepholeOptimizer
 {
 	private bool TryRemoveGeneratedTransport(M68kInstructionDataflow dataflow)
 	{
-		if (TryCompactPrivateStackCopies(dataflow)) return true;
+		if (!_assembler.GeneratedTransportRegistersOnly && TryCompactPrivateStackCopies(dataflow)) return true;
 		if (_assembler.GeneratedCodeSizeOptions?.RemoveRedundantTransport != true) return false;
+		if (_assembler.GeneratedTransportRegistersOnly && TryRemoveApplicationDeadRegisterMoves(dataflow)) return true;
+		if (TryForwardGeneratedRegisterCopies(dataflow) || TryRemoveGeneratedZeroOperandTransport(dataflow)) return true;
 		var instructions = dataflow.Instructions;
 		for (var i = 0; i < instructions.Count; i++)
 		{
@@ -22,12 +24,12 @@ internal sealed partial class M68kPeepholeOptimizer
 			var selfStack = move.Length == 6 && family is 0x1000 or 0x2000 or 0x3000 &&
 				(move.Opcode & 0x1FF) == 0x16F && (move.Opcode >> 9 & 7) == 7 &&
 				_buffer.ReadWord(move.Offset + 2) == _buffer.ReadWord(move.Offset + 4);
-			if (selfStack && dataflow.TryGetFacts(move.Offset, out var selfFacts))
+			if (!_assembler.GeneratedTransportRegistersOnly && selfStack && dataflow.TryGetFacts(move.Offset, out var selfFacts))
 			{
 				if ((selfFacts.Effects.WritesConditions & selfFacts.LiveConditionsAfter) == 0)
 				{
 					_buffer.RemoveBytes(move.Offset, move.Length);
-					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), move.Length);
+					RecordGeneratedTransportRewrite(move.Length);
 				}
 				else
 				{
@@ -36,7 +38,7 @@ internal sealed partial class M68kPeepholeOptimizer
 					var size = family == 0x1000 ? 0 : family == 0x3000 ? 0x40 : 0x80;
 					_buffer.WriteWord(move.Offset, (ushort)(0x4A2F | size));
 					_buffer.RemoveBytes(move.Offset + 4, 2);
-					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), 2);
+					RecordGeneratedTransportRewrite(2);
 				}
 				return true;
 			}
@@ -58,10 +60,11 @@ internal sealed partial class M68kPeepholeOptimizer
 					nextFacts.Effects.ReadsConditions == 0)
 				{
 					_buffer.RemoveBytes(move.Offset, move.Length);
-					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), move.Length);
+					RecordGeneratedTransportRewrite(move.Length);
 					return true;
 				}
 			}
+			if (_assembler.GeneratedTransportRegistersOnly) continue;
 			// MOVE.[L/W/B] private-SP-slot,Rn; MOVE same Rn,same slot.
 			// The first MOVE already established identical NZVC; MOVEA does not,
 			// so require dead flags for its writeback. No alternative store entry.
@@ -78,11 +81,50 @@ internal sealed partial class M68kPeepholeOptimizer
 				(move.Opcode >> 6 & 7) == 1 && (storeFacts.Effects.WritesConditions & storeFacts.LiveConditionsAfter) != 0)
 				continue;
 			_buffer.RemoveBytes(next.Offset, next.Length);
-			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), next.Length);
+			RecordGeneratedTransportRewrite(next.Length);
 			return true;
 		}
 		return false;
 	}
+
+	private bool TryRemoveApplicationDeadRegisterMoves(M68kInstructionDataflow dataflow)
+	{
+		// The general dead-instruction pass rejects any method with a branch or
+		// call. Here the application method gate excludes EH/GC-sensitive frames,
+		// and we only delete decoded, register-only MOVE/MOVEA/MOVEQ instructions.
+		// All normal CFG successors, ABI registers and condition codes stay live.
+		foreach (var move in dataflow.Instructions)
+		{
+			var family = move.Opcode & 0xF000;
+			var registerMove = family is 0x1000 or 0x2000 or 0x3000 &&
+				(move.Opcode >> 3 & 7) <= 1 && (move.Opcode >> 6 & 7) <= 1;
+			var moveQuick = (move.Opcode & 0xF100) == 0x7000;
+			if (!move.IsDecoded || move.Length != 2 || (!registerMove && !moveQuick) ||
+				move.Kind != M68kInstructionKind.Normal ||
+				!GeneratedSizeEligible(move.Offset, move.Offset + move.Length) ||
+				HasInternalLabel(move) || IsReferencedLabelAt(move.Offset) ||
+				_assembler.HasReturnAddressInRange(move.Offset, move.Offset + move.Length) ||
+				!CanFoldAcrossUnreferencedIlLabels(move.Offset, move.Offset + move.Length, allowUnreferencedMarkers: true) ||
+				_assembler.TryGetInstructionEffects(move.Offset, out _) ||
+				!dataflow.TryGetFacts(move.Offset, out var facts)) continue;
+			var effects = facts.Effects;
+			if (!effects.CanRemoveWhenOutputsDead || effects.IsBarrier ||
+				(effects.DefinesData & facts.LiveDataAfter) != 0 ||
+				(effects.DefinesAddress & facts.LiveAddressAfter) != 0 ||
+				(effects.WritesConditions & facts.LiveConditionsAfter) != 0 ||
+				effects.ReadsMemory != M68kMemorySet.None || effects.WritesMemory != M68kMemorySet.None ||
+				effects.StackDelta != 0 || (effects.DefinesAddress & 0x80) != 0) continue;
+			_buffer.RemoveBytes(move.Offset, move.Length);
+			RecordGeneratedTransportRewrite(move.Length);
+			return true;
+		}
+		return false;
+	}
+
+	private void RecordGeneratedTransportRewrite(int bytes) => _assembler.RecordCodeSizeRewrite(
+		_assembler.GeneratedTransportRegistersOnly ? nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves) :
+		nameof(M68kCodeSizeOptions.RemoveRedundantTransport), bytes);
+
 	private bool TryCompactPrivateStackCopies(M68kInstructionDataflow dataflow)
 	{
 		if (_assembler.GeneratedCodeSizeOptions?.CompactPrivateStackCopies != true) return false;

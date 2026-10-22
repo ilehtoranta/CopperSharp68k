@@ -143,6 +143,7 @@ internal sealed partial class M68kTerminalEpilogueMerger
 		int[] anchorOffsets, int[] effectOffsets)
 	{
 		if (_assembler.HasRequestedAlignmentInRange(candidate.Start, candidate.End) ||
+			_assembler.HasReturnAddressInRange(candidate.Start, candidate.End) ||
 			ContainsOffset(anchorOffsets, candidate.Start + 1, candidate.End) ||
 			ContainsOffset(effectOffsets, candidate.Start, candidate.End) ||
 			candidate.InvertingBranchOffset is { } branch && _buffer.InstructionEffectOverrides.ContainsKey(branch))

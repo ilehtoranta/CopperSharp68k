@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
+using CopperSharp.Compiler.Framework;
 using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Backend;
@@ -28,7 +29,7 @@ internal sealed partial class M68kCodeGenerator
 		_unwindSites.Any(static site => site.ExceptionCleanupLabel is not null);
 
 	private int UnwindSiteEntryBytes =>
-		UsesExtendedUnwindMetadata ? 24 : 20;
+		UnwindCleanupOffset + (UsesExtendedUnwindMetadata ? UnwindSiteFieldBytes : 0);
 
 	private sealed record UnwindMethodLayout(
 		CilMethod Method,
@@ -266,7 +267,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var label = UniqueLabel("unwind_site");
-		_assembler.Mark(label);
+		_assembler.MarkReturnAddress(label);
 		var state = exception
 			? RegisterExceptionState(
 				method,
@@ -621,7 +622,7 @@ internal sealed partial class M68kCodeGenerator
 		// Retain the exception runtime so that table is materialized.
 		_usesExceptionRuntime = true;
 		var token = MetadataTokens.GetToken(method.Handle);
-		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{string.Join(",", groups.Select(static group => group.Id))}";
+		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}{ConstructionLabelSuffix(method.Construction)}:{string.Join(",", groups.Select(static group => group.Id))}";
 		if (!_exceptionStates.TryGetValue(key, out var state))
 		{
 			state = new ExceptionState(
@@ -654,7 +655,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		var token = MetadataTokens.GetToken(method.Handle);
-		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}:{leaveOffset:X4}:{targetOffset:X4}";
+		var key = $"{ModuleLabelPrefix(method.ModuleName)}{token:X8}{ConstructionLabelSuffix(method.Construction)}:{leaveOffset:X4}:{targetOffset:X4}";
 		if (!_normalLeaveChains.TryGetValue(key, out var chain))
 		{
 			chain = new NormalLeaveChain(key, method, targetOffset, finallyRegions);
@@ -713,7 +714,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		var reasonMappings = ExceptionReasonMappings
 			.Where(mapping =>
-				mapping.Reason != 5 && _exceptionRaiseReasons.Contains(mapping.Reason))
+				mapping.Reason != 5 && _genericExceptionRaiseReasons.Contains(mapping.Reason))
 			.ToArray();
 		var faultLabels = reasonMappings
 			.Select(static mapping => mapping.TypeName)
@@ -724,42 +725,67 @@ internal sealed partial class M68kCodeGenerator
 				StringComparer.Ordinal);
 		var haveException = UniqueLabel("eh_have_exception");
 		var systemFault = UniqueLabel("eh_system_fault");
+		var hasStateActions = !UsesApplicationSizeOptimizations ||
+			!_request.CodeSizeOptimizations!.CompactApplicationExceptionRuntime ||
+			_exceptionStates.Count != 0 || _unwindSites.Any(site => site.ExceptionStateLabel is not null) ||
+			_assembler.ReferencesTarget(RuntimeExceptionResumeLabel);
 
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeExceptionRaiseLabel);
-		EmitMoveRegister(M68kRegister.A0, M68kRegister.D1);
-		_assembler.EmitWord(0x4A81); // TST.L D1
-		_assembler.EmitBranch(M68kCondition.NotEqual, haveException);
-		foreach (var mapping in reasonMappings)
+		// These are private fault entries, not managed frames. Never add another
+		// return address or discard the caller's site before cursor creation.
+		foreach (var reason in _applicationExceptionFaultReasons.Order())
 		{
-			EmitCompareImmediateLong(M68kRegister.D0, mapping.Reason);
-			_assembler.EmitBranch(M68kCondition.Equal, faultLabels[mapping.TypeName]);
-		}
-		if (reasonMappings.Length != 0)
-		{
-			_assembler.EmitBranch(M68kCondition.True, systemFault);
-		}
-		foreach (var (typeName, label) in faultLabels)
-		{
-			_assembler.Mark(label);
+			_assembler.AlignWord();
+			_assembler.Mark(ApplicationExceptionFaultLabel(reason));
+			var typeName = ExceptionReasonMappings.FirstOrDefault(mapping =>
+				mapping.Reason == reason && mapping.Reason != 5).TypeName ?? "System.Exception";
 			EmitRuntimeObjectAddress(M68kRegister.A0, typeName);
 			_assembler.EmitBranch(M68kCondition.True, haveException);
 		}
-		_assembler.Mark(systemFault);
-		EmitRuntimeObjectAddress(M68kRegister.A0, "System.Exception");
+
+		if (_assembler.ReferencesTarget(RuntimeExceptionRaiseLabel) ||
+			!UsesApplicationSizeOptimizations || !_request.CodeSizeOptimizations!.CompactApplicationExceptionRuntime)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeExceptionRaiseLabel);
+			EmitMoveRegister(M68kRegister.A0, M68kRegister.D1);
+			_assembler.EmitWord(0x4A81); // TST.L D1
+			_assembler.EmitBranch(M68kCondition.NotEqual, haveException);
+			foreach (var mapping in reasonMappings)
+			{
+				EmitCompareImmediateLong(M68kRegister.D0, mapping.Reason);
+				_assembler.EmitBranch(M68kCondition.Equal, faultLabels[mapping.TypeName]);
+			}
+			if (reasonMappings.Length != 0)
+			{
+				_assembler.EmitBranch(M68kCondition.True, systemFault);
+			}
+			foreach (var (typeName, label) in faultLabels)
+			{
+				_assembler.Mark(label);
+				EmitRuntimeObjectAddress(M68kRegister.A0, typeName);
+				_assembler.EmitBranch(M68kCondition.True, haveException);
+			}
+			_assembler.Mark(systemFault);
+			EmitRuntimeObjectAddress(M68kRegister.A0, "System.Exception");
+
+		}
 
 		_assembler.Mark(haveException);
 		EmitCreateExceptionCursor(fromResumeAddress: true);
 		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionDispatchLabel);
 
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeExceptionResumeLabel);
-		EmitCreateExceptionCursor(fromResumeAddress: false);
-		EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextStateOffset);
-		_assembler.EmitWord(0x4A80); // TST.L D0
-		_assembler.EmitBranch(M68kCondition.Equal, RuntimeExceptionUnwindFrameLabel);
-		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
-		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionJumpStateLabel);
+		if (hasStateActions)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeExceptionResumeLabel);
+			EmitCreateExceptionCursor(fromResumeAddress: false);
+			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextStateOffset);
+			_assembler.EmitWord(0x4A80); // TST.L D0
+			_assembler.EmitBranch(M68kCondition.Equal, RuntimeExceptionUnwindFrameLabel);
+			EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
+			_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionJumpStateLabel);
+
+		}
 
 		_assembler.Mark(RuntimeExceptionDispatchLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextCursorOffset);
@@ -768,17 +794,19 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.Equal, RuntimeExceptionUnhandledLabel);
 		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextSiteOffset);
-		_assembler.EmitWord(0x2069); // MOVEA.L 4(A1),A0 descriptor
-		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0x3069 : (ushort)0x2069); // MOVEA.W/L descriptor,A0
+		_assembler.EmitWord(checked((ushort)UnwindSiteFieldBytes));
+		if (_compactApplicationExceptionSites) _assembler.EmitWord(0xD1C9); // ADDA.L A1,A0
 		EmitStoreExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
-		if (UnwindSiteEntryBytes > 20)
+		if (UsesExtendedUnwindMetadata)
 		{
 			var noCleanup = UniqueLabel("exception-no-cleanup");
-			_assembler.EmitWord(0x2069); // MOVEA.L 20(A1),A0 cleanup thunk
-			_assembler.EmitWord(0x0014);
+			_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0x3069 : (ushort)0x2069); // MOVEA.W/L cleanup,A0
+			_assembler.EmitWord(checked((ushort)UnwindCleanupOffset));
 			EmitMoveRegister(M68kRegister.A0, M68kRegister.D0);
 			_assembler.EmitWord(0x4A80); // TST.L D0
 			_assembler.EmitBranch(M68kCondition.Equal, noCleanup);
+			if (_compactApplicationExceptionSites) _assembler.EmitWord(0xD1C9); // ADDA.L A1,A0
 			_assembler.EmitWord(0x4E90); // JSR (A0)
 			_assembler.Mark(noCleanup);
 		}
@@ -798,23 +826,44 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitBranch(M68kCondition.True, haveFrameBase);
 			_assembler.Mark(staticFrameBase);
 			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
-			_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
-			_assembler.EmitWord(0x000C);
+			EmitAddUnwindStackAdjustment();
 			_assembler.Mark(haveFrameBase);
 		}
 		else
 		{
 			EmitLoadExceptionContextRegister(M68kRegister.D0, ExceptionContextCursorOffset);
-			_assembler.EmitWord(0xD0A9); // ADD.L 12(A1),D0 stack adjustment
-			_assembler.EmitWord(0x000C);
+			EmitAddUnwindStackAdjustment();
 		}
 		EmitStoreExceptionContextRegister(M68kRegister.D0, ExceptionContextFrameBaseOffset);
-		_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
-		_assembler.EmitWord(0x0008);
-		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
-		EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
-		_assembler.EmitWord(0x4A80); // TST.L D0
-		_assembler.EmitBranch(M68kCondition.NotEqual, RuntimeExceptionJumpStateLabel);
+		if (hasStateActions)
+		{
+			if (_omitApplicationUnwindState)
+			{
+				_assembler.EmitWord(0x327C); // MOVEA.W #0,A1: every site's state is null
+				_assembler.EmitWord(0);
+			}
+			else if (_compactApplicationExceptionSites)
+			{
+				var nullState = UniqueLabel("exception-null-relative-state");
+				_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0x3029 : (ushort)0x2029); // MOVE.W/L relative state,D0
+				_assembler.EmitWord(checked((ushort)(2 * UnwindSiteFieldBytes)));
+				if (_narrowApplicationExceptionSites) _assembler.EmitWord(0x48C0); // EXT.L D0; zero remains null
+				_assembler.EmitBranch(M68kCondition.Equal, nullState);
+				_assembler.EmitWord(0xD089); // ADD.L A1,D0
+				_assembler.Mark(nullState);
+				_assembler.EmitWord(0x2240); // MOVEA.L D0,A1
+			}
+			else
+			{
+				_assembler.EmitWord(0x2269); // MOVEA.L 8(A1),A1 state
+				_assembler.EmitWord(0x0008);
+			}
+			EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextStateOffset);
+			EmitMoveRegister(M68kRegister.A1, M68kRegister.D0);
+			_assembler.EmitWord(0x4A80); // TST.L D0
+			_assembler.EmitBranch(M68kCondition.NotEqual, RuntimeExceptionJumpStateLabel);
+
+		}
 
 		_assembler.Mark(RuntimeExceptionUnwindFrameLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
@@ -834,8 +883,11 @@ internal sealed partial class M68kCodeGenerator
 		EmitStoreExceptionContextRegister(M68kRegister.A1, ExceptionContextCursorOffset);
 		_assembler.EmitBranch(M68kCondition.True, RuntimeExceptionDispatchLabel);
 
-		_assembler.Mark(RuntimeExceptionJumpStateLabel);
-		_assembler.EmitWord(0x4ED1); // JMP (A1)
+		if (hasStateActions)
+		{
+			_assembler.Mark(RuntimeExceptionJumpStateLabel);
+			_assembler.EmitWord(0x4ED1); // JMP (A1)
+		}
 
 		EmitFindUnwindSiteRuntime();
 
@@ -860,6 +912,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 		_assembler.EmitWord(0x4AFC); // ILLEGAL
 	}
+
+	private readonly HashSet<int> _applicationExceptionFaultReasons = new();
+	private readonly HashSet<int> _genericExceptionRaiseReasons = new();
+	private static string ApplicationExceptionFaultLabel(int reason) => $"__c68k_exception_fault_{reason}";
 
 	private void EmitCreateExceptionCursor(bool fromResumeAddress)
 	{
@@ -901,11 +957,24 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeFindUnwindSiteLabel);
 		EmitAddressImmediateToRegister(M68kRegister.A1, MethodTableLabel);
+		if (_compactApplicationExceptionSites)
+		{
+			_assembler.EmitWord(0x2009); // MOVE.L A1,D0 table base
+			_assembler.EmitWord(0x9280); // SUB.L D0,D1 resume PC relative to table
+		}
+		if (_narrowApplicationExceptionSites)
+		{
+			// Do not let an unrelated PC with identical low bits match a narrow key.
+			_assembler.EmitWord(0x3001); // MOVE.W D1,D0
+			_assembler.EmitWord(0x48C0); // EXT.L D0
+			_assembler.EmitWord(0xB280); // CMP.L D0,D1
+			_assembler.EmitBranch(M68kCondition.NotEqual, missing);
+		}
 		_assembler.EmitWord(0x2019); // MOVE.L (A1)+,D0 count
 		_assembler.Mark(loop);
 		_assembler.EmitWord(0x4A80); // TST.L D0
 		_assembler.EmitBranch(M68kCondition.Equal, missing);
-		_assembler.EmitWord(0xB291); // CMP.L (A1),D1
+		_assembler.EmitWord(_narrowApplicationExceptionSites ? (ushort)0xB251 : (ushort)0xB291); // CMP.W/L (A1),D1
 		_assembler.EmitBranch(M68kCondition.Equal, found);
 		_assembler.EmitWord(0x43E9); // LEA next-entry(A1),A1
 		_assembler.EmitWord(checked((ushort)UnwindSiteEntryBytes));
@@ -917,6 +986,21 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(missing);
 		_assembler.EmitWord(0x7000); // MOVEQ #0,D0
 		_assembler.EmitWord(0x4E75); // RTS
+	}
+
+	private void EmitAddUnwindStackAdjustment()
+	{
+		if (_narrowApplicationExceptionSites)
+		{
+			_assembler.EmitWord(0x3069); // MOVEA.W adjustment(A1),A0, sign extended
+			_assembler.EmitWord(checked((ushort)UnwindStackAdjustmentOffset));
+			_assembler.EmitWord(0xD088); // ADD.L A0,D0
+		}
+		else
+		{
+			_assembler.EmitWord(0xD0A9); // ADD.L adjustment(A1),D0
+			_assembler.EmitWord(checked((ushort)UnwindStackAdjustmentOffset));
+		}
 	}
 
 	private void EmitStoreExceptionContextRegister(M68kRegister register, short displacement)
@@ -1196,6 +1280,14 @@ internal sealed partial class M68kCodeGenerator
 	{
 		var restoreAndJump = UniqueLabel("eh_restore_and_jump");
 		var usesRestoreAndJump = false;
+		var shareActions = UsesApplicationSizeOptimizations &&
+			_request.CodeSizeOptimizations!.CompactApplicationExceptionRuntime;
+		var sharedFinally = shareActions && _exceptionStates.Values.Count(state =>
+			state.Groups[0].Regions.Any(entry => entry.Region.IsFinally)) >= 2
+			? UniqueLabel("eh_enter_finally") : null;
+		var sharedCatch = shareActions && _exceptionStates.Values.Sum(state =>
+			state.Groups[0].Regions.Count(entry => entry.Region.IsCatch)) >= 2
+			? UniqueLabel("eh_enter_catch") : null;
 		// Registering a state's suffix can introduce a parent state which also
 		// needs a concrete action table.  Drain the growing set rather than
 		// iterating a one-time snapshot, otherwise generated frame-state labels
@@ -1232,6 +1324,16 @@ internal sealed partial class M68kCodeGenerator
 					_assembler.EmitBsr(RuntimeExceptionTypeMatchLabel);
 					_assembler.EmitWord(0x4A80); // TST.L D0
 					_assembler.EmitBranch(M68kCondition.Equal, nextCatch);
+				}
+
+				if (sharedCatch is not null)
+				{
+					EmitAddressImmediateToRegister(M68kRegister.D1,
+						ControlFlowTargetLabel(state.Method, entry.Region.HandlerOffset));
+					_assembler.EmitJmp(sharedCatch, external: false);
+					usesRestoreAndJump = true;
+					if (!entry.Region.CatchType.IsNil) _assembler.Mark(nextCatch);
+					continue;
 				}
 
 				EmitLoadExceptionContextRegister(
@@ -1272,6 +1374,15 @@ internal sealed partial class M68kCodeGenerator
 			if (finallyRegion is not null)
 			{
 				var resume = RegisterExceptionResumeAction(state.Method, suffix);
+				if (sharedFinally is not null)
+				{
+					EmitAddressImmediateToRegister(M68kRegister.D0, resume);
+					EmitAddressImmediateToRegister(M68kRegister.D1,
+						ControlFlowTargetLabel(state.Method, finallyRegion.HandlerOffset));
+					_assembler.EmitJmp(sharedFinally, external: false);
+					usesRestoreAndJump = true;
+					continue;
+				}
 				EmitLoadExceptionContextRegister(
 					M68kRegister.A0,
 					ExceptionContextExceptionOffset);
@@ -1295,6 +1406,35 @@ internal sealed partial class M68kCodeGenerator
 				external: false);
 		}
 
+		if (sharedFinally is not null)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(sharedFinally);
+			EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
+			EmitStoreExceptionFrameContextRegister(M68kRegister.A0, RuntimeFrameActiveExceptionOffset);
+			EmitStoreExceptionFrameContextRegister(M68kRegister.D0, RuntimeFramePendingActionOffset,
+				frameBaseAlreadyLoaded: true);
+			_assembler.EmitWord(0x2E49); // MOVEA.L A1,A7 frame base
+			_assembler.EmitJmp(restoreAndJump, external: false);
+		}
+		if (sharedCatch is not null)
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(sharedCatch);
+			EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
+			EmitStoreExceptionFrameContextRegister(M68kRegister.A0, RuntimeFrameActiveExceptionOffset);
+			if (UseClr)
+				EmitClearExceptionFrameContextSlot(RuntimeFramePendingActionOffset, frameBaseAlreadyLoaded: true);
+			else
+			{
+				_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+				EmitStoreExceptionFrameContextRegister(M68kRegister.D0, RuntimeFramePendingActionOffset,
+					frameBaseAlreadyLoaded: true);
+			}
+			_assembler.EmitWord(0x2E49); // MOVEA.L A1,A7 frame base
+			EmitPushRegister(M68kRegister.A0);
+			_assembler.EmitJmp(restoreAndJump, external: false);
+		}
 		if (usesRestoreAndJump)
 		{
 			_assembler.AlignWord();
@@ -1586,6 +1726,16 @@ internal sealed partial class M68kCodeGenerator
 				.DistinctBy(static layout => layout.Identity));
 		while (pending.TryDequeue(out var layout))
 		{
+			if (_module.GetExperimentalListBase(layout) is { } listBase)
+			{
+				_constructedTypeDescriptors.TryAdd(listBase.ConstructedType!.DisplayName, (listBase.ConstructedType, listBase));
+				if (_usedTypeLayouts.TryAdd(listBase.Identity, listBase)) pending.Enqueue(listBase);
+			}
+			if (_module.GetExperimentalCharacterMemoryManagerBase(layout) is { } memoryBase)
+			{
+				_constructedTypeDescriptors.TryAdd(memoryBase.ConstructedType!.DisplayName, (memoryBase.ConstructedType, memoryBase));
+				if (_usedTypeLayouts.TryAdd(memoryBase.Identity, memoryBase)) pending.Enqueue(memoryBase);
+			}
 			var baseType = _module.GetBaseType(layout);
 			if (baseType.IsNil)
 			{
@@ -1603,12 +1753,27 @@ internal sealed partial class M68kCodeGenerator
 			else if (baseType.Kind == HandleKind.TypeReference)
 			{
 				RegisterRuntimeTypeDescriptor(_module.GetTypeDisplayName(baseType, layout));
+				if (_module.GetExperimentalCultureBase(layout) is { } cultureBase &&
+					_usedTypeLayouts.TryAdd(cultureBase.Identity, cultureBase))
+				{
+					pending.Enqueue(cultureBase);
+				}
 			}
 		}
 	}
 
 	private void EmitTypeDescriptorBase(CilTypeLayout layout)
 	{
+		if (_module.GetExperimentalListBase(layout) is { } listBase)
+		{
+			_assembler.EmitAddress(ConstructedTypeDescriptorLabel(listBase, listBase.ConstructedType!));
+			return;
+		}
+		if (_module.GetExperimentalCharacterMemoryManagerBase(layout) is { } memoryBase)
+		{
+			_assembler.EmitAddress(ConstructedTypeDescriptorLabel(memoryBase, memoryBase.ConstructedType!));
+			return;
+		}
 		var baseType = _module.GetBaseType(layout);
 		if (baseType.IsNil)
 		{
@@ -1634,6 +1799,9 @@ internal sealed partial class M68kCodeGenerator
 	{
 		foreach (var typeName in _runtimeTypeDescriptors.Order(StringComparer.Ordinal))
 		{
+			if (_usedTypeLayouts.Values.Any(layout =>
+				layout.DisplayName == typeName && IsCoreLibRuntimeDescriptorAlias(layout)))
+				continue;
 			_assembler.AlignWord();
 			_assembler.Mark(RuntimeTypeDescriptorLabel(typeName));
 			_assembler.EmitLong(8);
@@ -1672,13 +1840,30 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
+	// Catch clauses and allocated CoreLib exceptions share one descriptor.
+	// Object array checks also need the same root identity for CoreLib classes
+	// whose base is a local Object TypeDef and classes whose base is a TypeRef.
+	// StringBuilder casts must use its allocated descriptor as well.
+	private bool IsCoreLibRuntimeDescriptorAlias(CilTypeLayout layout) =>
+		(_module.FrameworkImplementationPack?.EnableUnlistedManagedBodies == true ||
+		 _module.FrameworkImplementationPack?.IsPinnedStringBuilderInput == true &&
+		 (layout.DisplayName is "System.Object" or "System.Text.StringBuilder" ||
+		  StringBuilderExceptionSurface.Members.Any(member => member.DeclaringType.FullMetadataName == layout.DisplayName))) &&
+		layout.ModuleName == "System.Private.CoreLib" &&
+		_runtimeTypeDescriptors.Contains(layout.DisplayName);
+
 	private static string? RuntimeBaseTypeName(string typeName) =>
 		typeName switch
 		{
 			"System.Object" => null,
+			"System.RuntimeType" => "System.Reflection.TypeInfo",
+			"System.Reflection.TypeInfo" => "System.Type",
+			"System.Type" => "System.Reflection.MemberInfo",
+			"System.Reflection.MemberInfo" => "System.Object",
 			"System.Delegate" => "System.Object",
 			"System.MulticastDelegate" => "System.Delegate",
 			"System.ValueType" => "System.Object",
+			"System.Enum" => "System.ValueType",
 			"System.Exception" => "System.Object",
 			"System.SystemException" => "System.Exception",
 			"System.ArithmeticException" => "System.SystemException",

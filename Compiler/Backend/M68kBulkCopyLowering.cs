@@ -73,7 +73,7 @@ internal static class M68kBulkCopyLowering
 						instruction.ArgumentIndex is { } localIndex &&
 						localIndex < method.Locals.Length &&
 						module.TryGetReferenceFreeStructLayout(method.Locals[localIndex],
-							method.ModuleName, out var layout) && layout.Size > 4 &&
+							method.ModuleName, out var layout) && layout.UsesAggregateTransport &&
 						function.LocalHomes.TryGetValue(localIndex, out var home) && !home.HasGcReferences:
 						bytes = layout.Size;
 						homeIndex = localIndex;
@@ -87,7 +87,7 @@ internal static class M68kBulkCopyLowering
 						break;
 					case M68kMachineOperation.Return when !instruction.ReturnBufferWritten &&
 						module.TryGetReferenceFreeStructLayout(method.Signature.ReturnType,
-							method.ModuleName, out var returnLayout) && returnLayout.Size > 4:
+							method.ModuleName, out var returnLayout) && returnLayout.UsesAggregateTransport:
 						bytes = returnLayout.Size;
 						addressOperation = M68kMachineOperation.ReturnBufferAddress;
 						break;

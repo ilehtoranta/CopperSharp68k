@@ -77,12 +77,20 @@ internal sealed class M68kConditionProvenanceAnalysis
 
 		internal State Clone()
 		{
-			var result = new State { Conditions = Conditions };
-			Array.Copy(Data, result.Data, Data.Length);
-			Array.Copy(Address, result.Address, Address.Length);
-			result.KnownZero.UnionWith(KnownZero);
-			result.KnownNonZero.UnionWith(KnownNonZero);
+			var result = new State();
+			result.CopyFrom(this);
 			return result;
+		}
+
+		internal void CopyFrom(State source)
+		{
+			Conditions = source.Conditions;
+			Array.Copy(source.Data, Data, Data.Length);
+			Array.Copy(source.Address, Address, Address.Length);
+			KnownZero.Clear();
+			KnownZero.UnionWith(source.KnownZero);
+			KnownNonZero.Clear();
+			KnownNonZero.UnionWith(source.KnownNonZero);
 		}
 
 		internal bool JoinFrom(State other)
@@ -127,15 +135,18 @@ internal sealed class M68kConditionProvenanceAnalysis
 	}
 
 	private readonly IReadOnlyDictionary<int, State> _before;
+	private readonly IReadOnlySet<int> _symbolicOperands;
 
 	private M68kConditionProvenanceAnalysis(
-		IReadOnlyDictionary<int, State> before)
+		IReadOnlyDictionary<int, State> before,
+		IReadOnlySet<int> symbolicOperands)
 	{
 		_before = before;
+		_symbolicOperands = symbolicOperands;
 	}
 
 	internal static M68kConditionProvenanceAnalysis Empty { get; } =
-		new(new Dictionary<int, State>());
+		new(new Dictionary<int, State>(), new HashSet<int>());
 
 	internal bool TryGetKnownZeroTest(
 		M68kEmittedInstruction instruction,
@@ -143,7 +154,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 	{
 		nonZero = false;
 		if (!_before.TryGetValue(instruction.Offset, out var state) ||
-			!TryDescribeCandidate(state, instruction, out var expected) ||
+			!TryDescribeCandidate(state, instruction, out var expected, _symbolicOperands.Contains(instruction.Offset)) ||
 			expected.Zero.Kind != M68kConditionFactKind.Zero ||
 			expected.Zero.Width != 4 ||
 			!expected.Zero.Left.IsKnown)
@@ -164,7 +175,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 		M68kConditionCodeSet required)
 	{
 		if (!_before.TryGetValue(instruction.Offset, out var state) ||
-			!TryDescribeCandidate(state, instruction, out var expected))
+			!TryDescribeCandidate(state, instruction, out var expected, _symbolicOperands.Contains(instruction.Offset)))
 		{
 			return false;
 		}
@@ -203,8 +214,23 @@ internal sealed class M68kConditionProvenanceAnalysis
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyList<int>[] successors,
 		IReadOnlyList<int>[] predecessors,
-		IReadOnlyList<M68kInstructionEffects> effects)
+		IReadOnlyList<M68kInstructionEffects> effects,
+		IReadOnlySet<int> addressFixupOffsets)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("dataflow.condition-provenance");
+		var visits = 0;
+		var symbolicOperands = new HashSet<int>();
+		foreach (var instruction in instructions)
+		{
+			for (var offset = instruction.Offset + 2; offset < instruction.Offset + instruction.Length; offset += 2)
+			{
+				if (addressFixupOffsets.Contains(offset))
+				{
+					symbolicOperands.Add(instruction.Offset);
+					break;
+				}
+			}
+		}
 		var before = new State?[instructions.Count];
 		var pending = new Queue<int>();
 		var queued = new bool[instructions.Count];
@@ -219,11 +245,18 @@ internal sealed class M68kConditionProvenanceAnalysis
 			queued[index] = true;
 		}
 
+		// SetInitial clones retained inputs, and joins consume their incoming
+		// state synchronously. Neither temporary is stored in the before map.
+		var output = new State();
+		var refined = new State();
 		while (pending.Count != 0)
 		{
+			visits++;
 			var index = pending.Dequeue();
 			queued[index] = false;
-			var output = Transfer(before[index]!, instructions[index], effects[index]);
+			Transfer(
+				before[index]!, output, instructions[index], effects[index],
+				symbolicOperands.Contains(instructions[index].Offset));
 			if (instructions[index].IsNonReturning)
 			{
 				continue;
@@ -232,6 +265,7 @@ internal sealed class M68kConditionProvenanceAnalysis
 			{
 				var successorState = RefineBranch(
 					output,
+					refined,
 					instructions[index],
 					instructions[successor]);
 				var changed = before[successor] is null
@@ -245,19 +279,21 @@ internal sealed class M68kConditionProvenanceAnalysis
 			}
 		}
 
+		M68kOptimizationProfiler.Count("condition-provenance.visits", visits);
 		return new M68kConditionProvenanceAnalysis(
 			instructions
 				.Select((instruction, index) => (instruction.Offset, State: before[index]))
 				.Where(static item => item.State is not null)
-				.ToDictionary(static item => item.Offset, static item => item.State!));
+				.ToDictionary(static item => item.Offset, static item => item.State!),
+			symbolicOperands);
 	}
 
 	private static State RefineBranch(
 		State output,
+		State result,
 		M68kEmittedInstruction branch,
 		M68kEmittedInstruction successor)
 	{
-		var result = output.Clone();
 		if (branch.Kind != M68kInstructionKind.ConditionalBranch ||
 			branch.TargetOffset is not { } targetOffset ||
 			successor.Offset != targetOffset &&
@@ -267,9 +303,12 @@ internal sealed class M68kConditionProvenanceAnalysis
 			output.Conditions.Zero.Width != 4 ||
 			!output.Conditions.Zero.Left.IsKnown)
 		{
-			return result;
+			// SetInitial copies retained states and JoinFrom only reads incoming
+			// states. Unrefined edges can therefore share this transfer result.
+			return output;
 		}
 
+		result.CopyFrom(output);
 		var isTarget = successor.Offset == targetOffset;
 		var isZero = ((branch.Opcode >> 8) & 0x0F) == 7
 			? isTarget
@@ -309,10 +348,12 @@ internal sealed class M68kConditionProvenanceAnalysis
 
 	private static State Transfer(
 		State input,
+		State output,
 		M68kEmittedInstruction instruction,
-		M68kInstructionEffects effects)
+		M68kInstructionEffects effects,
+		bool symbolicOperand)
 	{
-		var output = input.Clone();
+		output.CopyFrom(input);
 		UpdateRegisterValues(input, output, instruction, effects);
 		if (effects.IsBarrier)
 		{
@@ -327,7 +368,8 @@ internal sealed class M68kConditionProvenanceAnalysis
 					input,
 					output,
 					instruction,
-					effects),
+					effects,
+					symbolicOperand),
 				effects.WritesConditions);
 		}
 		return output;
@@ -341,11 +383,14 @@ internal sealed class M68kConditionProvenanceAnalysis
 	{
 		for (var register = 0; register < 8; register++)
 		{
-			if ((effects.DefinesData & (1 << register)) != 0)
+			// Calls and opaque instructions can change register values even when
+			// their liveness effects do not declare individual definitions. Break
+			// pre-call aliases before learning facts about a returned value.
+			if (effects.IsBarrier || (effects.DefinesData & (1 << register)) != 0)
 			{
 				output.Data[register] = DefinedValue(instruction, register, address: false);
 			}
-			if ((effects.DefinesAddress & (1 << register)) != 0)
+			if (effects.IsBarrier || (effects.DefinesAddress & (1 << register)) != 0)
 			{
 				output.Address[register] = DefinedValue(instruction, register, address: true);
 			}
@@ -387,9 +432,10 @@ internal sealed class M68kConditionProvenanceAnalysis
 		State input,
 		State output,
 		M68kEmittedInstruction instruction,
-		M68kInstructionEffects effects)
+		M68kInstructionEffects effects,
+		bool symbolicOperand)
 	{
-		if (TryDescribeCandidate(input, instruction, out var candidate))
+		if (TryDescribeCandidate(input, instruction, out var candidate, symbolicOperand))
 		{
 			return candidate;
 		}
@@ -430,8 +476,16 @@ internal sealed class M68kConditionProvenanceAnalysis
 	private static bool TryDescribeCandidate(
 		State state,
 		M68kEmittedInstruction instruction,
-		out M68kConditionProvenance provenance)
+		out M68kConditionProvenance provenance,
+		bool symbolicOperand)
 	{
+		// Before linking, an address relocation occupies zero-filled bytes.
+		// Those bytes must not establish literal-zero comparison facts.
+		if (symbolicOperand)
+		{
+			provenance = default;
+			return false;
+		}
 		var opcode = instruction.Opcode;
 		if ((opcode & 0xFFF8) is 0x4A00 or 0x4A40 or 0x4A80)
 		{
@@ -695,19 +749,34 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 	public bool Changed { get; private set; }
 	public int RewriteCount { get; private set; }
 
-	public void Run()
+	public void Run() => RunCore();
+
+	// Keep the handoff inside this synchronous call: no client can retain the
+	// final analysis and edit bytes, fixups, annotations or the scope before use.
+	internal void RunThen(M68kPeepholeOptimizer peephole)
 	{
+		var analysis = RunCore();
+		M68kOptimizationProfiler.Count("dataflow.condition-peephole-handoffs");
+		peephole.RunAfterConditionCodes(_assembler, analysis);
+	}
+
+	private M68kInstructionDataflow RunCore()
+	{
+		using var profile = M68kOptimizationProfiler.Measure("post-emission.condition-code");
 		Changed = false;
 		RewriteCount = 0;
+		M68kInstructionDataflow? finalAnalysis = null;
 		bool changed;
 		do
 		{
 			changed = false;
+			M68kOptimizationProfiler.Count("condition-code.analysis-rounds");
 			_assembler.BeginInstructionAnalysisRound();
 			try
 			{
-				var dataflow = M68kInstructionDataflow.Analyze(_assembler);
-				if (FoldKnownZeroBranches(dataflow) ||
+				var dataflow = M68kInstructionDataflow.Analyze(_assembler, "dataflow.caller.condition-code");
+				var labelOffsets = CreateLabelOffsetSnapshot(dataflow.Instructions.Count);
+				if (FoldKnownZeroBranches(dataflow, labelOffsets) ||
 					TryRewriteSingleBitTest(dataflow))
 				{
 					changed = true;
@@ -716,11 +785,15 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 					continue;
 				}
 
-				if (RemoveRedundantConditionInstructions(dataflow))
+				if (RemoveRedundantConditionInstructions(dataflow, labelOffsets))
 				{
 					changed = true;
 					Changed = true;
 					RewriteCount++;
+				}
+				if (!changed)
+				{
+					finalAnalysis = dataflow;
 				}
 			}
 			finally
@@ -729,15 +802,25 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			}
 		}
 		while (changed);
+		M68kOptimizationProfiler.Count("condition-code.rewrites", RewriteCount);
+		return finalAnalysis!;
 	}
 
+	private HashSet<int>? CreateLabelOffsetSnapshot(int instructionCount) =>
+		// Small scopes need only a few exact tree queries. Retain the hash
+		// snapshot when the query volume can amortize scanning all labels.
+		instructionCount <= _buffer.Labels.Count / 64 ? null : _buffer.Labels.Values.ToHashSet();
+
+	private bool HasLabelAt(int offset, HashSet<int>? labelOffsets) =>
+		labelOffsets?.Contains(offset) ?? _buffer.Labels.HasOffset(offset);
+
 	private bool RemoveRedundantConditionInstructions(
-		M68kInstructionDataflow dataflow)
+		M68kInstructionDataflow dataflow, HashSet<int>? labelOffsets)
 	{
 		var redundant = new List<M68kEmittedInstruction>();
 		foreach (var instruction in dataflow.Instructions)
 		{
-			if (_buffer.HasLabelAt(instruction.Offset) ||
+			if (HasLabelAt(instruction.Offset, labelOffsets) ||
 				!dataflow.TryGetFacts(instruction.Offset, out var facts) ||
 				!dataflow.IsConditionInstructionRedundant(
 					instruction,
@@ -747,11 +830,12 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			}
 			redundant.Add(instruction);
 		}
-		for (var index = redundant.Count - 1; index >= 0; index--)
-		{
-			var instruction = redundant[index];
-			_buffer.RemoveBytes(instruction.Offset, instruction.Length);
-		}
+		// Label queries above observe the same pre-rewrite state, whether
+		// indexed or snapshotted. Compact only after collecting all candidates.
+		// All decisions use the same pre-rewrite dataflow. Compact and remap
+		// metadata once for exactly the ranges previously removed in reverse.
+		_buffer.RemoveByteRanges(redundant.Select(static instruction =>
+			(instruction.Offset, instruction.Length)).ToArray());
 		return redundant.Count != 0;
 	}
 
@@ -760,7 +844,8 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 		M68kEmittedInstruction Branch,
 		bool BranchTaken);
 
-	private bool FoldKnownZeroBranches(M68kInstructionDataflow dataflow)
+	private bool FoldKnownZeroBranches(M68kInstructionDataflow dataflow,
+		HashSet<int>? labelOffsets)
 	{
 		var instructions = dataflow.Instructions;
 		var instructionByOffset = instructions.ToDictionary(
@@ -773,8 +858,8 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			if (branch.Kind != M68kInstructionKind.ConditionalBranch ||
 				((branch.Opcode >> 8) & 0x0F) is not (6 or 7) ||
 				branch.TargetOffset is null ||
-				_buffer.HasLabelAt(test.Offset) ||
-				_buffer.HasLabelAt(branch.Offset) ||
+				HasLabelAt(test.Offset, labelOffsets) ||
+				HasLabelAt(branch.Offset, labelOffsets) ||
 				!dataflow.TryGetKnownZeroTest(test, out var nonZero))
 			{
 				continue;
@@ -798,6 +883,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 			folds.Add(new KnownZeroBranchFold(test, branch, branchTaken));
 		}
 
+		// Finish all label queries before the first edit can move an entry.
 		for (var index = folds.Count - 1; index >= 0; index--)
 		{
 			var fold = folds[index];
@@ -972,15 +1058,7 @@ internal sealed class M68kConditionCodeOptimizer : IM68kOptimizerPass
 	}
 
 	private void MoveLabelsAt(int sourceOffset, int destinationOffset)
-	{
-		foreach (var label in _buffer.Labels.Keys.ToArray())
-		{
-			if (_buffer.Labels[label] == sourceOffset)
-			{
-				_buffer.Labels[label] = destinationOffset;
-			}
-		}
-	}
+		=> _buffer.Labels.MoveOffsetsAt(sourceOffset, destinationOffset);
 
 	private static bool TryGetSingleBit(int mask, out int bit)
 	{

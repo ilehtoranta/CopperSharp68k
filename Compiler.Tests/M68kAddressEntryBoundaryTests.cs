@@ -84,6 +84,31 @@ public sealed class M68kAddressEntryBoundaryTests
 	}
 
 	[Fact]
+	public void LabelIndexKeepsAliasesStrictEndpointsAndCurrentScope()
+	{
+		var (assembler, buffer) = CreateBuffer();
+		buffer.Labels.Add("method:test:IL_000A", 10);
+		buffer.Labels.Add("method:test:BB000A", 10);
+		buffer.Labels.Add("method:test:IL_000C", 12);
+		buffer.Labels.Add("method:test:BB000C", 12);
+		assembler.SetAnalysisScope(null, "missing:end", buffer.Labels.Keys.ToArray());
+		var optimizer = CreateOptimizer(assembler, buffer);
+		var canFold = BindGuard(optimizer);
+		RoundAddresses.SetValue(optimizer, new HashSet<int>());
+		Assert.True(canFold(10, 12));
+		Assert.False(canFold(9, 11));
+		Assert.False(canFold(11, 13));
+		Assert.True(canFold(12, 14));
+		// Outside a round the snapshot must follow label removal and scope
+		// changes, including a hard alias of an otherwise relocatable marker.
+		RoundAddresses.SetValue(optimizer, null);
+		buffer.Labels.Remove("method:test:BB000C");
+		Assert.True(canFold(11, 13));
+		assembler.SetAnalysisScope(null, "missing:end", ["method:test:IL_000A"]);
+		Assert.True(canFold(9, 11));
+	}
+
+	[Fact]
 	public void CachedQueriesMatchOriginalLinearPredicateAcrossRandomBuffers()
 	{
 		var random = new Random(68000);

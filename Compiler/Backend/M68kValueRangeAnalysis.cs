@@ -155,6 +155,8 @@ internal sealed class M68kValueRangeAnalysis
 		IReadOnlyList<M68kInstructionEffects> effects,
 		IReadOnlySet<int> addressFixupOffsets)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("dataflow.value-ranges");
+		var visits = 0;
 		var before = new AbstractState?[instructions.Count];
 		var pending = new Queue<int>();
 		var queued = new bool[instructions.Count];
@@ -170,13 +172,19 @@ internal sealed class M68kValueRangeAnalysis
 			queued[index] = true;
 		}
 
+		// Transfers are consumed synchronously by joins or cloned into a new
+		// successor state. Keep their temporary storage separate from every
+		// retained before-state and reuse it across work-list iterations.
+		var output = AbstractState.CreateEntry();
 		while (pending.Count != 0)
 		{
+			visits++;
 			var index = pending.Dequeue();
 			queued[index] = false;
 			var input = before[index]!;
-			var output = Transfer(
+			Transfer(
 				input,
+				output,
 				instructions[index],
 				effects[index],
 				addressFixupOffsets);
@@ -201,6 +209,7 @@ internal sealed class M68kValueRangeAnalysis
 				result[instructions[index].Offset] = before[index]!;
 			}
 		}
+		M68kOptimizationProfiler.Count("value-ranges.visits", visits);
 		return new M68kValueRangeAnalysis(result);
 	}
 
@@ -212,29 +221,27 @@ internal sealed class M68kValueRangeAnalysis
 
 	private static AbstractState Transfer(
 		AbstractState input,
+		AbstractState output,
 		M68kEmittedInstruction instruction,
 		M68kInstructionEffects effects,
 		IReadOnlySet<int> addressFixupOffsets)
 	{
-		var output = input.Clone();
+		output.CopyFrom(input);
 		if (effects.IsBarrier)
 		{
 			// Calls obey the compiler/Amiga ABI: D0-D1/A0-A1 are caller-saved,
-			// while D2-D7/A2-A7 retain their values. An undecoded barrier has no
-			// such contract and must invalidate every register.
-			var dataRegisterCount = instruction.Kind == M68kInstructionKind.Call
-				? 2
-				: 8;
-			for (var register = 0; register < dataRegisterCount; register++)
+			// while D2-D7/A2-A7 retain their values unless an annotated native
+			// call explicitly clobbers them. Unknown barriers invalidate all.
+			var call = instruction.Kind == M68kInstructionKind.Call;
+			for (var register = 0; register < 8; register++)
 			{
-				output.Data[register] = M68kValueRange.Unknown;
+				if (!call || register < 2 || (effects.DefinesData & (1 << register)) != 0)
+					output.Data[register] = M68kValueRange.Unknown;
 			}
-			var addressRegisterCount = instruction.Kind == M68kInstructionKind.Call
-				? 2
-				: 8;
-			for (var register = 0; register < addressRegisterCount; register++)
+			for (var register = 0; register < 8; register++)
 			{
-				output.Address[register] = M68kAddressAlias.Unknown;
+				if (!call || register < 2 || (effects.DefinesAddress & (1 << register)) != 0)
+					output.Address[register] = M68kAddressAlias.Unknown;
 			}
 		}
 		else
@@ -278,22 +285,33 @@ internal sealed class M68kValueRangeAnalysis
 			return output;
 		}
 
-		if ((opcode & 0xF000) == 0x1000 &&
-			((opcode >> 3) & 7) == 0 &&
+		if (instruction.IsDecoded && (opcode & 0xF000) == 0x1000 &&
+			((opcode >> 3) & 7) != 1 &&
 			((opcode >> 6) & 7) == 0)
 		{
 			var destination = (opcode >> 9) & 7;
 			var priorDestination = input.Data[destination];
-			if (priorDestination.IsKnown &&
-				(priorDestination.Minimum >> 8) == (priorDestination.Maximum >> 8))
+			uint? lowByte = null;
+			if (((opcode >> 3) & 7) == 0 && input.Data[opcode & 7].IsExact(out var value))
+				lowByte = value & 0xFF;
+			else if ((opcode & 0x3F) == 0x3C)
+				lowByte = (uint)instruction.ExtensionWord & 0xFF;
+			if ((priorDestination.IsKnown &&
+				(priorDestination.Minimum >> 8) == (priorDestination.Maximum >> 8)) ||
+				(priorDestination.KnownZeroMask & 0xFFFFFF00) == 0xFFFFFF00)
 			{
-				var upper = priorDestination.Minimum & 0xFFFFFF00;
-				output.Data[destination] = new M68kValueRange(
+				var upper = priorDestination.IsKnown ? priorDestination.Minimum & 0xFFFFFF00 : 0;
+				// MOVE.B leaves the upper bytes intact for every legal source,
+				// including guest memory. Do not infer the byte read from memory.
+				output.Data[destination] = lowByte is { } low ? M68kValueRange.Exact(upper | low) : new M68kValueRange(
 					true,
 					upper,
 					upper | 0xFF,
 					~upper & 0xFFFFFF00);
 			}
+			else
+				output.Data[destination] = new M68kValueRange(false, 0, 0,
+					(priorDestination.KnownZeroMask & 0xFFFFFF00) | (lowByte is { } low ? ~low & 0xFFu : 0));
 			return output;
 		}
 
@@ -665,6 +683,14 @@ internal sealed class M68kValueRangeAnalysis
 			(M68kValueRange[])Data.Clone(),
 			(M68kAddressAlias[])Address.Clone(),
 			new Dictionary<int, M68kValueRange>(StackValues));
+
+		internal void CopyFrom(AbstractState source)
+		{
+			source.Data.CopyTo(Data, 0);
+			source.Address.CopyTo(Address, 0);
+			StackValues.Clear();
+			foreach (var pair in source.StackValues) StackValues.Add(pair.Key, pair.Value);
+		}
 
 		internal bool JoinFrom(AbstractState incoming, bool widen)
 		{

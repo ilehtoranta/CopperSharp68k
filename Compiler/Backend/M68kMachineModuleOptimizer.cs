@@ -1612,7 +1612,7 @@ internal static class M68kMachineModuleOptimizer
 			candidates = candidates.Prepend(declaration);
 		}
 		return candidates
-			.Select(static candidate => candidate.Identity)
+			.Select(candidate => module.ApplyTargetRuntimeOverride(candidate).Identity)
 			.Where(functions.ContainsKey)
 			.Distinct()
 			.OrderBy(static identity => identity.ModuleName, StringComparer.Ordinal)

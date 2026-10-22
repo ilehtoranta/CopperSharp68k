@@ -75,46 +75,8 @@ public static class ConsolePal
 
 	public static void Write(string? value)
 	{
-		if (value is null || value.Length == 0)
-		{
-			return;
-		}
-
-		var dosBase = _cachedDosBase;
-		if (dosBase == 0)
-		{
-			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
-			if (dosBase == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			if (_applicationLifetimeActive)
-			{
-				_cachedDosBase = dosBase;
-			}
-		}
-
-		var previousDosBase = APTR.ToUInt32(DOS.DOSLibraryBase);
-		DOS.DOSLibraryBase = APTR.FromPointer(dosBase);
-		try
-		{
-			var output = BPTR.ToUInt32(DOS.Output());
-			if (output == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			RequireCompleteWrite(
-				WriteManagedString(output, value),
-				value.Length);
-		}
-		finally
-		{
-			DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
-			if (!_applicationLifetimeActive)
-			{
-				Exec.CloseLibrary(APTR.FromPointer(dosBase));
-			}
-		}
+		if (value is not null && value.Length != 0)
+			WriteString(value, appendNewLine: false);
 	}
 
 	public static void Write(int value)
@@ -185,23 +147,12 @@ public static class ConsolePal
 	public static void Write(char value) =>
 		WriteCharacter(value, appendNewLine: false);
 
-	public static void WriteLine(string? value)
+	public static void WriteLine(string? value) => WriteString(value, appendNewLine: true);
+
+	private static void WriteString(string? value, bool appendNewLine)
 	{
 		var valueLength = value is null ? 0 : value.Length;
-		var dosBase = _cachedDosBase;
-		if (dosBase == 0)
-		{
-			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
-			if (dosBase == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			if (_applicationLifetimeActive)
-			{
-				_cachedDosBase = dosBase;
-			}
-		}
-
+		var dosBase = AcquireDosLibrary();
 		var previousDosBase = APTR.ToUInt32(DOS.DOSLibraryBase);
 		DOS.DOSLibraryBase = APTR.FromPointer(dosBase);
 		try
@@ -218,16 +169,15 @@ public static class ConsolePal
 					WriteManagedString(output, value!),
 					valueLength);
 			}
-			var newLine = CString.ToUInt32(CString.FromLiteral("\n"));
-			RequireCompleteWrite(DOS.Write(BPTR.FromRaw(output), newLine, 1), 1);
+			if (appendNewLine)
+			{
+				var newLine = CString.ToUInt32(CString.FromLiteral("\n"));
+				RequireCompleteWrite(DOS.Write(BPTR.FromRaw(output), newLine, 1), 1);
+			}
 		}
 		finally
 		{
-			DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
-			if (!_applicationLifetimeActive)
-			{
-				Exec.CloseLibrary(APTR.FromPointer(dosBase));
-			}
+			ReleaseDosLibrary(dosBase, previousDosBase);
 		}
 	}
 
@@ -311,20 +261,7 @@ public static class ConsolePal
 			return -1;
 		}
 
-		var dosBase = _cachedDosBase;
-		if (dosBase == 0)
-		{
-			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
-			if (dosBase == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			if (_applicationLifetimeActive)
-			{
-				_cachedDosBase = dosBase;
-			}
-		}
-
+		var dosBase = AcquireDosLibrary();
 		var previousDosBase = APTR.ToUInt32(DOS.DOSLibraryBase);
 		DOS.DOSLibraryBase = APTR.FromPointer(dosBase);
 		try
@@ -413,11 +350,7 @@ public static class ConsolePal
 		}
 		finally
 		{
-			DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
-			if (!_applicationLifetimeActive)
-			{
-				Exec.CloseLibrary(APTR.FromPointer(dosBase));
-			}
+			ReleaseDosLibrary(dosBase, previousDosBase);
 		}
 	}
 
@@ -483,13 +416,8 @@ public static class ConsolePal
 		return result;
 	}
 
-	private static int ReadNativeByte(uint pointer, int offset)
-	{
-		var alignedOffset = offset & ~3;
-		var packed = APTR.ReadUInt32(APTR.FromPointer(pointer), alignedOffset);
-		var shift = (3 - (offset & 3)) * 8;
-		return (int)((packed >> shift) & 0xffu);
-	}
+	private static int ReadNativeByte(uint pointer, int offset) =>
+		APTR.ReadUInt8(APTR.FromPointer(pointer), offset);
 
 	private static void WriteBoolean(bool value, bool appendNewLine)
 	{
@@ -522,22 +450,9 @@ public static class ConsolePal
 		WritePackedBytes(word0, 0, 0, length, appendNewLine: false);
 	}
 
-	private static void WriteStaticBytes(uint pointer, int length)
+	private static void WriteStaticBytes(uint pointer, int length, bool appendNewLine = false)
 	{
-		var dosBase = _cachedDosBase;
-		if (dosBase == 0)
-		{
-			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
-			if (dosBase == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			if (_applicationLifetimeActive)
-			{
-				_cachedDosBase = dosBase;
-			}
-		}
-
+		var dosBase = AcquireDosLibrary();
 		var previousDosBase = APTR.ToUInt32(DOS.DOSLibraryBase);
 		DOS.DOSLibraryBase = APTR.FromPointer(dosBase);
 		try
@@ -548,14 +463,15 @@ public static class ConsolePal
 				M68kRuntime.ThrowIOException();
 			}
 			RequireCompleteWrite(DOS.Write(BPTR.FromRaw(output), pointer, length), length);
+			if (appendNewLine)
+			{
+				var newLine = CString.ToUInt32(CString.FromLiteral("\n"));
+				RequireCompleteWrite(DOS.Write(BPTR.FromRaw(output), newLine, 1), 1);
+			}
 		}
 		finally
 		{
-			DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
-			if (!_applicationLifetimeActive)
-			{
-				Exec.CloseLibrary(APTR.FromPointer(dosBase));
-			}
+			ReleaseDosLibrary(dosBase, previousDosBase);
 		}
 	}
 
@@ -566,67 +482,13 @@ public static class ConsolePal
 		int length,
 		bool appendNewLine)
 	{
-		var dosBase = _cachedDosBase;
-		if (dosBase == 0)
-		{
-			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
-			if (dosBase == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			if (_applicationLifetimeActive)
-			{
-				_cachedDosBase = dosBase;
-			}
-		}
-
-		var previousDosBase = APTR.ToUInt32(DOS.DOSLibraryBase);
-		DOS.DOSLibraryBase = APTR.FromPointer(dosBase);
-		try
-		{
-			var output = BPTR.ToUInt32(DOS.Output());
-			if (output == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			RequireCompleteWrite(
-				WritePackedBytes(output, word0, word1, word2, length),
-				length);
-			if (appendNewLine)
-			{
-				var newLine = CString.ToUInt32(CString.FromLiteral("\n"));
-				RequireCompleteWrite(DOS.Write(BPTR.FromRaw(output), newLine, 1), 1);
-			}
-		}
-		finally
-		{
-			DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
-			if (!_applicationLifetimeActive)
-			{
-				Exec.CloseLibrary(APTR.FromPointer(dosBase));
-			}
-		}
-	}
-
-	private static int WritePackedBytes(
-		uint output,
-		uint word0,
-		uint word1,
-		uint word2,
-		int length)
-	{
 		ConsoleWriteBuffer buffer = default;
 		var pointer = APTR.ToUInt32(AddressOf(ref buffer));
+		// All lanes are owned stack storage, including padding past length.
 		APTR.WriteUInt32(APTR.FromPointer(pointer), 0, word0);
-		if (length > 4)
-		{
-			APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
-		}
-		if (length > 8)
-		{
-			APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
-		}
-		return DOS.Write(BPTR.FromRaw(output), pointer, length);
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
+		WriteStaticBytes(pointer, length, appendNewLine);
 	}
 
 	private static void WritePackedInt64Bytes(
@@ -638,72 +500,14 @@ public static class ConsolePal
 		int length,
 		bool appendNewLine)
 	{
-		var dosBase = _cachedDosBase;
-		if (dosBase == 0)
-		{
-			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
-			if (dosBase == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			if (_applicationLifetimeActive)
-			{
-				_cachedDosBase = dosBase;
-			}
-		}
-
-		var previousDosBase = APTR.ToUInt32(DOS.DOSLibraryBase);
-		DOS.DOSLibraryBase = APTR.FromPointer(dosBase);
-		try
-		{
-			var output = BPTR.ToUInt32(DOS.Output());
-			if (output == 0)
-			{
-				M68kRuntime.ThrowIOException();
-			}
-			RequireCompleteWrite(
-				WritePackedInt64Bytes(
-					output,
-					word0,
-					word1,
-					word2,
-					word3,
-					word4,
-					length),
-				length);
-			if (appendNewLine)
-			{
-				var newLine = CString.ToUInt32(CString.FromLiteral("\n"));
-				RequireCompleteWrite(DOS.Write(BPTR.FromRaw(output), newLine, 1), 1);
-			}
-		}
-		finally
-		{
-			DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
-			if (!_applicationLifetimeActive)
-			{
-				Exec.CloseLibrary(APTR.FromPointer(dosBase));
-			}
-		}
-	}
-
-	private static int WritePackedInt64Bytes(
-		uint output,
-		uint word0,
-		uint word1,
-		uint word2,
-		uint word3,
-		uint word4,
-		int length)
-	{
 		ConsoleWriteBuffer buffer = default;
 		var pointer = APTR.ToUInt32(AddressOf(ref buffer));
 		APTR.WriteUInt32(APTR.FromPointer(pointer), 0, word0);
-		if (length > 4) APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
-		if (length > 8) APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
-		if (length > 12) APTR.WriteUInt32(APTR.FromPointer(pointer), 12, word3);
-		if (length > 16) APTR.WriteUInt32(APTR.FromPointer(pointer), 16, word4);
-		return DOS.Write(BPTR.FromRaw(output), pointer, length);
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 4, word1);
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 8, word2);
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 12, word3);
+		APTR.WriteUInt32(APTR.FromPointer(pointer), 16, word4);
+		WriteStaticBytes(pointer, length, appendNewLine);
 	}
 
 	private static int WriteManagedString(uint output, string value)
@@ -748,6 +552,36 @@ public static class ConsolePal
 		public uint Word2;
 		public uint Word3;
 		public uint Word4;
+	}
+
+	// Acquisition stays outside the caller's try, as before. Every successful
+	// installation is restored in finally, including missing-output/short writes.
+	private static uint AcquireDosLibrary()
+	{
+		var dosBase = _cachedDosBase;
+		if (dosBase == 0)
+		{
+			dosBase = OpenDosLibrary(DOS.Name, MinimumDosVersion);
+			if (dosBase == 0)
+			{
+				M68kRuntime.ThrowIOException();
+			}
+			if (_applicationLifetimeActive)
+			{
+				_cachedDosBase = dosBase;
+			}
+		}
+
+		return dosBase;
+	}
+
+	private static void ReleaseDosLibrary(uint dosBase, uint previousDosBase)
+	{
+		DOS.DOSLibraryBase = APTR.FromPointer(previousDosBase);
+		if (!_applicationLifetimeActive)
+		{
+			Exec.CloseLibrary(APTR.FromPointer(dosBase));
+		}
 	}
 
 	private static void RequireCompleteWrite(int actual, int expected)

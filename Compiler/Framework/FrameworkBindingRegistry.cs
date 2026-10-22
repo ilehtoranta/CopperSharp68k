@@ -2484,8 +2484,11 @@ internal static class FrameworkBindingRegistry
 		FrameworkMemberId member,
 		FrameworkBindingContext context)
 	{
+		// These intrinsics transport one value word. Wide nullable values use
+		// the pinned managed CoreLib bodies and their full aggregate layout.
 		if (!context.IsSupportedNullableType ||
 			context.ConstructedDeclaringType?.NullableElementType is not { } element ||
+			element.Size > 4 || context.ConstructedDeclaringType.Size > 8 ||
 			member.DeclaringType.Kind != FrameworkTypeKind.GenericInstantiation ||
 			!member.DeclaringType.ElementType!.Equals(NullableDefinition) ||
 			member.DeclaringType.GenericArguments.Length != 1 ||
@@ -3656,6 +3659,13 @@ internal static class FrameworkBindingRegistry
 				Effects(
 					FrameworkEffects.MayThrow,
 					FrameworkFeature.ManagedExceptions));
+		}
+		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+			name == "ThrowDivideByZeroException" && signature.ParameterTypes.Length == 0 &&
+			!signature.Header.IsInstance && signature.ReturnType.Kind == CilTypeKind.Void)
+		{
+			return Intrinsic(member, "intrinsic:runtime-throw-divide-by-zero",
+				Effects(FrameworkEffects.MayThrow, FrameworkFeature.ManagedExceptions));
 		}
 		if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
 			name == "ThrowArithmeticException" &&
