@@ -465,6 +465,7 @@ internal sealed class M68kInterferenceGraph
 	private readonly HashSet<(int Left, int Right)> _coalescableCopies = new();
 	private readonly HashSet<(int Left, int Right)> _equivalentCopies = new();
 	private readonly HashSet<(int Left, int Right)> _wholePairOverlaps = new();
+	private readonly Dictionary<(int Left, int Right), int> _copyPreferenceWeights = new();
 
 	public M68kInterferenceGraph(IEnumerable<int> values)
 	{
@@ -476,6 +477,8 @@ internal sealed class M68kInterferenceGraph
 	public Dictionary<int, M68kRegisterSet> ForbiddenRegisters { get; } = new();
 
 	public HashSet<(int Left, int Right)> CopyPreferences { get; } = new();
+	public int CopyPreferenceWeight(int left, int right) =>
+		_copyPreferenceWeights.GetValueOrDefault(Order(left, right));
 	public IReadOnlySet<(int Left, int Right)> EquivalentCopies => _equivalentCopies;
 	public IReadOnlySet<(int Left, int Right)> WholePairOverlaps => _wholePairOverlaps;
 
@@ -507,7 +510,10 @@ internal sealed class M68kInterferenceGraph
 	{
 		if (left != right)
 		{
-			CopyPreferences.Add(Order(left, right));
+			var pair = Order(left, right);
+			CopyPreferences.Add(pair);
+			_copyPreferenceWeights.TryGetValue(pair, out var prior);
+			_copyPreferenceWeights[pair] = prior == int.MaxValue ? prior : prior + 1;
 		}
 	}
 
@@ -519,7 +525,7 @@ internal sealed class M68kInterferenceGraph
 		}
 		var pair = Order(left, right);
 		_coalescableCopies.Add(pair);
-		CopyPreferences.Add(pair);
+		AddCopyPreference(left, right);
 		_neighbors[left].Remove(right);
 		_neighbors[right].Remove(left);
 	}
@@ -1223,7 +1229,8 @@ internal static class M68kGraphColoringAllocator
 			}
 
 			var preferredCopyRegisters = AllocatedCopyRegisters(
-				graph, groupForValue, allocatedGroups, groupId);
+				graph, groupForValue, allocatedGroups, groupId,
+				function.OptimizeRegisterCopies);
 			var selected = preferredCopyRegisters
 				.Concat(CandidateRegisters(group))
 				.Distinct()
@@ -1292,6 +1299,11 @@ internal static class M68kGraphColoringAllocator
 					location.Register == register || !location.OccupiedRegisters.Overlaps(candidate.OccupiedRegisters));
 			}
 		}
+		if (function.OptimizeRegisterCopies && spilledGroups.Count == 0)
+		{
+			ImproveCopyLocations(function, groups, groupForValue, groupNeighbors,
+				pairAliases, graph, allocatedGroups);
+		}
 
 		var allocated = new Dictionary<int, M68kAllocatedLocation>();
 		var spilled = new HashSet<int>();
@@ -1315,9 +1327,14 @@ internal static class M68kGraphColoringAllocator
 		M68kInterferenceGraph graph,
 		IReadOnlyDictionary<int, int> groupForValue,
 		IReadOnlyDictionary<int, M68kAllocatedLocation> allocated,
-		int groupId)
+		int groupId,
+		bool optimizeRegisterCopies = false)
 	{
-		foreach (var (left, right) in graph.CopyPreferences)
+		IEnumerable<(int Left, int Right)> preferences = optimizeRegisterCopies
+			? graph.CopyPreferences.OrderByDescending(pair =>
+				graph.CopyPreferenceWeight(pair.Left, pair.Right))
+			: graph.CopyPreferences;
+		foreach (var (left, right) in preferences)
 		{
 			var leftGroup = groupForValue[left];
 			var rightGroup = groupForValue[right];
@@ -1325,6 +1342,102 @@ internal static class M68kGraphColoringAllocator
 				yield return rightLocation.Register;
 			if (rightGroup == groupId && allocated.TryGetValue(leftGroup, out var leftLocation))
 				yield return leftLocation.Register;
+		}
+	}
+
+	private static void ImproveCopyLocations(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, AllocationGroup> groups,
+		IReadOnlyDictionary<int, int> groupForValue,
+		IReadOnlyDictionary<int, HashSet<int>> groupNeighbors,
+		IReadOnlyDictionary<int, HashSet<int>> pairAliases,
+		M68kInterferenceGraph graph,
+		Dictionary<int, M68kAllocatedLocation> allocated)
+	{
+		// Recoloring a group cannot create a spill. Keep the existing save mask
+		// as an upper bound: a new callee-saved register can cost more at entry
+		// and return than the copy it removes.
+		var referencedValues = function.Blocks
+			.SelectMany(static block =>
+				block.Phis.SelectMany(static phi =>
+					phi.Inputs.Values.Append(phi.Definition))
+				.Concat(block.Instructions.SelectMany(static instruction =>
+					instruction.Uses.Concat(instruction.Definitions))))
+			.ToHashSet();
+		var usedCalleeSaved = allocated
+			.Where(location => groups[location.Key].Members.Overlaps(referencedValues))
+			.Select(static location => location.Value)
+			.SelectMany(static location => location.OccupiedRegisters.Enumerate())
+			.Where(static register => register is
+				>= M68kRegister.D2 and <= M68kRegister.D7 or
+				>= M68kRegister.A2 and <= M68kRegister.A6)
+			.ToHashSet();
+		var preferences = groups.Keys.ToDictionary(static id => id,
+			static _ => new List<(int Other, int Weight)>());
+		foreach (var (left, right) in graph.CopyPreferences)
+		{
+			var leftGroup = groupForValue[left];
+			var rightGroup = groupForValue[right];
+			if (leftGroup == rightGroup) continue;
+			var weight = graph.CopyPreferenceWeight(left, right);
+			preferences[leftGroup].Add((rightGroup, weight));
+			preferences[rightGroup].Add((leftGroup, weight));
+		}
+		if (preferences.Values.All(static related => related.Count == 0)) return;
+
+		for (var pass = 0; pass < 4; pass++)
+		{
+			var changed = false;
+			foreach (var group in groups.Values.OrderBy(static group => group.Id))
+			{
+				if (group.PrecoloredRegister is not null || group.IsSpillTemporary)
+					continue;
+				var related = preferences[group.Id];
+				if (related.Count == 0) continue;
+				var current = allocated[group.Id];
+				var currentCost = CopyCost(current);
+				if (currentCost == 0) continue;
+				var forbidden = group.ForbiddenRegisters;
+				foreach (var neighbor in groupNeighbors[group.Id])
+				{
+					forbidden = new M68kRegisterSet((ushort)(forbidden.Bits |
+						allocated[neighbor].OccupiedRegisters.Bits));
+				}
+				foreach (var candidateRegister in CandidateRegisters(group))
+				{
+					if (candidateRegister == current.Register ||
+						!CandidateIsAvailable(group, candidateRegister, forbidden))
+						continue;
+					var candidate = new M68kAllocatedLocation(candidateRegister,
+						group.IsPair);
+					if (candidate.OccupiedRegisters.Enumerate().Any(register =>
+						(register is >= M68kRegister.D2 and <= M68kRegister.D7 or
+							>= M68kRegister.A2 and <= M68kRegister.A6) &&
+						!usedCalleeSaved.Contains(register)))
+						continue;
+					if (pairAliases[group.Id].Any(alias =>
+						allocated[alias].Register != candidateRegister &&
+						allocated[alias].OccupiedRegisters.Overlaps(candidate.OccupiedRegisters)))
+						continue;
+					var cost = CopyCost(candidate);
+					if (cost >= currentCost) continue;
+					allocated[group.Id] = candidate;
+					currentCost = cost;
+					changed = true;
+				}
+
+				long CopyCost(M68kAllocatedLocation location)
+				{
+					var cost = 0L;
+					foreach (var (otherId, weight) in related)
+					{
+						var other = allocated[otherId];
+						if (location != other) cost += weight;
+					}
+					return cost;
+				}
+			}
+			if (!changed) break;
 		}
 	}
 
@@ -1512,6 +1625,8 @@ internal static class M68kGraphColoringAllocator
 			.OrderByDescending(pair =>
 				function.Values[pair.Left].AllowedRegisters == M68kRegisterSet.Address ||
 				function.Values[pair.Right].AllowedRegisters == M68kRegisterSet.Address)
+			.ThenByDescending(pair => function.OptimizeRegisterCopies
+				? graph.CopyPreferenceWeight(pair.Left, pair.Right) : 0)
 			.ThenBy(static pair => pair.Left)
 			.ThenBy(static pair => pair.Right))
 		{

@@ -566,6 +566,8 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Reduce loop copies and prefer register assignments that eliminate more static copy sites in eligible MC68000 application methods. Handler, dynamic-frame and collector-visible methods retain their existing allocation.</summary>
+	public bool OptimizeApplicationRegisterCopies { get; init; } = true;
 	/// <summary>Remove dead non-trapping arithmetic in eligible MC68000 application methods using control-flow liveness.</summary>
 	public bool RemoveApplicationDeadArithmetic { get; init; } = true;
 	/// <summary>Track unobserved upper bits across control flow to remove redundant normalization in eligible application methods.</summary>

@@ -74,7 +74,8 @@ internal static class M68kMachineOptimizer
 			rounds++;
 			changed = SeedExplicitConstants(function);
 			changed |= CanonicalizeScalarZeroComparisons(function);
-			if (function.Blocks.All(static block => block.LoopDepth == 0))
+			if (function.OptimizeRegisterCopies ||
+				function.Blocks.All(static block => block.LoopDepth == 0))
 			{
 				changed |= SimplifyCopiesAndPhis(function, statistics);
 			}

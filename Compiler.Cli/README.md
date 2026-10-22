@@ -502,3 +502,72 @@ relocation addends and policy gates. Existing tests exercise relocated HUNKs,
 forced collection, interior/byref roots, finalizers, catch/finally/rethrow, output,
 short writes and resource cleanup with the new passes enabled and independently
 disabled.
+### Register allocation and copies across blocks
+
+`OptimizeApplicationRegisterCopies` now defaults on within the opt-in MC68000
+application HUNK size policy. It enables three changes:
+
+- Copy substitution and trivial-phi cleanup also run in methods containing loops.
+  Substitution still requires equal value/register constraints and a dead source;
+  successor uses, phi inputs, exact-memory identities and logical-call arguments
+  are updated together.
+- Allocation preferences count static copy sites, including repeated phi inputs.
+  A bounded recoloring step accepts only strict copy-score improvements, respects
+  interference, fixed registers, call clobbers and register-pair overlaps, and
+  cannot introduce spills or expand the existing callee-save mask.
+- A plain 32-bit integer copy between values already assigned the same spill slot
+  omits its redundant reload/store pair. GC references, managed byrefs, owner
+  transport, explicit effects and call metadata retain the original path.
+
+The existing application method eligibility checks remain: no exception handlers
+or dynamic stack frames, and no GC references, byrefs or root-bearing frame homes
+when a collector can run. Root maps, unwind layouts and the native ABI are
+unchanged. This is a machine-IR/allocation policy, so it also operates when
+post-emission peepholes are disabled. Other CPU/profile combinations and the
+policy-off path retain their previous allocation.
+
+Measured against `012220e`, with identical Release inputs and stripped HUNKs:
+
+| Example | Previous policy | Updated policy | Bytes saved |
+| --- | ---: | ---: | ---: |
+| DOS | 612 | 612 | 0 |
+| FileStats | 980 | 944 | 36 |
+| CopperBars | 1,248 | 1,248 | 0 |
+| ConsoleIO | 4,628 | 4,620 | 8 |
+| StopwatchBenchmark | 6,984 | 6,964 | 20 |
+| Polymorphism | 3,852 | 3,848 | 4 |
+| IFFInspect | 4,820 | 4,816 | 4 |
+| MUISunflower | 888 | 892 | -4 |
+| MUITaskList | 2,248 | 2,248 | 0 |
+| **Total** | **26,260** | **26,192** | **68 (0.26%)** |
+
+Instruction bytes fall from 17,516 to 17,448 (0.39%). MUISunflower keeps the same
+instruction-byte count but gains one four-byte relocation: a string address moves
+from an address register/PC-relative LEA into a data register/absolute immediate.
+The allocation score estimates copies, so it does not guarantee a smaller final
+HUNK for every input. The same-slot spill cleanup has focused regression coverage
+but adds no further savings in this nine-image corpus.
+
+The 10% target was not reached. The baseline contains 1,762 bytes of register moves
+across these images (6.7% of total serialized size), including necessary ABI moves.
+Stack MOVE instructions account for another 2,478 bytes, including required argument,
+frame and GC traffic. Further substantial savings need to address lowering and ABI
+staging costs as well as register copies; eliminating all of these instructions
+would not preserve program behavior.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<compiler.dll> -RuntimeDirectory <matching-runtime-directory>
+-CompareApplicationRegisterCopies`. This disables only the new allocation policy
+in the previous-policy variant. All nine previous-policy images were verified
+byte-for-byte against the frozen `012220e` images. Reports include compiler,
+runtime, input and output SHA-256 hashes, instruction bytes and relocation counts.
+The measured compiler SHA-256 is
+`D18561FEF18E9C79C538259C5ACC036C09A8F5C02AA75F8F0061815A2C18F3DF`.
+
+Validation: 422 focused checks passed. Coverage includes repeated phi-edge
+preferences, pair-overlap rejection, live-across-call clobbers, scalar/GC spill
+handling, successor metadata substitution, loop-carried initializers, dense
+switch joins, CRC results and FileStats/console output. The application matrix
+also covers relocated HUNKs, full exceptions, forced collection, interior/byref
+roots, finalizers, dynamic frames and both peephole modes. Existing pinned cycle
+budgets were not changed.

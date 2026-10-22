@@ -599,6 +599,8 @@ internal sealed class M68kMachineFunction
 
 	public bool SimplifyLoopPhis { get; init; }
 
+	public bool OptimizeRegisterCopies { get; set; }
+
 	public HashSet<int> GcSpillSlots { get; } = new();
 
 

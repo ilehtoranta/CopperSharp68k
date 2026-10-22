@@ -8,12 +8,68 @@ namespace CopperSharp.Compiler.Tests;
 public sealed partial class CompilerExecutionTests
 {
 	[Theory]
+	[InlineData(M68kCpuModel.M68000)]
+	[InlineData(M68kCpuModel.M68020)]
+	[InlineData(M68kCpuModel.M68040)]
+	public void ApplicationRegisterCopiesPreserveFileStatsOutput(M68kCpuModel model)
+		=> ExecuteFileStatsReport(M68kCpuTarget.M68000, model, new());
+
+	[Theory]
+	[InlineData(M68kCpuModel.M68000)]
+	[InlineData(M68kCpuModel.M68020)]
+	[InlineData(M68kCpuModel.M68040)]
+	public void ApplicationRegisterCopiesPreserveCrcLoop(M68kCpuModel model)
+	{
+		var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest {
+			AssemblyPath = typeof(StopwatchBenchmarkExample.Program).Assembly.Location,
+			EntryPoint = "StopwatchBenchmarkExample.Program::ComputeCrc32",
+			Cpu = M68kCpuTarget.M68000, ExceptionMode = M68kExceptionMode.Full,
+			OutputFormat = M68kOutputFormat.Hunk, RuntimeProfile = M68kRuntimeProfile.Application,
+			CodeSizeOptimizations = new()
+		});
+		Assert.Equal(0x003A_981Du, ExecuteHunk(result, model));
+	}
+
+	[Theory]
+	[InlineData("DefaultEntry", 106u)]
+	[InlineData("AllocatedDenseSwitchEntry", 42u)]
+	[InlineData("AllocatedLargeDenseSwitchEntry", 59u)]
+	[InlineData("LoopCarriedInitializerEntry", 49u)]
+	public void ApplicationRegisterCopiesPreserveLoopAndJoinExecution(string entry, uint expected)
+	{
+		foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020 })
+		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
+		{
+			var request = new M68kCompilationRequest {
+				AssemblyPath = FixtureAssembly, EntryPoint = typeof(CompilerFixtures).FullName + "::" + entry,
+				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, RuntimeProfile = M68kRuntimeProfile.Application,
+				ExceptionMode = M68kExceptionMode.Full, IncludedExportNames = [],
+				PeepholeOptimization = mode, Hunk = new() { IncludeSymbols = false },
+				CodeSizeOptimizations = new() { OptimizeApplicationRegisterCopies = false }
+			};
+			var baseline = M68kCompiler.Compile(request);
+			var compact = M68kCompiler.Compile(request with { CodeSizeOptimizations = new() });
+			if (target != M68kCpuTarget.M68000) Assert.Equal(baseline.Image, compact.Image);
+			foreach (var result in new[] { baseline, compact })
+			foreach (var model in target == M68kCpuTarget.M68000
+				? new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 }
+				: new[] { M68kCpuModel.M68020, M68kCpuModel.M68040 })
+			{
+				var bus = LoadApplicationSizeHunk(result.Image, 0x20000, 0x40000);
+				Assert.Equal(expected, Execute(bus, model, 0x20000 + result.EntryPoint,
+					afterReturn: state => Assert.Equal(StackPointer + 4, state.A[7])));
+			}
+		}
+	}
+
+	[Theory]
 	[InlineData(M68kCpuTarget.M68000, M68kPeepholeOptimizationMode.FixedPoint)]
 	[InlineData(M68kCpuTarget.M68000, M68kPeepholeOptimizationMode.Disabled)]
 	[InlineData(M68kCpuTarget.M68020, M68kPeepholeOptimizationMode.FixedPoint)]
 	public void ApplicationMethodPoliciesHaveIndependentControls(M68kCpuTarget target, M68kPeepholeOptimizationMode mode)
 	{
-		var oldPolicy = new M68kCodeSizeOptions { RemoveApplicationRegisterMoves = false, ShareReturnSequences = false };
+		var oldPolicy = new M68kCodeSizeOptions { RemoveApplicationRegisterMoves = false, ShareReturnSequences = false,
+			OptimizeApplicationRegisterCopies = false };
 		var request = new M68kCompilationRequest {
 			AssemblyPath = Path.Combine(AppContext.BaseDirectory, "ConsoleIO.dll"), EntryPoint = "ConsoleIOExample.Program::Main",
 			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, RuntimeProfile = M68kRuntimeProfile.Application,
@@ -22,7 +78,7 @@ public sealed partial class CompilerExecutionTests
 		};
 		var baseline = AmigaM68kCompiler.Compile(request);
 		foreach (var policy in new[] { oldPolicy with { RemoveApplicationRegisterMoves = true },
-			oldPolicy with { ShareReturnSequences = true }, new M68kCodeSizeOptions() })
+			oldPolicy with { ShareReturnSequences = true }, new M68kCodeSizeOptions { OptimizeApplicationRegisterCopies = false } })
 		{
 			var result = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = policy });
 			if (target != M68kCpuTarget.M68000 || mode == M68kPeepholeOptimizationMode.Disabled)
@@ -55,6 +111,7 @@ public sealed partial class CompilerExecutionTests
 			CompactApplicationAddresses = false, ShareApplicationRuntimeMetadata = false,
 			RemoveApplicationRegisterMoves = false, ShareReturnSequences = false,
 			RemoveApplicationDeadArithmetic = false, TrackApplicationNarrowValues = false, FoldApplicationMemoryOperands = false,
+			OptimizeApplicationRegisterCopies = false,
 			PruneApplicationUnwindMetadata = false, CompactApplicationExceptionRuntime = false } });
 		Assert.Equal(baseline.Image, compact.Image);
 	}
@@ -119,6 +176,7 @@ public sealed partial class CompilerExecutionTests
 			new() { CompactApplicationGcSites = false },
 			new() { PruneApplicationLeafSites = false },
 			new() { CompactApplicationExceptionRuntime = false },
+			new() { OptimizeApplicationRegisterCopies = false },
 			new() { RemoveApplicationDeadArithmetic = false, TrackApplicationNarrowValues = false, FoldApplicationMemoryOperands = false },
 			new() { TrackApplicationNarrowValues = false, FoldApplicationMemoryOperands = false },
 			new() { RemoveApplicationDeadArithmetic = false, FoldApplicationMemoryOperands = false },

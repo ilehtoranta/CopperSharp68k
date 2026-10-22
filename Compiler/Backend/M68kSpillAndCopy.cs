@@ -394,6 +394,14 @@ internal static class M68kSpillRewriter
 			var rewritten = new List<M68kMachineInstruction>();
 			foreach (var original in block.Instructions)
 			{
+				if (IsCopyWithinOneSpillSlot(function, layout, original))
+				{
+					// The source already occupies the destination's slot.  Keeping
+					// this SSA copy would reload it and store the same bytes back,
+					// sometimes even emitting MOVE.L (A7),(A7) on an edge.
+					// A GC root remains in that slot for the destination's lifetime.
+					continue;
+				}
 				var instruction = original;
 				var uses = instruction.Uses.ToArray();
 				var deadGcSpills = uses
@@ -491,6 +499,47 @@ internal static class M68kSpillRewriter
 			block.Instructions.Clear();
 			block.Instructions.AddRange(rewritten);
 		}
+	}
+
+	private static bool IsCopyWithinOneSpillSlot(
+		M68kMachineFunction function,
+		M68kSpillLayout layout,
+		M68kMachineInstruction instruction)
+	{
+		if (!function.OptimizeRegisterCopies || instruction is not
+			{
+				Operation: M68kMachineOperation.Copy,
+				Uses: [var source],
+				Definitions: [var destination],
+				MemoryEffect: M68kMachineMemoryEffect.None,
+				MayThrow: false,
+				IsSafepoint: false,
+				ProducesConditionCodes: false,
+				ConsumesConditionCodes: false
+			} ||
+			!instruction.Clobbers.IsEmpty ||
+			instruction.TransportsManagedByrefOwner ||
+			instruction.RequiresLiveCallerFrame ||
+			instruction.ManagedByrefProjection != M68kManagedByrefProjection.None ||
+			instruction.BorrowsSpanOwnerFromCaller ||
+			!instruction.ExactMemoryAccesses.IsDefaultOrEmpty ||
+			instruction.LogicalCall is not null ||
+			!layout.Slots.TryGetValue(source, out var sourceSlot) ||
+			!layout.Slots.TryGetValue(destination, out var destinationSlot) ||
+			sourceSlot.Index != destinationSlot.Index)
+		{
+			return false;
+		}
+		var sourceValue = function.Values[source];
+		var destinationValue = function.Values[destination];
+		return sourceValue.Kind == CilStackValueKind.Int32 &&
+			destinationValue.Kind == CilStackValueKind.Int32 &&
+			!sourceValue.IsGcReference &&
+			!destinationValue.IsGcReference &&
+			!function.ManagedByrefTypes.ContainsKey(source) &&
+			!function.ManagedByrefTypes.ContainsKey(destination) &&
+			sourceValue.Width == destinationValue.Width &&
+			sourceValue.Width == M68kMachineValueWidth.Long;
 	}
 
 	private static void InsertPhiInputClears(

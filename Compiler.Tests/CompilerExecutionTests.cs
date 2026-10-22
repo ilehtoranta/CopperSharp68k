@@ -12061,6 +12061,10 @@ public sealed partial class CompilerExecutionTests
 	public void FileStatsExecutesRealReportAndForwardsEveryPrintfArgument(
 		M68kCpuTarget target,
 		M68kCpuModel model)
+		=> ExecuteFileStatsReport(target, model);
+
+	private void ExecuteFileStatsReport(M68kCpuTarget target, M68kCpuModel model,
+		M68kCodeSizeOptions? sizeOptions = null)
 	{
 		const uint execBase = 0x0000_3000;
 		const uint dosBase = 0x0000_3800;
@@ -12072,6 +12076,8 @@ public sealed partial class CompilerExecutionTests
 			EntryPoint = "FileStatsExample.Program::Main",
 			Cpu = target,
 			ExceptionMode = M68kExceptionMode.Yolo,
+			RuntimeProfile = M68kRuntimeProfile.Application,
+			CodeSizeOptimizations = sizeOptions,
 			OutputFormat = M68kOutputFormat.Hunk
 		});
 		foreach (var input in new byte[][]

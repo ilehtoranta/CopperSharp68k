@@ -2254,6 +2254,94 @@ public sealed class M68kMachineOptimizerTests
 		if (!differentRegisters) Assert.True(statistics.PhisRemoved > 0);
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void ApplicationLoopCopySubstitutionReachesUsesInAnotherBlock(bool optimizeCopies)
+	{
+		var callSource = new CilInstruction(31, OpCodes.Call, 0x06000002, 32);
+		var method = CreateMethod("Application.Copy", "Application.Copy::Loop",
+			[callSource]);
+		var origin = M68kMachineInstructionOrigin.Create(method, callSource);
+		var function = new M68kMachineFunction("application-loop-copy", 0, method)
+		{
+			OptimizeRegisterCopies = optimizeCopies
+		};
+		var entry = AddBlock(function, 0, 0);
+		var header = AddBlock(function, 1, 10);
+		var body = AddBlock(function, 2, 20);
+		var continuation = AddBlock(function, 3, 30);
+		var exit = AddBlock(function, 4, 40);
+		Connect(entry, header);
+		Connect(header, body);
+		Connect(header, exit);
+		Connect(body, continuation);
+		Connect(continuation, header);
+		var initial = CreateLong(function);
+		var increment = CreateLong(function);
+		var counter = CreateLong(function);
+		var produced = CreateLong(function);
+		var copied = CreateLong(function);
+		var next = CreateLong(function);
+		AddArgument(function, entry, initial.Id, 0);
+		AddArgument(function, entry, increment.Id, 1);
+		entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Branch, 1));
+		header.Phis.Add(new(counter.Id, new Dictionary<int, int>
+		{
+			[entry.Id] = initial.Id,
+			[continuation.Id] = next.Id
+		}));
+		header.Instructions.Add(function.CreateInstruction(M68kMachineOperation.ConditionalBranch,
+			10, uses: [counter.Id], sourceInstruction: new CilInstruction(10, OpCodes.Brtrue, 20, 11)));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Add,
+			20, uses: [counter.Id, increment.Id], definitions: [produced.Id],
+			sourceInstruction: new CilInstruction(20, OpCodes.Add, null, 21)));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy,
+			21, uses: [produced.Id], definitions: [copied.Id]));
+		body.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Branch, 22));
+		continuation.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalStore,
+			30, uses: [copied.Id], memoryEffect: M68kMachineMemoryEffect.Write,
+			argumentIndex: 0,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(
+					FrameMemory(0, 4) with { OwnerValueId = copied.Id },
+					M68kExactMemoryAccessKind.Write,
+					copied.Id)
+			]));
+		continuation.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Call,
+			31, uses: [copied.Id], clobbers: M68kRegisterSet.Data,
+			memoryEffect: M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write,
+			isSafepoint: true, mayThrow: true, sourceInstruction: callSource,
+			origin: origin,
+			logicalCall: new M68kMachineLogicalCall(
+				M68kMachineCallDispatchKind.Import, [], [copied.Id], [], false, origin)));
+		continuation.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Subtract,
+			32, uses: [counter.Id, increment.Id], definitions: [next.Id],
+			sourceInstruction: new CilInstruction(32, OpCodes.Sub, null, 33)));
+		continuation.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Branch, 33));
+		exit.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return,
+			40, uses: [counter.Id]));
+
+		M68kControlFlowAnalysis.ComputeLoopDepths(function);
+		M68kMachineOptimizer.Run(function, M68kCpuTarget.M68000);
+
+		Assert.Equal(!optimizeCopies, body.Instructions.Any(instruction =>
+			instruction.Operation == M68kMachineOperation.Copy));
+		var expected = optimizeCopies ? produced.Id : copied.Id;
+		var instructions = function.Blocks.SelectMany(static block => block.Instructions).ToArray();
+		var store = Assert.Single(instructions, instruction =>
+			instruction.Operation == M68kMachineOperation.LocalStore);
+		Assert.Equal([expected], store.Uses);
+		var access = Assert.Single(store.ExactMemoryAccesses);
+		Assert.Equal(expected, access.ValueId);
+		Assert.Equal(expected, access.Object.OwnerValueId);
+		var call = Assert.Single(instructions, instruction =>
+			instruction.Operation == M68kMachineOperation.Call);
+		Assert.Equal([expected], call.LogicalCall!.ArgumentValueIds);
+		M68kMachineIrVerifier.Verify(function);
+	}
+
 	private static void AddConstant(
 		M68kMachineFunction function,
 		M68kMachineBlock block,

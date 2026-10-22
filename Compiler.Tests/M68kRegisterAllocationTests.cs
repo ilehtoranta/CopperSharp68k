@@ -68,10 +68,15 @@ public sealed class M68kRegisterAllocationTests
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
 	}
 
-	[Fact]
-	public void EquivalentLongPairsUseIdenticalOrDisjointRegisters()
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void EquivalentLongPairsUseIdenticalOrDisjointRegisters(bool optimizeRegisterCopies)
 	{
-		var function = new M68kMachineFunction("pair-copy-overlap", 0);
+		var function = new M68kMachineFunction("pair-copy-overlap", 0)
+		{
+			OptimizeRegisterCopies = optimizeRegisterCopies
+		};
 		var block = AddBlock(function, 0, 0);
 		var source = function.CreateValue(CilStackValueKind.Int64, M68kMachineValueWidth.LongPair,
 			M68kRegisterSet.From(M68kRegister.D1, M68kRegister.D2));
@@ -604,6 +609,61 @@ public sealed class M68kRegisterAllocationTests
 		Assert.Contains(rightValue.Id, liveness.LiveOut[right.Id]);
 		Assert.DoesNotContain(leftValue.Id, liveness.LiveOut[right.Id]);
 		Assert.Empty(liveness.LiveIn[join.Id]);
+	}
+
+	[Fact]
+	public void ApplicationAllocationPrefersThePhiSourceUsedByMoreIncomingEdges()
+	{
+		var function = new M68kMachineFunction("repeated-phi-source", 0);
+		var entry = AddBlock(function, 0, 0);
+		var first = AddBlock(function, 1, 10);
+		var second = AddBlock(function, 2, 20);
+		var third = AddBlock(function, 3, 30);
+		var join = AddBlock(function, 4, 40);
+		Connect(entry, first);
+		Connect(entry, second);
+		Connect(first, join);
+		Connect(second, join);
+		Connect(second, third);
+		Connect(third, join);
+		var rare = CreateFixedLong(function, M68kRegister.D1);
+		var common = CreateFixedLong(function, M68kRegister.D0);
+		var result = CreateLong(function);
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other, 0, definitions: [rare.Id]));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Other, 0, definitions: [common.Id]));
+		entry.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.ConditionalBranch, 1, uses: [rare.Id]));
+		AddPlainBranch(function, first);
+		second.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.ConditionalBranch, 20, uses: [rare.Id]));
+		AddPlainBranch(function, third);
+		join.Phis.Add(new M68kMachinePhi(result.Id,
+			new Dictionary<int, int>
+			{
+				[first.Id] = common.Id,
+				[second.Id] = rare.Id,
+				[third.Id] = common.Id
+			}));
+		join.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return, 40, uses: [result.Id]));
+
+		function.OptimizeRegisterCopies = false;
+		var legacy = Allocate(function, out var legacyGraph);
+		function.OptimizeRegisterCopies = true;
+		var optimized = Allocate(function, out var graph);
+		var liveness = M68kLivenessAnalysis.Analyze(function);
+		var legacyCopies = M68kParallelCopyPlanner.Create(function, liveness, legacy);
+		var optimizedCopies = M68kParallelCopyPlanner.Create(function, liveness, optimized);
+		Assert.Equal(M68kRegister.D1, legacy.Registers[result.Id].Register);
+		Assert.Equal(M68kRegister.D0, optimized.Registers[result.Id].Register);
+		Assert.Equal(2, legacyCopies.EdgeCopies.Values.Sum(static copies => copies.Count));
+		Assert.Equal(1, optimizedCopies.EdgeCopies.Values.Sum(static copies => copies.Count));
+		M68kGraphColoringAllocator.VerifyAllocation(function, legacyGraph, legacy,
+			M68kLivenessAnalysis.AnalyzeInstructions(function, liveness));
+		M68kGraphColoringAllocator.VerifyAllocation(function, graph, optimized,
+			M68kLivenessAnalysis.AnalyzeInstructions(function, liveness));
 	}
 
 	[Fact]
@@ -1181,12 +1241,18 @@ public sealed class M68kRegisterAllocationTests
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
 	}
 
-	[Fact]
-	public void ValueLiveAcrossCallAvoidsCallerSavedRegisters()
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void ValueLiveAcrossCallAvoidsCallerSavedRegisters(bool optimizeRegisterCopies)
 	{
-		var function = new M68kMachineFunction("call-clobber", 0);
+		var function = new M68kMachineFunction("call-clobber", 0)
+		{
+			OptimizeRegisterCopies = optimizeRegisterCopies
+		};
 		var block = AddBlock(function, 0, 0);
 		var value = CreateLong(function);
+		var returned = CreateFixedLong(function, M68kRegister.D0);
 		block.Instructions.Add(function.CreateInstruction(
 			M68kMachineOperation.Constant,
 			0,
@@ -1200,13 +1266,19 @@ public sealed class M68kRegisterAllocationTests
 				M68kRegister.A0,
 				M68kRegister.A1)));
 		block.Instructions.Add(function.CreateInstruction(
-			M68kMachineOperation.Return,
+			M68kMachineOperation.Copy,
 			2,
-			uses: [value.Id]));
+			uses: [value.Id],
+			definitions: [returned.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return,
+			3,
+			uses: [returned.Id]));
 
 		var allocation = Allocate(function, out var graph);
 
 		Assert.Equal(M68kRegister.D2, allocation.Registers[value.Id].Register);
+		Assert.Equal(M68kRegister.D0, allocation.Registers[returned.Id].Register);
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
 	}
 
@@ -1371,6 +1443,47 @@ public sealed class M68kRegisterAllocationTests
 					M68kMachineOperation.SpillLoad or
 					M68kMachineOperation.SpillStore),
 			static instruction => Assert.NotNull(instruction.SpillSlotIndex));
+		M68kMachineIrVerifier.Verify(function);
+	}
+
+	[Theory]
+	[InlineData(false, false)]
+	[InlineData(true, false)]
+	[InlineData(true, true)]
+	public void SameSlotSpilledCopyKeepsValueAndGcRoot(bool optimizeCopies, bool gcReference)
+	{
+		var function = new M68kMachineFunction("same-slot-copy", 0)
+		{
+			OptimizeRegisterCopies = optimizeCopies
+		};
+		var block = AddBlock(function, 0, 0);
+		var source = gcReference ? CreateReference(function) : CreateLong(function);
+		var destination = gcReference ? CreateReference(function) : CreateLong(function);
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Argument, 0,
+			definitions: [source.Id], argumentIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Copy, 1,
+			uses: [source.Id], definitions: [destination.Id]));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return, 2,
+			uses: [destination.Id]));
+		var blockLiveness = M68kLivenessAnalysis.Analyze(function);
+		var instructionLiveness = M68kLivenessAnalysis.AnalyzeInstructions(function, blockLiveness);
+		var graph = M68kInterferenceBuilder.Build(function, blockLiveness);
+		var spilled = new HashSet<int> { source.Id, destination.Id };
+		var layout = M68kSpillSlotAllocator.Allocate(function, graph, spilled);
+		Assert.Equal(layout.Slots[source.Id], layout.Slots[destination.Id]);
+
+		M68kSpillRewriter.Rewrite(function, layout, instructionLiveness);
+
+		var instructions = block.Instructions;
+		var elideScalarCopy = optimizeCopies && !gcReference;
+		Assert.Equal(elideScalarCopy ? 1 : 2, instructions.Count(instruction =>
+			instruction.Operation == M68kMachineOperation.SpillLoad));
+		Assert.Equal(elideScalarCopy ? 1 : 2, instructions.Count(instruction =>
+			instruction.Operation == M68kMachineOperation.SpillStore));
+		Assert.Equal(gcReference, function.GcSpillSlots.Contains(layout.Slots[source.Id].Index));
 		M68kMachineIrVerifier.Verify(function);
 	}
 
