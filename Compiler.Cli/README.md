@@ -440,3 +440,65 @@ short-write and resource-ownership checks remain in the regression set.
 The pre-existing pinned console-input timing failure remains: direct byte
 loads improve its measured path from 32,262 to 31,758 cycles, still above
 the unchanged 30,992 expectation.
+
+### Dead arithmetic, narrow values and memory operands
+
+Three independently selectable passes now default on within the opt-in MC68000
+application HUNK size policy:
+
+- `RemoveApplicationDeadArithmetic` deletes non-trapping computations whose
+  register results and condition codes are dead on every successor. Memory
+  accesses, division, stack changes, explicit effects, metadata entries and
+  unresolved control-flow exits remain barriers.
+- `TrackApplicationNarrowValues` follows the bits changed by masks, extensions
+  and zero-clears through branches, loops and partial writes. It also narrows
+  proven zero-extended comparisons when signed flags are unobserved. Upper bits
+  may pass through arithmetic only when they cannot affect the consumed low
+  bits and all potentially different flags are dead. Calls and unknown uses
+  reject the proof; bounded analysis falls back to the original instructions.
+- `FoldApplicationMemoryOperands` combines byte, word and long loads with
+  ADD/SUB/CMP/AND/OR, including short gaps of independent register computations.
+  The memory read keeps its position, width and address. No access is moved
+  across another access or call, and observable flags and temporary values are
+  preserved.
+
+These passes keep the existing method eligibility rules: no handlers or dynamic
+frames, and no GC-reference/byref/root-bearing frames when a collector can run.
+They do not alter root maps, unwind layouts, collection triggers or native ABIs.
+Policy-off, unsupported CPU targets and disabled peepholes retain the old code.
+
+Measured against `d7f359f`, using the same nine Release inputs and stripped HUNKs:
+
+| Example | Previous policy | Updated policy | Bytes saved |
+| --- | ---: | ---: | ---: |
+| Polymorphism | 3,864 | 3,852 | 12 |
+| IFFInspect | 4,828 | 4,820 | 8 |
+| Seven other examples combined | 17,588 | 17,588 | 0 |
+| **Total** | **26,280** | **26,260** | **20 (0.08%)** |
+
+Instruction bytes fall from 17,540 to 17,516 (24 bytes, 0.14%). Alignment hides
+the two-byte instruction savings in each of FileStats and CopperBars. Narrow
+tracking produces the sample savings; dead arithmetic and broader memory folding
+are exercised by the instruction-level regressions but find no additional sites
+in these nine images. The additional 10% target was not reached. Existing earlier
+passes already remove most of the simple patterns; broadening exception/GC gates
+or removing required checks to inflate the result is outside these proofs.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<compiler.dll> -RuntimeDirectory <matching-runtime-directory>
+-CompareApplicationArithmetic`. The previous-policy variant disables all three
+new passes. Its nine images were checked byte-for-byte against the frozen
+`d7f359f` baseline. The report records compiler/runtime/input/image hashes and
+instruction, data and relocation counts.
+
+Validation: 703 checks passed; the sole failure is the pre-existing console
+timing assertion (31,758 measured versus 30,992 expected). The 57 new regression
+cases compare registers, flags, stack, memory and access order/width across input
+boundaries and all 32 initial CCR combinations. They execute on 68000/68020/68040,
+except OR.B/W memory-source cases, which run on 68000/68040 because Copper68k
+1.5.1 lacks their exact 68020 timing entries. Coverage also includes signed and
+unsigned comparisons, live upper bits, arithmetic carry, calls, metadata entries,
+relocation addends and policy gates. Existing tests exercise relocated HUNKs,
+forced collection, interior/byref roots, finalizers, catch/finally/rethrow, output,
+short writes and resource cleanup with the new passes enabled and independently
+disabled.

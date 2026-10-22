@@ -490,11 +490,18 @@ internal sealed partial class M68kCodeGenerator
 				.Where(method => rawFunctions.TryGetValue(method.Identity, out var function) &&
 					IsApplicationMethodSizeEligible(function, collectorCanRun))
 				.Select(method => (MethodLabel(method), MethodEndLabel(method))).ToArray();
-			if (_request.CodeSizeOptimizations!.RemoveApplicationRegisterMoves)
+			if (_request.CodeSizeOptimizations!.RemoveApplicationRegisterMoves ||
+				_request.CodeSizeOptimizations.RemoveApplicationDeadArithmetic ||
+				_request.CodeSizeOptimizations.TrackApplicationNarrowValues ||
+				_request.CodeSizeOptimizations.FoldApplicationMemoryOperands)
 			{
-				// Reuse only the register rewrites. Other generated-size policies,
-				// including private-memory transformations, keep their original gates.
-				_assembler.GeneratedCodeSizeOptions = new() { RemoveRedundantTransport = true };
+				// Only these application passes receive the EH/GC-safe method ranges.
+				// Other generated-size policies retain their original profile gates.
+				_assembler.GeneratedCodeSizeOptions = new() {
+					RemoveRedundantTransport = _request.CodeSizeOptimizations.RemoveApplicationRegisterMoves,
+					RemoveApplicationDeadArithmetic = _request.CodeSizeOptimizations.RemoveApplicationDeadArithmetic,
+					TrackApplicationNarrowValues = _request.CodeSizeOptimizations.TrackApplicationNarrowValues,
+					FoldApplicationMemoryOperands = _request.CodeSizeOptimizations.FoldApplicationMemoryOperands };
 				_assembler.GeneratedTransportRegistersOnly = true;
 				_assembler.GeneratedCodeSizeRanges = applicationRanges;
 			}

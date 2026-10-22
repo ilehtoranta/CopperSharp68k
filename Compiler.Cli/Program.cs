@@ -54,6 +54,9 @@ static int Run(string[] args)
 				throw new ArgumentException("Unknown or empty code size pass selection.");
 			codeSizeOptimizations = new M68kCodeSizeOptions
 			{
+				RemoveApplicationDeadArithmetic = selected.Contains(nameof(M68kCodeSizeOptions.RemoveApplicationDeadArithmetic)),
+				TrackApplicationNarrowValues = selected.Contains(nameof(M68kCodeSizeOptions.TrackApplicationNarrowValues)),
+				FoldApplicationMemoryOperands = selected.Contains(nameof(M68kCodeSizeOptions.FoldApplicationMemoryOperands)),
 				RemoveApplicationRegisterMoves = selected.Contains(nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves)),
 				PruneApplicationUnwindMetadata = selected.Contains(nameof(M68kCodeSizeOptions.PruneApplicationUnwindMetadata)),
 				NarrowApplicationExceptionSites = selected.Contains(nameof(M68kCodeSizeOptions.NarrowApplicationExceptionSites)),

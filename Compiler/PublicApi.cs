@@ -566,6 +566,12 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Remove dead non-trapping arithmetic in eligible MC68000 application methods using control-flow liveness.</summary>
+	public bool RemoveApplicationDeadArithmetic { get; init; } = true;
+	/// <summary>Track unobserved upper bits across control flow to remove redundant normalization in eligible application methods.</summary>
+	public bool TrackApplicationNarrowValues { get; init; } = true;
+	/// <summary>Fold byte, word and long memory operands into arithmetic in eligible application methods without moving memory accesses.</summary>
+	public bool FoldApplicationMemoryOperands { get; init; } = true;
 	/// <summary>Share compiler-generated fault and handler entries and omit unused exception-state dispatch in MC68000 application HUNKs. Unwind return addresses and register restoration are preserved.</summary>
 	public bool CompactApplicationExceptionRuntime { get; init; } = true;
 	/// <summary>Use private signed 16-bit relative site tables with the built-in collector in MC68000 application HUNKs. Oversized tables fall back to the public format; external collectors always retain that format.</summary>

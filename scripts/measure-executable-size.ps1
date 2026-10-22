@@ -10,11 +10,12 @@ param(
     [switch] $CompareApplicationMethods,
     [switch] $CompareApplicationMetadata,
     [switch] $CompareApplicationGcSites,
-    [switch] $CompareApplicationRuntime
+    [switch] $CompareApplicationRuntime,
+    [switch] $CompareApplicationArithmetic
 )
 
 $ErrorActionPreference = 'Stop'
-$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime
+$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot "artifacts/executable-size/$Configuration"
@@ -130,10 +131,11 @@ $rows = foreach ($sample in $samples) {
         if ($variant -eq 'previous-policy' -or ($variant -eq 'previous-runtime' -and $CompareApplicationRuntime)) {
             $previousPasses = 'CompactApplicationAddresses,ShareApplicationRuntimeMetadata,CompactApplicationExceptionSites'
             if ($CompareApplicationMetadata) { $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences' }
-            if ($CompareApplicationGcSites -or $CompareApplicationRuntime) {
+            if ($CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic) {
                 $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences,PruneApplicationUnwindMetadata,NarrowApplicationExceptionSites,ShareApplicationUnwindRestores'
             }
-            if ($CompareApplicationRuntime) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
+            if ($CompareApplicationRuntime -or $CompareApplicationArithmetic) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
+            if ($CompareApplicationArithmetic) { $previousPasses += ',CompactApplicationExceptionRuntime' }
             $arguments += @('--code-size-optimizations', 'on', '--code-size-passes',
                 $previousPasses)
         }

@@ -876,7 +876,12 @@ public static class M68kCompiler
 			(program.ResidentContextBytes == 0 ? "none" : program.ResidentContextOnHeap ? "heap" : "stack"));
 		map.AppendLine($"CODE-SIZE mode={(request.CodeSizeOptimizations is not null ? "general" : request.RomSizeOptimizations is not null ? "rom" : "off")}");
 		map.AppendLine("GENERATED-SIZE passes=" + (program.Assembler.GeneratedTransportRegistersOnly
-			? nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves)
+			? string.Join(',', new[] {
+				request.CodeSizeOptimizations?.RemoveApplicationRegisterMoves == true ? nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves) : null,
+				request.CodeSizeOptimizations?.RemoveApplicationDeadArithmetic == true ? nameof(M68kCodeSizeOptions.RemoveApplicationDeadArithmetic) : null,
+				request.CodeSizeOptimizations?.TrackApplicationNarrowValues == true ? nameof(M68kCodeSizeOptions.TrackApplicationNarrowValues) : null,
+				request.CodeSizeOptimizations?.FoldApplicationMemoryOperands == true ? nameof(M68kCodeSizeOptions.FoldApplicationMemoryOperands) : null
+			}.Where(name => name is not null))
 			: program.Assembler.GeneratedCodeSizeOptions is { } generatedPolicy
 			? string.Join(',', typeof(M68kCodeSizeOptions).GetProperties().Where(p => (bool)p.GetValue(generatedPolicy)!).Select(p => p.Name))
 			: "none"));

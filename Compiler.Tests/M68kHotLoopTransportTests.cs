@@ -3,7 +3,7 @@ using CopperSharp.Compiler.Backend;
 
 namespace CopperSharp.Compiler.Tests;
 
-public sealed class M68kHotLoopTransportTests
+public sealed partial class M68kHotLoopTransportTests
 {
 	[Theory]
 	[InlineData("dead-before-branch", true)]
@@ -154,7 +154,8 @@ public sealed class M68kHotLoopTransportTests
 	private static readonly M68kCpuModel[] Models = [M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040];
 	private static M68kAssembler NewAssembler(bool enabled) => new()
 	{
-		GeneratedCodeSizeOptions = enabled ? new() { RemoveRedundantTransport = true } : null,
+		GeneratedCodeSizeOptions = enabled ? new() { RemoveRedundantTransport = true,
+			RemoveApplicationDeadArithmetic = false, TrackApplicationNarrowValues = false, FoldApplicationMemoryOperands = false } : null,
 		GeneratedCodeSizeRanges = [("start", "end")]
 	};
 
@@ -295,7 +296,7 @@ public sealed class M68kHotLoopTransportTests
 		return assembler.Link(0x10000, new Dictionary<string,uint>());
 	}
 	private sealed record Observation(uint[] Data, uint[] Address, ushort Flags, byte[] Guest, uint[] Accesses);
-	private static Observation Run(LinkedCode code, M68kCpuModel model, uint value, int flags)
+	private static Observation Run(LinkedCode code, M68kCpuModel model, uint value, int flags, bool arithmeticInputs = false)
 	{
 		var bus = new CountedBus(); code.Bytes.CopyTo(bus.Memory,0x10000);
 		bus.Inner.WriteLong(0x80000,0x1000); bus.Memory.AsSpan(0x40000,32).Fill((byte)value);
@@ -304,6 +305,7 @@ public sealed class M68kHotLoopTransportTests
 		for (var i=0; i<8; i++) { cpu.State.D[i]=0xaabbcc00u+(uint)i; if (i!=7) cpu.State.A[i]=0x40000; }
 		cpu.State.D[2]=0; cpu.State.D[3]=0xaabbcc00u|(byte)value; cpu.State.D[4]=value;
 		cpu.State.D[5]=value^0x80000000u; cpu.State.D[7]=value;
+		if (arithmeticInputs) cpu.State.D[0] = value;
 		for (var i=0; i<200 && cpu.State.ProgramCounter!=0x1000; i++) cpu.ExecuteInstruction();
 		Assert.Equal(0x1000u,cpu.State.ProgramCounter);
 		return new(Enumerable.Range(0,8).Select(i=>cpu.State.D[i]).ToArray(),

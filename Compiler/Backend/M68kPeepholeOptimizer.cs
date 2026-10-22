@@ -275,7 +275,8 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 					TryCanonicalizeZeroDisplacementEffectiveAddress();
 				if (!changed)
 				{
-					changed = TryRemoveGeneratedTransport(dataflow) ||
+					changed = TryCleanupApplicationArithmetic(dataflow) ||
+						TryRemoveGeneratedTransport(dataflow) ||
 						TryCompactGeneratedMemory(dataflow) ||
 						TryDeferGeneratedNormalization(dataflow) ||
 						TryRemoveDeadInstruction(dataflow);
