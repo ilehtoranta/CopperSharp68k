@@ -571,3 +571,78 @@ switch joins, CRC results and FileStats/console output. The application matrix
 also covers relocated HUNKs, full exceptions, forced collection, interior/byref
 roots, finalizers, dynamic frames and both peephole modes. Existing pinned cycle
 budgets were not changed.
+### Call-argument staging and ABI copies
+
+`OptimizeApplicationCallArguments` defaults on within the opt-in MC68000
+application HUNK size policy. It retains formal argument locations, stack layout,
+argument evaluation order and call effects while reducing redundant transport:
+
+- Exact direct callees with unused scalar register formals no longer require the
+  caller to stage those values. Stack arguments and logical argument identities
+  stay intact; effectful and throwing argument expressions still execute. This
+  application control is independent of the older ROM/resident
+  `ElideUnusedRegisterArguments` switch.
+- A destructive staging copy can prefer its source register when it is the last
+  use of an equal-width scalar source. The copy is not declared equivalent, so
+  normal interference and clobber constraints remain in force.
+- A bounded search can move one flexible scalar blocker to free a fixed argument
+  register. It requires a strict reduction in static copy cost, preserves fixed
+  and pair locations, and cannot introduce spills or new callee-saved registers.
+- Adjacent single-use large integer materializations, including constants folded
+  through copies, can push the immediate directly. Zero uses `CLR.L -(A7)` only
+  when the selected CLR policy permits it; the default MC68000 policy retains
+  the original zero transport. Forwarded stack arguments can be pushed directly
+  from their original stack slot without going through D0.
+
+Eligibility retains the existing exception/GC gates: no local handlers or dynamic
+frames, and no GC references, managed byrefs or root-bearing frames when a collector
+can run. Unused-argument analysis additionally excludes managed byref functions and
+GC-bearing callers/callees. No runtime table format, collection trigger or native
+ABI is changed. The policy operates before or during allocation/emission, including
+when post-emission peepholes are disabled; other targets retain their old lowering.
+
+The exception regression also exposed an existing checked-add bug: the small
+constant arithmetic shortcut emitted ADDQ and returned before the overflow check.
+Throwing arithmetic now uses the normal checked emitter on every target,
+independently of the call-argument option.
+
+Measured against `384f977`, using the same Release inputs and runtime DLLs for
+both policy variants, with stripped HUNKs:
+
+| Example | Previous policy | Updated policy | Bytes saved |
+| --- | ---: | ---: | ---: |
+| DOS | 612 | 612 | 0 |
+| FileStats | 944 | 944 | 0 |
+| CopperBars | 1,248 | 1,248 | 0 |
+| ConsoleIO | 4,620 | 4,604 | 16 |
+| StopwatchBenchmark | 6,964 | 6,928 | 36 |
+| Polymorphism | 3,848 | 3,848 | 0 |
+| IFFInspect | 4,816 | 4,816 | 0 |
+| MUISunflower | 892 | 888 | 4 |
+| MUITaskList | 2,240 | 2,236 | 4 |
+| **Total** | **26,184** | **26,124** | **60 (0.23%)** |
+
+Instruction bytes fall from 17,440 to 17,396 (0.25%). The 10% target was not
+reached. The audit found 28 adjacent constant-to-stack staging pairs, with at
+most 56 bytes of direct instruction savings before eligibility and CLR-policy
+checks. Larger remaining call costs include 66 platform-base loads (396 bytes),
+but their writable base slots and external callbacks prevent simply hoisting
+them without an additional stability contract. Existing caller-supplied cached
+base-register APIs provide that contract where appropriate.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<compiler.dll> -RuntimeDirectory <matching-runtime-directory>
+-CompareApplicationCallArguments`. The previous-policy variant disables only this
+new policy while retaining the earlier allocation and arithmetic improvements.
+All nine previous-policy images were verified byte-for-byte against the frozen
+`384f977` images. Reports include compiler, runtime, input and output SHA-256
+hashes, instruction bytes and relocation counts. The measured compiler SHA-256 is
+`303C87A78214A723F2608B9F94192A4DFCD482D034489DC53CF7DF1E163534FD`.
+
+Validation: 447 focused checks passed. Coverage includes fixed-register affinity,
+live sources, bounded reassignment, direct push encodings, CLR policy, forwarded
+stack slots, argument side-effect order, unused throwing arguments and checked
+arithmetic. The application matrix covers relocated HUNKs, full exception
+unwinding, forced collection, interior/byref roots, finalizers, dynamic frames,
+console output and both peephole modes. Direct push and exception regressions
+execute on 68000/68020/68040. Existing pinned cycle budgets were not changed.

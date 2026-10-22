@@ -1633,6 +1633,10 @@ internal sealed partial class M68kCodeGenerator
 					_request.CodeSizeOptimizations!.SimplifyLoopPhis);
 			machineFunction.PreserveCalleeSavedRegisters =
 				!_rootOnlyMethods.Contains(method.Identity);
+			machineFunction.OptimizeCallArguments = UsesApplicationSizeOptimizations &&
+				_request.CodeSizeOptimizations!.OptimizeApplicationCallArguments &&
+				IsApplicationMethodSizeEligible(machineFunction, M68kCompiler.IsManagedRuntime(_request) ||
+					_request.Imports.ContainsKey(M68kRuntimeImports.GcCollect));
 			machineFunction.OptimizeRegisterCopies = UsesApplicationSizeOptimizations &&
 				_request.CodeSizeOptimizations!.OptimizeApplicationRegisterCopies &&
 				IsApplicationMethodSizeEligible(machineFunction, M68kCompiler.IsManagedRuntime(_request) ||

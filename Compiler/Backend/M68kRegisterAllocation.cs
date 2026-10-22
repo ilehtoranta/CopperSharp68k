@@ -647,6 +647,24 @@ internal static class M68kInterferenceBuilder
 						graph.AddCopyPreference(instruction.Definitions[0], source);
 					}
 				}
+				else if (function.OptimizeCallArguments &&
+					instruction.Operation == M68kMachineOperation.Copy &&
+					!instruction.AllowCopyCoalescing &&
+					instruction.Uses is [var stagedSource] &&
+					instruction.Definitions is [var stagedDestination] &&
+					!liveAfter.Contains(stagedSource) &&
+					function.Values[stagedSource] is { IsRegisterPair: false } sourceValue &&
+					function.Values[stagedDestination] is { IsRegisterPair: false } destinationValue &&
+					sourceValue.Kind == destinationValue.Kind &&
+					sourceValue.Width == destinationValue.Width)
+				{
+					// A non-coalescing staging copy protects a source that remains
+					// live while its destination is consumed destructively. If this
+					// copy is the final use of the source, its physical location may
+					// instead flow directly into the fixed ABI register. Keep this
+					// as an affinity, not an equivalent-copy interference exception.
+					graph.AddCopyPreference(stagedDestination, stagedSource);
+				}
 				if (instruction.Operation == M68kMachineOperation.Subtract &&
 					instruction.Uses.Length == 2 &&
 					instruction.Definitions.Length == 1 &&
@@ -1304,6 +1322,11 @@ internal static class M68kGraphColoringAllocator
 			ImproveCopyLocations(function, groups, groupForValue, groupNeighbors,
 				pairAliases, graph, allocatedGroups);
 		}
+		if (function.OptimizeCallArguments && spilledGroups.Count == 0)
+		{
+			ImproveCallArgumentLocations(function, groups, groupForValue,
+				groupNeighbors, graph, allocatedGroups);
+		}
 
 		var allocated = new Dictionary<int, M68kAllocatedLocation>();
 		var spilled = new HashSet<int>();
@@ -1438,6 +1461,134 @@ internal static class M68kGraphColoringAllocator
 				}
 			}
 			if (!changed) break;
+		}
+	}
+
+	private static void ImproveCallArgumentLocations(
+		M68kMachineFunction function,
+		IReadOnlyDictionary<int, AllocationGroup> groups,
+		IReadOnlyDictionary<int, int> groupForValue,
+		IReadOnlyDictionary<int, HashSet<int>> groupNeighbors,
+		M68kInterferenceGraph graph,
+		Dictionary<int, M68kAllocatedLocation> allocated)
+	{
+		var callArguments = function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.Where(static instruction => instruction.Operation == M68kMachineOperation.Call)
+			.SelectMany(static instruction => instruction.Uses)
+			.ToHashSet();
+		if (callArguments.Count == 0) return;
+		var staging = function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.Where(instruction => instruction.Operation == M68kMachineOperation.Copy &&
+				instruction.Uses is [var source] &&
+				instruction.Definitions is [var destination] &&
+				callArguments.Contains(destination) &&
+				function.Values[destination].PrecoloredRegister is not null &&
+				!function.Values[source].IsRegisterPair &&
+				!function.Values[destination].IsRegisterPair &&
+				function.Values[source].Kind == function.Values[destination].Kind &&
+				function.Values[source].Width == function.Values[destination].Width &&
+				graph.CopyPreferences.Contains((Math.Min(source, destination),
+					Math.Max(source, destination))))
+			.ToArray();
+		if (staging.Length == 0) return;
+
+		var referencedValues = function.Blocks
+			.SelectMany(static block =>
+				block.Phis.SelectMany(static phi =>
+					phi.Inputs.Values.Append(phi.Definition))
+				.Concat(block.Instructions.SelectMany(static instruction =>
+					instruction.Uses.Concat(instruction.Definitions))))
+			.ToHashSet();
+		var usedCalleeSaved = allocated
+			.Where(location => groups[location.Key].Members.Overlaps(referencedValues))
+			.SelectMany(static location => location.Value.OccupiedRegisters.Enumerate())
+			.Where(static register => register is
+				>= M68kRegister.D2 and <= M68kRegister.D7 or
+				>= M68kRegister.A2 and <= M68kRegister.A6)
+			.ToHashSet();
+		var copyEdges = graph.CopyPreferences
+			.Select(pair => (Left: groupForValue[pair.Left],
+				Right: groupForValue[pair.Right],
+				Weight: graph.CopyPreferenceWeight(pair.Left, pair.Right)))
+			.Where(static edge => edge.Left != edge.Right)
+			.ToArray();
+		var attempts = 0;
+		for (var pass = 0; pass < 2; pass++)
+		{
+			var changed = false;
+			foreach (var copy in staging)
+			{
+				var targetId = groupForValue[copy.Uses[0]];
+				var fixedId = groupForValue[copy.Definitions[0]];
+				if (targetId == fixedId) continue;
+				var target = groups[targetId];
+				var preferred = allocated[fixedId].Register;
+				if (target.IsPair || target.IsSpillTemporary ||
+					target.PrecoloredRegister is not null ||
+					allocated[targetId].Register == preferred ||
+					!CandidateIsAvailable(target, preferred, target.ForbiddenRegisters) ||
+					IntroducesCalleeSave(preferred))
+					continue;
+				var blockers = groupNeighbors[targetId]
+					.Where(id => allocated[id].OccupiedRegisters.Contains(preferred))
+					.Take(2)
+					.ToArray();
+				if (blockers.Length != 1) continue;
+				var blockerId = blockers[0];
+				var blocker = groups[blockerId];
+				if (blocker.IsPair || blocker.IsSpillTemporary ||
+					blocker.PrecoloredRegister is not null) continue;
+				var before = CopyCost();
+				foreach (var alternative in CandidateRegisters(blocker))
+				{
+					if (++attempts > 128) return;
+					if (alternative == preferred || IntroducesCalleeSave(alternative))
+						continue;
+					var forbidden = blocker.ForbiddenRegisters;
+					foreach (var neighbor in groupNeighbors[blockerId])
+					{
+						if (neighbor != targetId)
+							forbidden = new M68kRegisterSet((ushort)(forbidden.Bits |
+								allocated[neighbor].OccupiedRegisters.Bits));
+					}
+					if (!CandidateIsAvailable(blocker, alternative, forbidden))
+						continue;
+					var targetLocation = new M68kAllocatedLocation(preferred, false);
+					var blockerLocation = new M68kAllocatedLocation(alternative, false);
+					var after = CopyCost(targetId, targetLocation,
+						blockerId, blockerLocation);
+					if (after >= before) continue;
+					allocated[targetId] = targetLocation;
+					allocated[blockerId] = blockerLocation;
+					changed = true;
+					break;
+				}
+			}
+			if (!changed) break;
+		}
+
+		bool IntroducesCalleeSave(M68kRegister register) =>
+			(register is >= M68kRegister.D2 and <= M68kRegister.D7 or
+				>= M68kRegister.A2 and <= M68kRegister.A6) &&
+			!usedCalleeSaved.Contains(register);
+
+		long CopyCost(int firstId = -1,
+			M68kAllocatedLocation first = default,
+			int secondId = -1,
+			M68kAllocatedLocation second = default)
+		{
+			var cost = 0L;
+			foreach (var (left, right, weight) in copyEdges)
+			{
+				var leftLocation = left == firstId ? first :
+					left == secondId ? second : allocated[left];
+				var rightLocation = right == firstId ? first :
+					right == secondId ? second : allocated[right];
+				if (leftLocation != rightLocation) cost += weight;
+			}
+			return cost;
 		}
 	}
 

@@ -601,6 +601,8 @@ internal sealed class M68kMachineFunction
 
 	public bool OptimizeRegisterCopies { get; set; }
 
+	public bool OptimizeCallArguments { get; set; }
+
 	public HashSet<int> GcSpillSlots { get; } = new();
 
 
