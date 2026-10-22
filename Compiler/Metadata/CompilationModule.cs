@@ -1252,8 +1252,11 @@ internal sealed partial class CompilationModule : IDisposable
 			size = expectedLength * 4;
 			bitmap = (1u << expectedLength) - 1;
 		}
-		if (isValueType && size == 0 && FrameworkImplementationPack?.EnableUnlistedManagedBodies == true &&
-			!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName)) size = 4;
+		// Stateless application receivers still need addressable native storage.
+		if (isValueType && size == 0 &&
+			(FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || _assemblyName != "System.Private.CoreLib") &&
+			!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName))
+			size = Math.Max(4, definition.GetLayout().Size);
 		var layout = new CilTypeLayout(
 			handle,
 			GetTypeName(definition),
@@ -4056,6 +4059,12 @@ internal sealed partial class CompilationModule : IDisposable
 		if (FrameworkImplementationPack?.EnableUnlistedManagedBodies == true && type.Kind == CilTypeKind.ValueType &&
 			type.DisplayName.StartsWith("System.Runtime.CompilerServices.InlineArray", StringComparison.Ordinal))
 			return TryGetReferenceFreeStructLayout(type, _assemblyName, out _);
+		if (type.Kind == CilTypeKind.ValueType && !type.GenericArguments.IsDefaultOrEmpty)
+			foreach (var module in _root._modules.Values)
+				if (module.TryFindConstructedGenericDefinition(type, out var importedType) &&
+					importedType.ModuleName != "System.Private.CoreLib" &&
+					!Net10FrameworkContract.Default.IsFrameworkAssembly(importedType.ModuleName))
+					return module.TryGetReferenceFreeStructLayout(type, importedType.ModuleName, out _);
 		if (IsSupportedSpanLikeType(type) ||
 			IsSupportedMemoryLikeType(type) ||
 			IsDefaultInterpolatedStringHandler(type) ||
@@ -4095,9 +4104,11 @@ internal sealed partial class CompilationModule : IDisposable
 				.Select(GetField)
 				.Where(static field => !field.IsStatic)
 				.ToArray();
-			return fields.Length != 0 || FrameworkImplementationPack?.EnableUnlistedManagedBodies == true &&
+			return fields.Length != 0 ||
 				!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName) &&
-				IsExperimentalManagedStructLayout(GetTypeLayout(handle));
+				(IsValueTypeDefinition(definition) && _assemblyName != "System.Private.CoreLib" ||
+				 FrameworkImplementationPack?.EnableUnlistedManagedBodies == true &&
+				 IsExperimentalManagedStructLayout(GetTypeLayout(handle)));
 		}
 
 		return false;
@@ -5203,8 +5214,11 @@ internal sealed partial class CompilationModule : IDisposable
 			size = checked(size + fieldStorageSize);
 		}
 
-		if (isValueType && size == 0 && FrameworkImplementationPack?.EnableUnlistedManagedBodies == true &&
-			!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName)) size = 4;
+		// Stateless application receivers still need addressable native storage.
+		if (isValueType && size == 0 &&
+			(FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || _assemblyName != "System.Private.CoreLib") &&
+			!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName))
+			size = Math.Max(4, definition.GetLayout().Size);
 		var layout = new CilTypeLayout(
 			handle,
 			constructedType.DisplayName,
@@ -6608,14 +6622,17 @@ internal sealed partial class CompilationModule : IDisposable
 			{
 				return registered;
 			}
-			if (parentType.GenericArguments.Length != 0 &&
-				TryFindConstructedGenericDefinition(parentType, out var constructedTarget))
+			foreach (var owner in new[] { this }.Concat(_root._managedAssemblyPaths.Keys
+				.Where(assembly => assembly != _assemblyName && assembly != "System.Private.CoreLib" && !Net10FrameworkContract.Default.IsFrameworkAssembly(assembly))
+				.Select(GetOrLoadModule).OfType<CompilationModule>()))
 			{
-				var definition = Reader.GetTypeDefinition(
+				if (parentType.GenericArguments.Length == 0 ||
+					!owner.TryFindConstructedGenericDefinition(parentType, out var constructedTarget)) continue;
+				var definition = owner.Reader.GetTypeDefinition(
 					(TypeDefinitionHandle)constructedTarget.Handle);
 				foreach (var methodHandle in definition.GetMethods())
 				{
-					var candidate = GetMethod(methodHandle);
+					var candidate = owner.GetMethod(methodHandle);
 					if (candidate.Name == name &&
 						ConstructedSignaturesMatch(
 							candidate.Signature,
@@ -6623,7 +6640,7 @@ internal sealed partial class CompilationModule : IDisposable
 							parentType.GenericArguments))
 					{
 						return MethodReference.ForDefinition(
-							GetConstructedMethod(
+							owner.GetConstructedMethod(
 								methodHandle,
 								parentType,
 								ImmutableArray<CilType>.Empty),

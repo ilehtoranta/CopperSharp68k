@@ -85,10 +85,13 @@ sites become direct logical calls. Framework-private virtual-shaped methods
 without runtime slots remain conservative.
 
 The current transactional inliner handles direct, single-block scalar callees.
-It absolutely honors `NoInlining`, rejects recursive SCC edges, EH, `localloc`,
-safepoints, memory operations, and throwing operations, and commits only when
-the machine-instruction count does not grow. Cloned instructions retain their
-original source origin with the caller site appended.
+It honors `NoInlining` and rejects recursive SCC edges, EH, `localloc`, and
+safepoints. In addition to pure scalar bodies, bounded guest-memory wrappers and
+attributed value-type constructors/accessors have dedicated admission rules.
+Cloned instructions retain their original source origin with the caller site
+appended. Nonescaping, reference-free view fields can then be promoted into
+scalar values; frame forwarding distinguishes their byte ranges. See
+[borrowed memory views](Compiler/MemoryViews.md) for the scope and regression checks.
 
 General multi-block, aggregate/byref, callvirt-null-check, and EH-aware cloning
 remain guarded off until their transactional clone and unwind-state paths are

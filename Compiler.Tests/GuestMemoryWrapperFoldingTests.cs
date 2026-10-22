@@ -127,7 +127,8 @@ public sealed class GuestMemoryWrapperFoldingTests
 		var foldedIntrinsic = Assert.Single(caller.Blocks
 			.SelectMany(static block => block.Instructions)
 			.Where(instruction => IsGuestIntrinsic(instruction, module)));
-		Assert.Equal(2, foldedIntrinsic.Uses.Length);
+		Assert.Equal(entry == "EligibleEntry" ? 1 : 2, foldedIntrinsic.Uses.Length);
+		if (entry == "EligibleEntry") Assert.Equal(0, foldedIntrinsic.Immediate);
 		Assert.Equal(sourceIntrinsic.Clobbers, foldedIntrinsic.Clobbers);
 		Assert.Equal(sourceIntrinsic.MemoryEffect, foldedIntrinsic.MemoryEffect);
 		Assert.Equal(sourceIntrinsic.IsSafepoint, foldedIntrinsic.IsSafepoint);
