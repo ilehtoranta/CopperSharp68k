@@ -289,8 +289,15 @@ internal sealed partial class M68kCodeGenerator
 			.Concat(ReachableManagedPoolMethods.Select(static method => method.Identity))
 			.Concat(_foldedMethodAliases.Keys)
 			.Concat(_foldedMethodAliases.Values.Select(static method => method.Identity))
-			.Concat(methods.Where(static method =>
-				method.IsVirtual || method.DeclaringTypeIsInterface)
+			.Concat(methods.Where(method =>
+				(method.IsVirtual || method.DeclaringTypeIsInterface) &&
+				// Final value-type interface implementations reached exclusively by
+				// constrained calls need no dispatch entry in an image without any
+				// object/boxed descriptors or runtime interface dispatch. Surviving
+				// direct calls and function addresses still retain them normally.
+				!(method.IsFinal && _module.IsValueTypeMethod(method) &&
+				  _runtimeDispatchInterfaces.Count == 0 && _usedTypeLayouts.Count == 0 &&
+				  _constructedTypeDescriptors.Count == 0 && _boxedTypes.Count == 0))
 				.Select(static method => method.Identity))
 			.ToHashSet();
 		_machineOptimizationStatistics = M68kMachineModuleOptimizer.Run(
@@ -706,7 +713,6 @@ internal sealed partial class M68kCodeGenerator
 				if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 				{
 					var interfaceDefinition = _module.GetInterfaceDefinition(interfaceMethod);
-					_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
 					if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 					{
 						if (_module.TryResolveConstrainedValueInterfaceImplementation(
@@ -717,6 +723,7 @@ internal sealed partial class M68kCodeGenerator
 						}
 						else
 						{
+							_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
 							_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
 								interfaceDefinition);
 							foreach (var implementation in
@@ -726,6 +733,7 @@ internal sealed partial class M68kCodeGenerator
 					}
 					else
 					{
+						_usedInterfaces.TryAdd(interfaceDefinition.Identity, interfaceDefinition);
 						_runtimeDispatchInterfaces.TryAdd(interfaceDefinition.Identity,
 							interfaceDefinition);
 						foreach (var implementation in _module.GetInterfaceTableImplementations(interfaceMethod))
