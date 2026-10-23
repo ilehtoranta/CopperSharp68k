@@ -12051,7 +12051,7 @@ public sealed partial class CompilerExecutionTests
 			result.Text!,
 			@"(?<header>C68K_method_003A06000002_003ABB[0-9A-F]+):\r?\n" +
 			@"\tmove\.l\ta2,d1\r?\n" +
-			@"\tmovea\.l\t\(a7\),a6\r?\n" +
+			@"\tmovea\.l\t_DOSLibraryBase(?:\(pc\))?,a6\r?\n" +
 			@"\tjsr\t-306\(a6\)\r?\n" +
 			@"(?<body>.*?)\tbra(?:\.[sw])?\t\k<header>",
 			RegexOptions.Singleline);
