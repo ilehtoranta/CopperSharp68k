@@ -17128,6 +17128,14 @@ public static partial class CompilerFixtures
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int BoxedMultiwordUnboxFieldReadEntry()
+	{
+		object value = new BoxedPair(19, 23);
+		var copy = (BoxedPair)value;
+		return copy.First + copy.Second;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int BoxedThreeWordUnboxAnyEntry()
 	{
 		var source = new BoxedTriple(9, 14, 19);

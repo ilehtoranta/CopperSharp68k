@@ -69,6 +69,23 @@ internal static class M68kLocalViewScalarizer
                 if (addresses.TryGetValue(input, out var local)) candidates.Remove(local);
         foreach (var instruction in instructions)
         {
+            // Fused aggregate producers write their destination home without
+            // taking its address. Their payload is not represented by our lane
+            // stores, so subsequent field reads must keep observing memory.
+            if (instruction.ArgumentIndex is { } writtenHome && candidates.Contains(writtenHome))
+            {
+                var scalarStore = function.LocalHomes[writtenHome].Size == 4 &&
+                    instruction.MemoryOffset == 0 && instruction.MemorySize is 0 or 4 &&
+                    instruction.Uses is [var stored] &&
+                    function.Values[stored] is { Width: M68kMachineValueWidth.Long, IsGcReference: false } value &&
+                    value.Kind != CilStackValueKind.AggregateAddress;
+                if (instruction.Operation is M68kMachineOperation.Unbox or
+                    M68kMachineOperation.AggregateFieldLoad or M68kMachineOperation.AggregateArrayLoad or
+                    M68kMachineOperation.AggregateIndirectLoad or M68kMachineOperation.AggregateIndirectCopy ||
+                    instruction.Operation == M68kMachineOperation.LocalStore &&
+                    !copies.ContainsKey(instruction.Id) && !scalarStore)
+                    candidates.Remove(writtenHome);
+            }
             foreach (var use in instruction.Uses.Concat(instruction.LogicalCall?.ArgumentValueIds ?? []))
             {
                 if (!addresses.TryGetValue(use, out var local)) continue;

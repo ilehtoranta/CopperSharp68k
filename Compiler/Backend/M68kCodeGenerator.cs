@@ -20,8 +20,11 @@ internal sealed partial class M68kCodeGenerator
 		_request.RuntimeProfile == M68kRuntimeProfile.Resident &&
 		_request.OutputFormat == M68kOutputFormat.Hunk;
 	private bool SupportsGeneratedCodeSizeProfile => _request.CodeSizeOptimizations is not null &&
-		_request.Cpu == M68kCpuTarget.M68000 && _request.RuntimeProfile == M68kRuntimeProfile.Resident &&
-		_request.OutputFormat == M68kOutputFormat.Hunk && _request.ExceptionMode == M68kExceptionMode.Yolo &&
+		_request.Cpu == M68kCpuTarget.M68000 &&
+		(_request.RuntimeProfile == M68kRuntimeProfile.Resident && _request.OutputFormat == M68kOutputFormat.Hunk ||
+			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+			_request.OutputFormat is M68kOutputFormat.KickstartRom or M68kOutputFormat.Assembly) &&
+		_request.ExceptionMode == M68kExceptionMode.Yolo &&
 		_memoryManagement == M68kMemoryManagement.None && !_usesExceptionRuntime;
 	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();

@@ -74,22 +74,31 @@ public sealed class GeneratedCodeSizeExecutionTests
     }
 
     [Theory]
-    [InlineData("RemoveRedundantTransport")]
-    [InlineData("CompactGuestMemory")]
-    [InlineData("NarrowOperations")]
-    [InlineData("EliminateRedundantInitialization")]
-    [InlineData("SizeFirstCosts")]
-    [InlineData("InlineMemoryHelpers")]
-    [InlineData("ShareArithmeticCores")]
-    [InlineData("CompactPrivateStackCopies")]
-    [InlineData("Combined")]
-    public void ResidentHunkRelocationAliasingAndRepeatedInvocationAgree(string pass)
+    [InlineData("RemoveRedundantTransport", false)]
+    [InlineData("RemoveRedundantTransport", true)]
+    [InlineData("CompactGuestMemory", false)]
+    [InlineData("CompactGuestMemory", true)]
+    [InlineData("NarrowOperations", false)]
+    [InlineData("NarrowOperations", true)]
+    [InlineData("EliminateRedundantInitialization", false)]
+    [InlineData("EliminateRedundantInitialization", true)]
+    [InlineData("SizeFirstCosts", false)]
+    [InlineData("SizeFirstCosts", true)]
+    [InlineData("InlineMemoryHelpers", false)]
+    [InlineData("InlineMemoryHelpers", true)]
+    [InlineData("ShareArithmeticCores", false)]
+    [InlineData("ShareArithmeticCores", true)]
+    [InlineData("CompactPrivateStackCopies", false)]
+    [InlineData("CompactPrivateStackCopies", true)]
+    [InlineData("Combined", false)]
+    [InlineData("Combined", true)]
+    public void GeneratedProfilesPreserveAliasingAndRepeatedInvocation(string pass, bool rom)
     {
         var request = new M68kCompilationRequest {
             AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
             EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::Entry",
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
-            OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = rom ? M68kRuntimeProfile.Rom : M68kRuntimeProfile.Resident,
+            OutputFormat = rom ? M68kOutputFormat.KickstartRom : M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
             Hunk = new() { IncludeSymbols = false }
         };
@@ -108,8 +117,8 @@ public sealed class GeneratedCodeSizeExecutionTests
         foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
         foreach (var load in new uint[] { 0x10000, 0x20000 })
         foreach (var input in new uint[] { 0, 1, 127, 128, 255, 256, uint.MaxValue }) {
-            var a = Guest(before, model, load, input);
-            var b = Guest(after, model, load, input);
+            var a = Guest(before, model, load, input, rom: rom);
+            var b = Guest(after, model, load, input, rom: rom);
             Assert.Equal(a, b);
         }
         foreach (var target in new[] { M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
@@ -119,23 +128,27 @@ public sealed class GeneratedCodeSizeExecutionTests
     }
 
     [Theory]
-    [InlineData("ArithmeticEntry", "ShareArithmeticCores")]
-    [InlineData("UnsignedArithmeticEntry", "ShareArithmeticCores")]
-    [InlineData("BoundedArithmeticEntry", "ShareArithmeticCores")]
-    [InlineData("HelperEntry", "InlineMemoryHelpers")]
-    public void SharedArithmeticAndBranchedMemoryHelpersPreserveBoundaryValues(string entry, string pass)
+    [InlineData("ArithmeticEntry", "ShareArithmeticCores", false)]
+    [InlineData("ArithmeticEntry", "ShareArithmeticCores", true)]
+    [InlineData("UnsignedArithmeticEntry", "ShareArithmeticCores", false)]
+    [InlineData("UnsignedArithmeticEntry", "ShareArithmeticCores", true)]
+    [InlineData("BoundedArithmeticEntry", "ShareArithmeticCores", false)]
+    [InlineData("BoundedArithmeticEntry", "ShareArithmeticCores", true)]
+    [InlineData("HelperEntry", "InlineMemoryHelpers", false)]
+    [InlineData("HelperEntry", "InlineMemoryHelpers", true)]
+    public void SharedArithmeticAndBranchedMemoryHelpersPreserveBoundaryValues(string entry, string pass, bool rom)
     {
         var request = new M68kCompilationRequest {
             AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
             EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::" + entry,
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
-            OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = rom ? M68kRuntimeProfile.Rom : M68kRuntimeProfile.Resident,
+            OutputFormat = rom ? M68kOutputFormat.KickstartRom : M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [], Hunk = new() { IncludeSymbols = false }
         };
         var before = AmigaM68kCompiler.Compile(request);
         var after = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() {
             ShareArithmeticCores = pass == "ShareArithmeticCores", InlineMemoryHelpers = pass == "InlineMemoryHelpers" } });
-        Assert.True(after.Image.Length < before.Image.Length);
+        Assert.True(after.Code.Length < before.Code.Length);
         Assert.Contains("pass=" + (entry == "BoundedArithmeticEntry" ? "BoundedRegisterDivision" : pass), after.Map);
         foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
         foreach (var load in new uint[] { 0x10000, 0x20000 })
@@ -145,7 +158,7 @@ public sealed class GeneratedCodeSizeExecutionTests
             // BCHG in the unchanged signed-negative-divisor prefix. The
             // unsigned fixture covers those same core operands on all CPUs.
             if (entry == "ArithmeticEntry" && model != M68kCpuModel.M68000 && b >= 0x80000000) continue;
-            Assert.Equal(Guest(before, model, load, a, b), Guest(after, model, load, a, b));
+            Assert.Equal(Guest(before, model, load, a, b, rom), Guest(after, model, load, a, b, rom));
         }
     }
 
@@ -263,27 +276,32 @@ public sealed class GeneratedCodeSizeExecutionTests
         }
     }
 
-    [Fact]
-    public void LoopPhiPolicyIsOptInAndRestrictedToItsQualifiedProfile()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LoopPhiPolicyIsOptInAndRestrictedToItsQualifiedProfile(bool rom)
     {
         Assert.False(new M68kCodeSizeOptions().SimplifyLoopPhis);
         var request = new M68kCompilationRequest {
             AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
             EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::LoopPressureEntry",
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
-            OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = rom ? M68kRuntimeProfile.Rom : M68kRuntimeProfile.Resident,
+            OutputFormat = rom ? M68kOutputFormat.KickstartRom : M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
             Hunk = new() { IncludeSymbols = false }
         };
         var baseline = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() });
         var candidate = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() { SimplifyLoopPhis = true } });
-        Assert.True(candidate.Image.Length < baseline.Image.Length);
+        Assert.True(candidate.Code.Length < baseline.Code.Length);
         foreach (var target in new[] { M68kCpuTarget.M68020, M68kCpuTarget.M68040 }) {
             var unsupported = request with { Cpu = target };
             Assert.Equal(AmigaM68kCompiler.Compile(unsupported with { CodeSizeOptimizations = new() }).Image,
                 AmigaM68kCompiler.Compile(unsupported with { CodeSizeOptimizations = new() { SimplifyLoopPhis = true } }).Image);
         }
-        var application = request with { RuntimeProfile = M68kRuntimeProfile.Application };
+        foreach (var input in new uint[] { 0, 1, 7, uint.MaxValue })
+            Assert.Equal(Guest(baseline, M68kCpuModel.M68000, 0x10000, input, rom: rom),
+                Guest(candidate, M68kCpuModel.M68000, 0x10000, input, rom: rom));
+        var application = request with { RuntimeProfile = M68kRuntimeProfile.Application, OutputFormat = M68kOutputFormat.Hunk };
         Assert.Equal(AmigaM68kCompiler.Compile(application with { CodeSizeOptimizations = new() }).Image,
             AmigaM68kCompiler.Compile(application with { CodeSizeOptimizations = new() { SimplifyLoopPhis = true } }).Image);
     }
@@ -325,15 +343,16 @@ public sealed class GeneratedCodeSizeExecutionTests
             bus.Memory.AsSpan(0x40000, 16).ToArray(), [cpu.State.A[5], cpu.State.A[6]], bus.Accesses.ToArray(), bus.Memory.AsSpan(0x80008, 24).ToArray());
     }
 
-    private static uint[] Guest(M68kCompilationResult result, M68kCpuModel model, uint load, uint input, uint divisor = 0)
+    private static uint[] Guest(M68kCompilationResult result, M68kCpuModel model, uint load, uint input, uint divisor = 0, bool rom = false)
     {
-        var bus = new CountedBus();
-        ResidentCodeSizeExecutionTests.LoadImage(result.Image, load).CopyTo(bus.Memory, (int)load);
+        var bus = new CountedBus(rom ? 0x1000000 : 0x100000);
+        if (rom) result.Image.CopyTo(bus.Memory, 0xF80000);
+        else ResidentCodeSizeExecutionTests.LoadImage(result.Image, load).CopyTo(bus.Memory, (int)load);
         bus.WriteLong(0x40000, input); bus.WriteLong(0x40004, divisor);
         using var cpu = M68kCoreFactory.Default.Create(model, bus);
         var observations = new List<uint>();
         for (var invocation = 0; invocation < 3; invocation++) {
-            bus.WriteLong(0x80000, 0x1000); cpu.Reset(load + result.EntryPoint, 0x80000);
+            bus.WriteLong(0x80000, 0x1000); cpu.Reset((rom ? 0u : load) + result.EntryPoint, 0x80000);
             for (var step = 0; step < 10000 && cpu.State.ProgramCounter != 0x1000; step++) {
                 cpu.ExecuteInstruction(); Assert.False(cpu.State.Halted);
             }
@@ -345,14 +364,15 @@ public sealed class GeneratedCodeSizeExecutionTests
         return observations.Concat(bus.Accesses).ToArray();
     }
 
-    private sealed class CountedBus : IM68kBus
+    private sealed class CountedBus(int bytes = 0x100000) : IM68kBus
     {
-        private readonly TestBus inner = new(0x100000);
+        private readonly TestBus inner = new(bytes);
         internal byte[] Memory => inner.Memory;
         internal List<uint> Accesses { get; } = [];
         internal void WriteLong(uint address, uint value) => inner.WriteLong(address, value);
         internal uint ReadLong(uint address) => inner.ReadLong(address);
         private void Record(uint address, int width, bool write) {
+            Assert.False(write && address >= 0xF80000, "Guest code must not write to the ROM image.");
             if (address >= 0x40000 && address < 0x40020) Accesses.Add(address | ((uint)width << 24) | (write ? 0x80000000u : 0));
         }
         public byte ReadByte(uint address, ref long cycle, M68kBusAccessKind kind) {

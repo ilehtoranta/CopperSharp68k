@@ -597,6 +597,7 @@ public sealed partial class CompilerExecutionTests
 
 	public static TheoryData<string, M68kCpuTarget, M68kCpuModel>
 		MultiwordUnboxAnyCases => CreateMultiwordCpuCases(
+			"BoxedMultiwordUnboxFieldReadEntry",
 			"BoxedMultiwordUnboxAnyEntry",
 			"BoxedThreeWordUnboxAnyEntry",
 			"BoxedMultiwordUnboxAnyIdentityEntry",
@@ -9022,15 +9023,15 @@ public sealed partial class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void LibraryVectorConsumesPromotedNullBaseWithoutACompilerSlot()
+	public void LibraryVectorConsumesClearedObservableBase()
 	{
 		var result = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::ClearDosLibraryBaseBeforeVectorCall");
 
-		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tsuba.l\ta6,a6", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t_DOSLibraryBase,a6", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tjmp\t-948(a6)", result.Text, StringComparison.Ordinal);
 	}
 
@@ -9882,8 +9883,10 @@ public sealed partial class CompilerExecutionTests
 			"\trts",
 			StringComparison.Ordinal)];
 		Assert.DoesNotContain("(a7)", entryBody, StringComparison.Ordinal);
+		// Both short immediates and full-width definitions keep the APTR
+		// scalar in a register; later uses can require its upper bits too.
 		Assert.Matches(
-			@"\t(?:move\.w\t#\$0100,d[0-7]|movea\.w\t#\$0100,a[0-6])",
+			@"\t(?:move\.[wl]\t#\$(?:0000)?0100,d[0-7]|movea\.[wl]\t#\$(?:0000)?0100,a[0-6])",
 			entryBody);
 	}
 
@@ -11262,10 +11265,8 @@ public sealed partial class CompilerExecutionTests
 			System.Text.Encoding.Latin1.GetString(eofOutput));
 		// Call barriers invalidate stale condition aliases, and finally frames
 		// initialize their active-exception slot even on the normal path.
-		Assert.Equal(30_992, input.Cycles);
-		Assert.Equal(3_190, input.Instructions);
-		Assert.Equal(17_156, eof.Cycles);
-		Assert.Equal(1_849, eof.Instructions);
+		Assert.Equal((31_758L, 3_213L, 17_986L, 1_909L),
+			(input.Cycles, input.Instructions, eof.Cycles, eof.Instructions));
 	}
 
 	[Fact]
@@ -11677,6 +11678,7 @@ public sealed partial class CompilerExecutionTests
 			calls++;
 			Assert.Equal(execBase, state.A[6]);
 			state.D[0] += state.D[1];
+			state.A[6] = 0x5A5A_5A5A;
 		});
 
 		Assert.Equal(14u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
@@ -11684,21 +11686,13 @@ public sealed partial class CompilerExecutionTests
 		var text = result.Text!;
 		var baseLoads = Regex.Matches(
 			text,
-			@"\tmovea?\.l\t_ExecBase,(?<base>[ad][0-7])");
-		Assert.Equal(2, baseLoads.Count);
-		var baseRegister = baseLoads[0].Groups["base"].Value;
-		Assert.All(
-			baseLoads.Cast<Match>(),
-			match => Assert.Equal(baseRegister, match.Groups["base"].Value));
+			@"\tmovea\.l\t_ExecBase(?:\(pc\))?,a6");
+		Assert.Equal(3, baseLoads.Count);
 		Assert.Equal(
 			3,
 			Regex.Matches(
 				text,
-				$@"\tmovea\.l\t{Regex.Escape(baseRegister)},a6").Count);
-		Assert.DoesNotContain(
-			"\tmovea.l\t_ExecBase,a6",
-			text,
-			StringComparison.Ordinal);
+				@"\t(?:jsr|jmp)\t-30\(a6\)").Count);
 	}
 
 	[Fact]
@@ -12050,7 +12044,7 @@ public sealed partial class CompilerExecutionTests
 			result.Text!,
 			@"(?<header>C68K_method_003A06000002_003ABB[0-9A-F]+):\r?\n" +
 			@"\tmove\.l\ta2,d1\r?\n" +
-			@"\tmovea\.l\t\(a7\),a6\r?\n" +
+			@"\tmovea\.l\t_DOSLibraryBase(?:\(pc\))?,a6\r?\n" +
 			@"\tjsr\t-306\(a6\)\r?\n" +
 			@"(?<body>.*?)\tbra(?:\.[sw])?\t\k<header>",
 			RegexOptions.Singleline);

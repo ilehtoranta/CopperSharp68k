@@ -56,12 +56,11 @@ public sealed partial class CopperBarsAssemblyTests
 	{
 		var result = Compile(M68kOutputFormat.Hunk);
 
-		// Compiler-owned library bases are promoted to SSA values. The remaining
-		// relocations are direct call-base reads, externally observable slots, and
-		// actual code/data links.
+		// Writable library-base slots stay observable across opaque native calls.
+		// Their reads/writes retain relocations alongside actual code/data links.
 		Assert.True(result.Code.Length <= 1_322, $"Code budget exceeded: {result.Code.Length} bytes.");
 		Assert.True(result.Image.Length <= 1_476, $"Stripped HUNK budget exceeded: {result.Image.Length} bytes.");
-		Assert.True(result.Relocations.Count <= 14,
+		Assert.True(result.Relocations.Count <= 25,
 			$"Relocation budget exceeded: {result.Relocations.Count} entries.");
 	}
 
