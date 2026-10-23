@@ -566,6 +566,12 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Replace private application unwind restore routines with a shared mask-driven helper when it reduces emitted code size.</summary>
+	public bool ShareApplicationUnwindHelper { get; init; } = true;
+	/// <summary>Use self-relative restore pointers in private application unwind descriptors while retaining the collector's field layout.</summary>
+	public bool RelativeApplicationUnwindRestores { get; init; } = true;
+	/// <summary>Retain only demanded managed-pool helper entry points and adapters in eligible application images.</summary>
+	public bool PruneApplicationRuntimeHelpers { get; init; } = true;
 	/// <summary>Place frequently accessed static fields near application code and use shorter reads or relocation-free stores with an already-dead scratch register.</summary>
 	public bool CompactApplicationStatics { get; init; } = true;
 	/// <summary>Keep frequently read platform-base slots near application code so their mutable reads can use PC-relative addressing without caching values across calls.</summary>

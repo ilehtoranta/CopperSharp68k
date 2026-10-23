@@ -58,10 +58,10 @@ public sealed partial class CompilerExecutionTests
 			AssemblyPath = Path.Combine(AppContext.BaseDirectory, "StopwatchBenchmark.dll"), EntryPoint = "StopwatchBenchmarkExample.Program::Main",
 			Cpu = M68kCpuTarget.M68000, OutputFormat = M68kOutputFormat.Hunk, RuntimeProfile = M68kRuntimeProfile.Application,
 			ExceptionMode = M68kExceptionMode.Full, Hunk = new() { IncludeSymbols = false },
-			CodeSizeOptimizations = new() { ShareApplicationUnwindRestores = false }
+			CodeSizeOptimizations = new() { ShareApplicationUnwindRestores = false, RelativeApplicationUnwindRestores = false, ShareApplicationUnwindHelper = false }
 		};
 		var before = AmigaM68kCompiler.Compile(request);
-		var after = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() });
+		var after = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = new() { RelativeApplicationUnwindRestores = false, ShareApplicationUnwindHelper = false } });
 		Assert.True(after.Image.Length < before.Image.Length);
 		var restores = after.Relocations.Where(relocation => relocation.Target.StartsWith("runtime:method-unwind-restore:", StringComparison.Ordinal)).ToArray();
 		Assert.Contains(restores.GroupBy(relocation => Read(after, relocation.Offset)), group =>

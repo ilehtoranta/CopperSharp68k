@@ -868,10 +868,19 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.Mark(RuntimeExceptionUnwindFrameLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
 		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
-		_assembler.EmitWord(0x2068); // MOVEA.L 8(A0),A0 unwind thunk
-		_assembler.EmitWord(0x0008);
-		_assembler.EmitWord(0x220E); // MOVE.L A6,D1 context pointer
-		_assembler.EmitWord(0x4E90); // JSR (A0)
+		if (_useSharedApplicationUnwindHelper)
+		{
+			_assembler.EmitWord(0x220E); // MOVE.L A6,D1 context pointer
+			_assembler.EmitBsr(RuntimeSharedApplicationUnwindHelperLabel);
+		}
+		else
+		{
+			_assembler.EmitWord(UsesRelativeApplicationUnwindRestores ? (ushort)0xD1E8 : (ushort)0x2068);
+			// ADDA.L 8(A0),A0 for private relative descriptors; otherwise MOVEA.L.
+			_assembler.EmitWord(0x0008);
+			_assembler.EmitWord(0x220E); // MOVE.L A6,D1 context pointer
+			_assembler.EmitWord(0x4E90); // JSR (A0)
+		}
 		_assembler.EmitWord(0x2C41); // MOVEA.L D1,A6
 		EmitLoadExceptionContextRegister(M68kRegister.A1, ExceptionContextFrameBaseOffset);
 		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextDescriptorOffset);
@@ -890,6 +899,7 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		EmitFindUnwindSiteRuntime();
+		if (_useSharedApplicationUnwindHelper) EmitSharedApplicationUnwindHelper();
 
 		_assembler.Mark(RuntimeExceptionUnhandledLabel);
 		EmitLoadExceptionContextRegister(M68kRegister.A0, ExceptionContextExceptionOffset);
@@ -911,6 +921,57 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 		_assembler.EmitWord(0x4AFC); // ILLEGAL
+	}
+
+	private void EmitSharedApplicationUnwindHelper()
+	{
+		// A0 is the private descriptor, A1 is the frame base and D1 is the
+		// exception-context pointer. All callee-saved registers have already been
+		// captured at context+24. Change only the slots saved by this frame, then
+		// restore the complete physical set from the updated snapshot. This keeps
+		// every register correct before a finally/cleanup callback can run.
+		var start = _assembler.Offset;
+		var forward = UniqueLabel("shared_unwind_forward");
+		var loop = UniqueLabel("shared_unwind_loop");
+		var skip = UniqueLabel("shared_unwind_skip");
+		_assembler.AlignWord();
+		_assembler.Mark(RuntimeSharedApplicationUnwindHelperLabel);
+		_assembler.EmitWord(0x2028); // MOVE.L 8(A0),D0 register mask
+		_assembler.EmitWord(0x0008);
+		_assembler.EmitWord(0x2610); // MOVE.L (A0),D3 frame bytes
+		_assembler.EmitWord(0xD3C3); // ADDA.L D3,A1 saved-register base
+		_assembler.EmitWord(0x2628); // MOVE.L 4(A0),D3 saved bytes
+		_assembler.EmitWord(0x0004);
+		_assembler.EmitWord(0x7404); // MOVEQ #4,D2 forward source stride
+		_assembler.EmitWord(0x0C43); // CMPI.W #12,D3
+		_assembler.EmitWord(0x000C);
+		_assembler.EmitBranch(M68kCondition.GreaterOrEqual, forward);
+		// One/two scalar saves use reversed frame slots. Start at the final slot
+		// and traverse backwards while scanning mask bits in register order.
+		_assembler.EmitWord(0xD3C3); // ADDA.L D3,A1
+		_assembler.EmitWord(0x5989); // SUBQ.L #4,A1
+		_assembler.EmitWord(0x74FC); // MOVEQ #-4,D2 reverse source stride
+		_assembler.Mark(forward);
+		_assembler.EmitWord(0x2041); // MOVEA.L D1,A0 context
+		_assembler.EmitWord(0x41E8); // LEA 24(A0),A0 first snapshot slot
+		_assembler.EmitWord(checked((ushort)ExceptionContextBytes));
+		_assembler.EmitWord(0x760A); // MOVEQ #10,D3, eleven registers
+		_assembler.Mark(loop);
+		_assembler.EmitWord(0x0800); // BTST #0,D0
+		_assembler.EmitWord(0x0000);
+		_assembler.EmitBranch(M68kCondition.Equal, skip);
+		_assembler.EmitWord(0x2091); // MOVE.L (A1),(A0)
+		_assembler.EmitWord(0xD3C2); // ADDA.L D2,A1
+		_assembler.Mark(skip);
+		_assembler.EmitWord(0x5888); // ADDQ.L #4,A0, next snapshot slot
+		_assembler.EmitWord(0xE258); // ROR.W #1,D0; preserves X
+		_assembler.EmitDbra(3, loop); // DBRA D3; preserves CCR
+		_assembler.EmitWord(0x41E8); // LEA -44(A0),A0
+		_assembler.EmitWord(unchecked((ushort)-44));
+		_assembler.EmitWord(0x4CD0); // MOVEM.L (A0),D2-D7/A2-A6
+		_assembler.EmitWord(0x7CFC);
+		_assembler.EmitWord(0x4E75); // RTS
+		_sharedApplicationUnwindHelperBytes = _assembler.Offset - start;
 	}
 
 	private readonly HashSet<int> _applicationExceptionFaultReasons = new();

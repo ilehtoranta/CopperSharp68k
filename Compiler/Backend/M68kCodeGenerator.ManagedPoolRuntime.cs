@@ -385,77 +385,104 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitManagedPoolAllocationAdapters(ManagedPoolRuntimeModule runtime)
 	{
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeAllocLabel);
-		_assembler.EmitCall(MethodLabel(runtime.Allocate));
-		_assembler.EmitWord(0x4E75); // RTS
+		if (NeedsAdapter(RuntimeAllocLabel))
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeAllocLabel);
+			_assembler.EmitCall(MethodLabel(runtime.Allocate));
+			_assembler.EmitWord(0x4E75); // RTS
+		}
 
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeDisposeLabel);
-		_assembler.EmitWord(0x2008); // MOVE.L A0,D0
-		_assembler.EmitCall(MethodLabel(runtime.Dispose));
-		_assembler.EmitWord(0x4E75); // RTS
+		if (NeedsAdapter(RuntimeDisposeLabel))
+		{
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeDisposeLabel);
+			_assembler.EmitWord(0x2008); // MOVE.L A0,D0
+			_assembler.EmitCall(MethodLabel(runtime.Dispose));
+			_assembler.EmitWord(0x4E75); // RTS
+		}
 
 		if (_usesFinalizers)
 		{
-			_assembler.AlignWord();
-			_assembler.Mark(RuntimeRegisterFinalizerLabel);
-			_assembler.EmitCall(MethodLabel(runtime.RegisterFinalizer));
-			_assembler.EmitWord(0x4E75); // RTS
+			if (NeedsAdapter(RuntimeRegisterFinalizerLabel))
+			{
+				_assembler.AlignWord();
+				_assembler.Mark(RuntimeRegisterFinalizerLabel);
+				_assembler.EmitCall(MethodLabel(runtime.RegisterFinalizer));
+				_assembler.EmitWord(0x4E75); // RTS
+			}
 
-			_assembler.AlignWord();
-			_assembler.Mark(RuntimeSuppressFinalizerLabel);
-			_assembler.EmitCall(MethodLabel(runtime.SuppressFinalizer));
-			_assembler.EmitWord(0x4E75); // RTS
+			if (NeedsAdapter(RuntimeSuppressFinalizerLabel))
+			{
+				_assembler.AlignWord();
+				_assembler.Mark(RuntimeSuppressFinalizerLabel);
+				_assembler.EmitCall(MethodLabel(runtime.SuppressFinalizer));
+				_assembler.EmitWord(0x4E75); // RTS
+			}
 
-			_assembler.AlignWord();
-			_assembler.Mark(RuntimeReRegisterFinalizerLabel);
-			_assembler.EmitCall(MethodLabel(runtime.ReRegisterFinalizer));
-			_assembler.EmitWord(0x4E75); // RTS
+			if (NeedsAdapter(RuntimeReRegisterFinalizerLabel))
+			{
+				_assembler.AlignWord();
+				_assembler.Mark(RuntimeReRegisterFinalizerLabel);
+				_assembler.EmitCall(MethodLabel(runtime.ReRegisterFinalizer));
+				_assembler.EmitWord(0x4E75); // RTS
+			}
 		}
 
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeMarkLabel);
-		_assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
-		_assembler.EmitWord(0x0004);
-		_assembler.EmitCall(MethodLabel(runtime.Mark));
-		_assembler.EmitWord(0x4E75); // RTS
-
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeMarkRootsLabel);
-		// Cursor/PC use D0/D1 and both table addresses use A0/A1. Only the
-		// extended frame anchor is a stack argument in the managed ABI.
-		EmitRootWalkArguments();
-		if (UsesExtendedUnwindMetadata)
+		if (NeedsAdapter(RuntimeMarkLabel))
 		{
-			EmitPushRegister(M68kRegister.A5);
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeMarkLabel);
+			_assembler.EmitWord(0x202F); // MOVE.L 4(A7),D0
+			_assembler.EmitWord(0x0004);
+			_assembler.EmitCall(MethodLabel(runtime.Mark));
+			_assembler.EmitWord(0x4E75); // RTS
 		}
-		_assembler.EmitCall(MethodLabel(
-			UsesExtendedUnwindMetadata ? runtime.MarkRootsExtended : runtime.MarkRoots));
-		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 1 : 0);
-		_assembler.EmitWord(0x4E75); // RTS
 
-		_assembler.AlignWord();
-		_assembler.Mark(RuntimeCollectWithRootsLabel);
-		EmitRootWalkArguments();
-		if (UsesExtendedUnwindMetadata)
+		if (NeedsAdapter(RuntimeMarkRootsLabel))
 		{
-			EmitPushRegister(M68kRegister.A5);
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeMarkRootsLabel);
+			// Cursor/PC use D0/D1 and both table addresses use A0/A1. Only the
+			// extended frame anchor is a stack argument in the managed ABI.
+			EmitRootWalkArguments();
+			if (UsesExtendedUnwindMetadata)
+			{
+				EmitPushRegister(M68kRegister.A5);
+			}
+			_assembler.EmitCall(MethodLabel(
+				UsesExtendedUnwindMetadata ? runtime.MarkRootsExtended : runtime.MarkRoots));
+			EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 1 : 0);
+			_assembler.EmitWord(0x4E75); // RTS
 		}
-		_assembler.EmitCall(MethodLabel(
-			UsesExtendedUnwindMetadata
-				? _usesFinalizers
-					? runtime.CollectFinalizableWithRootsExtended
-					: runtime.CollectWithRootsExtended
-				: _usesFinalizers
-					? runtime.CollectFinalizableWithRoots
-					: runtime.CollectWithRoots));
-		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 1 : 0);
-		if (_usesFinalizers)
+
+		if (NeedsAdapter(RuntimeCollectWithRootsLabel))
 		{
-			_assembler.EmitCall(MethodLabel(runtime.DrainFinalizers));
+			_assembler.AlignWord();
+			_assembler.Mark(RuntimeCollectWithRootsLabel);
+			EmitRootWalkArguments();
+			if (UsesExtendedUnwindMetadata)
+			{
+				EmitPushRegister(M68kRegister.A5);
+			}
+			_assembler.EmitCall(MethodLabel(
+				UsesExtendedUnwindMetadata
+					? _usesFinalizers
+						? runtime.CollectFinalizableWithRootsExtended
+						: runtime.CollectWithRootsExtended
+					: _usesFinalizers
+						? runtime.CollectFinalizableWithRoots
+						: runtime.CollectWithRoots));
+			EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 1 : 0);
+			if (_usesFinalizers)
+			{
+				_assembler.EmitCall(MethodLabel(runtime.DrainFinalizers));
+			}
+			_assembler.EmitWord(0x4E75); // RTS
 		}
-		_assembler.EmitWord(0x4E75); // RTS
+
+		bool NeedsAdapter(string label) =>
+			!ShouldPruneApplicationRuntimeHelpers || _assembler.ReferencesTarget(label);
 	}
 
 	private void EmitExternalCollectWithRootsAdapter()

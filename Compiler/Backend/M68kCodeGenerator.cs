@@ -182,10 +182,20 @@ internal sealed partial class M68kCodeGenerator
 	private bool UsesManagedExceptionRuntime =>
 		_usesExceptionRuntime;
 
+	private bool ShouldPruneApplicationRuntimeHelpers =>
+		UsesApplicationSizeOptimizations &&
+		_request.CodeSizeOptimizations!.PruneApplicationRuntimeHelpers &&
+		UsesBuiltInManagedPool &&
+		!_request.Imports.ContainsKey(M68kRuntimeImports.GcCollect);
+
+	private readonly Dictionary<CilMethodIdentity, CilMethod> _managedPoolHelperRoots = new();
+
 	private IEnumerable<CilMethod> ReachableManagedPoolMethods =>
 		_managedPoolRuntime is null
 			? []
-			: _managedPoolRuntime.Methods.Concat(
+			: (ShouldPruneApplicationRuntimeHelpers
+				? (IEnumerable<CilMethod>)_managedPoolHelperRoots.Values
+				: _managedPoolRuntime.Methods).Concat(
 				_usesFinalizers ? _managedPoolRuntime.FinalizerMethods : []);
 
 	private bool UseClr => _request.ClrPolicy switch
@@ -634,10 +644,21 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (_managedPoolRuntime is not null)
 		{
-			foreach (var method in _managedPoolRuntime.CoreMethods)
+			var runtime = _managedPoolRuntime;
+			IEnumerable<CilMethod> roots = ShouldPruneApplicationRuntimeHelpers
+				? new[] { runtime.Initialize, runtime.Allocate,
+					runtime.CollectWithRoots, runtime.Shutdown }
+				: runtime.CoreMethods;
+			foreach (var method in roots)
 			{
-				queue.Enqueue(method);
+				QueueManagedPoolHelperRoot(method);
 			}
+		}
+		void QueueManagedPoolHelperRoot(CilMethod method)
+		{
+			queue.Enqueue(method);
+			if (ShouldPruneApplicationRuntimeHelpers)
+				_managedPoolHelperRoots.TryAdd(method.Identity, method);
 		}
 		foreach (var lifecycle in _managedLifecycles)
 		{
@@ -746,6 +767,17 @@ internal sealed partial class M68kCodeGenerator
 					(int)instruction.Operand!,
 					method,
 					instruction.Offset);
+				if (ShouldPruneApplicationRuntimeHelpers && _managedPoolRuntime is { } runtime)
+				{
+					var helper = target.ImportName switch
+					{
+						"intrinsic:runtime-dispose" => runtime.Dispose,
+						"intrinsic:runtime-GetGcStaleBytes" => runtime.GetStaleBytes,
+						"intrinsic:runtime-GetGcStaleBlocks" => runtime.GetStaleBlocks,
+						_ => null
+					};
+					if (helper is not null) QueueManagedPoolHelperRoot(helper);
+				}
 				if (target.ImportName is "intrinsic:runtime-object-get-type" or "intrinsic:runtime-type-from-handle" &&
 					_module.RegisterRuntimeTypeDispatchLayout() is { } runtimeTypeLayout)
 					reachableDispatchLayouts.TryAdd(runtimeTypeLayout.Identity, runtimeTypeLayout);
@@ -884,7 +916,7 @@ internal sealed partial class M68kCodeGenerator
 			extendedRootWalkQueued = true;
 			foreach (var method in _managedPoolRuntime.ExtendedRootWalkMethods)
 			{
-				queue.Enqueue(method);
+				QueueManagedPoolHelperRoot(method);
 			}
 			goto ProcessQueue;
 		}

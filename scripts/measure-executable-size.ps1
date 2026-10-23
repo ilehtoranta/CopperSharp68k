@@ -16,11 +16,12 @@ param(
     [switch] $CompareApplicationRegisterCopies,
     [switch] $CompareApplicationCallArguments,
     [switch] $CompareApplicationPlatformBases,
-    [switch] $CompareApplicationStatics
+    [switch] $CompareApplicationStatics,
+    [switch] $CompareApplicationRuntimeMetadata
 )
 
 $ErrorActionPreference = 'Stop'
-$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics
+$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot "artifacts/executable-size/$Configuration"
@@ -140,15 +141,16 @@ $rows = foreach ($sample in $samples) {
         if ($variant -eq 'previous-policy' -or ($variant -eq 'previous-runtime' -and $CompareApplicationRuntime)) {
             $previousPasses = 'CompactApplicationAddresses,ShareApplicationRuntimeMetadata,CompactApplicationExceptionSites'
             if ($CompareApplicationMetadata) { $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences' }
-            if ($CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics) {
+            if ($CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) {
                 $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences,PruneApplicationUnwindMetadata,NarrowApplicationExceptionSites,ShareApplicationUnwindRestores'
             }
-            if ($CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
-            if ($CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics) { $previousPasses += ',CompactApplicationExceptionRuntime' }
-            if ($CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics) { $previousPasses += ',RemoveApplicationDeadArithmetic,TrackApplicationNarrowValues,FoldApplicationMemoryOperands' }
-            if ($CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics) { $previousPasses += ',OptimizeApplicationRegisterCopies' }
-            if ($CompareApplicationPlatformBases -or $CompareApplicationStatics) { $previousPasses += ',OptimizeApplicationCallArguments' }
-            if ($CompareApplicationStatics) { $previousPasses += ',CompactApplicationPlatformBases' }
+            if ($CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
+            if ($CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) { $previousPasses += ',CompactApplicationExceptionRuntime' }
+            if ($CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) { $previousPasses += ',RemoveApplicationDeadArithmetic,TrackApplicationNarrowValues,FoldApplicationMemoryOperands' }
+            if ($CompareApplicationCallArguments -or $CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) { $previousPasses += ',OptimizeApplicationRegisterCopies' }
+            if ($CompareApplicationPlatformBases -or $CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) { $previousPasses += ',OptimizeApplicationCallArguments' }
+            if ($CompareApplicationStatics -or $CompareApplicationRuntimeMetadata) { $previousPasses += ',CompactApplicationPlatformBases' }
+            if ($CompareApplicationRuntimeMetadata) { $previousPasses += ',CompactApplicationStatics' }
             $arguments += @('--code-size-optimizations', 'on', '--code-size-passes',
                 $previousPasses)
         }

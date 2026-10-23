@@ -796,3 +796,83 @@ both peephole modes. Direct encoding checks execute on 68000/68020/68040 and
 exercise far/BSS/addend fallbacks, CPU/output gates, opcode-like immediate words,
 rewritten stores and explicit effect annotations. Existing cycle budgets were
 not changed.
+
+### Private unwind metadata and demanded runtime helpers
+
+Three additional options default on within the opt-in MC68000 application HUNK
+size policy:
+
+- `RelativeApplicationUnwindRestores` stores a signed displacement in the private
+  descriptor's restore slot. The exception reader adds it to the descriptor
+  address, eliminating one absolute relocation per shared descriptor.
+- `ShareApplicationUnwindHelper` replaces per-register-layout restore routines
+  with one mask-driven helper when a conservative size estimate proves a saving.
+  It requires shared runtime metadata, shared restores and the private relative
+  restore policy. Small images retain their existing routines.
+- `PruneApplicationRuntimeHelpers` keeps demanded managed-pool entry points and
+  emits adapters only when generated code references them. Explicit dispose and
+  telemetry intrinsics, direct calls, exports and transitive dependencies remain
+  reachable. Finalizer and extended root-walk entry points remain compiler roots.
+
+The restore helper updates only the saved slots in the existing eleven-register
+exception snapshot, then restores all physical D2-D7/A2-A6 registers with MOVEM.
+It handles the reversed stack order of one/two scalar saves and the ascending
+order of larger MOVEM saves. D1 retains the exception-context pointer, A7 stays
+balanced, and the X flag is preserved. The helper adds a loop to the cold unwind
+path; it does not run during ordinary calls and returns.
+
+Descriptor field sizes, frame sizes, saved-byte counts, dynamic-frame flags,
+frame anchors and GC root maps retain their existing layout. Only the compiler's
+exception reader consumes the changed restore slot. External collectors keep
+the original representation, and the runtime DLLs need no changes. Finally,
+cleanup, exception dispatch and collection still run at their original sites.
+
+The audit found 658 bytes of restore code and 46 absolute restore-pointer
+relocations across the four exception-enabled samples. Existing site tables and
+root maps were already compact; repeated restore code and unused pool helper
+roots offered the strongest local reductions. The shared helper is selected for
+ConsoleIO, StopwatchBenchmark and Polymorphism in this corpus; IFFInspect retains
+its smaller set of specialized routines.
+
+Measured against `2f88b21`, with frozen compilers, the same Release inputs and
+runtime DLLs for each before/after comparison, and stripped HUNKs:
+
+| Example | Previous compiler | Updated compiler | Bytes saved |
+| --- | ---: | ---: | ---: |
+| DOS | 612 | 612 | 0 |
+| FileStats | 956 | 956 | 0 |
+| CopperBars | 1,272 | 1,272 | 0 |
+| ConsoleIO | 4,312 | 4,140 | 172 |
+| StopwatchBenchmark | 6,632 | 6,304 | 328 |
+| Polymorphism | 3,712 | 3,564 | 148 |
+| IFFInspect | 4,568 | 4,476 | 92 |
+| MUISunflower | 888 | 888 | 0 |
+| MUITaskList | 2,032 | 2,032 | 0 |
+| **Total** | **24,984** | **24,244** | **740 (2.96%)** |
+
+Absolute relocations fall from 305 to 259. No measured executable grows;
+StopwatchBenchmark has the largest reduction at 4.95%. This round did not reach
+the 10% target. All nine previous-policy images match the frozen baseline images
+byte-for-byte.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<updated-cli.dll> -CompareCompilerPath <frozen-previous-cli.dll> -RuntimeDirectory
+<matching-runtime-directory> -CompareApplicationRuntimeMetadata`. The previous
+policy retains every earlier size pass through `CompactApplicationStatics`.
+Omit `-CompareCompilerPath` to compare the options using one compiler. Reports
+record compiler, runtime, input and output hashes, sizes and relocation counts.
+
+The measured compiler SHA-256 is
+`A5A0C95C83BDE5EE7AFFF38EA4211E41AB5928FA00C253D24E4E97FE92F90495`;
+the frozen previous compiler is
+`E2AE58DE2351C73F253A2DCB47360C251E20989745FD0A716C81E57781A79BFA`.
+
+Validation: 1,274 regression checks passed. New direct execution coverage tests
+empty, scalar, sparse and complete restore masks, frame sizes 0/16/65,536, both
+X states, two load addresses and 68000/68020/68040. It checks every physical
+callee-saved register, snapshot word, D1 and A7. A combined exception/GC fixture
+also verifies actual entry into the shared helper. Broader coverage includes
+console output, full catch/finally behavior, type-initializer cleanup, forced
+collection, interior and static roots, dynamic frames, finalizers, explicit
+disposal, telemetry queries, direct runtime calls, external collectors and both
+peephole modes. Existing cycle budgets were not changed.

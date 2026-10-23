@@ -110,9 +110,19 @@ internal sealed partial class M68kCodeGenerator
 		_request.OutputFormat == M68kOutputFormat.Hunk &&
 		_request.Cpu == M68kCpuTarget.M68000;
 
+	private bool UsesRelativeApplicationUnwindRestores =>
+		UsesApplicationSizeOptimizations &&
+		_request.CodeSizeOptimizations!.RelativeApplicationUnwindRestores &&
+		_request.CodeSizeOptimizations.ShareApplicationRuntimeMetadata &&
+		!_request.Imports.ContainsKey(M68kRuntimeImports.GcCollect) &&
+		(!M68kCompiler.IsManagedRuntime(_request) || UsesBuiltInManagedPool);
+
 	private bool _compactApplicationExceptionSites;
 	private bool _omitApplicationUnwindState;
 	private bool _narrowApplicationExceptionSites;
+	private bool _useSharedApplicationUnwindHelper;
+	private int _sharedApplicationUnwindHelperBytes;
+	private const string RuntimeSharedApplicationUnwindHelperLabel = "__c68k_shared_unwind_restore";
 	private bool UsesCompactApplicationGcSites => M68kCompiler.UsesCompactApplicationGcSites(_request);
 	private int UnwindSiteFieldBytes => _narrowApplicationExceptionSites ? 2 : 4;
 	private int UnwindStackAdjustmentOffset => (_omitApplicationUnwindState ? 2 : 3) * UnwindSiteFieldBytes;
@@ -145,16 +155,52 @@ internal sealed partial class M68kCodeGenerator
 		if (UsesCompactApplicationGcSites &&
 			_unwindSites.Any(site => site.StackAdjustment is < short.MinValue or > short.MaxValue))
 			throw new M68kNarrowDataOverflowException();
+		_useSharedApplicationUnwindHelper = UsesRelativeApplicationUnwindRestores &&
+			_request.CodeSizeOptimizations!.ShareApplicationUnwindRestores &&
+			_request.CodeSizeOptimizations.ShareApplicationUnwindHelper &&
+			SharedApplicationUnwindHelperWouldSaveBytes();
 		if (_applicationLeafSitesRemoved != 0)
 			_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.PruneApplicationLeafSites),
 				_applicationLeafSitesRemoved * UnwindSiteEntryBytes);
+	}
+
+	private bool SharedApplicationUnwindHelperWouldSaveBytes()
+	{
+		// Site-table descriptor references are emitted after the exception runtime,
+		// so include their methods now when choosing the runtime's reader form.
+		var siteMethods = _unwindSites.Select(site => site.Method.Identity).ToHashSet();
+		var layouts = _unwindMethodLayouts.Values.Where(layout =>
+			!_request.CodeSizeOptimizations!.PruneApplicationUnwindMetadata ||
+			siteMethods.Contains(layout.Method.Identity) ||
+			_assembler.ReferencesTarget(RuntimeMethodDescriptorLabel(layout.Method)) ||
+			_assembler.ReferencesTarget(RuntimeMethodUnwindRestoreLabel(layout.Method))).ToArray();
+		if (layouts.Length == 0 || layouts.Any(layout =>
+			!layout.CalleeSavedRegisters.SequenceEqual(layout.CalleeSavedRegisters.Order()) ||
+			layout.CalleeSavedRegisters.Distinct().Count() != layout.CalleeSavedRegisters.Length ||
+			layout.CalleeSavedRegisters.Any(register => register is < M68kRegister.D2 or > M68kRegister.A6 or
+				M68kRegister.A0 or M68kRegister.A1)))
+			return false;
+
+		// This is deliberately a lower bound on the thunks currently emitted.
+		// The generic helper is under 80 bytes even before branch relaxation, so
+		// selecting it cannot increase the ROM size of small applications.
+		var oldThunkBytesLowerBound = 0;
+		foreach (var group in layouts.GroupBy(layout => string.Join(",", layout.CalleeSavedRegisters)))
+		{
+			var members = group.ToArray();
+			var count = members[0].CalleeSavedRegisters.Length;
+			var variableFrame = count != 0 && members.Any(member => member.FrameBytes != members[0].FrameBytes);
+			oldThunkBytesLowerBound += 4 + (count < 3 ? 8 * count : 12) + (variableFrame ? 10 : 0);
+		}
+		return oldThunkBytesLowerBound > 80;
 	}
 
 	private void EmitSharedApplicationUnwindMetadata()
 	{
 		// These are private immutable records. Their addresses carry no method
 		// identity: each site still keeps its own resume PC, exception state,
-		// stack adjustment and cleanup. Keep the reader ABI and all offsets intact.
+		// stack adjustment and cleanup. Keep collector-visible field offsets
+		// intact; only the exception reader consumes the private restore slot.
 		var start = _assembler.Offset;
 		var originalBytes = 0;
 		var rootGroups = _unwindSites.Select((site, index) => (site.RootOffsets, Index: index))
@@ -187,7 +233,19 @@ internal sealed partial class M68kCodeGenerator
 			}
 			_assembler.EmitLong((uint)layout.FrameBytes);
 			_assembler.EmitLong((uint)(layout.CalleeSavedRegisters.Length * 4));
-			_assembler.EmitAddress(RuntimeMethodUnwindRestoreLabel(layout.Method));
+			if (_useSharedApplicationUnwindHelper)
+			{
+				var mask = 0u;
+				foreach (var register in layout.CalleeSavedRegisters)
+					mask |= 1u << (register <= M68kRegister.D7
+						? (int)register - (int)M68kRegister.D2
+						: 6 + (int)register - (int)M68kRegister.A2);
+				_assembler.EmitLong(mask);
+			}
+			else if (UsesRelativeApplicationUnwindRestores)
+				_assembler.EmitRelativeDataLong(RuntimeMethodUnwindRestoreLabel(layout.Method),
+					RuntimeMethodDescriptorLabel(layout.Method));
+			else _assembler.EmitAddress(RuntimeMethodUnwindRestoreLabel(layout.Method));
 			if (UsesExtendedUnwindMetadata)
 			{
 				_assembler.EmitLong(layout.HasDynamicStackAllocation ? 1u : 0u);
@@ -210,9 +268,11 @@ internal sealed partial class M68kCodeGenerator
 			var variableFrame = !layout.CalleeSavedRegisters.IsEmpty && group.Any(member => member.FrameBytes != layout.FrameBytes);
 			foreach (var member in group)
 			{
-				_assembler.Mark(RuntimeMethodUnwindRestoreLabel(member.Method));
 				originalBytes += 4 + layout.CalleeSavedRegisters.Length * 8;
+				if (!_useSharedApplicationUnwindHelper)
+					_assembler.Mark(RuntimeMethodUnwindRestoreLabel(member.Method));
 			}
+			if (_useSharedApplicationUnwindHelper) continue;
 			_assembler.EmitWord(0x2041); // MOVEA.L D1,A0 exception context
 			if (variableFrame)
 			{
@@ -237,7 +297,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitWord(0x4E75); // RTS
 		}
 		_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.ShareApplicationRuntimeMetadata),
-			originalBytes - (_assembler.Offset - start));
+			originalBytes - (_assembler.Offset - start) - _sharedApplicationUnwindHelperBytes);
 	}
 
 	private bool TryEmitCompactApplicationUnwindRestore(UnwindMethodLayout layout)
