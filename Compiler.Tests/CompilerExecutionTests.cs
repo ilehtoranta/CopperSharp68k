@@ -11678,6 +11678,7 @@ public sealed partial class CompilerExecutionTests
 			calls++;
 			Assert.Equal(execBase, state.A[6]);
 			state.D[0] += state.D[1];
+			state.A[6] = 0x5A5A_5A5A;
 		});
 
 		Assert.Equal(14u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
@@ -11685,21 +11686,13 @@ public sealed partial class CompilerExecutionTests
 		var text = result.Text!;
 		var baseLoads = Regex.Matches(
 			text,
-			@"\tmovea?\.l\t_ExecBase,(?<base>[ad][0-7])");
-		Assert.Equal(2, baseLoads.Count);
-		var baseRegister = baseLoads[0].Groups["base"].Value;
-		Assert.All(
-			baseLoads.Cast<Match>(),
-			match => Assert.Equal(baseRegister, match.Groups["base"].Value));
+			@"\tmovea\.l\t_ExecBase(?:\(pc\))?,a6");
+		Assert.Equal(3, baseLoads.Count);
 		Assert.Equal(
 			3,
 			Regex.Matches(
 				text,
-				$@"\tmovea\.l\t{Regex.Escape(baseRegister)},a6").Count);
-		Assert.DoesNotContain(
-			"\tmovea.l\t_ExecBase,a6",
-			text,
-			StringComparison.Ordinal);
+				@"\t(?:jsr|jmp)\t-30\(a6\)").Count);
 	}
 
 	[Fact]
