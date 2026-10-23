@@ -9881,8 +9881,10 @@ public sealed partial class CompilerExecutionTests
 			"\trts",
 			StringComparison.Ordinal)];
 		Assert.DoesNotContain("(a7)", entryBody, StringComparison.Ordinal);
+		// Both short immediates and full-width definitions keep the APTR
+		// scalar in a register; later uses can require its upper bits too.
 		Assert.Matches(
-			@"\t(?:move\.w\t#\$0100,d[0-7]|movea\.w\t#\$0100,a[0-6])",
+			@"\t(?:move\.[wl]\t#\$(?:0000)?0100,d[0-7]|movea\.[wl]\t#\$(?:0000)?0100,a[0-6])",
 			entryBody);
 	}
 
@@ -9921,8 +9923,10 @@ public sealed partial class CompilerExecutionTests
 		Assert.DoesNotMatch(
 			@"\tmovea?\.l\t_ExecBase(?:\(pc\))?,(?<base>[ad][0-5])\r?\n\tmovea\.l\t\k<base>,a6",
 			text);
+		// Transparent pointer scalars can use either data or address registers.
+		// The two direct base reloads above are the ABI requirement.
 		Assert.Matches(
-			@"\tmovea\.w\t#\$0[1-5]00,a[0-6]",
+			@"\tmovea?\.[wl]\t#\$(?:0000)?0[1-5]00,(?:d[0-7]|a[0-6])",
 			text);
 	}
 

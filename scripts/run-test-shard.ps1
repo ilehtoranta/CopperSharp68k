@@ -89,6 +89,7 @@ $testArguments = @(
     "--no-restore",
     "--filter", $filter,
     "--logger", "trx;LogFileName=tests.trx",
+    "--logger", "console;verbosity=normal",
     "--results-directory", $ResultsDirectory
 )
 & dotnet @testArguments

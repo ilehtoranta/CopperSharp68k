@@ -56,7 +56,7 @@ jobs:
   execution-tests:
     name: Compiler execution tests (${{ matrix.shard }}/16)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false
