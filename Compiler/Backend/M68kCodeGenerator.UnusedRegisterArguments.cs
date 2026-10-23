@@ -12,12 +12,14 @@ internal sealed partial class M68kCodeGenerator
         IReadOnlyList<CilMethod> methods,
         IReadOnlyDictionary<CilMethodIdentity, M68kMachineFunction> functions)
     {
-        if (_request.EffectiveCodeSizeOptions?.ElideUnusedRegisterArguments != true ||
+        var application = UsesApplicationSizeOptimizations &&
+            _request.CodeSizeOptimizations!.OptimizeApplicationCallArguments;
+        if (!application && (_request.EffectiveCodeSizeOptions?.ElideUnusedRegisterArguments != true ||
             _request.Cpu != M68kCpuTarget.M68000 ||
             !SupportsCodeSizeProfile ||
             _request.ExceptionMode != M68kExceptionMode.Yolo ||
             _memoryManagement != M68kMemoryManagement.None || _managedPoolRuntime is not null ||
-            _managedLifecycles.Count != 0 || _usesExceptionRuntime)
+            _managedLifecycles.Count != 0 || _usesExceptionRuntime))
             return;
         var rounds = 0;
         for (; rounds < 12; rounds++)
@@ -26,7 +28,8 @@ internal sealed partial class M68kCodeGenerator
             foreach (var method in methods)
             {
                 if (!functions.TryGetValue(method.Identity, out var function) ||
-                    !EligibleUnusedArgumentFunction(function) || method.IsImport ||
+                    !EligibleUnusedArgumentFunction(function) ||
+                    application && (!function.OptimizeCallArguments || function.ManagedByrefTypes.Count != 0) || method.IsImport ||
                     method.ImportName is not null || method.ExternalCall is not null ||
                     method.DeclaringTypeIsInterface || IsAlwaysInlinedMethod(method) ||
                     IsNativeShadowMathLeaf(method)) continue;
@@ -50,7 +53,8 @@ internal sealed partial class M68kCodeGenerator
             foreach (var callerMethod in methods)
             {
                 if (!functions.TryGetValue(callerMethod.Identity, out var function) ||
-                    !EligibleUnusedArgumentFunction(function)) continue;
+                    !EligibleUnusedArgumentFunction(function) ||
+                    application && (!function.OptimizeCallArguments || function.ManagedByrefTypes.Count != 0)) continue;
                 var definitions = function.Blocks.SelectMany(b => b.Instructions)
                     .SelectMany(i => i.Definitions.Select(v => (Value: v, Instruction: i)))
                     .GroupBy(v => v.Value).ToDictionary(g => g.Key, g => g.Single().Instruction);

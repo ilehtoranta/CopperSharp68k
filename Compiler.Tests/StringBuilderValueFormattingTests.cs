@@ -159,13 +159,16 @@ public sealed class StringBuilderValueFormattingTests
 		Assert.True(module.IsSupportedStructType(type));
 		Assert.Equal("System.ValueType::ToString", table.Slots[module.GetVirtualSlot(declaration)].DisplayName);
 		using var stable = Open(pack, false);
-		Assert.False(stable.IsSupportedStructType(type));
+		// Stateless application storage is available without enabling framework bodies.
+		Assert.True(stable.IsSupportedStructType(type));
+		Assert.True(stable.TryGetReferenceFreeStructLayout(type, stable.AssemblyName, out var stableLayout));
+		Assert.Equal(4, stableLayout.Size);
 		var caller = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderDefaultTypedValueEntry");
 		var call = caller.Instructions.Single(instruction => instruction.ConstrainedTypeToken is not null);
 		Assert.Equal("System.ValueType::ToString", module.ResolveConstrainedInterfaceImplementation(caller,
 			call.ConstrainedTypeToken!.Value, call.Offset, declaration).DisplayName);
-		Assert.Throws<M68kCompilationException>(() => stable.ResolveConstrainedInterfaceImplementation(caller,
-			call.ConstrainedTypeToken.Value, call.Offset, declaration));
+		Assert.Equal("System.ValueType::ToString", stable.ResolveConstrainedInterfaceImplementation(caller,
+			call.ConstrainedTypeToken.Value, call.Offset, declaration).DisplayName);
 		var function = CilMachineIrBuilder.Build(caller, module);
 		var boxes = function.Blocks.SelectMany(block => block.Instructions).Where(instruction => instruction.Operation == M68kMachineOperation.Box).ToArray();
 		Assert.NotEmpty(boxes);
@@ -175,6 +178,12 @@ public sealed class StringBuilderValueFormattingTests
 		var refLikeCaller = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::DefaultRefLikeTypeToken");
 		var token = (int)refLikeCaller.Instructions.Single(instruction => instruction.OpCode == OpCodes.Ldtoken).Operand!;
 		Assert.Throws<M68kCompilationException>(() => module.ResolveConstrainedInterfaceImplementation(refLikeCaller, token, 0, declaration));
+
+		pack.Replace("packVersion", "10.0.10");
+		using var unpinned = Open(pack, false);
+		Assert.True(unpinned.IsSupportedStructType(type));
+		Assert.Throws<M68kCompilationException>(() => unpinned.ResolveConstrainedInterfaceImplementation(caller,
+			call.ConstrainedTypeToken.Value, call.Offset, declaration));
 	}
 
 	[Fact]

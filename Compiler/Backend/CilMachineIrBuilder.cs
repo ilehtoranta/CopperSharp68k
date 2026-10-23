@@ -643,7 +643,7 @@ internal static class CilMachineIrBuilder
 		op == OpCodes.Conv_I1 || op == OpCodes.Conv_U1 ||
 		op == OpCodes.Conv_I2 || op == OpCodes.Conv_U2;
 
-	private static void EliminateUnusedLocalHomes(M68kMachineFunction function)
+	internal static void EliminateUnusedLocalHomes(M68kMachineFunction function)
 	{
 		var readHomes = function.Blocks
 			.SelectMany(static block => block.Instructions)
@@ -4727,6 +4727,21 @@ internal static class CilMachineIrBuilder
 				sourceInstruction: instruction,
 				constantValue: M68kMachineConstant.Int32(0)));
 			return;
+		}
+		if (target.ImportName == "intrinsic:aptr-raw" &&
+			uses.Count == 1 && definitions.Count == 1)
+		{
+			var sourceIndex = caller.Instructions.ToList().FindIndex(candidate => candidate.Offset == instruction.Offset);
+			if (sourceIndex > 0 && TryGetLoadLocalAddressIndex(caller.Instructions[sourceIndex - 1], out var local) &&
+				!function.LocalHomes.ContainsKey(local))
+			{
+				// A register-promoted APTR already carries its payload. Expose
+				// Raw as an identity before allocation instead of reserving an
+				// address register for a load which the emitter would later omit.
+				block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy,
+					instruction.Offset, uses, definitions, sourceInstruction: instruction));
+				return;
+			}
 		}
 		if (target.ImportName == "intrinsic:aptr-raw" &&
 			uses.Count == 1 && definitions.Count == 1 &&

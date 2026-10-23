@@ -27,7 +27,7 @@ internal static class M68kMachineMemoryAnalysis
 				var instruction = block.Instructions[index];
 				if (TryGetExactFrameRead(instruction, out var read))
 				{
-					if (!escaped.Contains(read) &&
+					if (!escaped.Any(read.Overlaps) &&
 						available.TryGetValue(read, out var value) &&
 						CanForward(function, instruction, value))
 					{
@@ -39,7 +39,10 @@ internal static class M68kMachineMemoryAnalysis
 							MayThrow = false,
 							SourceInstruction = null,
 							ArgumentIndex = null,
-							ConstantValue = null
+							ConstantValue = null,
+							MemoryOffset = 0,
+							MemorySize = 0,
+							ExactMemoryAccesses = []
 						};
 						statistics.LoadsForwarded++;
 						changed = true;
@@ -53,13 +56,16 @@ internal static class M68kMachineMemoryAnalysis
 				if (TryGetExactFrameWrite(instruction, out var write) &&
 					instruction.Uses is [var stored])
 				{
+					foreach (var alias in available.Keys.Where(write.Overlaps).ToArray())
+						available.Remove(alias);
 					available[write] = stored;
 					continue;
 				}
 				if (TryGetEscapedFrameObject(instruction, out var escapedObject))
 				{
 					escaped.Add(escapedObject);
-					available.Remove(escapedObject);
+					foreach (var alias in available.Keys.Where(escapedObject.Overlaps).ToArray())
+						available.Remove(alias);
 					continue;
 				}
 				if (IsBarrier(instruction))
@@ -75,7 +81,7 @@ internal static class M68kMachineMemoryAnalysis
 				var instruction = block.Instructions[index];
 				if (TryGetExactFrameWrite(instruction, out var write))
 				{
-					if (!escaped.Contains(write) && overwritten.Contains(write))
+					if (!escaped.Any(write.Overlaps) && overwritten.Contains(write))
 					{
 						block.Instructions.RemoveAt(index);
 						statistics.StoresRemoved++;
@@ -87,13 +93,13 @@ internal static class M68kMachineMemoryAnalysis
 				}
 				if (TryGetExactFrameRead(instruction, out var read))
 				{
-					overwritten.Remove(read);
+					overwritten.RemoveWhere(read.Overlaps);
 					continue;
 				}
 				if (TryGetEscapedFrameObject(instruction, out var escapedObject))
 				{
 					escaped.Add(escapedObject);
-					overwritten.Remove(escapedObject);
+					overwritten.RemoveWhere(escapedObject.Overlaps);
 					continue;
 				}
 				if (IsBarrier(instruction))
@@ -117,7 +123,8 @@ internal static class M68kMachineMemoryAnalysis
 				instruction.Operation == M68kMachineOperation.LocalLoad
 					? M68kMemoryObjectKind.FrameSlot
 					: M68kMemoryObjectKind.ArgumentHome,
-				index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+				index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+				Offset: instruction.MemoryOffset, Size: instruction.MemorySize);
 			return true;
 		}
 		location = default;
@@ -136,7 +143,8 @@ internal static class M68kMachineMemoryAnalysis
 				instruction.Operation == M68kMachineOperation.LocalStore
 					? M68kMemoryObjectKind.FrameSlot
 					: M68kMemoryObjectKind.ArgumentHome,
-				index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+				index.ToString(System.Globalization.CultureInfo.InvariantCulture),
+				Offset: instruction.MemoryOffset, Size: instruction.MemorySize);
 			return true;
 		}
 		location = default;
@@ -175,6 +183,7 @@ internal static class M68kMachineMemoryAnalysis
 		}
 		return source.Kind == destination.Kind &&
 			source.Width == destination.Width &&
+			(load.MemorySize == 0 || load.MemorySize == (int)destination.Width) &&
 			source.IsGcReference == destination.IsGcReference;
 	}
 

@@ -20,6 +20,7 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedFoldedCopyConstants = new();
 	private readonly Dictionary<int, M68kMachineInstruction>
 		_allocatedFoldedCopyAddresses = new();
+	private readonly Dictionary<int, int> _allocatedDirectImmediatePushes = new();
 	private readonly Dictionary<int, (int Factor, int SourceValue)>
 		_allocatedConstantMultiplies = new();
 	private readonly Dictionary<int, (int Delta, int SourceValue)>
@@ -117,6 +118,7 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedSuppressedInstructions.Clear();
 		_allocatedFoldedCopyConstants.Clear();
 		_allocatedFoldedCopyAddresses.Clear();
+		_allocatedDirectImmediatePushes.Clear();
 		_allocatedConstantMultiplies.Clear();
 		_allocatedQuickArithmetic.Clear();
 		_allocatedDeferredNormalizations.Clear();
@@ -126,6 +128,7 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedFrameAddressesEmitted.Clear();
 		_allocatedFunctionAddressSwitches.Clear();
 		PrepareAllocatedConstantCopies(method, allocated);
+		PrepareAllocatedDirectImmediatePushes(allocated);
 		PrepareAllocatedLiteralAddressCopies(method, allocated);
 		PrepareAllocatedQuickArithmetic(allocated);
 		PrepareAllocatedConstantMultiplies(allocated);
@@ -582,6 +585,115 @@ internal sealed partial class M68kCodeGenerator
 		}
 	}
 
+	private void PrepareAllocatedDirectImmediatePushes(M68kAllocatedFunction allocated)
+	{
+		if (!allocated.Function.OptimizeCallArguments)
+		{
+			return;
+		}
+		var phiInputs = allocated.Function.Blocks
+			.SelectMany(static block => block.Phis)
+			.SelectMany(static phi => phi.Inputs.Values)
+			.ToHashSet();
+		var instructions = allocated.Function.Blocks
+			.SelectMany(static block => block.Instructions)
+			.ToArray();
+		foreach (var block in allocated.Function.Blocks)
+		{
+			for (var index = 1; index < block.Instructions.Count; index++)
+			{
+				var materialization = block.Instructions[index - 1];
+				var push = block.Instructions[index];
+				var foldedCopy = _allocatedFoldedCopyConstants.TryGetValue(
+					materialization.Id, out var constant);
+				if (!foldedCopy)
+				{
+					constant = materialization;
+				}
+				if (constant is not
+					{
+						Operation: M68kMachineOperation.Constant,
+						Definitions: [var sourceValue],
+						MemoryEffect: M68kMachineMemoryEffect.None,
+						MayThrow: false,
+						IsSafepoint: false,
+						ConstantValue: { Kind: M68kMachineConstantKind.Int32 } scalar
+					} ||
+					materialization.Definitions is not [var value] ||
+					materialization.Operation != (foldedCopy
+						? M68kMachineOperation.Copy
+						: M68kMachineOperation.Constant) ||
+					(foldedCopy && materialization.Uses.Length != 1) ||
+					materialization.MemoryEffect != M68kMachineMemoryEffect.None ||
+					materialization.MayThrow || materialization.IsSafepoint ||
+					materialization.ProducesConditionCodes ||
+					materialization.ConsumesConditionCodes ||
+					!materialization.Clobbers.IsEmpty ||
+					materialization.LogicalCall is not null ||
+					!materialization.ExactMemoryAccesses.IsDefaultOrEmpty ||
+					materialization.RequiresLiveCallerFrame ||
+					materialization.TransportsManagedByrefOwner ||
+					!constant.Clobbers.IsEmpty ||
+					constant.ProducesConditionCodes ||
+					constant.ConsumesConditionCodes ||
+					constant.LogicalCall is not null ||
+					!constant.ExactMemoryAccesses.IsDefaultOrEmpty ||
+					constant.RequiresLiveCallerFrame ||
+					constant.TransportsManagedByrefOwner ||
+					push.Operation != M68kMachineOperation.OutgoingArgumentPush ||
+					push.Uses is not [var pushed] || pushed != value ||
+					push.ArgumentIndex != 4 || push.CopiesAggregateArgument ||
+					allocated.Function.Values[sourceValue] is not
+					{
+						Kind: CilStackValueKind.Int32,
+						Width: M68kMachineValueWidth.Long,
+						IsGcReference: false
+					} ||
+					allocated.Function.Values[value] is not
+					{
+						Kind: CilStackValueKind.Int32,
+						Width: M68kMachineValueWidth.Long,
+						IsGcReference: false
+					} ||
+					allocated.Function.ManagedByrefTypes.ContainsKey(sourceValue) ||
+					allocated.Function.ManagedByrefTypes.ContainsKey(value) ||
+					phiInputs.Contains(value) ||
+					_allocatedSuppressedInstructions.Contains(materialization.Id) ||
+					!scalar.TryGetIntegral(out var integral) ||
+					integral is < int.MinValue or > int.MaxValue ||
+					instructions.Count(instruction => instruction.Uses.Contains(value)) != 1 ||
+					instructions.Any(instruction =>
+						!instruction.ExactMemoryAccesses.IsDefaultOrEmpty &&
+						instruction.ExactMemoryAccesses.Any(access =>
+							access.ValueId == value ||
+							access.Object.OwnerValueId == value)))
+				{
+					continue;
+				}
+				var immediate = (int)integral;
+				if (immediate == 0 && !UseClr)
+				{
+					// MC68000 CLR of memory reads the destination first;
+					// respect the selected CLR policy for stack writes too.
+					continue;
+				}
+				var register = allocated.Allocation.Registers[value].Register;
+				if (immediate is >= -128 and <= 127 && immediate != 0 &&
+					register <= M68kRegister.D7)
+				{
+					// MOVEQ plus register push is already four bytes.
+					continue;
+				}
+				_allocatedSuppressedInstructions.Add(materialization.Id);
+				if (foldedCopy)
+				{
+					_allocatedFoldedCopyConstants.Remove(materialization.Id);
+				}
+				_allocatedDirectImmediatePushes.Add(push.Id, immediate);
+			}
+		}
+	}
+
 	private void PrepareAllocatedConstantCopies(
 		CilMethod method,
 		M68kAllocatedFunction allocated)
@@ -812,6 +924,8 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var arithmetic in instructions.Where(static instruction =>
 			instruction.Operation is
 				M68kMachineOperation.Add or M68kMachineOperation.Subtract &&
+			// Checked arithmetic must use the emitter that raises on overflow.
+			!instruction.MayThrow &&
 			instruction.Uses.Length == 2 &&
 			instruction.Definitions.Length == 1))
 		{
@@ -1994,6 +2108,22 @@ internal sealed partial class M68kCodeGenerator
 
 			case M68kMachineOperation.OutgoingArgumentPush:
 			{
+				if (_allocatedDirectImmediatePushes.TryGetValue(
+					instruction.Id, out var directImmediate))
+				{
+					if (directImmediate == 0)
+					{
+						_assembler.EmitWord(0x42A7); // CLR.L -(A7)
+					}
+					else
+					{
+						_assembler.EmitWord(0x2F3C); // MOVE.L #imm,-(A7)
+						_assembler.EmitLong(unchecked((uint)directImmediate));
+					}
+					_allocatedOutgoingStackBytes = checked(
+						_allocatedOutgoingStackBytes + 4);
+					return;
+				}
 				var location = Location(instruction.Uses[0]);
 				var value = allocated.Function.Values[instruction.Uses[0]];
 				var bytes = instruction.ArgumentIndex!.Value;
@@ -2049,14 +2179,21 @@ internal sealed partial class M68kCodeGenerator
 					throw new InvalidOperationException(
 						"Forwarded incoming argument push requires one stack slot.");
 				}
-				EmitAllocatedStackLoad(
-					M68kRegister.D0,
-					checked(
-						savedBytes +
-						4 +
-						source.StackOffset +
-						_allocatedOutgoingStackBytes));
-				EmitAllocatedPush(M68kRegister.D0);
+				var displacement = checked(
+					savedBytes + 4 + source.StackOffset +
+					_allocatedOutgoingStackBytes);
+				if (allocated.Function.OptimizeCallArguments &&
+					displacement is >= short.MinValue and <= short.MaxValue)
+				{
+					// Source EA is read before destination predecrements A7.
+					_assembler.EmitWord(0x2F2F); // MOVE.L d16(A7),-(A7)
+					_assembler.EmitWord(unchecked((ushort)(short)displacement));
+				}
+				else
+				{
+					EmitAllocatedStackLoad(M68kRegister.D0, displacement);
+					EmitAllocatedPush(M68kRegister.D0);
+				}
 				_allocatedOutgoingStackBytes = checked(
 					_allocatedOutgoingStackBytes + 4);
 				return;
