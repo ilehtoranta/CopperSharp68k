@@ -69,7 +69,7 @@ public sealed partial class CompilerExecutionTests
 	public void ApplicationMethodPoliciesHaveIndependentControls(M68kCpuTarget target, M68kPeepholeOptimizationMode mode)
 	{
 		var oldPolicy = new M68kCodeSizeOptions { RemoveApplicationRegisterMoves = false, ShareReturnSequences = false,
-			OptimizeApplicationRegisterCopies = false, OptimizeApplicationCallArguments = false, CompactApplicationPlatformBases = false };
+			OptimizeApplicationRegisterCopies = false, OptimizeApplicationCallArguments = false, CompactApplicationPlatformBases = false, CompactApplicationStatics = false };
 		var request = new M68kCompilationRequest {
 			AssemblyPath = Path.Combine(AppContext.BaseDirectory, "ConsoleIO.dll"), EntryPoint = "ConsoleIOExample.Program::Main",
 			Cpu = target, OutputFormat = M68kOutputFormat.Hunk, RuntimeProfile = M68kRuntimeProfile.Application,
@@ -78,7 +78,7 @@ public sealed partial class CompilerExecutionTests
 		};
 		var baseline = AmigaM68kCompiler.Compile(request);
 		foreach (var policy in new[] { oldPolicy with { RemoveApplicationRegisterMoves = true },
-			oldPolicy with { ShareReturnSequences = true }, new M68kCodeSizeOptions { OptimizeApplicationRegisterCopies = false, OptimizeApplicationCallArguments = false, CompactApplicationPlatformBases = false } })
+			oldPolicy with { ShareReturnSequences = true }, new M68kCodeSizeOptions { OptimizeApplicationRegisterCopies = false, OptimizeApplicationCallArguments = false, CompactApplicationPlatformBases = false, CompactApplicationStatics = false } })
 		{
 			var result = AmigaM68kCompiler.Compile(request with { CodeSizeOptimizations = policy });
 			if (target != M68kCpuTarget.M68000 || mode == M68kPeepholeOptimizationMode.Disabled)
@@ -114,6 +114,7 @@ public sealed partial class CompilerExecutionTests
 			OptimizeApplicationRegisterCopies = false,
 			OptimizeApplicationCallArguments = false,
 			CompactApplicationPlatformBases = false,
+			CompactApplicationStatics = false,
 			PruneApplicationUnwindMetadata = false, CompactApplicationExceptionRuntime = false } });
 		Assert.Equal(baseline.Image, compact.Image);
 	}
@@ -181,6 +182,7 @@ public sealed partial class CompilerExecutionTests
 			new() { OptimizeApplicationRegisterCopies = false },
 			new() { OptimizeApplicationCallArguments = false },
 			new() { CompactApplicationPlatformBases = false },
+			new() { CompactApplicationStatics = false },
 			new() { RemoveApplicationDeadArithmetic = false, TrackApplicationNarrowValues = false, FoldApplicationMemoryOperands = false },
 			new() { TrackApplicationNarrowValues = false, FoldApplicationMemoryOperands = false },
 			new() { RemoveApplicationDeadArithmetic = false, FoldApplicationMemoryOperands = false },

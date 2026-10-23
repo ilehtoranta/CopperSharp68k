@@ -6198,7 +6198,66 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord((ushort)(
 			0x23C0 |
 			AllocatedRegisterEa(sourceRegister)));
-		_assembler.EmitAddress(StaticFieldLabel(field));
+		var addressScratch = UsesApplicationSizeOptimizations &&
+			_request.CodeSizeOptimizations!.CompactApplicationStatics &&
+			_request.CodeSizeOptimizations.CompactApplicationAddresses
+			? FindAllocatedStaticStoreAddressScratch(
+				allocated,
+				instruction,
+				sourceRegister)
+			: null;
+		_assembler.EmitAddress(
+			StaticFieldLabel(field),
+			storeAddressScratchRegister: addressScratch);
+	}
+
+	private M68kRegister? FindAllocatedStaticStoreAddressScratch(
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction,
+		M68kRegister sourceRegister)
+	{
+		if (!allocated.InstructionLiveness.LiveBefore.TryGetValue(
+				instruction.Id,
+				out var liveBefore) ||
+			!allocated.InstructionLiveness.LiveAfter.TryGetValue(
+				instruction.Id,
+				out var liveAfter))
+		{
+			return null;
+		}
+
+		var occupied = 1u << (int)sourceRegister;
+		void Occupy(int value)
+		{
+			if (!allocated.Allocation.Registers.TryGetValue(value, out var location))
+			{
+				return;
+			}
+			occupied |= 1u << (int)location.Register;
+			if (location.IsPair)
+			{
+				occupied |= 1u << ((int)location.Register + 1);
+			}
+		}
+
+		foreach (var value in liveBefore) Occupy(value);
+		foreach (var value in liveAfter) Occupy(value);
+		foreach (var value in instruction.Uses) Occupy(value);
+		foreach (var value in instruction.Definitions) Occupy(value);
+
+		for (var candidate = M68kRegister.A0;
+			candidate <= M68kRegister.A1;
+			candidate++)
+		{
+			if ((occupied & (1u << (int)candidate)) != 0 ||
+				allocated.Function.ReservedRegisters.Contains(candidate) ||
+				_loadedPlatformBase?.Binding.BaseRegister == candidate)
+			{
+				continue;
+			}
+			return candidate;
+		}
+		return null;
 	}
 
 	private void EmitAllocatedCall(

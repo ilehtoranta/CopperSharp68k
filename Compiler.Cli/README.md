@@ -719,3 +719,80 @@ flow. The inlining regression resolves a real SDK intrinsic from a different
 module. Execution coverage includes 68000/68020/68040, relocated HUNKs, full
 exception unwinding, forced collection, interior/byref roots, finalizers,
 dynamic frames, console output and both peephole modes.
+
+### Compact static-field addressing
+
+`CompactApplicationStatics` defaults on within the opt-in MC68000 application
+HUNK size policy and requires `CompactApplicationAddresses`. Frequently accessed
+zero-initialized static fields move next to initialized data only when estimated
+instruction and relocation savings exceed their payload and alignment cost.
+Cold fields remain eligible for BSS. Existing PC-relative longword loads and new
+PC-relative `CMP.L` reads save two instruction bytes and one absolute relocation.
+
+A scalar static store can use `LEA field(PC),An; MOVE.L source,(An)` instead of
+`MOVE.L source,field`. Both sequences occupy six instruction bytes, but the
+former removes the absolute relocation. The generator chooses only an already
+dead A0 or A1, excluding live values, register pairs, reserved registers, the
+source register and a loaded platform base. It adds no stack saves or GC roots.
+The eventual clobber participates in peephole dataflow and follows the current
+opcode and address fixup when another optimization rewrites the store.
+
+Every access still occurs in its original order; field values are not cached
+across calls. Static GC roots continue to refer to relocated field labels.
+The final assembler requires an actual instruction boundary, an exact local
+reference without an addend, an initialized target and a signed 16-bit PC
+displacement. Other cases retain their original encoding. Explicit instruction
+effect annotations also prevent store relaxation. Exception tables, frames,
+calling conventions, memory-management policy and public output are unchanged.
+
+The remaining-cost audit found 138 absolute static reads, comparisons and
+stores across the nine baseline images. Common small frame adjustments and
+callee saves already use compact forms. None of the 256 remaining word-sized
+relative calls fits a short displacement without changing method placement;
+repeated large constant pushes offer at most eight bytes. Further substantial
+reductions likely need broader work on runtime metadata or shared helpers,
+including their exception and GC contracts.
+
+Measured against `7973ac3`, with frozen compilers, identical Release inputs and
+runtime DLLs for both variants, and stripped HUNKs:
+
+| Example | Previous compiler | Updated compiler | Bytes saved |
+| --- | ---: | ---: | ---: |
+| DOS | 612 | 612 | 0 |
+| FileStats | 956 | 956 | 0 |
+| CopperBars | 1,272 | 1,272 | 0 |
+| ConsoleIO | 4,480 | 4,312 | 168 |
+| StopwatchBenchmark | 6,712 | 6,632 | 80 |
+| Polymorphism | 3,848 | 3,712 | 136 |
+| IFFInspect | 4,700 | 4,568 | 132 |
+| MUISunflower | 888 | 888 | 0 |
+| MUITaskList | 2,096 | 2,032 | 64 |
+| **Total** | **25,564** | **24,984** | **580 (2.27%)** |
+
+Instruction bytes fall from 17,280 to 17,172 and absolute relocations from 436
+to 305. No measured executable grows. This round did not reach the 10% target.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<updated-cli.dll> -CompareCompilerPath <frozen-previous-cli.dll> -RuntimeDirectory
+<matching-runtime-directory> -CompareApplicationStatics`. Omit
+`-CompareCompilerPath` to isolate the option using one compiler. The previous
+policy retains every earlier size pass through `CompactApplicationPlatformBases`.
+Reports include compiler, runtime, input and output hashes, instruction bytes
+and relocation counts.
+
+The measured compiler SHA-256 is
+`033DBA4C34ACE291244D31EF0605D10E9F406D4B1AAB368F09A5D608FD3502F1`;
+the frozen previous compiler is
+`5A2ECFB1CFB7F5FCA04B12937640FFD73D5A280A1166C43C723474FC7F788254`.
+
+All nine baseline and optimized images matched the earlier validated images
+byte-for-byte after integrating the latest main revision.
+
+Validation: 1,175 focused checks passed. Coverage includes relocated HUNKs,
+mutable fields across calls, zero initialization, full catch/finally behavior,
+forced collection, static and
+interior roots, finalizers, console output, dynamic frames, condition flags and
+both peephole modes. Direct encoding checks execute on 68000/68020/68040 and
+exercise far/BSS/addend fallbacks, CPU/output gates, opcode-like immediate words,
+rewritten stores and explicit effect annotations. Existing cycle budgets were
+not changed.

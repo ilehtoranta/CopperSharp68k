@@ -355,6 +355,7 @@ internal readonly record struct AddressFixup(
 	string Target,
 	bool External,
 	int Addend = 0,
-	bool CanRelaxToPcRelative = true);
+	bool CanRelaxToPcRelative = true,
+	M68kRegister? StoreAddressScratchRegister = null);
 
 internal readonly record struct PcRelativeFixup(int DisplacementOffset, string Target);

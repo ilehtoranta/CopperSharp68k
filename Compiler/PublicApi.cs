@@ -566,6 +566,8 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Place frequently accessed static fields near application code and use shorter reads or relocation-free stores with an already-dead scratch register.</summary>
+	public bool CompactApplicationStatics { get; init; } = true;
 	/// <summary>Keep frequently read platform-base slots near application code so their mutable reads can use PC-relative addressing without caching values across calls.</summary>
 	public bool CompactApplicationPlatformBases { get; init; } = true;
 	/// <summary>Reduce redundant argument staging for eligible MC68000 application calls without changing formal ABI locations or argument evaluation effects.</summary>

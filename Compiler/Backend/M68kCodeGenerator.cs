@@ -206,6 +206,8 @@ internal sealed partial class M68kCodeGenerator
 		_request = request;
 		_assembler.CompactApplicationAddresses = UsesApplicationSizeOptimizations &&
 			request.CodeSizeOptimizations!.CompactApplicationAddresses;
+		_assembler.CompactApplicationStatics = _assembler.CompactApplicationAddresses &&
+			request.CodeSizeOptimizations!.CompactApplicationStatics;
 		_exports = exports;
 		_memoryManagement = M68kCompiler.GetEffectiveMemoryManagement(request);
 		_managedPoolRuntime = managedPoolRuntime;
@@ -10834,7 +10836,9 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 		_assembler.MarkWritableDataStart();
+		_assembler.ValidateStaticAddressInstructionBoundaries();
 		var nearPlatformSlots = new HashSet<string>(StringComparer.Ordinal);
+		var nearStaticFields = new HashSet<CilFieldIdentity>();
 		foreach (var platformBase in _usedPlatformBases.Values
 			.Where(item =>
 				IsMaterializedPlatformBase(item) &&
@@ -10877,6 +10881,20 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
+		if (deferZeroInitializedStorage && _assembler.CompactApplicationStatics)
+		{
+			foreach (var field in _staticFields.Values.OrderBy(item =>
+				System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.Handle)))
+			{
+				// Charge the initialized payload plus worst-case word padding. Keep
+				// cold/large fields in BSS; neither accesses nor root identities move.
+				if (_assembler.EstimateStaticAddressSavings(StaticFieldLabel(field), _assembler.Offset) <=
+					SlotLongs(field.Type) * 4L + 2) continue;
+				EmitZeroInitializedStatic(field);
+				nearStaticFields.Add(field.Identity);
+			}
+		}
+
 		if (deferZeroInitializedStorage)
 		{
 			while ((_assembler.Offset & 3) != 0)
@@ -10899,7 +10917,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 
-		EmitZeroInitializedStatics();
+		EmitZeroInitializedStatics(nearStaticFields);
 	}
 
 	private bool IsResidentInvocationSlot(string label) =>
@@ -10958,7 +10976,7 @@ internal sealed partial class M68kCodeGenerator
 		for (var word = 0; word < additionalWords; word++) _assembler.EmitLong(0);
 	}
 
-	private void EmitZeroInitializedStatics()
+	private void EmitZeroInitializedStatics(IReadOnlySet<CilFieldIdentity> initializedFields)
 	{
 		if (_staticFields.Count == 0)
 		{
@@ -10967,13 +10985,15 @@ internal sealed partial class M68kCodeGenerator
 		foreach (var field in _staticFields.Values.OrderBy(item =>
 			System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(item.Handle)))
 		{
-			_assembler.Mark(StaticFieldLabel(field));
-			var longs = SlotLongs(field.Type);
-			for (var index = 0; index < longs; index++)
-			{
-				_assembler.EmitLong(0);
-			}
+			if (!initializedFields.Contains(field.Identity)) EmitZeroInitializedStatic(field);
 		}
+	}
+
+	private void EmitZeroInitializedStatic(CilField field)
+	{
+		_assembler.Mark(StaticFieldLabel(field));
+		var longs = SlotLongs(field.Type);
+		for (var index = 0; index < longs; index++) _assembler.EmitLong(0);
 	}
 
 	private void EmitPushRegister(M68kRegister register)

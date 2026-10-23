@@ -54,6 +54,7 @@ internal enum M68kFpuOperation : byte
 internal sealed class M68kAssembler
 {
 	internal bool CompactApplicationAddresses { get; set; }
+	internal bool CompactApplicationStatics { get; set; }
 	private readonly M68kAssemblyBuffer _buffer = new();
 	private List<byte> _bytes => _buffer.Bytes;
 	private M68kOffsetMap _labels => _buffer.Labels;
@@ -127,8 +128,23 @@ internal sealed class M68kAssembler
 
 	internal bool TryGetInstructionEffects(
 		int offset,
-		out M68kInstructionEffects effects) =>
-		_buffer.InstructionEffectOverrides.TryGetValue(offset, out effects);
+		out M68kInstructionEffects effects)
+	{
+		var annotated = _buffer.InstructionEffectOverrides.TryGetValue(offset, out effects);
+		if (annotated || !CompactApplicationStatics || !CompactApplicationAddresses || offset < 0 ||
+			offset + 6 > _bytes.Count) return annotated;
+		var opcode = _buffer.ReadWord(offset);
+		if ((opcode & 0xFFF0) != 0x23C0) return annotated;
+		var address = _addresses.FirstOrDefault(fixup => fixup.Offset == offset + 2);
+		if (!TryGetStaticStoreScratch(address, opcode, out var scratch)) return annotated;
+		effects = M68kInstructionDataflow.GetEffects(new M68kEmittedInstruction(
+			offset, 6, opcode, 0, 0, true, M68kInstructionKind.Normal, null, false, false));
+		// Reserve the eventual clobber before peepholes can extend a live range
+		// through the store. Derive it from the current opcode and fixup: folds
+		// may change the source, fuse arithmetic, or move the instruction.
+		effects = effects with { DefinesAddress = (ushort)(effects.DefinesAddress | (1 << scratch)) };
+		return true;
+	}
 
 	private static readonly OpcodeRenderRule[] SimpleInstructionRules =
 	[
@@ -303,6 +319,38 @@ internal sealed class M68kAssembler
 			targetOffset - (long)address.Offset is >= short.MinValue and <= short.MaxValue &&
 			// Count actual longword reads, not LEA or immediate address materialization.
 			(_buffer.ReadWord(address.Offset - 2) & 0xF1BF) == 0x2039);
+
+	internal int EstimateStaticAddressSavings(string target, int targetOffset)
+	{
+		var saved = 0;
+		foreach (var address in _addresses)
+		{
+			if (address.External || !address.CanRelaxToPcRelative || address.Addend != 0 ||
+				!StringComparer.Ordinal.Equals(address.Target, target) || address.Offset < 2 ||
+				_buffer.DataStartOffset is { } dataStart && address.Offset - 2 >= dataStart ||
+				targetOffset - (long)address.Offset is < short.MinValue or > short.MaxValue)
+				continue;
+			var opcode = _buffer.ReadWord(address.Offset - 2);
+			if (TryGetStaticStoreScratch(address, opcode, out _)) saved += 4;
+			else if (TryGetPcRelativeAddressingOpcode(opcode, out _)) saved += 6;
+		}
+		return saved;
+	}
+
+	internal void ValidateStaticAddressInstructionBoundaries()
+	{
+		if (!CompactApplicationStatics) return;
+		var starts = GetExecutableInstructionStream().Where(instruction => instruction.IsDecoded)
+			.Select(instruction => instruction.Offset).ToHashSet();
+		for (var index = 0; index < _addresses.Count; index++)
+		{
+			var address = _addresses[index];
+			// An immediate word can resemble a supported opcode. Only the first
+			// operand of an actual instruction can use these relaxation rules.
+			if (address.CanRelaxToPcRelative && !starts.Contains(address.Offset - 2))
+				_addresses[index] = address with { CanRelaxToPcRelative = false };
+		}
+	}
 
 	public void Mark(string label)
 	{
@@ -583,11 +631,20 @@ internal sealed class M68kAssembler
 		EmitAddress(target, external);
 	}
 
-	public void EmitAddress(string target, bool external = false, int addend = 0)
+	public void EmitAddress(string target, bool external = false, int addend = 0,
+		M68kRegister? storeAddressScratchRegister = null)
 	{
 		var addressOffset = Offset;
 		EmitLong(0);
-		_addresses.Add(new AddressFixup(addressOffset, target, external, addend));
+		_addresses.Add(new AddressFixup(addressOffset, target, external, addend,
+			StoreAddressScratchRegister: storeAddressScratchRegister));
+		if (storeAddressScratchRegister is { } scratch)
+		{
+			var opcode = _buffer.ReadWord(addressOffset - 2);
+			if (scratch is not (M68kRegister.A0 or M68kRegister.A1) ||
+				(opcode & 0xFFF0) != 0x23C0 || (opcode & 15) == (int)scratch)
+				throw new InvalidOperationException("Static store requires a distinct dead A0/A1 scratch register.");
+		}
 	}
 
 	public void EmitPcRelativeWord(string target)
@@ -751,6 +808,7 @@ internal sealed class M68kAssembler
 
 	internal void RelaxFinalLayout()
 	{
+		ValidateStaticAddressInstructionBoundaries();
 		// Every shortening can move a later hot-loop header off its requested
 		// boundary. Re-apply padding after each individual relaxation so branch
 		// range decisions always see the aligned layout rather than a transiently
@@ -763,6 +821,7 @@ internal sealed class M68kAssembler
 			if (TryRelaxShortBranches(wordBranches) ||
 				TryRelaxLocalAbsoluteControlTransfer(wordBranches, absoluteTransfers) ||
 				TryRemoveBranchToNextInstruction(wordBranches) ||
+				TryRelaxStaticStore(absoluteTransfers) ||
 				TryRelaxLocalAbsoluteLoad(absoluteTransfers))
 			{
 				ApplyRequestedAlignments();
@@ -846,6 +905,40 @@ internal sealed class M68kAssembler
 		return false;
 	}
 
+	private bool TryGetStaticStoreScratch(AddressFixup address, ushort opcode, out int scratch)
+	{
+		scratch = address.StoreAddressScratchRegister is { } register
+			? (int)register - (int)M68kRegister.A0 : -1;
+		return CompactApplicationStatics && CompactApplicationAddresses && scratch is 0 or 1 &&
+			(opcode & 0xFFF0) == 0x23C0 && (opcode & 15) != scratch + 8 &&
+			!_buffer.InstructionEffectOverrides.ContainsKey(address.Offset - 2);
+	}
+
+	private bool TryRelaxStaticStore(AbsoluteTransferWorklist absoluteTransfers)
+	{
+		if (!CompactApplicationStatics || !CompactApplicationAddresses) return false;
+		for (var index = 0; index < _addresses.Count; index++)
+		{
+			var address = _addresses[index];
+			var start = address.Offset - 2;
+			if (address.External || !address.CanRelaxToPcRelative || address.Addend != 0 || start < 0 ||
+				_buffer.DataStartOffset is { } dataStart && start >= dataStart ||
+				!_labels.TryGetValue(address.Target, out var target) ||
+				_buffer.BssStartOffset is { } bssStart && target >= bssStart ||
+				target - (long)address.Offset is < short.MinValue or > short.MaxValue ||
+				!TryGetStaticStoreScratch(address, _buffer.ReadWord(start), out var scratch)) continue;
+			var source = _buffer.ReadWord(start) & 15;
+			_buffer.WriteWord(start, 0x41FA | (scratch << 9)); // LEA slot(PC),Ascratch
+			_buffer.WriteWord(start + 2, 0);
+			_buffer.WriteWord(start + 4, 0x2080 | (scratch << 9) | source); // MOVE.L source,(Ascratch)
+			_addresses.RemoveAt(index);
+			absoluteTransfers.Removed(index);
+			_pcRelative.Add(new PcRelativeFixup(start + 2, address.Target));
+			return true;
+		}
+		return false;
+	}
+
 	private bool TryGetPcRelativeAddressingOpcode(
 		ushort opcode,
 		out ushort pcRelativeOpcode)
@@ -855,6 +948,11 @@ internal sealed class M68kAssembler
 		if (CompactApplicationAddresses && (opcode & 0xF1FF) == 0x207C)
 		{
 			pcRelativeOpcode = (ushort)(0x41FA | (opcode & 0x0E00));
+			return true;
+		}
+		if (CompactApplicationStatics && (opcode & 0xF1FF) == 0xB0B9)
+		{
+			pcRelativeOpcode = (ushort)((opcode & 0xFFC0) | 0x003A); // CMP.L abs.l,Dn
 			return true;
 		}
 		if ((opcode & 0xF1FF) == 0x2039)
