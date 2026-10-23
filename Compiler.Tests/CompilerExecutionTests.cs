@@ -597,6 +597,7 @@ public sealed partial class CompilerExecutionTests
 
 	public static TheoryData<string, M68kCpuTarget, M68kCpuModel>
 		MultiwordUnboxAnyCases => CreateMultiwordCpuCases(
+			"BoxedMultiwordUnboxFieldReadEntry",
 			"BoxedMultiwordUnboxAnyEntry",
 			"BoxedThreeWordUnboxAnyEntry",
 			"BoxedMultiwordUnboxAnyIdentityEntry",
