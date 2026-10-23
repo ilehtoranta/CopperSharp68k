@@ -295,6 +295,15 @@ internal sealed class M68kAssembler
 				_buffer.ReadWord(address.Offset - 2),
 				out _));
 
+	internal int CountPcRelativeReadCandidates(string target, int targetOffset) =>
+		_addresses.Count(address =>
+			!address.External && address.CanRelaxToPcRelative && address.Addend == 0 &&
+			StringComparer.Ordinal.Equals(address.Target, target) && address.Offset >= 2 &&
+			(_buffer.DataStartOffset is not { } dataStart || address.Offset - 2 < dataStart) &&
+			targetOffset - (long)address.Offset is >= short.MinValue and <= short.MaxValue &&
+			// Count actual longword reads, not LEA or immediate address materialization.
+			(_buffer.ReadWord(address.Offset - 2) & 0xF1BF) == 0x2039);
+
 	public void Mark(string label)
 	{
 		if (!_labels.TryAdd(label, Offset))

@@ -376,6 +376,79 @@ public sealed class M68kMachineOptimizerTests
 	}
 
 	[Fact]
+	public void LibraryBasePromotionResolvesInlinedIntrinsicInItsSourceModule()
+	{
+		using var sourceModule = new CompilationModule(
+			typeof(Amiga.AsyncFileCodec).Assembly.Location);
+		var sourceMethod = sourceModule.ResolveEntryPoint(
+			"Amiga.AsyncFileCodec::PacketAddress");
+		var rawCall = Assert.Single(sourceMethod.Instructions.Where(instruction =>
+			instruction.OpCode == OpCodes.Call &&
+			sourceModule.ResolveMethodToken((int)instruction.Operand!,
+				sourceMethod, instruction.Offset).ImportName == "intrinsic:aptr-raw"));
+		using var callerModule = new CompilationModule(
+			typeof(CompilerFixtures).Assembly.Location);
+		var callerMethod = callerModule.ResolveEntryPoint(
+			"CopperSharp.Compiler.Tests.CompilerFixtures::HelloAmigaPromotesDosLibraryBase");
+		var inlineSite = callerMethod.Instructions.First(instruction =>
+			instruction.OpCode == OpCodes.Call);
+		var function = new M68kMachineFunction(callerMethod.DisplayName, 0, callerMethod);
+		var block = AddBlock(function, 0, 0);
+		var stored = CreateLong(function);
+		var loaded = CreateLong(function);
+		var memory = M68kMemoryModel.LibraryBaseObject("_DOSLibraryBase");
+		var convention = new M68kExternalCallConvention(
+			"dos.library", M68kExternalBaseSource.WritableSlot,
+			M68kRegister.A6, -30, SlotSymbol: "_DOSLibraryBase");
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Constant, 0,
+			definitions: [stored.Id],
+			constantValue: M68kMachineConstant.Int32(0x5000)));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.PlatformBaseStore, 1,
+			uses: [stored.Id], memoryEffect: M68kMachineMemoryEffect.Write,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(memory,
+					M68kExactMemoryAccessKind.Write, stored.Id)
+			],
+			platformBaseConvention: convention));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Call, 2,
+			memoryEffect: M68kMachineMemoryEffect.Read |
+				M68kMachineMemoryEffect.Write,
+			sourceInstruction: rawCall,
+			origin: M68kMachineInstructionOrigin.Create(sourceMethod, rawCall)
+				.AtInlineSite(callerMethod, inlineSite)));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.PlatformBaseLoad, 3,
+			definitions: [loaded.Id],
+			memoryEffect: M68kMachineMemoryEffect.Read,
+			exactMemoryAccesses:
+			[
+				new M68kExactMemoryAccess(memory,
+					M68kExactMemoryAccessKind.Read, loaded.Id)
+			],
+			platformBaseConvention: convention));
+		block.Instructions.Add(function.CreateInstruction(
+			M68kMachineOperation.Return, 4, uses: [loaded.Id]));
+
+		var statistics = M68kMemoryPromotionPass.Run(function,
+			new M68kMemoryPromotionContext(
+				callerMethod, sourceModule,
+				new Dictionary<CilMethodIdentity, M68kMethodMemorySummary>(),
+				new HashSet<M68kMemoryObject> { memory },
+				new Dictionary<int, M68kHeapOwnerFacts>(), function));
+
+		Assert.Equal(1, statistics.LoadsForwarded);
+		Assert.Equal(1, statistics.StoresRemoved);
+		Assert.DoesNotContain(block.Instructions, instruction =>
+			instruction.Operation is M68kMachineOperation.PlatformBaseLoad or
+				M68kMachineOperation.PlatformBaseStore);
+		M68kMachineIrVerifier.Verify(function);
+	}
+
+	[Fact]
 	public void VerifierRejectsMissingOriginForLoweredFunction()
 	{
 		var source = new CilInstruction(0, OpCodes.Ret, null, 1);

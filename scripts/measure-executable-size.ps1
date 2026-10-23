@@ -4,6 +4,7 @@ param(
     [string] $Configuration = 'Release',
     [string] $OutputDirectory,
     [string] $CompilerPath,
+    [string] $CompareCompilerPath,
     [string] $RuntimeDirectory,
     [string] $CompareRuntimeDirectory,
     [switch] $NoBuild,
@@ -13,11 +14,12 @@ param(
     [switch] $CompareApplicationRuntime,
     [switch] $CompareApplicationArithmetic,
     [switch] $CompareApplicationRegisterCopies,
-    [switch] $CompareApplicationCallArguments
+    [switch] $CompareApplicationCallArguments,
+    [switch] $CompareApplicationPlatformBases
 )
 
 $ErrorActionPreference = 'Stop'
-$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments
+$comparePolicy = $CompareApplicationMethods -or $CompareApplicationMetadata -or $CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repositoryRoot "artifacts/executable-size/$Configuration"
@@ -25,6 +27,10 @@ if (-not $OutputDirectory) {
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 if ($CompilerPath -and -not $NoBuild) { throw '-CompilerPath requires -NoBuild and an already built compiler.' }
+if ($CompareCompilerPath -and (-not $NoBuild -or -not $comparePolicy)) {
+    throw '-CompareCompilerPath requires -NoBuild and an application policy comparison.'
+}
+$previousCompiler = if ($CompareCompilerPath) { [IO.Path]::GetFullPath($CompareCompilerPath) } else { $null }
 $compiler = if ($CompilerPath) { [IO.Path]::GetFullPath($CompilerPath) }
     else { Join-Path $repositoryRoot "Compiler.Cli/bin/$Configuration/net10.0/CopperSharp.Compiler.Cli.dll" }
 $samples = @(
@@ -133,17 +139,19 @@ $rows = foreach ($sample in $samples) {
         if ($variant -eq 'previous-policy' -or ($variant -eq 'previous-runtime' -and $CompareApplicationRuntime)) {
             $previousPasses = 'CompactApplicationAddresses,ShareApplicationRuntimeMetadata,CompactApplicationExceptionSites'
             if ($CompareApplicationMetadata) { $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences' }
-            if ($CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments) {
+            if ($CompareApplicationGcSites -or $CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases) {
                 $previousPasses += ',RemoveApplicationRegisterMoves,ShareReturnSequences,PruneApplicationUnwindMetadata,NarrowApplicationExceptionSites,ShareApplicationUnwindRestores'
             }
-            if ($CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
-            if ($CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments) { $previousPasses += ',CompactApplicationExceptionRuntime' }
-            if ($CompareApplicationRegisterCopies -or $CompareApplicationCallArguments) { $previousPasses += ',RemoveApplicationDeadArithmetic,TrackApplicationNarrowValues,FoldApplicationMemoryOperands' }
-            if ($CompareApplicationCallArguments) { $previousPasses += ',OptimizeApplicationRegisterCopies' }
+            if ($CompareApplicationRuntime -or $CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases) { $previousPasses += ',CompactApplicationGcSites,PruneApplicationLeafSites' }
+            if ($CompareApplicationArithmetic -or $CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases) { $previousPasses += ',CompactApplicationExceptionRuntime' }
+            if ($CompareApplicationRegisterCopies -or $CompareApplicationCallArguments -or $CompareApplicationPlatformBases) { $previousPasses += ',RemoveApplicationDeadArithmetic,TrackApplicationNarrowValues,FoldApplicationMemoryOperands' }
+            if ($CompareApplicationCallArguments -or $CompareApplicationPlatformBases) { $previousPasses += ',OptimizeApplicationRegisterCopies' }
+            if ($CompareApplicationPlatformBases) { $previousPasses += ',OptimizeApplicationCallArguments' }
             $arguments += @('--code-size-optimizations', 'on', '--code-size-passes',
                 $previousPasses)
         }
-        & dotnet $compiler @arguments | Out-Host
+        $variantCompiler = if ($variant -eq 'previous-policy' -and $previousCompiler) { $previousCompiler } else { $compiler }
+        & dotnet $variantCompiler @arguments | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $($sample.Name) $variant" }
         if ((Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash -ne $inputHash) {
             throw "Input was rebuilt during measurement: $($sample.Name). Rerun after builds finish."
@@ -188,6 +196,7 @@ $rows = foreach ($sample in $samples) {
 $rows | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'measurements.csv') -NoTypeInformation
 [ordered]@{
     CompilerSha256 = (Get-FileHash -LiteralPath (Join-Path (Split-Path $compiler) 'CopperSharp.Compiler.dll') -Algorithm SHA256).Hash
+    PreviousCompilerSha256 = $(if ($previousCompiler) { (Get-FileHash -LiteralPath (Join-Path (Split-Path $previousCompiler) 'CopperSharp.Compiler.dll') -Algorithm SHA256).Hash } else { $null })
     RuntimeHashes = @($(foreach ($directory in @($RuntimeDirectory, $CompareRuntimeDirectory) | Where-Object { $_ }) {
         foreach ($name in @('CopperSharp.Runtime.Managed.dll', 'CopperSharp.Runtime.AmigaPal.dll')) {
             $path = [IO.Path]::GetFullPath((Join-Path $directory $name))

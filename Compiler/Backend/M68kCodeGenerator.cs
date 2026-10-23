@@ -10828,15 +10828,27 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 		_assembler.MarkWritableDataStart();
+		var nearPlatformSlots = new HashSet<string>(StringComparer.Ordinal);
 		foreach (var platformBase in _usedPlatformBases.Values
 			.Where(item =>
 				IsMaterializedPlatformBase(item) &&
 				item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 				item.Label is not null &&
-				!IsResidentInvocationSlot(item.Label!) &&
-				(!deferZeroInitializedStorage || item.Binding.InitialValue != 0))
+				!IsResidentInvocationSlot(item.Label!))
 			.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 		{
+			if (deferZeroInitializedStorage && platformBase.Binding.InitialValue == 0)
+			{
+				if (!UsesApplicationSizeOptimizations ||
+					!_request.CodeSizeOptimizations!.CompactApplicationPlatformBases ||
+					!_request.CodeSizeOptimizations.CompactApplicationAddresses ||
+					_assembler.CountPcRelativeReadCandidates(platformBase.Label!, _assembler.Offset) < 2)
+					continue;
+				// Four initialized bytes replace a BSS slot. Each in-range read saves
+				// two instruction bytes and a four-byte HUNK relocation. Two reads
+				// cover the storage and longword-padding cost without caching a value.
+				nearPlatformSlots.Add(platformBase.Label!);
+			}
 			_assembler.Mark(platformBase.Label!);
 			_assembler.EmitLong(platformBase.Binding.InitialValue);
 		}
@@ -10872,6 +10884,7 @@ internal sealed partial class M68kCodeGenerator
 					item.Binding.BaseSource == M68kExternalBaseSource.WritableSlot &&
 					item.Label is not null &&
 					!IsResidentInvocationSlot(item.Label!) &&
+					!nearPlatformSlots.Contains(item.Label!) &&
 					item.Binding.InitialValue == 0)
 				.OrderBy(item => item.Binding.Identity, StringComparer.Ordinal))
 			{

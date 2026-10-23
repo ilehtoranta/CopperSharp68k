@@ -566,6 +566,8 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Keep frequently read platform-base slots near application code so their mutable reads can use PC-relative addressing without caching values across calls.</summary>
+	public bool CompactApplicationPlatformBases { get; init; } = true;
 	/// <summary>Reduce redundant argument staging for eligible MC68000 application calls without changing formal ABI locations or argument evaluation effects.</summary>
 	public bool OptimizeApplicationCallArguments { get; init; } = true;
 	/// <summary>Reduce loop copies and prefer register assignments that eliminate more static copy sites in eligible MC68000 application methods. Handler, dynamic-frame and collector-visible methods retain their existing allocation.</summary>

@@ -769,23 +769,20 @@ internal static class M68kMemoryPromotionPass
 			// global observer; address escapes were rejected with the candidate.
 			return instruction.Operation == M68kMachineOperation.TypeInitialize;
 		}
-		if (memoryObject.Kind == M68kMemoryObjectKind.LibraryBase &&
-			instruction.HasExplicitPlatformBase &&
-			!HasManagedCallbackArgument(context, instruction))
-		{
-			// Native callees consume an explicit base value and cannot discover a
-			// compiler-owned slot. A managed callback is the only re-entry path that
-			// can make the slot observable here.
-			return false;
-		}
-
 		var targets = instruction.LogicalCall?.ResolvedTargets ?? [];
 		if (targets.Length == 0)
 		{
-			// Writable platform slots are compiler-owned. A native call consumes
-			// its explicit base SSA operand and cannot discover the slot unless a
-			// managed callback was explicitly supplied.
-			return memoryObject.Kind != M68kMemoryObjectKind.LibraryBase;
+			if (memoryObject.Kind == M68kMemoryObjectKind.LibraryBase &&
+				IsLocalValueIntrinsic(instruction, context))
+			{
+				// These compiler-owned value operations only inspect their input.
+				// They cannot reach or mutate the private platform-base slot.
+				return false;
+			}
+			// A native callee can retain a callback from an earlier invocation.
+			// Its current arguments need not expose that re-entry path, so treat
+			// every opaque call as a possible write to writable platform slots.
+			return true;
 		}
 		foreach (var target in targets)
 		{
@@ -801,40 +798,29 @@ internal static class M68kMemoryPromotionPass
 		return false;
 	}
 
-	private static bool HasManagedCallbackArgument(
-		M68kMemoryPromotionContext context,
-		M68kMachineInstruction call)
+	private static bool IsLocalValueIntrinsic(
+		M68kMachineInstruction instruction,
+		M68kMemoryPromotionContext context)
 	{
-		var definitions = context.Function.Blocks
-			.SelectMany(static block => block.Instructions)
-			.SelectMany(static instruction => instruction.Definitions.Select(
-				definition => (definition, instruction)))
-			.ToDictionary(static item => item.definition, static item => item.instruction);
-		// Function and delegate values are explicit in machine IR. Follow copies
-		// because call ABI preparation commonly introduces one before the call.
-		foreach (var argument in call.LogicalCall?.ArgumentValueIds ?? call.Uses)
+		var source = instruction.Origin?.SourceInstruction ?? instruction.SourceInstruction;
+		if (instruction.HasExplicitPlatformBase ||
+			source?.Operand is not int token)
 		{
-			var value = argument;
-			var visited = new HashSet<int>();
-			while (visited.Add(value) &&
-				definitions.TryGetValue(value, out var definition))
-			{
-				if (definition.Operation is
-					M68kMachineOperation.FunctionAddress or
-					M68kMachineOperation.DelegateCreate)
-				{
-					return true;
-				}
-				if (definition.Operation == M68kMachineOperation.Copy &&
-					definition.Uses is [var source])
-				{
-					value = source;
-					continue;
-				}
-				break;
-			}
+			return false;
 		}
-		return false;
+		var importName = context.Module.ResolveMethodToken(
+			token, instruction.Origin?.SourceMethod ?? context.Method, source.Offset).ImportName;
+		return importName == "intrinsic:aptr-raw" ||
+			importName?.StartsWith(
+				"intrinsic:nullable-ctor:", StringComparison.Ordinal) == true ||
+			importName?.StartsWith(
+				"intrinsic:nullable-has-value:", StringComparison.Ordinal) == true ||
+			importName?.StartsWith(
+				"intrinsic:nullable-get-value:", StringComparison.Ordinal) == true ||
+			importName?.StartsWith(
+				"intrinsic:nullable-get-value-or-default:", StringComparison.Ordinal) == true ||
+			importName?.StartsWith(
+				"intrinsic:nullable-get-value-or-default-no-argument:", StringComparison.Ordinal) == true;
 	}
 
 	private static IEnumerable<(
