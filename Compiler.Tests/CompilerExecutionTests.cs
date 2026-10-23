@@ -9518,7 +9518,7 @@ public sealed partial class CompilerExecutionTests
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
-	public void HelloAmigaKeepsOpenedDosBaseInSsaWithoutMaterializingItsSlot(
+	public void HelloAmigaPreservesWritableBaseAcrossOpaqueNativeCalls(
 		M68kCpuTarget target,
 		M68kCpuModel model)
 	{
@@ -9533,6 +9533,9 @@ public sealed partial class CompilerExecutionTests
 			OutputFormat = M68kOutputFormat.Assembly
 		});
 		var bus = CreateHunkBus(result);
+		var dosSlot = HunkLoadAddress + Assert.Single(result.Symbols,
+			symbol => symbol.Name == "_DOSLibraryBase").Address;
+		const uint replacementBase = 0x0000_3E00;
 		bus.WriteLong(4, execBase);
 		bus.RegisterGateway(execBase - 552, state =>
 		{
@@ -9543,14 +9546,15 @@ public sealed partial class CompilerExecutionTests
 		{
 			Assert.Equal(dosBase, state.A[6]);
 			Assert.Equal("Hello from CopperSharp.\n", ReadCString(bus, state.D[1]));
+			Assert.Equal(dosBase, bus.ReadLong(dosSlot));
+			// Opaque native code can re-enter through a previously retained callback.
+			bus.WriteLong(dosSlot, replacementBase);
 		});
 		bus.RegisterGateway(execBase - 414, state =>
-			Assert.Equal(dosBase, state.A[1]));
+			Assert.Equal(replacementBase, state.A[1]));
 
 		Assert.Equal(0u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
-		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain(result.Symbols, static symbol =>
-			symbol.Name == "_DOSLibraryBase");
+		Assert.Contains("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
 		Assert.Contains("_ExecBase", result.Text, StringComparison.Ordinal);
 		Assert.Equal(
 			2,
@@ -9561,9 +9565,6 @@ public sealed partial class CompilerExecutionTests
 			@"\tmove\.l\t_ExecBase(?:\(pc\))?,(?<base>d[2-7])\r?\n" +
 			@"\tmovea\.l\t\k<base>,a6",
 			result.Text!);
-		Assert.Matches(
-			@"(?s)move\.l\td0,(?<base>d[2-7]).*?movea\.l\t\k<base>,a6.*?movea\.l\t\k<base>,a1",
-			result.Text);
 	}
 
 	[Theory]
@@ -9910,6 +9911,9 @@ public sealed partial class CompilerExecutionTests
 			calls++;
 			Assert.Equal(execBase, state.A[6]);
 			state.D[0] = 0x0000_4200 + (uint)calls;
+			// The external ABI permits A6 to be overwritten. The second call must
+			// reload the platform base regardless of the intervening allocation.
+			state.A[6] = 0x5A5A_5A5A;
 		});
 
 		Assert.Equal(0x0000_0F00u, Execute(bus, model, HunkLoadAddress + result.EntryPoint));
@@ -9922,11 +9926,6 @@ public sealed partial class CompilerExecutionTests
 				@"\tmovea\.l\t_ExecBase(?:\(pc\))?,a6").Count);
 		Assert.DoesNotMatch(
 			@"\tmovea?\.l\t_ExecBase(?:\(pc\))?,(?<base>[ad][0-5])\r?\n\tmovea\.l\t\k<base>,a6",
-			text);
-		// Transparent pointer scalars can use either data or address registers.
-		// The two direct base reloads above are the ABI requirement.
-		Assert.Matches(
-			@"\tmovea?\.[wl]\t#\$(?:0000)?0[1-5]00,(?:d[0-7]|a[0-6])",
 			text);
 	}
 

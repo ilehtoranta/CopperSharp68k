@@ -126,7 +126,8 @@ internal static class M68kCallAbiLowering
 				return true;
 			}
 
-			if (!CollectFixedCopies(source) || fixedCopies.Count == 0)
+			if (!CollectFixedCopies(source) || fixedCopies.Count == 0 ||
+				!CanMovePlatformBaseLoadToCopies(function, load, fixedCopies))
 			{
 				continue;
 			}
@@ -193,6 +194,52 @@ internal static class M68kCallAbiLowering
 				function.Values.Remove(value);
 			}
 		}
+	}
+
+	private static bool CanMovePlatformBaseLoadToCopies(
+		M68kMachineFunction function,
+		M68kMachineInstruction load,
+		IReadOnlyList<M68kMachineInstruction> fixedCopies)
+	{
+		var block = function.Blocks.FirstOrDefault(block =>
+			block.Instructions.Any(instruction => instruction.Id == load.Id));
+		if (block is null) return false;
+		var cacheRegister = load.PlatformBaseConvention is
+			{ BaseSource: M68kExternalBaseSource.CachedPointer,
+				CacheRegister: { } register }
+				? (M68kRegister?)register
+				: null;
+		var loadIndex = block.Instructions.FindIndex(instruction =>
+			instruction.Id == load.Id);
+		foreach (var copy in fixedCopies)
+		{
+			var copyIndex = block.Instructions.FindIndex(instruction =>
+				instruction.Id == copy.Id);
+			if (copyIndex <= loadIndex) return false;
+			for (var index = loadIndex + 1; index < copyIndex; index++)
+			{
+				var crossed = block.Instructions[index];
+				if ((crossed.MemoryEffect &
+						(M68kMachineMemoryEffect.Write |
+						 M68kMachineMemoryEffect.Volatile)) != 0 ||
+					crossed.Operation is M68kMachineOperation.Call or
+						M68kMachineOperation.Branch or
+						M68kMachineOperation.ConditionalBranch or
+						M68kMachineOperation.Switch or
+						M68kMachineOperation.Return or
+						M68kMachineOperation.Throw ||
+					crossed.MayThrow || crossed.IsSafepoint ||
+					crossed.Clobbers != M68kRegisterSet.None ||
+					cacheRegister is { } cache && crossed.Definitions.Any(
+						definition => function.Values[definition].PrecoloredRegister == cache))
+				{
+					// A writable slot or cached register can change here. Keep the
+					// original read before the barrier, including on EH/GC paths.
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 
 	private static bool IsFixedPlatformBaseCopy(

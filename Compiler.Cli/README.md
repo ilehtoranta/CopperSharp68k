@@ -648,3 +648,74 @@ arithmetic. The application matrix covers relocated HUNKs, full exception
 unwinding, forced collection, interior/byref roots, finalizers, dynamic frames,
 console output and both peephole modes. Direct push and exception regressions
 execute on 68000/68020/68040. Existing pinned cycle budgets were not changed.
+
+### Repeated platform-base loads
+
+`CompactApplicationPlatformBases` defaults on within the opt-in MC68000
+application HUNK size policy and requires `CompactApplicationAddresses`.
+Frequently read, zero-initialized writable base slots are placed alongside
+initialized data when at least two exact longword reads can reach them with a
+signed 16-bit PC displacement. Each relaxed read saves two instruction bytes
+and removes a four-byte absolute relocation, covering the four initialized
+bytes and alignment cost. Infrequent slots remain eligible for BSS; the HUNK
+writer still chooses the smaller container layout. Other CPUs, ROM/resident
+output, and caller-supplied cached-register conventions retain their layout.
+
+This reduces the encoding cost of the reads while preserving their values and
+ordering. The audit found 66 absolute slot-to-A6 loads in the nine previous
+images, but no safe repeated same-slot reads within a straight-line region
+without intervening calls, writes or clobbers. Caching across native calls would
+need a stronger stability contract: a callee can retain a callback from an
+earlier call and invoke it later, changing a writable base slot.
+
+The investigation also corrected two existing assumptions independently of the
+size option. Memory promotion now treats opaque calls as possible observers and
+writers of platform slots, even when the current call has no callback argument.
+Known local value intrinsics remain eligible for promotion and resolve metadata
+against their original method after inlining. ABI rematerialization retains the
+original base snapshot across writes, calls, control flow, exception/GC boundaries
+and register clobbers. Cached-register definitions are barriers too. These fixes
+retain stores and reloads where re-entry or mutation can make them observable.
+
+Measured against `5aea929`, using a frozen previous compiler, identical Release
+inputs and runtime DLLs for both variants, and stripped HUNKs:
+
+| Example | Previous compiler | Updated compiler | Bytes saved |
+| --- | ---: | ---: | ---: |
+| DOS | 612 | 612 | 0 |
+| FileStats | 944 | 956 | -12 |
+| CopperBars | 1,248 | 1,272 | -24 |
+| ConsoleIO | 4,604 | 4,480 | 124 |
+| StopwatchBenchmark | 6,928 | 6,712 | 216 |
+| Polymorphism | 3,848 | 3,848 | 0 |
+| IFFInspect | 4,816 | 4,700 | 116 |
+| MUISunflower | 888 | 888 | 0 |
+| MUITaskList | 2,236 | 2,096 | 140 |
+| **Total** | **26,124** | **25,564** | **560 (2.14%)** |
+
+Instruction bytes fall from 17,396 to 17,280 and absolute relocations from 512 to
+436. The net total includes the additional state preservation in FileStats and
+CopperBars. The continuing 10% target was not reached.
+
+Reproduce with `scripts/measure-executable-size.ps1 -NoBuild -CompilerPath
+<updated-cli.dll> -CompareCompilerPath <frozen-previous-cli.dll> -RuntimeDirectory
+<matching-runtime-directory> -CompareApplicationPlatformBases`. Without
+`-CompareCompilerPath`, both variants use the current compiler and isolate only
+the placement option; a frozen compiler is necessary to include the independent
+correctness fixes in the comparison. Reports record both compiler hashes plus
+runtime, input and output hashes. All nine baseline images were checked against
+the frozen `5aea929` images.
+
+The measured compiler SHA-256 is
+`98C701ED3A475E63A51CB59064B9FF9507FACFFD9C89AF06AC7081A968AC3A85`;
+the previous compiler is
+`303C87A78214A723F2608B9F94192A4DFCD482D034489DC53CF7DF1E163534FD`.
+
+Validation: 720 focused checks passed. New coverage checks exact read selection,
+signed PC-displacement limits, CPU and option gating, zero initialization,
+mutable slots across retained callbacks and explicit writes, A6 clobbers, and
+base-load rematerialization across writes, exceptions, safepoints and control
+flow. The inlining regression resolves a real SDK intrinsic from a different
+module. Execution coverage includes 68000/68020/68040, relocated HUNKs, full
+exception unwinding, forced collection, interior/byref roots, finalizers,
+dynamic frames, console output and both peephole modes.
