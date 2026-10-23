@@ -269,9 +269,13 @@ public sealed class M68kAddressEntryBoundaryTests
 		M68kAssemblyBuffer buffer, M68kCpuTarget target = M68kCpuTarget.M68000,
 		int rewriteBudget = int.MaxValue) => new(assembler, buffer, target, M68kClrPolicy.Auto, [], rewriteBudget);
 
-	private static Func<int, int, bool> BindGuard(M68kPeepholeOptimizer optimizer) =>
-		typeof(M68kPeepholeOptimizer).GetMethod("CanFoldAcrossUnreferencedIlLabels", PrivateInstance)!
-			.CreateDelegate<Func<int, int, bool>>(optimizer);
+	private static Func<int, int, bool> BindGuard(M68kPeepholeOptimizer optimizer)
+	{
+		var guard = typeof(M68kPeepholeOptimizer)
+			.GetMethod("CanFoldAcrossUnreferencedIlLabels", PrivateInstance)!
+			.CreateDelegate<Func<int, int, bool, bool>>(optimizer);
+		return (start, end) => guard(start, end, false);
+	}
 
 	private static FieldInfo Field(string name) => typeof(M68kPeepholeOptimizer)
 		.GetField(name, PrivateInstance) ?? throw new InvalidOperationException("Missing cache field: " + name);

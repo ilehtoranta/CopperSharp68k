@@ -11261,10 +11261,8 @@ public sealed partial class CompilerExecutionTests
 			System.Text.Encoding.Latin1.GetString(eofOutput));
 		// Call barriers invalidate stale condition aliases, and finally frames
 		// initialize their active-exception slot even on the normal path.
-		Assert.Equal(30_992, input.Cycles);
-		Assert.Equal(3_190, input.Instructions);
-		Assert.Equal(17_156, eof.Cycles);
-		Assert.Equal(1_849, eof.Instructions);
+		Assert.Equal((31_758L, 3_213L, 17_986L, 1_909L),
+			(input.Cycles, input.Instructions, eof.Cycles, eof.Instructions));
 	}
 
 	[Fact]
