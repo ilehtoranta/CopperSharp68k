@@ -748,6 +748,7 @@ internal static class M68kInterferenceBuilder
 		var entry = function.Blocks.Single(block =>
 			block.Id == function.EntryBlockId);
 		var incomingHomeList = new List<int>();
+		var scalarSpills = M68kIncomingArgumentSpills.FindScalarSpills(function);
 		for (var index = 0; index < entry.Instructions.Count; index++)
 		{
 			var argument = entry.Instructions[index];
@@ -755,15 +756,7 @@ internal static class M68kInterferenceBuilder
 				argument.Definitions.Length != 1) continue;
 			var incoming = argument.Definitions[0];
 			var incomingValue = function.Values[incoming];
-			var directScalarSpill = incomingValue.IsSpillTemporary &&
-				incomingValue.Width == M68kMachineValueWidth.Long &&
-				index + 1 < entry.Instructions.Count &&
-				entry.Instructions[index + 1] is
-				{
-					Operation: M68kMachineOperation.SpillStore,
-					Uses: [var stored]
-				} && stored == incoming;
-			if (directScalarSpill) continue;
+			if (scalarSpills.ContainsKey(argument.Id)) continue;
 			if (incomingValue.PrecoloredRegister is null)
 			{
 				incomingHomeList.Add(incoming);

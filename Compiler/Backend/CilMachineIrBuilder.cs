@@ -289,6 +289,7 @@ internal static class CilMachineIrBuilder
 		EliminateUnneededSpanElementOwners(function);
 		EliminateDeadMachineValues(function);
 		PropagateNarrowExpressionWidths(function);
+		M68kComparisonPromotion.Run(function);
 		M68kMachineIrVerifier.Verify(function);
 		M68kConditionFlowOptimizer.Run(function, method, module);
 		function.OptimizationStatistics = M68kMachineOptimizer.Run(function, cpu);

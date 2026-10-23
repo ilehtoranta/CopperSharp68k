@@ -3734,6 +3734,17 @@ internal static class FrameworkBindingRegistry
 						FrameworkFeature.ManagedExceptions));
 			}
 			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
+				name == "ThrowNotSupportedException" &&
+				signature.ParameterTypes.Length == 0)
+			{
+				return Intrinsic(
+					member,
+					"intrinsic:runtime-throw-not-supported",
+					Effects(
+						FrameworkEffects.MayThrow,
+						FrameworkFeature.ManagedExceptions));
+			}
+			if (typeName == "CopperSharp.Compiler.M68kRuntime" &&
 				name == "ThrowIOException" &&
 				signature.ParameterTypes.Length == 0)
 			{

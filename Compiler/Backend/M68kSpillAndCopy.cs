@@ -4,6 +4,8 @@
  */
 
 using System.Collections.Immutable;
+using System.Reflection.Emit;
+using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Backend;
 
@@ -367,19 +369,58 @@ internal static class M68kSpillRewriter
 					var edgeBlock = edgeInserter.GetInsertionBlock(
 						input.Key,
 						block.Id);
+					var storedValue = NormalizePhiInput(function, phi.Definition, input.Value,
+						block.StartIlOffset, edgeBlock);
 					stores.Add((edgeBlock.Id, slot.Index));
 					edgeBlock.Instructions.Insert(
 						InsertBeforeTerminator(edgeBlock),
 						CreateStore(
 							function,
 							block.StartIlOffset,
-							input.Value,
+							storedValue,
 							slot.Index));
 				}
 				block.Phis.RemoveAt(phiIndex);
 			}
 		}
 		return stores;
+	}
+
+	private static int NormalizePhiInput(
+		M68kMachineFunction function, int definition, int input, int ilOffset, M68kMachineBlock edgeBlock)
+	{
+		var destination = function.Values[definition];
+		var source = function.Values[input];
+		if (source.Width == destination.Width) return input;
+		if (source.Width == M68kMachineValueWidth.LongPair ||
+			destination.Width == M68kMachineValueWidth.LongPair ||
+			source.IsGcReference || destination.IsGcReference)
+			throw new InvalidOperationException(
+				$"Phi v{definition} cannot join {source.Width} into {destination.Width} spill storage.");
+		// A spill slot is read using the phi's width. On a big-endian target a
+		// byte store into a longword slot changes its most significant byte,
+		// leaving the low byte from a previous incoming edge. Extend or truncate
+		// before the store so every edge writes the complete destination width.
+		var widening = source.Width < destination.Width;
+		var kind = widening ? source.Kind : destination.Kind;
+		var op = kind switch
+		{
+			CilStackValueKind.SignedByte => OpCodes.Conv_I1,
+			CilStackValueKind.SignedWord => OpCodes.Conv_I2,
+			CilStackValueKind.UnsignedWord => OpCodes.Conv_U2,
+			CilStackValueKind.BooleanByte or CilStackValueKind.UnsignedByte => OpCodes.Conv_U1,
+			_ => throw new InvalidOperationException(
+					$"Phi v{definition} cannot convert {source.Kind} to {destination.Kind} spill storage.")
+		};
+		var normalized = function.CreateValue(
+			destination.Kind, destination.Width, M68kRegisterSet.Data,
+			isSpillTemporary: true);
+		edgeBlock.Instructions.Insert(
+			InsertBeforeTerminator(edgeBlock),
+			function.CreateInstruction(M68kMachineOperation.Convert, ilOffset,
+				uses: [input], definitions: [normalized.Id],
+				sourceInstruction: new CilInstruction(ilOffset, op, null, ilOffset)));
+		return normalized.Id;
 	}
 
 	private static void RewriteInstructions(

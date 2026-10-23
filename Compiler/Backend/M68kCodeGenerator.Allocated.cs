@@ -426,6 +426,7 @@ internal sealed partial class M68kCodeGenerator
 		int savedBytes)
 	{
 		var entry = allocated.Function.Blocks[0];
+		var scalarSpills = M68kIncomingArgumentSpills.FindScalarSpills(allocated.Function);
 		var transfers = new List<(
 			M68kMachineInstruction Argument,
 			M68kMachineInstruction? Copy,
@@ -442,6 +443,30 @@ internal sealed partial class M68kCodeGenerator
 					"Allocated incoming argument has no ABI index.");
 			}
 			var source = abi.Arguments[argumentIndex];
+			if (scalarSpills.TryGetValue(argument.Id, out var scalarSpill))
+			{
+				var destinationFrame = AllocatedFrameOffset(allocated,
+					allocated.Frame.SpillOffsets[scalarSpill.Store.SpillSlotIndex!.Value]);
+				var width = scalarSpill.Width;
+				if (source.Register is { } scalarSource)
+				{
+					if (scalarSource > M68kRegister.D7 && width != M68kMachineValueWidth.Long)
+					{
+						// Stage an address-register word without borrowing a live Dn.
+						// The ABI longword's low byte/word is at the high address.
+						EmitAllocatedPush(scalarSource);
+						EmitAllocatedIncomingStackToFrame(4 - (int)width,
+							checked(destinationFrame + (UsesAllocatedFrameAnchor ? 0 : 4)), width);
+						EmitReleaseStackBytes(4);
+					}
+					else EmitAllocatedFrameStore(scalarSource, width, destinationFrame);
+				}
+				else EmitAllocatedIncomingStackToFrame(checked(savedBytes + 4 + source.StackOffset + 4 - (int)width), destinationFrame, width);
+				_allocatedSuppressedInstructions.Add(argument.Id);
+				if (scalarSpill.Copy is { } scalarCopy) _allocatedSuppressedInstructions.Add(scalarCopy.Id);
+				_allocatedSuppressedInstructions.Add(scalarSpill.Store.Id);
+				continue;
+			}
 			var argumentPosition = entry.Instructions.IndexOf(argument);
 			var directSpill = argumentPosition >= 0 &&
 				argumentPosition + 1 < entry.Instructions.Count
@@ -8965,6 +8990,12 @@ internal sealed partial class M68kCodeGenerator
 				EmitExceptionRaise(reason: 13, hasException: false);
 				return;
 			}
+			if (name == "intrinsic:runtime-throw-not-supported")
+			{
+				RegisterRuntimeTypeDescriptor("System.NotSupportedException");
+				EmitExceptionRaise(reason: 13, hasException: false);
+				return;
+			}
 			if (name == "intrinsic:runtime-throw-io")
 			{
 				RegisterRuntimeTypeDescriptor("System.IO.IOException");
@@ -11055,6 +11086,7 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:runtime-throw-argument-null" or
 			"intrinsic:runtime-throw-argument-out-of-range" or
 			"intrinsic:runtime-throw-invalid-operation" or
+			"intrinsic:runtime-throw-not-supported" or
 			"intrinsic:runtime-throw-io" or
 			"intrinsic:runtime-throw-file-not-found" or
 			"intrinsic:runtime-throw-directory-not-found" or

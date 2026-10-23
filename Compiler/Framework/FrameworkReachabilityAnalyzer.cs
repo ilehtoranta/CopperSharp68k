@@ -177,6 +177,7 @@ internal static class FrameworkReachabilityAnalyzer
 				if (description is not null && isFrameworkReference)
 				{
 					module.TryCreateExperimentalJoinEnumerationBinding(exactIdentity, method, out var callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedCodecBinding(exactIdentity, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreateExperimentalListPrefixCopyBinding(exactIdentity, method, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreateExperimentalCompositeSegmentCopyBinding(exactIdentity, method, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreateExperimentalObjectJoinTextBinding(exactIdentity, method, out callSiteOverride);
@@ -184,6 +185,17 @@ internal static class FrameworkReachabilityAnalyzer
 					if (callSiteOverride is null) module.TryCreateExperimentalNumberGroupCloneBinding(exactIdentity, method, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedStringBuilderToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedStringBuilderObjectEqualsBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedDateOnlyCalendarBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedTimeOnlySurfaceBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedGuidBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedGuidObjectBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedTimeOnlyParsingBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedParserInvariantProviderBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedDateOnlyParsingBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedDateOnlyExceptionResourceBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedDateOnlyDayNumberThrowBinding(exactIdentity, method, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedDateOnlyInvariantProviderBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
+					if (callSiteOverride is null) module.TryCreatePinnedDateOnlyFormattingBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedApplicationToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride, out _);
 					if (callSiteOverride is null) module.TryCreatePinnedGeneralObjectToStringBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);
 					if (callSiteOverride is null) module.TryCreatePinnedApplicationFormattingLeafBinding(exactIdentity, method, instruction.Offset, out callSiteOverride);

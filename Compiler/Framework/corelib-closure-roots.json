@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    {
+      "id": "integer-formatting",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::IntegerFormatStringEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.IntegerFormattingUsesInvariantAllocationExactShadowRuntime",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "span-and-memory-copy",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::MemoryCopyOperationsEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.MemoryCopyOperationsMatchDotNetAndPreserveOverlap",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "managed-dictionary",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::DictionaryStringGcEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.DictionaryStringKeysPreserveOrdinalEqualityAcrossForcedCollection",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "linq-ordering",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::LinqDictionaryValuesOrderByThenByEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 634251,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.LinqDictionaryValuesOrderByThenByIsStableOnEveryCpu",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "managed-exceptions",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CustomExceptionCatchEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.FullExceptionModeMatchesInputAssemblyExceptionDescriptor"
+    },
+    {
+      "id": "stringbuilder-public-surface",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderPublicAcceptanceEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.StringBuilderPublicSurfaceExecutesAgainstPinnedCoreLib",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "nullable-generic-join",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibGenericNullableIntJoinsEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.GenericNullableIntJoinsPreserveEmptyValuesAndPayloads",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "decimal-formatting",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderDecimalMatrixEntry",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.StringBuilderStableDecimalMatrixExecutesWithoutUnlistedBodies",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "floating-point-formatting",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibStringBuilderFloatingPointSmokeEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.StringBuilderFloatingPointFormatsPreserveSpecialValuesAndSpanGuards",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "dateonly-invariant-calendar",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibDateOnlyQualificationEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.DateOnlyInvariantCalendarSurfaceExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "dateonly-invariant-parsing",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibDateOnlyParseQualificationEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.DateOnlyInvariantParsingExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "timeonly-arithmetic-formatting",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibTimeOnlyQualificationEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.TimeOnlyArithmeticAndInvariantFormattingExecuteOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "timeonly-invariant-parsing",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibTimeOnlyParseQualificationEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.TimeOnlyInvariantParsingExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "guid-binary-values",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.GuidCoreLibFixtures::BinaryEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.GuidBinaryValueSurfaceExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "guid-text-roundtrips",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.GuidCoreLibFixtures::TextEntry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.GuidTextSurfaceExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "utf8-transcoding",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.Utf8CodecFixtures::Entry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.Utf8CodecSurfaceExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "base64-codecs",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.Base64CodecFixtures::Entry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.Base64CodecSurfaceExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "hex-codecs",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.HexCodecFixtures::Entry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.HexCodecSurfaceExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    },
+    {
+      "id": "byte-text-codec-pipeline",
+      "assembly": "../../Compiler.Tests/bin/Release/net10.0/CopperSharp.Compiler.Tests.dll",
+      "entry": "CopperSharp.Compiler.Tests.CoreLibCodecPipelineFixtures::Entry",
+      "fpu": "soft",
+      "memory": "managed-pool",
+      "heapSize": 32768,
+      "managedAssemblies": [
+        "../../Runtime.Managed/bin/Release/net10.0/CopperSharp.Runtime.Managed.dll",
+        "../../Runtime.AmigaPal/bin/Release/net10.0/CopperSharp.Runtime.AmigaPal.dll"
+      ],
+      "expectedReturnValue": 42,
+      "qualificationTest": "CopperSharp.Compiler.Tests.CompilerExecutionTests.CoreLibCodecPipelineExecutesOnTarget",
+      "qualificationDisplayName": "M68000"
+    }
+  ]
+}

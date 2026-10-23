@@ -8,6 +8,116 @@ namespace CopperSharp.Compiler.Tests;
 
 public static partial class CompilerFixtures
 {
+	public static int CoreLibDateOnlyQualificationEntry()
+	{
+		var leapDay = new DateOnly(2024, 2, 29);
+		var nextDay = leapDay.AddDays(1);
+		if (nextDay.DayNumber != 738945) return 1;
+		if (nextDay.Year != 2024) return 2;
+		if (nextDay.Month != 3) return 3;
+		if (nextDay.Day != 1) return 4;
+		var fromDayNumber = DateOnly.FromDayNumber(leapDay.DayNumber);
+		if (fromDayNumber.DayNumber != 738944) return 5;
+		if (!fromDayNumber.Equals(leapDay)) return 6;
+		if (fromDayNumber.CompareTo(leapDay) != 0) return 7;
+		if (fromDayNumber != leapDay) return 8;
+		if (!(leapDay < nextDay)) return 9;
+		if (!(leapDay <= nextDay)) return 10;
+		if (nextDay <= leapDay) return 11;
+		var formatted = leapDay.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+		if (formatted.Length != 10) return 1000 + formatted.Length;
+		const string expected = "2024-02-29";
+		for (var index = 0; index < expected.Length; index++)
+			if (formatted[index] != expected[index]) return 2000 + index * 256 + formatted[index];
+		return 42;
+	}
+
+	public static int CoreLibTimeOnlyQualificationEntry()
+	{
+		var precise = new TimeOnly(13, 24, 35, 678, 901);
+		if (precise.Hour != 13 || precise.Minute != 24 || precise.Second != 35) return 1;
+		if (precise.Millisecond != 678 || precise.Microsecond != 901) return 2;
+		if (precise.Ticks != 482_756_789_010) return 3;
+		if (new TimeOnly(7, 8).Ticks != 256_800_000_000L ||
+			new TimeOnly(7, 8, 9).Ticks != 256_890_000_000L ||
+			new TimeOnly(7, 8, 9, 1).Ticks != 256_890_010_000L ||
+			new TimeOnly(123).Ticks != 123) return 30;
+
+		var wrapped = new TimeOnly(23, 59, 59, 999, 999).Add(TimeSpan.FromTicks(10), out var dayOffset);
+		if (wrapped.Ticks != 0) return 40 + (int)(wrapped.Ticks / 10_000_000);
+		if (dayOffset != 1) return 50 + dayOffset;
+		var negativeWrap = new TimeOnly(0, 0).Add(TimeSpan.FromTicks(-1), out dayOffset);
+		if (negativeWrap.Ticks != 863_999_999_999L || dayOffset != -1) return 60 + dayOffset;
+		var multiDay = new TimeOnly(12, 0).Add(TimeSpan.FromTicks(1_764_000_000_000L), out dayOffset);
+		if (multiDay.Ticks != 468_000_000_000L || dayOffset != 2) return 70 + dayOffset;
+		var constructorRangeValidated = false;
+		try { _ = new TimeOnly(24, 0); }
+		catch (ArgumentOutOfRangeException) { constructorRangeValidated = true; }
+		if (!constructorRangeValidated) return 80;
+		var later = precise.Add(TimeSpan.FromTicks(100));
+		if (later.Ticks != precise.Ticks + 100 || later <= precise || precise >= later || !(later > precise) || !(precise < later)) return 5;
+		if (precise.CompareTo(later) >= 0 || precise.Equals(later) || precise == later || !(precise != later)) return 6;
+		var equal = new TimeOnly(13, 24, 35, 678, 901);
+		if (!precise.Equals(equal) || !(precise == equal) || precise.CompareTo(equal) != 0 || !(precise <= equal) || !(precise >= equal)) return 7;
+		if (later.Ticks - precise.Ticks != 100) return 8;
+
+		var formatted = precise.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+		const string expected = "13:24:35.6789010";
+		if (formatted.Length != expected.Length) return 1000 + formatted.Length;
+		for (var index = 0; index < expected.Length; index++)
+			if (formatted[index] != expected[index]) return 2000 + index * 256 + formatted[index];
+		if (precise.ToString("o", System.Globalization.CultureInfo.InvariantCulture) != formatted) return 9;
+		return 42;
+	}
+
+	public static int CoreLibTimeOnlyParseQualificationEntry()
+	{
+		if (!TimeOnly.TryParse("00:00", System.Globalization.CultureInfo.InvariantCulture, out var parsed) || parsed.Ticks != 0) return 1;
+		if (!TimeOnly.TryParse("23:59:59.9999999", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.Ticks != 863_999_999_999L) return 2;
+		if (TimeOnly.Parse("12:34:56.1", System.Globalization.CultureInfo.InvariantCulture).Ticks != 452_961_000_000L) return 3;
+		var parsedOutOfRange = TimeOnly.TryParse("24:00", System.Globalization.CultureInfo.InvariantCulture, out parsed);
+		if (parsedOutOfRange) return 41;
+		if (parsed.Ticks != 0) return 42;
+		if (TimeOnly.TryParse("12:34:56.12345678", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.Ticks != 0) return 5;
+		var nullText = (string?)null;
+		if (TimeOnly.TryParse(nullText, System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.Ticks != 0) return 6;
+		var nullThrew = false;
+		try { _ = TimeOnly.Parse(nullText!, System.Globalization.CultureInfo.InvariantCulture); }
+		catch (ArgumentNullException) { nullThrew = true; }
+		if (!nullThrew) return 7;
+		var formatThrew = false;
+		try { _ = TimeOnly.Parse("12:60", System.Globalization.CultureInfo.InvariantCulture); }
+		catch (FormatException) { formatThrew = true; }
+		return formatThrew ? 42 : 8;
+	}
+
+	public static int CoreLibDateOnlyParseQualificationEntry()
+	{
+		if (!DateOnly.TryParse("0001-01-01", System.Globalization.CultureInfo.InvariantCulture, out var parsed) || parsed.DayNumber != 0) return 1;
+		if (!DateOnly.TryParse("2000-02-29", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.Year != 2000 || parsed.Month != 2 || parsed.Day != 29 || parsed.DayNumber != 730178) return 2;
+		if (DateOnly.Parse("9999-12-31", System.Globalization.CultureInfo.InvariantCulture).DayNumber != 3_652_058) return 3;
+		if (DateOnly.TryParse("1900-02-29", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.DayNumber != 0) return 4;
+		if (DateOnly.TryParse("2024-13-01", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.DayNumber != 0) return 5;
+		if (DateOnly.TryParse("2024-04-31", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.DayNumber != 0) return 6;
+		if (DateOnly.TryParse("24-04-30", System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.DayNumber != 0) return 7;
+		var nullText = (string?)null;
+		if (DateOnly.TryParse(nullText, System.Globalization.CultureInfo.InvariantCulture, out parsed) || parsed.DayNumber != 0) return 8;
+		var nullThrew = false;
+		try { _ = DateOnly.Parse(nullText!, System.Globalization.CultureInfo.InvariantCulture); }
+		catch (ArgumentNullException) { nullThrew = true; }
+		if (!nullThrew) return 9;
+		var formatThrew = false;
+		try { _ = DateOnly.Parse("2024-02-30", System.Globalization.CultureInfo.InvariantCulture); }
+		catch (FormatException) { formatThrew = true; }
+		return formatThrew ? 42 : 10;
+	}
+
+	public static int CoreLibDateOnlyCurrentCultureParseRejectionEntry() =>
+		DateOnly.TryParse("2024-01-02", System.Globalization.CultureInfo.CurrentCulture, out var parsed) && parsed.Year == 2024 ? 42 : 1;
+
+	public static int CoreLibTimeOnlyCurrentCultureParseRejectionEntry() =>
+		TimeOnly.TryParse("12:34", System.Globalization.CultureInfo.CurrentCulture, out var parsed) && parsed.Hour == 12 ? 42 : 1;
+
 	public static uint CopperStartCpuProbeEntry() => CopperStartCpuProbe();
 
 	[M68kImport("intrinsic:copperstart-probe-cpu")]

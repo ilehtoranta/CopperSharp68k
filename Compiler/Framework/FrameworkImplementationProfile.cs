@@ -117,6 +117,40 @@ internal static class FrameworkImplementationProfile
 	{
 		binding = null!;
 		if (!catalog.IsPinnedStringBuilderInput) return false;
+		if (CoreLibCodecSurface.TryCreateBinding(referencedMember, catalog, out binding)) return true;
+		if (CoreLibCodecSurface.IsExceptionDependency(referencedMember, implementationCaller))
+			return TryCreatePinnedBinding(referencedMember, fallback, true, out binding);
+		if (DateOnlySurface.IsRuntimeCalendarCaller(implementationCaller) &&
+			IsExactInstanceMethod(Canonicalize(referencedMember), "System.ArgumentOutOfRangeException", ".ctor",
+				FrameworkTypeId.Primitive("System.Void"), [FrameworkTypeId.Primitive("System.String")]))
+			return TryCreatePinnedBinding(referencedMember, fallback, true, out binding);
+		if (DateOnlySurface.TryCreateShadowBinding(referencedMember, out binding)) return true;
+		if (TimeOnlySurface.TryCreateShadowBinding(referencedMember, out binding)) return true;
+		if (GuidSurface.TryCreatePinnedBinding(referencedMember, implementationCaller, out binding) ||
+			GuidSurface.TryCreateShadowBinding(referencedMember, out binding)) return true;
+		if (DateOnlySurface.IsOwnedCaller(implementationCaller) &&
+			implementationCaller!.DeclaringType.FullMetadataName == "System.DateTime" &&
+			implementationCaller.Name is "get_DaysToMonth365" or "get_DaysToMonth366" &&
+			DateOnlySurface.IsImplementationDependency(referencedMember) &&
+			TryCreateTargetRuntimeOverride(referencedMember, true, out var initializedSpan) &&
+			initializedSpan.Target == "intrinsic:initialized-data-span")
+		{
+			binding = initializedSpan;
+			return true;
+		}
+		if (DateOnlySurface.IsOwnedCaller(implementationCaller) &&
+			DateOnlySurface.IsImplementationDependency(referencedMember) && fallback?.Kind == FrameworkBindingKind.Intrinsic)
+		{
+			binding = fallback;
+			return true;
+		}
+		if (DateOnlySurface.Contains(referencedMember) ||
+			DateOnlySurface.IsOwnedCaller(implementationCaller) && DateOnlySurface.IsImplementationDependency(referencedMember))
+		{
+			if (!TryCreatePinnedBinding(referencedMember, fallback, true, out binding)) return false;
+			binding = binding with { EffectSummary = DateOnlySurface.Effects };
+			return true;
+		}
 		if (IsExactStaticMethod(Canonicalize(referencedMember), "System.String", "CreateFromChar", FrameworkTypeId.Primitive("System.String"), [FrameworkTypeId.Primitive("System.Char")]) &&
 			implementationCaller?.AssemblyName == ImplementationAssembly &&
 			IsExactStaticMethod(Canonicalize(implementationCaller), "System.Char", "ToString", FrameworkTypeId.Primitive("System.String"), [FrameworkTypeId.Primitive("System.Char")]))
@@ -346,6 +380,10 @@ internal static class FrameworkImplementationProfile
 		out FrameworkBinding binding)
 	{
 		binding = null!;
+		if (catalog.IsPinnedStringBuilderInput && DateOnlySurface.TryCreateExceptionResourceBinding(
+			referencedMember, implementationCaller, out binding)) return true;
+		if (catalog.IsPinnedStringBuilderInput && DateOnlySurface.TryCreateDayNumberThrowBinding(
+			referencedMember, implementationCaller, out binding)) return true;
 		if ((catalog.EnableUnlistedManagedBodies || catalog.IsPinnedStringBuilderInput) &&
 			implementationCaller is { AssemblyName: ImplementationAssembly, Name: "ReadOnly" } &&
 			referencedMember.Name == "ReadOnly")
@@ -445,7 +483,7 @@ internal static class FrameworkImplementationProfile
 			binding = customText;
 			return true;
 		}
-		if (catalog.IsPinnedStringBuilderInput && (StringBuilderDecimalSurface.IsRuntimeCaller(implementationCaller) || StringBuilderBoxedEnumSurface.IsRuntimeCaller(implementationCaller)) &&
+		if (catalog.IsPinnedStringBuilderInput && (StringBuilderDecimalSurface.IsRuntimeCaller(implementationCaller) || StringBuilderBoxedEnumSurface.IsRuntimeCaller(implementationCaller) || GuidSurface.IsRuntimeFormatter(implementationCaller) || CoreLibCodecSurface.IsRuntimeStringFactory(implementationCaller)) &&
 			TryCreateTargetRuntimeOverride(referencedMember, true, out var decimalText) &&
 			decimalText.Target == "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowStringData::FromCharacters")
 		{
@@ -602,6 +640,18 @@ internal static class FrameworkImplementationProfile
 			return true;
 		}
 		var resourceCaller = implementationCaller?.AssemblyName == ImplementationAssembly && IsStringBuilderResourceGetter(implementationCaller);
+		var dateOnlyResourceCaller = DateOnlySurface.IsOwnedCaller(implementationCaller) &&
+			implementationCaller?.DeclaringType.FullMetadataName == SystemResourceType &&
+			DateOnlySurface.IsImplementationDependency(referencedMember);
+		if (catalog.IsPinnedStringBuilderInput &&
+			implementationCaller is { AssemblyName: ImplementationAssembly, Name: ".cctor" } environmentInitializer &&
+			environmentInitializer.DeclaringType.FullMetadataName == "System.Environment" &&
+			TryCreateTargetRuntimeOverride(referencedMember, true, out var environmentLeaf) &&
+			environmentLeaf.Target == "platform:amiga-environment-processor-count")
+		{
+			binding = environmentLeaf;
+			return true;
+		}
 		if (catalog.IsPinnedStringBuilderInput && implementationCaller?.AssemblyName == ImplementationAssembly &&
 			IsCharacterSpanFill(implementationCaller, constructed: false) &&
 			TryCreateTargetRuntimeOverride(referencedMember, true, out var fillLeaf) && fillLeaf.Target == "intrinsic:corelib-fill-char")
@@ -617,9 +667,9 @@ internal static class FrameworkImplementationProfile
 			binding = exceptionLeaf;
 			return true;
 		}
-		if (!catalog.IsPinnedStringBuilderInput || (!IsOwnedStringBuilderCaller(implementationCaller) && !resourceCaller) ||
+		if (!catalog.IsPinnedStringBuilderInput || (!IsOwnedStringBuilderCaller(implementationCaller) && !resourceCaller && !dateOnlyResourceCaller) ||
 			!TryCreateTargetRuntimeOverride(referencedMember, true, out var candidate)) return false;
-		if (resourceCaller)
+		if (resourceCaller || dateOnlyResourceCaller)
 		{
 			if (candidate.Target != "shadow:CopperSharp.Runtime.Managed:CopperSharp.Runtime.ShadowSystemResources::GetResourceString") return false;
 			binding = candidate;

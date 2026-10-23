@@ -317,7 +317,8 @@ internal sealed partial class M68kCodeGenerator
 				// direct calls and function addresses still retain them normally.
 				!(method.IsFinal && _module.IsValueTypeMethod(method) &&
 				  _runtimeDispatchInterfaces.Count == 0 && _usedTypeLayouts.Count == 0 &&
-				  _constructedTypeDescriptors.Count == 0 && _boxedTypes.Count == 0))
+				  _constructedTypeDescriptors.Count == 0 && _boxedTypes.Count == 0 &&
+				  _runtimeStringDispatchLayout is null))
 				.Select(static method => method.Identity))
 			.ToHashSet();
 		_machineOptimizationStatistics = M68kMachineModuleOptimizer.Run(
@@ -6646,6 +6647,12 @@ internal sealed partial class M68kCodeGenerator
 				EmitExceptionRaise(reason: 13, hasException: false);
 				return;
 			}
+			if (target.ImportName == "intrinsic:runtime-throw-not-supported")
+			{
+				RegisterRuntimeTypeDescriptor("System.NotSupportedException");
+				EmitExceptionRaise(reason: 13, hasException: false);
+				return;
+			}
 			if (target.ImportName == "intrinsic:runtime-throw-io")
 			{
 				RegisterRuntimeTypeDescriptor("System.IO.IOException");
@@ -10213,6 +10220,9 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.AlignWord();
 		EmitEnumData();
 		EmitInitializedSpanData();
+		// A final byte blob can have odd length. The descriptors and dispatch
+		// tables that follow contain word/long fields read by native code and GC.
+		_assembler.AlignWord();
 		EmitBoxedEnumData(boxedEnumData, methods);
 
 		var dispatchLayouts = _usedTypeLayouts.Values

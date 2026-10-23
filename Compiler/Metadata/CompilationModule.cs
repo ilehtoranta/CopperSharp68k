@@ -1142,6 +1142,11 @@ internal sealed partial class CompilationModule : IDisposable
 		{
 			return cached;
 		}
+		if (TryGetGuidStorageLayout(handle, out var guidLayout))
+		{
+			_layoutCache.Add(handle, guidLayout);
+			return guidLayout;
+		}
 
 		var definition = Reader.GetTypeDefinition(handle);
 		var isValueType = IsValueTypeDefinition(definition);
@@ -1903,6 +1908,7 @@ internal sealed partial class CompilationModule : IDisposable
 	{
 		if (!declaration.DeclaringTypeIsInterface)
 		{
+			if (TryResolveConstrainedGuidOverride(caller, constrainedTypeToken, ilOffset, declaration, out var guidOverride)) return guidOverride;
 			if (FrameworkImplementationPack?.IsPinnedStringBuilderInput == true && StringBuilderDecimalSurface.IsValidationCaller(DescribeImplementationCaller(caller)) &&
 				TryCreatePinnedDecimalScaleComparisonBinding(GetModule(declaration.ModuleName).DescribeFrameworkMethodDefinition(declaration.Handle, []),
 					caller, ilOffset, out _, out var scaleComparison)) return scaleComparison;
@@ -4038,6 +4044,7 @@ internal sealed partial class CompilationModule : IDisposable
 
 	public bool IsSupportedStructType(CilType type)
 	{
+		if (type is { Kind: CilTypeKind.ValueType, DisplayName: "System.Guid" }) return TryGetGuidLayout(type, out _);
 		if (type.Kind == CilTypeKind.ValueType && type.DisplayName == "System.Decimal")
 			return (FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || FrameworkImplementationPack?.IsPinnedStringBuilderInput == true) && TryGetDecimalLayout(type, out _);
 		if (IsCharacterValueListBuilder(type) || IsNumberBuffer(type))
@@ -4152,6 +4159,7 @@ internal sealed partial class CompilationModule : IDisposable
 		out CilTypeLayout layout)
 		{
 			layout = null!;
+			if (type is { Kind: CilTypeKind.ValueType, DisplayName: "System.Guid" }) return TryGetGuidLayout(type, out layout);
 			if (type.Kind == CilTypeKind.ValueType && type.DisplayName == "System.Decimal")
 				return (FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || FrameworkImplementationPack?.IsPinnedStringBuilderInput == true) && TryGetDecimalLayout(type, out layout);
 			if (type.Kind == CilTypeKind.ValueType && !type.GenericArguments.IsDefault && type.GenericArguments is [{ DisplayName: "object", Kind: CilTypeKind.ManagedReference }] &&
@@ -4900,7 +4908,8 @@ internal sealed partial class CompilationModule : IDisposable
 	private bool CanResolveImplementationRuntimeType(CilType type) =>
 		FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || FrameworkImplementationPack?.IsPinnedStringBuilderInput == true &&
 		(IsPinnedCallbackInterfaceName(type.DisplayName) || IsPinnedGenericJoinInterface(type) || IsExperimentalNullableJoinValue(type) || IsCompositeFormatSegment(type) || type.DisplayName == "System.Globalization.NumberFormatInfo" ||
-		 type is { Kind: CilTypeKind.ValueType, IsEnum: false, DisplayName: "System.Decimal" } && TryGetDecimalLayout(type, out _));
+		 type is { Kind: CilTypeKind.ValueType, IsEnum: false, DisplayName: "System.Decimal" } && TryGetDecimalLayout(type, out _) ||
+		 type is { Kind: CilTypeKind.ValueType, IsEnum: false, DisplayName: "System.Guid" } && TryGetGuidLayout(type, out _));
 
 	public CilRuntimeTypeTarget ResolveRuntimeTypeToken(
 		int token,
@@ -4934,7 +4943,8 @@ internal sealed partial class CompilationModule : IDisposable
 				// A TypeRef does not encode the interface bit. Resolve it through
 				// the verified implementation before selecting runtime type tests.
 				if (identity.ModuleName == "System.Private.CoreLib" && identity.Handle.Kind == HandleKind.TypeDefinition &&
-					(identity.IsInterface || type is { Kind: CilTypeKind.ValueType, IsEnum: false, DisplayName: "System.Decimal" } && TryGetDecimalLayout(type, out _)))
+					(identity.IsInterface || type is { Kind: CilTypeKind.ValueType, IsEnum: false, DisplayName: "System.Decimal" } && TryGetDecimalLayout(type, out _) ||
+					 type is { Kind: CilTypeKind.ValueType, IsEnum: false, DisplayName: "System.Guid" } && TryGetGuidLayout(type, out _)))
 					return identity;
 			}
 		}
@@ -5531,6 +5541,25 @@ internal sealed partial class CompilationModule : IDisposable
 	private MethodReference ResolveMethodDefinitionForCaller(MethodDefinitionHandle handle, CilMethod caller, int ilOffset)
 	{
 		var member = DescribeFrameworkMethodDefinition(handle, []);
+		if (FrameworkImplementationPack is { IsPinnedStringBuilderInput: true } pinnedPack &&
+			caller.ModuleName == "System.Private.CoreLib" &&
+			FrameworkImplementationProfile.TryCreatePinnedStringBuilderDependencyBinding(
+				member, pinnedPack, DescribeImplementationCaller(caller), out var pinnedDependency))
+		{
+			var pinnedDeclaration = GetConstructedMethod(handle, null, ImmutableArray<CilType>.Empty, deferBody: true);
+			if (pinnedDependency.Kind is FrameworkBindingKind.ShadowMethod or FrameworkBindingKind.PlatformOperation &&
+				TryResolveRegisteredBinding(
+					member,
+					GetTypeName(Reader.GetTypeDefinition(pinnedDeclaration.DeclaringType)),
+					pinnedDeclaration.Signature,
+					pinnedDeclaration.ConstructedDeclaringType,
+					caller: caller,
+					ilOffset: ilOffset) is { } resolvedDependency)
+			{
+				return resolvedDependency;
+			}
+			return MethodReference.ForBinding(pinnedDependency, pinnedDeclaration.Signature);
+		}
 		if (!TryCreatePinnedApplicationFormattingLeafBinding(member, caller, ilOffset, out _) && !TryCreatePinnedCompositeBufferToStringBinding(member, caller, ilOffset, out _, out _) && !TryCreatePinnedHandlerToStringBinding(member, caller, ilOffset, out _) && !TryCreatePinnedDecimalScaleComparisonBinding(member, caller, ilOffset, out _, out _) && !TryCreatePinnedIntegralToStringBinding(member, caller, ilOffset, out _, out _) &&
 			!TryCreatePinnedNullableToStringBinding(member, caller, ilOffset, out _, out _) &&
 			!TryCreateExperimentalJoinEnumerationBinding(member, caller, out _) &&
@@ -7112,6 +7141,12 @@ internal sealed partial class CompilationModule : IDisposable
 		if (TryCreatePinnedNumericSpanIdentityBinding(member, caller, ilOffset, out var enumerationBinding) || TryCreatePinnedApplicationFormattingLeafBinding(member, caller, ilOffset, out enumerationBinding) || TryCreatePinnedHandlerToStringBinding(member, caller, ilOffset, out enumerationBinding) || TryCreatePinnedGeneralObjectToStringBinding(member, caller, ilOffset, out enumerationBinding) ||
 			TryCreateExperimentalJoinEnumerationBinding(member, caller, out enumerationBinding) ||
 			TryCreatePinnedNullableListBinding(member, constructedDeclaringType, out enumerationBinding, caller) ||
+			TryCreatePinnedTimeOnlyParsingBinding(member, caller, ilOffset, out enumerationBinding) ||
+			TryCreatePinnedGuidObjectBinding(member, caller, ilOffset, out enumerationBinding) ||
+			TryCreatePinnedParserInvariantProviderBinding(member, caller, ilOffset, out enumerationBinding) ||
+			TryCreatePinnedDateOnlyParsingBinding(member, caller, ilOffset, out enumerationBinding) ||
+			TryCreatePinnedDateOnlyFormattingBinding(member, caller, ilOffset, out enumerationBinding) ||
+			TryCreatePinnedDateOnlyInvariantProviderBinding(member, caller, ilOffset, out enumerationBinding) ||
 			TryCreatePinnedNullableDependencyBinding(member, caller, binding, out enumerationBinding) ||
 			TryCreateExperimentalListPrefixCopyBinding(member, caller, out enumerationBinding) ||
 			TryCreateExperimentalCompositeSegmentCopyBinding(member, caller, out enumerationBinding) ||
@@ -7210,6 +7245,8 @@ internal sealed partial class CompilationModule : IDisposable
 				throw new InvalidOperationException(
 					$"Managed framework binding '{binding.Member.DisplayName}' has no target.");
 			var shadowMethodName = shadowTarget.MethodName;
+			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowGuid" && !VerifyGuidRuntimeLayouts())
+				throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata, "Guid binding requires matching verified sixteen-byte CoreLib and runtime field layouts.", caller?.DisplayName, ilOffset);
 			IReadOnlyList<CilType>? shadowMethodTypeArguments = null;
 			MethodSignature<CilType>? shadowResolutionSignature = null;
 			var genericJoinEnumeration = shadowTarget.TypeName is "CopperSharp.Runtime.ShadowGenericJoinEnumeration" or "CopperSharp.Runtime.ShadowGenericJoinEnumerator`1";
@@ -7232,6 +7269,24 @@ internal sealed partial class CompilationModule : IDisposable
 			if (shadowTarget is { TypeName: "CopperSharp.Runtime.ShadowCharacterSpans", MethodName: "Identity" })
 				shadowResolutionSignature = new MethodSignature<CilType>(new SignatureHeader(0), signature.ReturnType,
 					signature.RequiredParameterCount, 0, signature.ParameterTypes);
+			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowDateOnlyCalendar")
+			{
+				var dateOnly = new CilType(CilTypeKind.ValueType, 4, "System.DateOnly");
+				var dateOnlyReference = new CilType(CilTypeKind.ManagedPointer, 4, "System.DateOnly&", dateOnly);
+				shadowResolutionSignature = shadowTarget.MethodName switch
+				{
+					"FromDayNumber" => new MethodSignature<CilType>(new SignatureHeader(0), signature.ReturnType, 1, 0,
+						signature.ParameterTypes),
+					"Initialize" => new MethodSignature<CilType>(new SignatureHeader(0), signature.ReturnType, 4, 0,
+						[dateOnlyReference, .. signature.ParameterTypes]),
+					"AddDays" => new MethodSignature<CilType>(new SignatureHeader(0), signature.ReturnType, 2, 0,
+						[dateOnlyReference, .. signature.ParameterTypes]),
+					"GetDay" or "GetMonth" or "GetYear" => new MethodSignature<CilType>(new SignatureHeader(0), signature.ReturnType, 1, 0,
+						[dateOnlyReference]),
+					_ => throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata,
+						$"Unknown DateOnly shadow member '{shadowTarget.MethodName}'.")
+				};
+			}
 			if (shadowTarget.TypeName == "CopperSharp.Runtime.ShadowFloatingPointBits")
 				shadowResolutionSignature = new MethodSignature<CilType>(new SignatureHeader(0), signature.ReturnType,
 					signature.RequiredParameterCount, 0, signature.ParameterTypes);
@@ -7253,7 +7308,7 @@ internal sealed partial class CompilationModule : IDisposable
 			if (constructorFactory)
 			{
 				if (caller is not null && ilOffset >= 0 && caller.Instructions.Single(instruction => instruction.Offset == ilOffset).OpCode != System.Reflection.Emit.OpCodes.Newobj)
-					throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction, "Target string constructor factories require newobj.", caller?.DisplayName, ilOffset);
+					throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction, "Target constructor factories require newobj.", caller?.DisplayName, ilOffset);
 				shadowResolutionSignature = new MethodSignature<CilType>(new SignatureHeader(0),
 					new CilType(CilTypeKind.ManagedReference, 4, "string"), signature.RequiredParameterCount, 0, signature.ParameterTypes);
 			}
@@ -7785,6 +7840,134 @@ internal sealed partial class CompilationModule : IDisposable
 				FrameworkEffects.ReadsManagedMemory | FrameworkEffects.WritesManagedMemory, [FrameworkFeature.ManagedObjects, FrameworkFeature.ManagedStrings, FrameworkFeature.ManagedGc]),
 			Reason: "The exact reference-type handler fallback dereferences its constrained receiver and preserves object formatting dispatch.", ShadowMethod: shadow);
 		return true;
+	}
+
+	internal bool TryCreatePinnedDateOnlyFormattingBinding(
+		FrameworkMemberId referenced, CilMethod? caller, int ilOffset, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+			caller is null || ilOffset < 0 || !DateOnlySurface.IsIsoFormattingMethod(referenced)) return false;
+		var instructions = caller.Instructions;
+		var callIndex = -1;
+		for (var index = 0; index < instructions.Count; index++)
+			if (instructions[index].Offset == ilOffset) { callIndex = index; break; }
+		if (callIndex < 2 || instructions[callIndex] is not { OpCode: var callOpcode, Operand: int memberToken } ||
+			callOpcode != OpCodes.Call && callOpcode != OpCodes.Callvirt) return false;
+		var formatInstruction = instructions[callIndex - 2];
+		var providerInstruction = instructions[callIndex - 1];
+		if (formatInstruction.OpCode != OpCodes.Ldstr || formatInstruction.Operand is not int formatToken ||
+			!string.Equals(GetUserString(formatToken, caller, formatInstruction.Offset), "yyyy-MM-dd", StringComparison.Ordinal) ||
+			providerInstruction.OpCode != OpCodes.Call || providerInstruction.Operand is not int providerToken) return false;
+		var providerGetter = FrameworkImplementationProfile.Canonicalize(
+			DescribeFrameworkMethodToken(providerToken, caller, providerInstruction.Offset));
+		var expectedGetter = new FrameworkMemberId(
+			FrameworkTypeId.Named("System.Runtime", "System.Globalization.CultureInfo"),
+			"get_InvariantCulture",
+			new FrameworkMethodSignatureId(0, 0, 0,
+				FrameworkTypeId.Named("System.Runtime", "System.Globalization.CultureInfo"), []));
+		if (!providerGetter.Equals(expectedGetter)) return false;
+		var referencedMethod = FrameworkImplementationProfile.Canonicalize(
+			DescribeFrameworkMethodToken(memberToken, caller, ilOffset));
+		if (!referencedMethod.Equals(FrameworkImplementationProfile.Canonicalize(referenced))) return false;
+		var shadow = new FrameworkShadowMethod("CopperSharp.Runtime.Managed", "CopperSharp.Runtime.ShadowDateOnlyConstructor", "FormatIsoDate");
+		binding = new FrameworkBinding(referenced, FrameworkBindingKind.ShadowMethod,
+			$"shadow:{shadow.AssemblyName}:{shadow.TypeName}::{shadow.MethodName}",
+			new FrameworkEffectSummary(FrameworkEffects.MayThrow | FrameworkEffects.MayAllocate | FrameworkEffects.MayCollect |
+				FrameworkEffects.ReadsManagedMemory | FrameworkEffects.WritesManagedMemory,
+				[FrameworkFeature.ManagedObjects, FrameworkFeature.ManagedStrings, FrameworkFeature.ManagedGc, FrameworkFeature.ManagedExceptions]),
+			Reason: "The literal yyyy-MM-dd format with the exact invariant provider uses the target-owned ISO DateOnly formatter.",
+			ShadowMethod: shadow);
+		return true;
+	}
+
+	internal bool TryCreatePinnedDateOnlyInvariantProviderBinding(
+		FrameworkMemberId referenced, CilMethod? caller, int ilOffset, out FrameworkBinding binding)
+	{
+		binding = null!;
+		var cultureInfo = FrameworkTypeId.Named("System.Runtime", "System.Globalization.CultureInfo");
+		var expectedGetter = new FrameworkMemberId(cultureInfo, "get_InvariantCulture",
+			new FrameworkMethodSignatureId(0, 0, 0, cultureInfo, []));
+		if (FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+			caller is null || ilOffset < 0 || !FrameworkImplementationProfile.Canonicalize(referenced).Equals(expectedGetter)) return false;
+		var instructions = caller.Instructions;
+		var callIndex = -1;
+		for (var index = 0; index < instructions.Count; index++)
+			if (instructions[index].Offset == ilOffset) { callIndex = index; break; }
+		if (callIndex < 1 || callIndex + 1 >= instructions.Count || instructions[callIndex - 1].OpCode != OpCodes.Ldstr ||
+			instructions[callIndex - 1].Operand is not int formatToken ||
+			!string.Equals(GetUserString(formatToken, caller, instructions[callIndex - 1].Offset), "yyyy-MM-dd", StringComparison.Ordinal) ||
+			instructions[callIndex + 1] is not { OpCode: var callOpcode, Operand: int dateOnlyToken } ||
+			callOpcode != OpCodes.Call && callOpcode != OpCodes.Callvirt) return false;
+		var formatter = FrameworkImplementationProfile.Canonicalize(
+			DescribeFrameworkMethodToken(dateOnlyToken, caller, instructions[callIndex + 1].Offset));
+		if (!DateOnlySurface.IsIsoFormattingMethod(formatter)) return false;
+		var shadow = new FrameworkShadowMethod("CopperSharp.Runtime.Managed", "CopperSharp.Runtime.ShadowDateOnlyFormatting", "GetInvariantCulturePlaceholder");
+		binding = new FrameworkBinding(referenced, FrameworkBindingKind.ShadowMethod,
+			$"shadow:{shadow.AssemblyName}:{shadow.TypeName}::{shadow.MethodName}", FrameworkEffectSummary.None,
+			Reason: "The exact invariant provider is only a compile-time marker for the adjacent yyyy-MM-dd DateOnly formatter, which emits invariant digits directly.",
+			ShadowMethod: shadow);
+		return true;
+	}
+
+	internal bool TryCreatePinnedDateOnlyCalendarBinding(
+		FrameworkMemberId referenced, CilMethod? caller, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (caller is null || FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+			!DateOnlySurface.TryCreateShadowBinding(referenced, out var candidate)) return false;
+		binding = candidate;
+		return true;
+	}
+
+	internal bool TryCreatePinnedTimeOnlySurfaceBinding(
+		FrameworkMemberId referenced, CilMethod? caller, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (caller is null || FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+			!TimeOnlySurface.TryCreateShadowBinding(referenced, out var candidate)) return false;
+		binding = candidate;
+		return true;
+	}
+
+	internal bool TryCreatePinnedTimeOnlyParsingBinding(
+		FrameworkMemberId referenced, CilMethod? caller, int ilOffset, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (caller is null || ilOffset < 0 ||
+			FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+			!TimeOnlySurface.IsInvariantParseMember(referenced) ||
+			!GetInvariantParserProviders(caller).AdmitsParser(ilOffset)) return false;
+		return TimeOnlySurface.TryCreateInvariantParsingShadowBinding(referenced, out binding);
+	}
+
+	internal bool TryCreatePinnedDateOnlyParsingBinding(
+		FrameworkMemberId referenced, CilMethod? caller, int ilOffset, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (caller is null || ilOffset < 0 ||
+			FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } ||
+			!DateOnlySurface.IsInvariantParseMember(referenced) ||
+			!GetInvariantParserProviders(caller).AdmitsParser(ilOffset)) return false;
+		return DateOnlySurface.TryCreateInvariantParsingShadowBinding(referenced, out binding);
+	}
+
+	internal bool TryCreatePinnedDateOnlyExceptionResourceBinding(
+		FrameworkMemberId referenced, CilMethod? caller, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (caller is null || FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false }) return false;
+		var callerIdentity = GetModule(caller.ModuleName).DescribeFrameworkMethodDefinition(caller.Handle, []);
+		return DateOnlySurface.TryCreateExceptionResourceBinding(referenced, callerIdentity, out binding);
+	}
+
+	internal bool TryCreatePinnedDateOnlyDayNumberThrowBinding(
+		FrameworkMemberId referenced, CilMethod? caller, out FrameworkBinding binding)
+	{
+		binding = null!;
+		if (caller is null || FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false }) return false;
+		var callerIdentity = GetModule(caller.ModuleName).DescribeFrameworkMethodDefinition(caller.Handle, []);
+		return DateOnlySurface.TryCreateDayNumberThrowBinding(referenced, callerIdentity, out binding);
 	}
 
 	internal bool TryCreatePinnedFormattingResourceBinding(FrameworkMemberId referenced, CilMethod caller, out FrameworkBinding binding)
@@ -9330,6 +9513,7 @@ internal sealed partial class CompilationModule : IDisposable
 			offsets.Add(module.Reader.GetString(field.Name), pair.Value);
 		}
 		var typeName = binding.Member.DeclaringType.MetadataName;
+		if (typeName == "System.Guid" && VerifyGuidFields(module, layout)) return;
 		if (typeName == "System.Diagnostics.Stopwatch" && layout.Size == 28 &&
 			layout.ReferenceBitmap == 0 &&
 			offsets.Count == 3 &&
@@ -9938,9 +10122,10 @@ internal sealed partial class CompilationModule : IDisposable
 		// Contract facades contain forwarders rather than definitions. Resolve
 		// their token kind from pinned metadata, just as signature decoding does.
 		var implementation = (FrameworkImplementationPack?.EnableUnlistedManagedBodies == true ||
-			FrameworkImplementationPack?.IsPinnedStringBuilderInput == true && name == "System.Decimal" &&
+			FrameworkImplementationPack?.IsPinnedStringBuilderInput == true &&
 			(assemblyName is "System.Runtime" or "System.Private.CoreLib") &&
-			TryGetDecimalLayout(new CilType(CilTypeKind.ValueType, 0, "System.Decimal"), out _)) &&
+			(name == "System.Decimal" && TryGetDecimalLayout(new CilType(CilTypeKind.ValueType, 0, name), out _) ||
+			 name == "System.Guid" && TryGetGuidLayout(new CilType(CilTypeKind.ValueType, 0, name), out _))) &&
 			Net10FrameworkContract.Default.IsFrameworkAssembly(assemblyName)
 			? GetOrLoadImplementationModule("System.Private.CoreLib") : null;
 		foreach (var definitionModule in new[] { module, implementation }.Distinct())

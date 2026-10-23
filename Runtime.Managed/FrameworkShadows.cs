@@ -4,6 +4,7 @@
  */
 
 using System.Collections;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using CopperSharp.Compiler;
 
@@ -912,6 +913,11 @@ public static class ShadowSystemResources
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static string GetResourceString(string key) => key;
+
+	public static string GetArgumentOutOfRangeExceptionMessage() => "Arg_ArgumentOutOfRangeException";
+	public static string GetNotSupportedExceptionMessage() => "Arg_NotSupportedException";
+	public static string GetArgumentNullGenericMessage() => "ArgumentNull_Generic";
+	public static string GetArgumentOutOfRangeDayNumberMessage() => "ArgumentOutOfRange_DayNumber";
 
 	// ExceptionResource values audited against the released 10.0.9 input.
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -4278,9 +4284,11 @@ public sealed class ShadowPrimaryOrderedEnumerable<T> : IOrderedEnumerable<T>
 		Selector = selector;
 	}
 
-	public IEnumerator<T> GetEnumerator() =>
-		throw new NotSupportedException(
-			"The selected profile requires one exact ThenBy stage before enumeration.");
+	public IEnumerator<T> GetEnumerator()
+	{
+		M68kRuntime.ThrowNotSupportedException();
+		return null!;
+	}
 
 	IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
@@ -4288,8 +4296,14 @@ public sealed class ShadowPrimaryOrderedEnumerable<T> : IOrderedEnumerable<T>
 		Func<T, TKey> keySelector,
 		IComparer<TKey>? comparer,
 		bool descending) =>
-		throw new NotSupportedException(
-			"Only the compiler-bound ascending Int32 ThenBy slice is supported.");
+		ThrowUnsupportedOrderedStage<TKey>();
+
+	[DoesNotReturn]
+	private static IOrderedEnumerable<T> ThrowUnsupportedOrderedStage<TKey>()
+	{
+		M68kRuntime.ThrowNotSupportedException();
+		return null!;
+	}
 }
 
 /// <summary>
@@ -4350,8 +4364,14 @@ public sealed class ShadowOrderedEnumerable<T> : IOrderedEnumerable<T>
 		Func<T, TKey> keySelector,
 		IComparer<TKey>? comparer,
 		bool descending) =>
-		throw new NotSupportedException(
-			"Only the compiler-bound ascending Int32 ThenBy slice is supported.");
+		ThrowUnsupportedProfileOperation<TKey>();
+
+	[DoesNotReturn]
+	private static IOrderedEnumerable<T> ThrowUnsupportedProfileOperation<TKey>()
+	{
+		M68kRuntime.ThrowNotSupportedException();
+		return null!;
+	}
 }
 
 public static class ShadowInt32StablePermutationSort

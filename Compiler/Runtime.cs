@@ -132,6 +132,11 @@ public static class M68kRuntime
 	public static void ThrowInvalidOperationException() =>
 		throw new InvalidOperationException();
 
+	/// <summary>Raises the target runtime's canonical unsupported-operation exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowNotSupportedException() =>
+		throw new NotSupportedException();
+
 	/// <summary>Raises the target runtime's canonical I/O exception.</summary>
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
 	public static void ThrowIOException() => throw new IOException();
