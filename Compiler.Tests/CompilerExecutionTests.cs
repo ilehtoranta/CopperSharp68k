@@ -9023,15 +9023,15 @@ public sealed partial class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void LibraryVectorConsumesPromotedNullBaseWithoutACompilerSlot()
+	public void LibraryVectorConsumesClearedObservableBase()
 	{
 		var result = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::ClearDosLibraryBaseBeforeVectorCall");
 
-		Assert.DoesNotContain("_DOSLibraryBase", result.Text, StringComparison.Ordinal);
-		Assert.Contains("\tsuba.l\ta6,a6", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tclr.l\t_DOSLibraryBase", result.Text, StringComparison.Ordinal);
+		Assert.Contains("\tmovea.l\t_DOSLibraryBase,a6", result.Text, StringComparison.Ordinal);
 		Assert.Contains("\tjmp\t-948(a6)", result.Text, StringComparison.Ordinal);
 	}
 
