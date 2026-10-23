@@ -948,16 +948,16 @@ public sealed class ManagedRuntimeShadowTests
 			var second = BitConverter.Int64BitsToDouble(unchecked((long)state));
 			AssertSameFloatingValue(Math.Abs(first), ShadowMath.Abs(first));
 			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.CopySign(first, second)), BitConverter.DoubleToInt64Bits(ShadowMath.CopySign(first, second)));
-			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Min(first, second)), BitConverter.DoubleToInt64Bits(ShadowMath.Min(first, second)));
-			Assert.Equal(BitConverter.DoubleToInt64Bits(Math.Max(first, second)), BitConverter.DoubleToInt64Bits(ShadowMath.Max(first, second)));
+			AssertSameFloatingValue(Math.Min(first, second), ShadowMath.Min(first, second));
+			AssertSameFloatingValue(Math.Max(first, second), ShadowMath.Max(first, second));
 
 			var firstSingle = BitConverter.Int32BitsToSingle(unchecked((int)state));
 			var secondSingle = BitConverter.Int32BitsToSingle(unchecked((int)(state >> 32)));
-			// Host intrinsics may quiet a signaling NaN. Abs promises NaN,
-			// not the host's NaN payload/quiet bit; finite results stay bit-exact.
+			// Host intrinsics may quiet a signaling NaN. Abs/Min/Max promise
+			// NaN, not its payload/quiet bit; non-NaN results stay bit-exact.
 			AssertSameFloatingValue(Math.Abs(firstSingle), ShadowMath.Abs(firstSingle));
-			Assert.Equal(BitConverter.SingleToInt32Bits(Math.Min(firstSingle, secondSingle)), BitConverter.SingleToInt32Bits(ShadowMath.Min(firstSingle, secondSingle)));
-			Assert.Equal(BitConverter.SingleToInt32Bits(Math.Max(firstSingle, secondSingle)), BitConverter.SingleToInt32Bits(ShadowMath.Max(firstSingle, secondSingle)));
+			AssertSameFloatingValue(Math.Min(firstSingle, secondSingle), ShadowMath.Min(firstSingle, secondSingle));
+			AssertSameFloatingValue(Math.Max(firstSingle, secondSingle), ShadowMath.Max(firstSingle, secondSingle));
 		}
 	}
 
