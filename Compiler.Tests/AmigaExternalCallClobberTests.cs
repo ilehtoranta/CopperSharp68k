@@ -21,6 +21,28 @@ public sealed class AmigaExternalCallClobberTests
 		[M68kRegister.D0, M68kRegister.D1, M68kRegister.A0, M68kRegister.A1];
 
 	[Theory]
+	[MemberData(nameof(ExecutionCases))]
+	public void CallerProvidedBaseCanShareLibraryIdentityWithSdkSlot(
+		M68kCpuTarget target, M68kCpuModel model,
+		M68kPeepholeOptimizationMode mode, M68kRuntimeProfile profile)
+	{
+		var result = Compile(nameof(AmigaExternalCallClobberFixture.MixedDosBases), target, mode, profile);
+		var bus = CreateBus(result);
+		var calls = new List<uint>();
+		foreach (var libraryBase in new uint[] { 0x9000, 0xA000 })
+		{
+			bus.RegisterGateway(libraryBase - 54, state =>
+			{
+				Assert.Equal(libraryBase, state.A[6]);
+				calls.Add(libraryBase);
+				ClobberVolatileRegisters(state, 7);
+			});
+		}
+		Assert.Equal(14u, Execute(result, bus, model));
+		Assert.Equal(new uint[] { 0x9000, 0xA000, 0x9000 }, calls);
+	}
+
+	[Theory]
 	[InlineData(AmigaLibraryBasePolicy.ExecBase)]
 	[InlineData(AmigaLibraryBasePolicy.Manual)]
 	[InlineData(AmigaLibraryBasePolicy.Provided)]
@@ -286,6 +308,13 @@ public sealed class AmigaExternalCallClobberTests
 
 public static class AmigaExternalCallClobberFixture
 {
+	public static uint MixedDosBases()
+	{
+		DOS.DOSLibraryBase = APTR.FromPointer(0x9000);
+		var first = DOS.Input().Raw;
+		MixedDosCaller.Input(APTR.FromPointer(0xA000));
+		return first + DOS.Input().Raw;
+	}
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint WaitThenGet()
 	{
@@ -311,4 +340,12 @@ public static class AmigaExternalCallClobberFixture
 
 	[MethodImpl(MethodImplOptions.InternalCall)]
 	public static extern uint GenericVector();
+}
+
+[AmigaLibrary("dos.library", AmigaLibraryBasePolicy.CallerProvided)]
+public static class MixedDosCaller
+{
+	[AmigaLvo(-54)]
+	[return: M68kRegister(M68kRegister.D0)]
+	public static extern uint Input([M68kRegister(M68kRegister.A6)] APTR libraryBase);
 }

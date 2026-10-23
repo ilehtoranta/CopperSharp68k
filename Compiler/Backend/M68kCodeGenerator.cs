@@ -918,7 +918,10 @@ internal sealed partial class M68kCodeGenerator
 					(int)instruction.Operand!,
 					method,
 					instruction.Offset);
-				if (target.Definition?.ExternalCall is { } externalCall)
+				// Dynamic bases belong to individual calls and do not declare a
+				// global slot or initializer for the library's identity.
+				if (target.Definition?.ExternalCall is { } externalCall &&
+					externalCall.Convention.BaseSource != M68kExternalBaseSource.Argument)
 				{
 					GetOrAddPlatformBase(externalCall.Convention, method);
 				}
