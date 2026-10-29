@@ -524,8 +524,11 @@ static M68kRomSizeOptions? ParseRomSizeOptimizations(string value) =>
 	{
 		"off" => null,
 		"on" => new M68kRomSizeOptions(),
+		"on+generated" => new M68kRomSizeOptions { GeneratedPeepholes = true },
+		"on+frame" => new M68kRomSizeOptions { CompactFrameHomeInitialization = true },
+		"on+generated+frame" => new M68kRomSizeOptions { GeneratedPeepholes = true, CompactFrameHomeInitialization = true },
 		_ => throw new ArgumentException(
-			$"Unknown ROM size optimization mode '{value}'; expected on or off.")
+			$"Unknown ROM size optimization mode '{value}'; expected on, on+generated, on+frame, on+generated+frame, or off.")
 	};
 
 static M68kBulkCopyOptions? ParseBulkCopyOptions(string? provider, string? minimumBytes)
@@ -715,7 +718,7 @@ static void PrintUsage()
 		  [--platform generic|amiga]
 		  [--cpu 68000|68020|68040|68060] [--fpu disabled|040|68882|soft]
 		  [--clr auto|always] [--peephole fixed-point|bounded|disabled]
-		  [--rom-size-optimizations on|off; default off]
+		  [--rom-size-optimizations on|on+generated|on+frame|on+generated+frame|off; default off]
 		  [--code-size-optimizations on|off; default off; mutually exclusive with ROM policy]
 		  [--code-size-passes comma-separated M68kCodeSizeOptions property names]
 		    New generated-code passes default off: RemoveRedundantTransport,

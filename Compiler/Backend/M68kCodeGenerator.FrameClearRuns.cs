@@ -7,13 +7,24 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
+	private bool AllowAllocatedFrameHomeClearCompaction =>
+		_request.ClrPolicy != M68kClrPolicy.Always ||
+		_request.RomSizeOptimizations?.CompactFrameHomeInitialization == true &&
+		_request.Cpu == M68kCpuTarget.M68000 &&
+		_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+		_request.OutputFormat == M68kOutputFormat.KickstartRom &&
+		_request.ExceptionMode == M68kExceptionMode.Yolo &&
+		_memoryManagement == M68kMemoryManagement.None &&
+		_managedPoolRuntime is null && _managedLifecycles.Count == 0 &&
+		!_usesExceptionRuntime;
+
 	private bool TryEmitAllocatedFrameClearRuns(
 		InternalCallAbi abi,
 		M68kAllocatedFunction allocated,
 		int[] clearDisplacements)
 	{
 		if (clearDisplacements.Length < 8 || _request.Cpu != M68kCpuTarget.M68000 ||
-			_request.ClrPolicy == M68kClrPolicy.Always || UsesAllocatedFrameAnchor ||
+			!AllowAllocatedFrameHomeClearCompaction || UsesAllocatedFrameAnchor ||
 			clearDisplacements.Any(static displacement => displacement is < 0 or > short.MaxValue)) return false;
 		// Existing prologue scratch selection predates explicit reservations.
 		// Keep cached-pointer and other reserved-register functions unchanged.
@@ -26,7 +37,9 @@ internal sealed partial class M68kCodeGenerator
 			address: false, excluded: counter, out var zero);
 		var loopKind = hasCounter && hasAddress && hasZero ? M68kFrameClearLoopKind.Scratch
 			: hasAddress ? M68kFrameClearLoopKind.PreserveData : M68kFrameClearLoopKind.PreserveDataAndAddress;
-		var unrolledZeroAvailable = TrySelectAllocatedFrameZeroRegister(abi, allocated, out var unrolledZero);
+		M68kRegister unrolledZero = default;
+		var unrolledZeroAvailable = _request.ClrPolicy != M68kClrPolicy.Always &&
+			TrySelectAllocatedFrameZeroRegister(abi, allocated, out unrolledZero);
 		var plan = M68kFrameClearRunPlanner.Create(clearDisplacements, unrolledZeroAvailable, loopKind,
 			SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.SizeFirstCosts);
 		if (plan is null) return false;

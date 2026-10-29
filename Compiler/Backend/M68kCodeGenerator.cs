@@ -26,6 +26,12 @@ internal sealed partial class M68kCodeGenerator
 			_request.OutputFormat is M68kOutputFormat.KickstartRom or M68kOutputFormat.Assembly) &&
 		_request.ExceptionMode == M68kExceptionMode.Yolo &&
 		_memoryManagement == M68kMemoryManagement.None && !_usesExceptionRuntime;
+	private bool SupportsRomGeneratedCodeSizeProfile => _request.RomSizeOptimizations?.GeneratedPeepholes == true &&
+		_request.Cpu == M68kCpuTarget.M68000 &&
+		_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
+		_request.OutputFormat == M68kOutputFormat.KickstartRom &&
+		_request.ExceptionMode == M68kExceptionMode.Yolo &&
+		_memoryManagement == M68kMemoryManagement.None && !_usesExceptionRuntime;
 	private readonly IReadOnlyList<CilExport> _exports;
 	private readonly M68kAssembler _assembler = new();
 	private const string SharedDivisionCoreLabel = "generated-size:unsigned-division-core";
@@ -464,9 +470,17 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EnableRepeatedCallResultTestOptimization =
 			enableWholeImageRomSizeOptimizations &&
 			(_request.CodeSizeOptimizations is null || _request.EffectiveCodeSizeOptions!.ShareReturnSequences);
-		if (SupportsGeneratedCodeSizeProfile)
+		if (SupportsGeneratedCodeSizeProfile || SupportsRomGeneratedCodeSizeProfile)
 		{
-			_assembler.GeneratedCodeSizeOptions = _request.CodeSizeOptimizations;
+			_assembler.GeneratedCodeSizeOptions = SupportsGeneratedCodeSizeProfile
+				? _request.CodeSizeOptimizations
+				: new M68kCodeSizeOptions
+				{
+					CompactGuestMemory = true,
+					NarrowOperations = true,
+					RemoveRedundantTransport = true,
+					CompactPrivateStackCopies = true
+				};
 			_assembler.GeneratedCodeSizeRanges = methods
 				.Where(method => rawFunctions.TryGetValue(method.Identity, out var function) &&
 					!function.HasExceptionHandlers && !function.HasDynamicStackAllocation &&

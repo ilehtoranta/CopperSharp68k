@@ -514,6 +514,12 @@ public sealed record M68kBulkCopyOptions
 /// </summary>
 public sealed record M68kRomSizeOptions
 {
+	/// <summary>Enable the audited generated-code peepholes for eligible MC68000 ROMs.</summary>
+	public bool GeneratedPeepholes { get; init; }
+
+	/// <summary>Compact compiler-owned frame initialization without changing guest memory clears.</summary>
+	public bool CompactFrameHomeInitialization { get; init; }
+
 	/// <summary>
 	/// Stop staging provably unused register arguments at direct managed calls.
 	/// Formal ABI positions, argument evaluation, and stack arguments are unchanged.

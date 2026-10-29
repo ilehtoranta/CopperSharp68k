@@ -5156,7 +5156,9 @@ internal sealed partial class M68kCodeGenerator
 				// The complete run plan wins before any bytes are emitted.
 			}
 			else if (_request.Cpu == M68kCpuTarget.M68000 &&
-				_request.ClrPolicy != M68kClrPolicy.Always &&
+				AllowAllocatedFrameHomeClearCompaction &&
+				(_request.ClrPolicy != M68kClrPolicy.Always ||
+					allocated.Function.ReservedRegisters.IsEmpty) &&
 				isContiguousLargeClear &&
 				TrySelectAllocatedFrameScratchRegister(
 					abi,
@@ -5181,7 +5183,9 @@ internal sealed partial class M68kCodeGenerator
 					clearDisplacements, counterRegister, addressRegister, zeroRegister);
 			}
 			else if (_request.Cpu == M68kCpuTarget.M68000 &&
-				_request.ClrPolicy != M68kClrPolicy.Always &&
+				AllowAllocatedFrameHomeClearCompaction &&
+				(_request.ClrPolicy != M68kClrPolicy.Always ||
+					allocated.Function.ReservedRegisters.IsEmpty) &&
 				isContiguousLargeClear &&
 				clearDisplacements.Length >= 13 &&
 				TryEmitAllocatedPreservedScratchFrameClear(
