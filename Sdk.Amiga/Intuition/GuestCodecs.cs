@@ -393,46 +393,46 @@ public static class IntuitionPreferencesGuestCodec
 			ViewYOffset = unchecked((sbyte)memory.ReadUInt8(address, 119)),
 			ViewInitX = Signed(memory.ReadUInt16(address, 120)),
 			ViewInitY = Signed(memory.ReadUInt16(address, 122)),
-			EnableCLI = unchecked((int)memory.ReadUInt32(address, 124)),
-			PrinterType = memory.ReadUInt16(address, 128),
-			PrintPitch = memory.ReadUInt16(address, 160),
-			PrintQuality = memory.ReadUInt16(address, 162),
-			PrintSpacing = memory.ReadUInt16(address, 164),
-			PrintLeftMargin = memory.ReadUInt16(address, 166),
-			PrintRightMargin = memory.ReadUInt16(address, 168),
-			PrintImage = memory.ReadUInt16(address, 170),
-			PrintAspect = memory.ReadUInt16(address, 172),
-			PrintShade = memory.ReadUInt16(address, 174),
-			PrintThreshold = Signed(memory.ReadUInt16(address, 176)),
-			PaperSize = memory.ReadUInt16(address, 178),
-			PaperLength = memory.ReadUInt16(address, 180),
-			PaperType = memory.ReadUInt16(address, 182),
-			SerRWBits = memory.ReadUInt8(address, 184),
-			SerStopBuf = memory.ReadUInt8(address, 185),
-			SerParShk = memory.ReadUInt8(address, 186),
-			LaceWB = memory.ReadUInt8(address, 187),
-			DefaultPrtUnit = memory.ReadUInt8(address, 216),
-			DefaultSerUnit = memory.ReadUInt8(address, 217),
-			RowSizeChange = unchecked((sbyte)memory.ReadUInt8(address, 218)),
-			ColumnSizeChange = unchecked((sbyte)memory.ReadUInt8(address, 219)),
-			PrintFlags = memory.ReadUInt16(address, 220),
-			PrintMaxWidth = memory.ReadUInt16(address, 222),
-			PrintMaxHeight = memory.ReadUInt16(address, 224),
-			PrintDensity = memory.ReadUInt8(address, 226),
-			PrintXOffset = memory.ReadUInt8(address, 227),
-			wb_Width = memory.ReadUInt16(address, 228),
-			wb_Height = memory.ReadUInt16(address, 230),
-			wb_Depth = memory.ReadUInt8(address, 232),
-			ext_size = memory.ReadUInt8(address, 233),
+			EnableCLI = Signed(memory.ReadUInt16(address, 124)),
+			PrinterType = memory.ReadUInt16(address, 126),
+			PrintPitch = memory.ReadUInt16(address, 158),
+			PrintQuality = memory.ReadUInt16(address, 160),
+			PrintSpacing = memory.ReadUInt16(address, 162),
+			PrintLeftMargin = memory.ReadUInt16(address, 164),
+			PrintRightMargin = memory.ReadUInt16(address, 166),
+			PrintImage = memory.ReadUInt16(address, 168),
+			PrintAspect = memory.ReadUInt16(address, 170),
+			PrintShade = memory.ReadUInt16(address, 172),
+			PrintThreshold = Signed(memory.ReadUInt16(address, 174)),
+			PaperSize = memory.ReadUInt16(address, 176),
+			PaperLength = memory.ReadUInt16(address, 178),
+			PaperType = memory.ReadUInt16(address, 180),
+			SerRWBits = memory.ReadUInt8(address, 182),
+			SerStopBuf = memory.ReadUInt8(address, 183),
+			SerParShk = memory.ReadUInt8(address, 184),
+			LaceWB = memory.ReadUInt8(address, 185),
+			DefaultPrtUnit = memory.ReadUInt8(address, 214),
+			DefaultSerUnit = memory.ReadUInt8(address, 215),
+			RowSizeChange = unchecked((sbyte)memory.ReadUInt8(address, 216)),
+			ColumnSizeChange = unchecked((sbyte)memory.ReadUInt8(address, 217)),
+			PrintFlags = memory.ReadUInt16(address, 218),
+			PrintMaxWidth = memory.ReadUInt16(address, 220),
+			PrintMaxHeight = memory.ReadUInt16(address, 222),
+			PrintDensity = memory.ReadUInt8(address, 224),
+			PrintXOffset = memory.ReadUInt8(address, 225),
+			wb_Width = memory.ReadUInt16(address, 226),
+			wb_Height = memory.ReadUInt16(address, 228),
+			wb_Depth = memory.ReadUInt8(address, 230),
+			ext_size = memory.ReadUInt8(address, 231),
 		};
 		for (var index = 0; index < IntuitionPreferencesConstants.POINTERSIZE; index++)
 			value.PointerMatrix[index] = memory.ReadUInt16(address, 28 + index * 2);
 		for (var index = 0; index < IntuitionPreferencesConstants.FILENAME_SIZE; index++)
-			value.PrinterFilename[index] = memory.ReadUInt8(address, 130 + index);
+			value.PrinterFilename[index] = memory.ReadUInt8(address, 128 + index);
 		for (var index = 0; index < 12; index++)
-			value.Pad[index] = memory.ReadUInt8(address, 188 + index);
+			value.Pad[index] = memory.ReadUInt8(address, 186 + index);
 		for (var index = 0; index < IntuitionPreferencesConstants.DEVNAME_SIZE; index++)
-			value.PrtDevName[index] = memory.ReadUInt8(address, 200 + index);
+			value.PrtDevName[index] = memory.ReadUInt8(address, 198 + index);
 		return value;
 	}
 
@@ -461,43 +461,43 @@ public static class IntuitionPreferencesGuestCodec
 		memory.WriteUInt8(address, 119, unchecked((byte)value.ViewYOffset));
 		memory.WriteUInt16(address, 120, unchecked((ushort)value.ViewInitX));
 		memory.WriteUInt16(address, 122, unchecked((ushort)value.ViewInitY));
-		memory.WriteUInt32(address, 124, unchecked((uint)value.EnableCLI));
-		memory.WriteUInt16(address, 128, value.PrinterType);
+		memory.WriteUInt16(address, 124, unchecked((ushort)value.EnableCLI));
+		memory.WriteUInt16(address, 126, value.PrinterType);
 		for (var index = 0; index < IntuitionPreferencesConstants.FILENAME_SIZE; index++)
-			memory.WriteUInt8(address, 130 + index, value.PrinterFilename[index]);
-		memory.WriteUInt16(address, 160, value.PrintPitch);
-		memory.WriteUInt16(address, 162, value.PrintQuality);
-		memory.WriteUInt16(address, 164, value.PrintSpacing);
-		memory.WriteUInt16(address, 166, value.PrintLeftMargin);
-		memory.WriteUInt16(address, 168, value.PrintRightMargin);
-		memory.WriteUInt16(address, 170, value.PrintImage);
-		memory.WriteUInt16(address, 172, value.PrintAspect);
-		memory.WriteUInt16(address, 174, value.PrintShade);
-		memory.WriteUInt16(address, 176, unchecked((ushort)value.PrintThreshold));
-		memory.WriteUInt16(address, 178, value.PaperSize);
-		memory.WriteUInt16(address, 180, value.PaperLength);
-		memory.WriteUInt16(address, 182, value.PaperType);
-		memory.WriteUInt8(address, 184, value.SerRWBits);
-		memory.WriteUInt8(address, 185, value.SerStopBuf);
-		memory.WriteUInt8(address, 186, value.SerParShk);
-		memory.WriteUInt8(address, 187, value.LaceWB);
+			memory.WriteUInt8(address, 128 + index, value.PrinterFilename[index]);
+		memory.WriteUInt16(address, 158, value.PrintPitch);
+		memory.WriteUInt16(address, 160, value.PrintQuality);
+		memory.WriteUInt16(address, 162, value.PrintSpacing);
+		memory.WriteUInt16(address, 164, value.PrintLeftMargin);
+		memory.WriteUInt16(address, 166, value.PrintRightMargin);
+		memory.WriteUInt16(address, 168, value.PrintImage);
+		memory.WriteUInt16(address, 170, value.PrintAspect);
+		memory.WriteUInt16(address, 172, value.PrintShade);
+		memory.WriteUInt16(address, 174, unchecked((ushort)value.PrintThreshold));
+		memory.WriteUInt16(address, 176, value.PaperSize);
+		memory.WriteUInt16(address, 178, value.PaperLength);
+		memory.WriteUInt16(address, 180, value.PaperType);
+		memory.WriteUInt8(address, 182, value.SerRWBits);
+		memory.WriteUInt8(address, 183, value.SerStopBuf);
+		memory.WriteUInt8(address, 184, value.SerParShk);
+		memory.WriteUInt8(address, 185, value.LaceWB);
 		for (var index = 0; index < 12; index++)
-			memory.WriteUInt8(address, 188 + index, value.Pad[index]);
+			memory.WriteUInt8(address, 186 + index, value.Pad[index]);
 		for (var index = 0; index < IntuitionPreferencesConstants.DEVNAME_SIZE; index++)
-			memory.WriteUInt8(address, 200 + index, value.PrtDevName[index]);
-		memory.WriteUInt8(address, 216, value.DefaultPrtUnit);
-		memory.WriteUInt8(address, 217, value.DefaultSerUnit);
-		memory.WriteUInt8(address, 218, unchecked((byte)value.RowSizeChange));
-		memory.WriteUInt8(address, 219, unchecked((byte)value.ColumnSizeChange));
-		memory.WriteUInt16(address, 220, value.PrintFlags);
-		memory.WriteUInt16(address, 222, value.PrintMaxWidth);
-		memory.WriteUInt16(address, 224, value.PrintMaxHeight);
-		memory.WriteUInt8(address, 226, value.PrintDensity);
-		memory.WriteUInt8(address, 227, value.PrintXOffset);
-		memory.WriteUInt16(address, 228, value.wb_Width);
-		memory.WriteUInt16(address, 230, value.wb_Height);
-		memory.WriteUInt8(address, 232, value.wb_Depth);
-		memory.WriteUInt8(address, 233, value.ext_size);
+			memory.WriteUInt8(address, 198 + index, value.PrtDevName[index]);
+		memory.WriteUInt8(address, 214, value.DefaultPrtUnit);
+		memory.WriteUInt8(address, 215, value.DefaultSerUnit);
+		memory.WriteUInt8(address, 216, unchecked((byte)value.RowSizeChange));
+		memory.WriteUInt8(address, 217, unchecked((byte)value.ColumnSizeChange));
+		memory.WriteUInt16(address, 218, value.PrintFlags);
+		memory.WriteUInt16(address, 220, value.PrintMaxWidth);
+		memory.WriteUInt16(address, 222, value.PrintMaxHeight);
+		memory.WriteUInt8(address, 224, value.PrintDensity);
+		memory.WriteUInt8(address, 225, value.PrintXOffset);
+		memory.WriteUInt16(address, 226, value.wb_Width);
+		memory.WriteUInt16(address, 228, value.wb_Height);
+		memory.WriteUInt8(address, 230, value.wb_Depth);
+		memory.WriteUInt8(address, 231, value.ext_size);
 	}
 
 	private static TimeVal ReadTime<TMemory>(ref TMemory memory, APTR address,

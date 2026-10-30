@@ -515,6 +515,20 @@ public sealed record M68kBulkCopyOptions
 public sealed record M68kRomSizeOptions
 {
 	/// <summary>
+	/// Apply the proven generated-code transport, narrow-operation, private-stack-copy,
+	/// and guest-memory peepholes to eligible MC68000 ROM methods. Disabled by
+	/// default because this broadens ROM code generation and adds compile time.
+	/// </summary>
+	public bool GeneratedPeepholes { get; init; }
+
+	/// <summary>
+	/// Compact compiler-owned frame-home zero initialization on MC68000 ROMs
+	/// using the existing cycle-aware clear-run lowering. Guest memory clears
+	/// outside frame-home initialization retain the selected CLR policy.
+	/// </summary>
+	public bool CompactFrameHomeInitialization { get; init; }
+
+	/// <summary>
 	/// Stop staging provably unused register arguments at direct managed calls.
 	/// Formal ABI positions, argument evaluation, and stack arguments are unchanged.
 	/// </summary>
@@ -563,9 +577,23 @@ public sealed record M68kRomSizeOptions
 
 }
 
-/// <summary>Opt-in size policy for eligible MC68000 ROM and resident HUNK images.</summary>
+/// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Omit unreferenced application unwind descriptors and their restore routines.</summary>
+	public bool PruneApplicationUnwindMetadata { get; init; } = true;
+	/// <summary>Use signed 16-bit fields in private application exception tables when all final offsets fit. Collector-visible tables retain their ABI.</summary>
+	public bool NarrowApplicationExceptionSites { get; init; } = true;
+	/// <summary>Share application unwind restore routines across frame sizes by reading the existing descriptor at runtime.</summary>
+	public bool ShareApplicationUnwindRestores { get; init; } = true;
+	/// <summary>Remove redundant register-only moves in MC68000 application methods without handlers or dynamic frames. When a collector can run, methods with GC references or managed byrefs are excluded.</summary>
+	public bool RemoveApplicationRegisterMoves { get; init; } = true;
+	/// <summary>Use short PC-relative address loads in MC68000 application HUNKs when the target remains in the initialized hunk and is in range.</summary>
+	public bool CompactApplicationAddresses { get; init; } = true;
+	/// <summary>Share identical private unwind descriptors, restore routines and GC root maps in MC68000 application HUNKs without changing their runtime format.</summary>
+	public bool ShareApplicationRuntimeMetadata { get; init; } = true;
+	/// <summary>Use relative pointers and omit unused root-map and all-null state columns in private exception tables in MC68000 application HUNKs without a built-in or external GC reader.</summary>
+	public bool CompactApplicationExceptionSites { get; init; } = true;
 	/// <summary>Compatibility switch retained for existing clients. Literal provenance is now always validated; literal-only merges are supported.</summary>
 	public bool ValidateLiteralOperands { get; init; }
 	/// <summary>Remove proven redundant register and private stack transport.</summary>
@@ -638,6 +666,8 @@ public sealed record M68kCodeSizeOptions
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
+	// Allows the compiler's cycle tests to compare identical requests.
+	internal bool OptimizeWordBranchFallthrough { get; init; } = true;
 	/// <summary>
 	/// Default maximum size of compiler-owned resident invocation state placed on
 	/// the current task stack. Larger resident contexts use Exec <c>AllocMem</c>
@@ -718,7 +748,7 @@ public sealed record M68kCompilationRequest
 		M68kPeepholeOptimizationMode.FixedPoint;
 
 	/// <summary>
-	/// Explicit ROM code-size policy. Null preserves the default lowering.
+	/// Explicit code-size policy. Null preserves the default lowering.
 	/// Measure execution and stack budgets before enabling shared return paths.
 	/// </summary>
 	public M68kRomSizeOptions? RomSizeOptimizations { get; init; }

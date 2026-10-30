@@ -9,9 +9,9 @@ internal sealed class M68kAssemblyBuffer
 {
 	internal List<byte> Bytes { get; } = new();
 
-	internal Dictionary<string, int> Labels { get; } = new(StringComparer.Ordinal);
+	internal M68kOffsetMap Labels { get; } = new();
 
-	internal Dictionary<string, int> AnalysisAnchors { get; } = new(StringComparer.Ordinal);
+	internal M68kOffsetMap AnalysisAnchors { get; } = new();
 
 	internal List<BranchFixup> Branches { get; } = new();
 
@@ -27,7 +27,7 @@ internal sealed class M68kAssemblyBuffer
 
 	internal int? BssStartOffset { get; private set; }
 
-	internal bool HasLabelAt(int offset) => Labels.Values.Contains(offset);
+	internal bool HasLabelAt(int offset) => Labels.HasOffset(offset);
 
 	internal void MarkDataStart() => DataStartOffset ??= Bytes.Count;
 
@@ -71,21 +71,8 @@ internal sealed class M68kAssemblyBuffer
 			BssStartOffset = bssStartOffset + count;
 		}
 
-		foreach (var label in Labels.Keys.ToArray())
-		{
-			if (Labels[label] > offset || shiftBoundaryLabels && Labels[label] == offset)
-			{
-				Labels[label] += count;
-			}
-		}
-		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
-		{
-			if (AnalysisAnchors[anchor] > offset ||
-				shiftBoundaryAnchors && AnalysisAnchors[anchor] == offset)
-			{
-				AnalysisAnchors[anchor] += count;
-			}
-		}
+		Labels.InsertBytes(offset, count, shiftBoundaryLabels);
+		AnalysisAnchors.InsertBytes(offset, count, shiftBoundaryAnchors);
 
 		for (var index = 0; index < Branches.Count; index++)
 		{
@@ -158,26 +145,8 @@ internal sealed class M68kAssemblyBuffer
 			InstructionEffectOverrides.Remove(instructionOffset);
 		}
 
-		// .NET 10 permits existing-value updates during Dictionary enumeration.
-		// Avoid copying all keys and looking up every value for each small rewrite.
-		foreach (var (label, value) in Labels)
-		{
-			if (value >= end)
-			{
-				Labels[label] = value - count;
-			}
-		}
-		foreach (var (anchor, value) in AnalysisAnchors)
-		{
-			if (value >= end)
-			{
-				AnalysisAnchors[anchor] = value - count;
-			}
-			else if (value > offset)
-			{
-				AnalysisAnchors[anchor] = offset;
-			}
-		}
+		Labels.RemoveBytes(offset, count, clampInterior: false);
+		AnalysisAnchors.RemoveBytes(offset, count, clampInterior: true);
 
 		for (var index = 0; index < Branches.Count; index++)
 		{
@@ -207,7 +176,7 @@ internal sealed class M68kAssemblyBuffer
 		}
 		foreach (var instructionOffset in InstructionEffectOverrides.Keys
 			.Where(instructionOffset => instructionOffset >= end)
-			.OrderBy(static instructionOffset => instructionOffset)
+			.Order()
 			.ToArray())
 		{
 			var effects = InstructionEffectOverrides[instructionOffset];
@@ -265,13 +234,13 @@ internal sealed class M68kAssemblyBuffer
 		WritableDataStartOffset = MapSectionOffset(WritableDataStartOffset);
 		BssStartOffset = MapSectionOffset(BssStartOffset);
 
-		foreach (var label in Labels.Keys.ToArray())
+		// Descending edits preserve the original coordinates for each range.
+		// Byte compaction and the other metadata mappings still happen once.
+		for (var index = ordered.Length - 1; index >= 0; index--)
 		{
-			Labels[label] = MapOffset(Labels[label]);
-		}
-		foreach (var anchor in AnalysisAnchors.Keys.ToArray())
-		{
-			AnalysisAnchors[anchor] = MapAnchorOffset(AnalysisAnchors[anchor]);
+			var range = ordered[index];
+			Labels.RemoveBytes(range.Offset, range.Count, clampInterior: false);
+			AnalysisAnchors.RemoveBytes(range.Offset, range.Count, clampInterior: true);
 		}
 
 		for (var index = Branches.Count - 1; index >= 0; index--)
@@ -350,22 +319,6 @@ internal sealed class M68kAssemblyBuffer
 			return value - removedBefore[low];
 		}
 
-		int MapAnchorOffset(int value)
-		{
-			foreach (var range in ordered)
-			{
-				if (value <= range.Offset)
-				{
-					break;
-				}
-				if (value < range.Offset + range.Count)
-				{
-					return MapOffset(range.Offset);
-				}
-			}
-			return MapOffset(value);
-		}
-
 		bool IsRemoved(int value)
 		{
 			var low = 0;
@@ -395,7 +348,8 @@ internal sealed class M68kAssemblyBuffer
 internal readonly record struct BranchFixup(
 	int OpcodeOffset,
 	string Target,
-	bool CanRelaxToShort = true);
+	bool CanRelaxToShort = true,
+	bool PreferFastFallthrough = false);
 
 internal readonly record struct AddressFixup(
 	int Offset,

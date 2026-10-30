@@ -4,6 +4,8 @@
  */
 
 using System.Collections.Immutable;
+using System.Reflection.Emit;
+using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Backend;
 
@@ -227,15 +229,17 @@ internal static class M68kSpillRewriter
 		}
 
 		var definitions = FindInstructionDefinitions(function);
+		var blockLiveness = M68kLivenessAnalysis.Analyze(function);
 		var edgeInserter = new EdgeInserter(function);
 		var phiInputClears = RewritePhiInputs(
 			function,
 			layout,
 			spilled,
 			definitions,
+			blockLiveness,
 			edgeInserter);
-		RewritePhiDefinitions(function, layout, spilled, edgeInserter);
-		InsertPhiInputClears(function, layout, phiInputClears);
+		var phiStores = RewritePhiDefinitions(function, layout, spilled, edgeInserter);
+		InsertPhiInputClears(function, layout, phiInputClears, phiStores);
 		RewriteInstructions(function, layout, spilled, definitions, liveness);
 		foreach (var slot in layout.Slots.Values.Where(static slot => slot.IsGcRoot))
 		{
@@ -281,6 +285,7 @@ internal static class M68kSpillRewriter
 		M68kSpillLayout layout,
 		IReadOnlySet<int> spilled,
 		IReadOnlyDictionary<int, M68kMachineInstruction> definitions,
+		M68kLivenessInfo blockLiveness,
 		EdgeInserter edgeInserter)
 	{
 		var clears = new HashSet<(int BlockId, int Value)>();
@@ -323,7 +328,8 @@ internal static class M68kSpillRewriter
 					phi = phi with { Inputs = inputs };
 					block.Phis[phiIndex] = phi;
 					if (function.Values[input.Value].IsGcReference &&
-						layout.Slots.ContainsKey(input.Value))
+						layout.Slots.ContainsKey(input.Value) &&
+						!blockLiveness.LiveIn[block.Id].Contains(input.Value))
 					{
 						clears.Add((edgeBlock.Id, input.Value));
 					}
@@ -333,12 +339,13 @@ internal static class M68kSpillRewriter
 		return clears;
 	}
 
-	private static void RewritePhiDefinitions(
+	private static HashSet<(int BlockId, int Slot)> RewritePhiDefinitions(
 		M68kMachineFunction function,
 		M68kSpillLayout layout,
 		IReadOnlySet<int> spilled,
 		EdgeInserter edgeInserter)
 	{
+		var stores = new HashSet<(int BlockId, int Slot)>();
 		foreach (var block in function.Blocks.ToArray())
 		{
 			for (var phiIndex = block.Phis.Count - 1; phiIndex >= 0; phiIndex--)
@@ -362,17 +369,72 @@ internal static class M68kSpillRewriter
 					var edgeBlock = edgeInserter.GetInsertionBlock(
 						input.Key,
 						block.Id);
+					var storedValue = NormalizePhiInput(
+						function,
+						phi.Definition,
+						input.Value,
+						block.StartIlOffset,
+						edgeBlock);
+					stores.Add((edgeBlock.Id, slot.Index));
 					edgeBlock.Instructions.Insert(
 						InsertBeforeTerminator(edgeBlock),
 						CreateStore(
 							function,
 							block.StartIlOffset,
-							input.Value,
+							storedValue,
 							slot.Index));
 				}
 				block.Phis.RemoveAt(phiIndex);
 			}
 		}
+		return stores;
+	}
+
+	private static int NormalizePhiInput(
+		M68kMachineFunction function,
+		int definition,
+		int input,
+		int ilOffset,
+		M68kMachineBlock edgeBlock)
+	{
+		var destination = function.Values[definition];
+		var source = function.Values[input];
+		if (source.Width == destination.Width) return input;
+		if (source.Width == M68kMachineValueWidth.LongPair ||
+			destination.Width == M68kMachineValueWidth.LongPair ||
+			source.IsGcReference || destination.IsGcReference)
+			throw new InvalidOperationException(
+				$"Phi v{definition} cannot join {source.Width} into {destination.Width} spill storage.");
+
+		// A spill slot is read using the phi's width. On a big-endian target a
+		// byte store into a longword slot changes its most significant byte,
+		// leaving the low byte from a previous incoming edge. Extend or truncate
+		// before the store so every edge writes the complete destination width.
+		var widening = source.Width < destination.Width;
+		var kind = widening ? source.Kind : destination.Kind;
+		var op = kind switch
+		{
+			CilStackValueKind.SignedByte => OpCodes.Conv_I1,
+			CilStackValueKind.SignedWord => OpCodes.Conv_I2,
+			CilStackValueKind.UnsignedWord => OpCodes.Conv_U2,
+			CilStackValueKind.BooleanByte or CilStackValueKind.UnsignedByte => OpCodes.Conv_U1,
+			_ => throw new InvalidOperationException(
+					$"Phi v{definition} cannot convert {source.Kind} to {destination.Kind} spill storage.")
+		};
+		var normalized = function.CreateValue(
+			destination.Kind,
+			destination.Width,
+			M68kRegisterSet.Data,
+			isSpillTemporary: true);
+		edgeBlock.Instructions.Insert(
+			InsertBeforeTerminator(edgeBlock),
+			function.CreateInstruction(
+				M68kMachineOperation.Convert,
+				ilOffset,
+				uses: [input],
+				definitions: [normalized.Id],
+				sourceInstruction: new CilInstruction(ilOffset, op, null, ilOffset)));
+		return normalized.Id;
 	}
 
 	private static void RewriteInstructions(
@@ -465,6 +527,15 @@ internal static class M68kSpillRewriter
 				rewritten.AddRange(stores);
 				foreach (var value in deadGcSpills)
 				{
+					var slot = layout.Slots[value].Index;
+					if (liveness is not null && liveness.LiveAfter[original.Id].Any(live =>
+						layout.Slots.TryGetValue(live, out var liveSlot) && liveSlot.Index == slot))
+						continue;
+					// A copy may transfer a dying source into a new value sharing
+					// its spill slot. The store already replaced the old root.
+					if (stores.Any(store => store.SpillSlotIndex == slot) ||
+						instruction.Operation == M68kMachineOperation.SpillStore && instruction.SpillSlotIndex == slot)
+						continue;
 					rewritten.Add(CreateClear(
 						function,
 						instruction.IlOffset,
@@ -480,7 +551,8 @@ internal static class M68kSpillRewriter
 	private static void InsertPhiInputClears(
 		M68kMachineFunction function,
 		M68kSpillLayout layout,
-		IEnumerable<(int BlockId, int Value)> clears)
+		IEnumerable<(int BlockId, int Value)> clears,
+		IReadOnlySet<(int BlockId, int Slot)> phiStores)
 	{
 		var blocks = function.Blocks.ToDictionary(static block => block.Id);
 		foreach (var group in clears.GroupBy(static item => item.BlockId))
@@ -489,6 +561,10 @@ internal static class M68kSpillRewriter
 			var insertionIndex = InsertBeforeTerminator(block);
 			foreach (var item in group)
 			{
+				// Parallel phi stores can reuse the source's slot for a live
+				// destination. Clearing it here would erase that destination.
+				if (phiStores.Contains((block.Id, layout.Slots[item.Value].Index)))
+					continue;
 				block.Instructions.Insert(
 					insertionIndex++,
 					CreateClear(

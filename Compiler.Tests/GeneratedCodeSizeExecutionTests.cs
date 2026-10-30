@@ -74,21 +74,30 @@ public sealed class GeneratedCodeSizeExecutionTests
     }
 
     [Theory]
-    [InlineData("RemoveRedundantTransport")]
-    [InlineData("CompactGuestMemory")]
-    [InlineData("NarrowOperations")]
-    [InlineData("EliminateRedundantInitialization")]
-    [InlineData("SizeFirstCosts")]
-    [InlineData("InlineMemoryHelpers")]
-    [InlineData("ShareArithmeticCores")]
-    [InlineData("CompactPrivateStackCopies")]
-    [InlineData("Combined")]
-    public void ResidentHunkRelocationAliasingAndRepeatedInvocationAgree(string pass)
+    [InlineData("RemoveRedundantTransport", M68kRuntimeProfile.Resident)]
+    [InlineData("RemoveRedundantTransport", M68kRuntimeProfile.Freestanding)]
+    [InlineData("CompactGuestMemory", M68kRuntimeProfile.Resident)]
+    [InlineData("CompactGuestMemory", M68kRuntimeProfile.Freestanding)]
+    [InlineData("NarrowOperations", M68kRuntimeProfile.Resident)]
+    [InlineData("NarrowOperations", M68kRuntimeProfile.Freestanding)]
+    [InlineData("EliminateRedundantInitialization", M68kRuntimeProfile.Resident)]
+    [InlineData("EliminateRedundantInitialization", M68kRuntimeProfile.Freestanding)]
+    [InlineData("SizeFirstCosts", M68kRuntimeProfile.Resident)]
+    [InlineData("SizeFirstCosts", M68kRuntimeProfile.Freestanding)]
+    [InlineData("InlineMemoryHelpers", M68kRuntimeProfile.Resident)]
+    [InlineData("InlineMemoryHelpers", M68kRuntimeProfile.Freestanding)]
+    [InlineData("ShareArithmeticCores", M68kRuntimeProfile.Resident)]
+    [InlineData("ShareArithmeticCores", M68kRuntimeProfile.Freestanding)]
+    [InlineData("CompactPrivateStackCopies", M68kRuntimeProfile.Resident)]
+    [InlineData("CompactPrivateStackCopies", M68kRuntimeProfile.Freestanding)]
+    [InlineData("Combined", M68kRuntimeProfile.Resident)]
+    [InlineData("Combined", M68kRuntimeProfile.Freestanding)]
+    public void ResidentHunkRelocationAliasingAndRepeatedInvocationAgree(string pass, M68kRuntimeProfile profile)
     {
         var request = new M68kCompilationRequest {
             AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
             EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::Entry",
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = profile,
             OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
             Hunk = new() { IncludeSymbols = false }

@@ -106,3 +106,21 @@ broader alias analysis, instruction scheduling, addressing-mode selection,
 interprocedural inlining, and CPU cost modeling belongs in explicit optimizer
 passes with control-flow and analysis support. It should not accumulate as
 example-specific opcode patterns in `M68kPeepholeOptimizer`.
+
+## 68000 loop-exit branch timing
+
+After final branch relaxation, a 68000 loop exit or statically cold branch
+whose continuation is the fallthrough can use an inverted short conditional
+branch over a word `bra`.
+This is only used when the original conditional branch remains word-sized:
+continuing costs 10 instead of 12 cycles, while exiting costs 18 instead of 10
+cycles and the sequence occupies two more bytes. Short conditional branches
+already have an 8-cycle fallthrough and are left alone. This heuristic pays
+off when continuations outnumber exits by more than four to one.
+
+Expansion is skipped when it would violate an existing branch or PC-relative
+range, or when requested alignment could be disturbed. The comparison in
+`M68kBranchFallthroughTimingTests` compiles and executes the same generated
+loop with the transformation enabled and disabled. On the 68000 emulator,
+its 100 iterations took 106,668 versus 106,860 cycles, with code growing from
+284 to 286 bytes. This synthetic measurement is not a general workload result.

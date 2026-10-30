@@ -54,7 +54,7 @@ internal sealed partial class M68kPeepholeOptimizer
 					if (comparison && destinationUse) rewritten = (rewritten & ~(7 << 9)) | source << 9;
 					_buffer.WriteWord(use.Offset, (ushort)rewritten);
 					_buffer.RemoveBytes(copy.Offset, copy.Length);
-					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), 2);
+					RecordGeneratedTransportRewrite(2);
 					return true;
 				}
 				if ((facts.Effects.DefinesData & ((1 << source) | (1 << temporary))) != 0) break;
@@ -191,12 +191,12 @@ internal sealed partial class M68kPeepholeOptimizer
 				if ((facts.Effects.WritesConditions & facts.LiveConditionsAfter) == 0)
 				{
 					_buffer.RemoveBytes(instruction.Offset, 2);
-					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), 2);
+					RecordGeneratedTransportRewrite(2);
 				}
 				else
 				{
 					_buffer.WriteWord(instruction.Offset, (ushort)(0x4A80 | destination)); // TST.L Dd, same NZVC and X
-					_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), 0);
+					RecordGeneratedTransportRewrite(0);
 				}
 				return true;
 			}
@@ -207,7 +207,7 @@ internal sealed partial class M68kPeepholeOptimizer
 				(facts.Effects.WritesConditions & facts.LiveConditionsAfter) == 0)
 			{
 				_buffer.RemoveBytes(instruction.Offset, 2);
-				_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.RemoveRedundantTransport), 2);
+				RecordGeneratedTransportRewrite(2);
 				return true;
 			}
 		}

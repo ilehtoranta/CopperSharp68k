@@ -85,19 +85,19 @@ internal sealed class M68kInstructionDataflow
 
 	private readonly IReadOnlyList<M68kEmittedInstruction> _instructions;
 	private readonly IReadOnlyDictionary<int, M68kInstructionDataflowFacts> _facts;
-	private readonly M68kValueRangeAnalysis _values;
-	private readonly M68kConditionProvenanceAnalysis _conditions;
+	private readonly Lazy<M68kValueRangeAnalysis> _values;
+	private readonly Lazy<M68kConditionProvenanceAnalysis> _conditions;
 
 	private M68kInstructionDataflow(
 		IReadOnlyList<M68kEmittedInstruction> instructions,
 		IReadOnlyDictionary<int, M68kInstructionDataflowFacts> facts,
-		M68kValueRangeAnalysis values,
-		M68kConditionProvenanceAnalysis conditions)
+		Func<M68kValueRangeAnalysis> values,
+		Func<M68kConditionProvenanceAnalysis> conditions)
 	{
 		_instructions = instructions;
 		_facts = facts;
-		_values = values;
-		_conditions = conditions;
+		_values = new(values);
+		_conditions = new(conditions);
 	}
 
 	internal IReadOnlyList<M68kEmittedInstruction> Instructions => _instructions;
@@ -110,22 +110,29 @@ internal sealed class M68kInstructionDataflow
 		Classify(instruction);
 
 	internal M68kValueRange GetDataValueBefore(int offset, int register) =>
-		_values.GetDataValueBefore(offset, register);
+		_values.Value.GetDataValueBefore(offset, register);
 
 	internal M68kAddressAlias GetAddressAliasBefore(int offset, int register) =>
-		_values.GetAddressAliasBefore(offset, register);
+		_values.Value.GetAddressAliasBefore(offset, register);
 
 	internal bool IsConditionInstructionRedundant(
 		M68kEmittedInstruction instruction,
 		M68kConditionCodeSet required) =>
-		_conditions.IsRedundant(instruction, required);
+		_conditions.Value.IsRedundant(instruction, required);
 
 	internal bool TryGetKnownZeroTest(
 		M68kEmittedInstruction instruction,
 		out bool nonZero) =>
-		_conditions.TryGetKnownZeroTest(instruction, out nonZero);
+		_conditions.Value.TryGetKnownZeroTest(instruction, out nonZero);
 
-	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler)
+	internal static M68kInstructionDataflow Analyze(M68kAssembler assembler) =>
+		Analyze(assembler, null);
+
+	// A caller may supply a snapshot from the same immutable analysis round.
+	// The default entry point deliberately reads fresh fixups on every call.
+	internal static M68kInstructionDataflow Analyze(
+		M68kAssembler assembler,
+		IReadOnlySet<int>? addressFixupOffsets)
 	{
 		var instructions = assembler.GetInstructionStream();
 		if (instructions.Count == 0)
@@ -133,8 +140,8 @@ internal sealed class M68kInstructionDataflow
 			return new M68kInstructionDataflow(
 				instructions,
 				new Dictionary<int, M68kInstructionDataflowFacts>(),
-				M68kValueRangeAnalysis.Empty,
-				M68kConditionProvenanceAnalysis.Empty);
+				static () => M68kValueRangeAnalysis.Empty,
+				static () => M68kConditionProvenanceAnalysis.Empty);
 		}
 
 		var indexByOffset = instructions
@@ -272,20 +279,40 @@ internal sealed class M68kInstructionDataflow
 				stackAfter[index]);
 		}
 
+		// Deferred work must not observe later assembler or caller-set edits.
+		// Effects and graph arrays are privately owned; freeze instructions and
+		// only the operand-offset membership that either analysis can inspect.
+		addressFixupOffsets ??= assembler.AddressFixupOffsets;
+		var frozenInstructions = instructions.ToArray();
+		var symbolicOffsets = new HashSet<int>();
+		foreach (var instruction in frozenInstructions)
+		{
+			// Value analysis checks opcode+2 even for truncated immediates.
+			if (addressFixupOffsets.Contains(instruction.Offset + 2))
+			{
+				symbolicOffsets.Add(instruction.Offset + 2);
+			}
+			for (var offset = instruction.Offset + 4;
+				offset < instruction.Offset + instruction.Length; offset += 2)
+			{
+				if (addressFixupOffsets.Contains(offset)) symbolicOffsets.Add(offset);
+			}
+		}
 		return new M68kInstructionDataflow(
 			instructions,
 			result,
-			M68kValueRangeAnalysis.Analyze(
-				instructions,
+			() => M68kValueRangeAnalysis.Analyze(
+				frozenInstructions,
 				successors,
 				predecessors,
 				effects,
-				assembler.AddressFixupOffsets),
-			M68kConditionProvenanceAnalysis.Analyze(
-				instructions,
+				symbolicOffsets),
+			() => M68kConditionProvenanceAnalysis.Analyze(
+				frozenInstructions,
 				successors,
 				predecessors,
-				effects));
+				effects,
+				symbolicOffsets));
 	}
 
 	private static IReadOnlyList<int>[] BuildSuccessors(
@@ -654,8 +681,10 @@ internal sealed class M68kInstructionDataflow
 			}
 
 			if ((opcode & 0xF1FF) == 0x41EF || opcode == 0x4FEF ||
-				(opcode & 0xF1C0) == 0x41C0)
+				(opcode & 0xF1C0) == 0x41C0 && ((opcode >> 3) & 7) >= 2)
 			{
+				// EXTB.L Dn shares LEA's broad opcode mask but has a data-register
+				// effective address. It writes Dn and CCR, never A4.
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.AddressOnly);
 				var destination = (opcode >> 9) & 7;
 				DefineAddress(destination);
@@ -1041,9 +1070,12 @@ internal sealed class M68kInstructionDataflow
 				else
 				{
 					UseData((opcode >> 9) & 7);
-					AddEffectiveAddress((ushort)(((opcode >> 9) & 7) | (operationMode << 3)), EffectiveAddressAccess.ReadWrite);
+					// EOR's destination is the low six-bit effective address,
+					// not the source register and operation-mode fields.
+					AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 				}
-				WriteArithmeticConditions();
+				// CMP, CMPA and EOR preserve the extend bit.
+				WriteMoveConditions();
 				return;
 			}
 

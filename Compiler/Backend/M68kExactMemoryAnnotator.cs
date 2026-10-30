@@ -262,7 +262,7 @@ internal static class M68kExactMemoryAnnotator
 					}
 				}
 
-				if (layout is null || layout.Size <= 4 ||
+				if (layout is null || !layout.UsesAggregateTransport ||
 					(layout.Size & 3) != 0 || layout.ReferenceBitmap != 0)
 				{
 					continue;
@@ -823,7 +823,7 @@ internal static class M68kExactMemoryAnnotator
 				elementType,
 				sourceMethod.ModuleName,
 				out var layout) &&
-			layout.Size > 4 &&
+			layout.UsesAggregateTransport &&
 			(layout.Size & 3) == 0 &&
 			layout.ReferenceBitmap == 0;
 	}
@@ -1050,7 +1050,7 @@ internal static class M68kExactMemoryAnnotator
 					field.Type,
 					field.ModuleName,
 					out var aggregateLayout) &&
-				aggregateLayout.Size > 4;
+				aggregateLayout.UsesAggregateTransport;
 			var isAggregateLane = isAggregateField &&
 				instruction.MemorySize == sizeof(uint);
 			if (isAggregateField && !isAggregateLane)
@@ -1132,7 +1132,7 @@ internal static class M68kExactMemoryAnnotator
 						source.Offset),
 					sourceMethod.ModuleName,
 					out var aggregateElementLayout) &&
-				aggregateElementLayout.Size > 4;
+				aggregateElementLayout.UsesAggregateTransport;
 			if (isAggregateLane &&
 				(instruction.MemoryOffset < 0 ||
 				 instruction.MemoryOffset > array.ElementSize - sizeof(uint) ||

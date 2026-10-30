@@ -117,7 +117,7 @@ public static class IntuitionPreferencesConstants
 [StructLayout(LayoutKind.Sequential, Pack = 2)]
 public unsafe struct Preferences
 {
-	public const uint Size = 234;
+	public const uint Size = 232;
 	public sbyte FontHeight;
 	public byte PrinterPort;
 	public ushort BaudRate;
@@ -139,7 +139,7 @@ public unsafe struct Preferences
 	public sbyte ViewYOffset;
 	public short ViewInitX;
 	public short ViewInitY;
-	public int EnableCLI;
+	public short EnableCLI;
 	public ushort PrinterType;
 	public fixed byte PrinterFilename[IntuitionPreferencesConstants.FILENAME_SIZE];
 	public ushort PrintPitch;

@@ -114,6 +114,10 @@ public static class M68kRuntime
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
 	public static void ThrowArithmeticException() => throw new ArithmeticException();
 
+	/// <summary>Raises the target runtime's canonical division-by-zero exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowDivideByZeroException() => throw new DivideByZeroException();
+
 	/// <summary>Raises the target runtime's canonical null-argument exception.</summary>
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
 	public static void ThrowArgumentNullException() => throw new ArgumentNullException();
@@ -127,6 +131,11 @@ public static class M68kRuntime
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
 	public static void ThrowInvalidOperationException() =>
 		throw new InvalidOperationException();
+
+	/// <summary>Raises the target runtime's canonical unsupported-operation exception.</summary>
+	[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+	public static void ThrowNotSupportedException() =>
+		throw new NotSupportedException();
 
 	/// <summary>Raises the target runtime's canonical I/O exception.</summary>
 	[System.Diagnostics.CodeAnalysis.DoesNotReturn]

@@ -10,6 +10,568 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class ManagedRuntimeShadowTests
 {
+	[Fact]
+	public void StandardIntegerFormatsMatchCoreLibAcrossWidthsAndGuardedSpans()
+	{
+		object[] values = [sbyte.MinValue, (sbyte)-1, (sbyte)0, sbyte.MaxValue, (byte)0, byte.MaxValue,
+			short.MinValue, (short)-1, (short)0, short.MaxValue, (ushort)0, ushort.MaxValue,
+			int.MinValue, -1, 0, int.MaxValue, 0u, uint.MaxValue,
+			long.MinValue, -1L, 0L, long.MaxValue, 0UL, ulong.MaxValue];
+		string[] formats = ["D", "d0", "D3", "d22", "D65", "X", "x0", "X3", "x20", "X65", "B", "b3", "B70", "G", "g0", "D000000000000000003", "X008\0ignored", "\0ignored"];
+		foreach (var value in values)
+		foreach (var format in formats)
+		{
+			var expected = ((IFormattable)value).ToString(format, System.Globalization.CultureInfo.InvariantCulture);
+			foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+			{
+				var storage = Enumerable.Repeat('#', size + 2).ToArray();
+				var success = TryStandardInteger(value, format, storage.AsSpan(1, size), out var written);
+				Assert.Equal(size >= expected.Length, success);
+				Assert.Equal(success ? expected.Length : 0, written);
+				Assert.Equal('#', storage[0]); Assert.Equal('#', storage[^1]);
+				Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(storage, 1, size));
+			}
+		}
+		Assert.False(ShadowNumberFormatting.TryFormatInt32(-1, -1, "D999999999", null, new char[1], out var count));
+		Assert.Equal(0, count);
+		foreach (var format in new[] { "Z", "D1000000000", "X9999999999", "B2147483648" })
+		{
+			Assert.Throws<FormatException>(() => 42.ToString(format));
+			Assert.Throws<FormatException>(() => ShadowNumberFormatting.TryFormatInt32(42, -1, format, null, new char[1], out _));
+		}
+		var provider = System.Globalization.CultureInfo.InvariantCulture;
+		Assert.True(ShadowNumberFormatting.TryFormatInt32(-1, 255, "X2", provider, new char[2], out count));
+		Assert.Equal(2, count);
+	}
+
+	private static bool TryStandardInteger(object value, ReadOnlySpan<char> format, Span<char> destination, out int written, IFormatProvider? provider = null) => value switch
+	{
+		sbyte number => ShadowNumberFormatting.TryFormatInt32(number, 255, format, provider, destination, out written),
+		byte number => ShadowNumberFormatting.TryFormatUInt32(number, format, provider, destination, out written),
+		short number => ShadowNumberFormatting.TryFormatInt32(number, 65535, format, provider, destination, out written),
+		ushort number => ShadowNumberFormatting.TryFormatUInt32(number, format, provider, destination, out written),
+		int number => ShadowNumberFormatting.TryFormatInt32(number, -1, format, provider, destination, out written),
+		uint number => ShadowNumberFormatting.TryFormatUInt32(number, format, provider, destination, out written),
+		long number => ShadowNumberFormatting.TryFormatInt64(number, format, provider, destination, out written),
+		ulong number => ShadowNumberFormatting.TryFormatUInt64(number, format, provider, destination, out written),
+		_ => throw new InvalidOperationException()
+	};
+
+	[Fact]
+	public void DecimalProviderSignsAndQueryBehaviorMatchCoreLib()
+	{
+		object[] values = [sbyte.MinValue, short.MinValue, int.MinValue, long.MinValue, (sbyte)0, (short)12, 42, 42L, byte.MaxValue, ushort.MaxValue, uint.MaxValue, ulong.MaxValue];
+		foreach (var sign in new[] { "-", "", "minus", "\u2212\0\u03A9", "\uD83D\uDE00", "\uD800" })
+		foreach (var value in values)
+		foreach (var format in new[] { "", "D", "D24", "g0", "X", "B" })
+		{
+			var info = new System.Globalization.NumberFormatInfo { NegativeSign = sign };
+			var expected = ((IFormattable)value).ToString(format, info);
+			foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+			{
+				var actual = Enumerable.Repeat('#', size + 2).ToArray();
+				var success = TryStandardInteger(value, format, actual.AsSpan(1, size), out var written, info);
+				Assert.Equal(size >= expected.Length, success); Assert.Equal(success ? expected.Length : 0, written);
+				Assert.Equal('#', actual[0]); Assert.Equal('#', actual[^1]);
+				Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(actual, 1, size));
+			}
+		}
+		// The target's ambient default remains invariant. Keep the host oracle
+		// for providers without NumberFormatInfo independent of the machine locale.
+		var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
+		try
+		{
+			System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+			foreach (var result in new object?[] { null, "wrong", new System.Globalization.NumberFormatInfo { NegativeSign = "minus" } })
+			{
+				var provider = new RecordingNumberProvider { Result = result };
+				var expected = (-12).ToString("D4", provider); provider.Queries = 0;
+				var storage = new char[expected.Length];
+				Assert.True(ShadowNumberFormatting.TryFormatInt32(-12, -1, "D4", provider, storage, out var count));
+				Assert.Equal(expected, new string(storage)); Assert.Equal(expected.Length, count); Assert.Equal(1, provider.Queries);
+				provider.Queries = 0; provider.Throw = true;
+				Assert.True(ShadowNumberFormatting.TryFormatInt32(12, -1, "D4", provider, new char[4], out _));
+				Assert.True(ShadowNumberFormatting.TryFormatUInt64(12, "D4", provider, new char[4], out _));
+				Assert.True(ShadowNumberFormatting.TryFormatInt32(-1, 255, "X2", provider, new char[2], out _));
+				Assert.Equal(0, provider.Queries);
+				Assert.Throws<InvalidOperationException>(() => ShadowNumberFormatting.TryFormatInt32(-12, -1, default, provider, new char[4], out _));
+			}
+		}
+		finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
+	}
+
+	[Fact]
+	public void FixedPointIntegerFormatsMatchCoreLibProvidersAndGuardedSpans()
+	{
+		object[] values = [sbyte.MinValue, (sbyte)-1, (sbyte)0, sbyte.MaxValue, (byte)0, byte.MaxValue,
+			short.MinValue, (short)-1, (short)0, short.MaxValue, (ushort)0, ushort.MaxValue,
+			int.MinValue, -1, 0, int.MaxValue, 0u, uint.MaxValue,
+			long.MinValue, -1L, 0L, long.MaxValue, 0UL, ulong.MaxValue];
+		foreach (var (sign, separator, digits) in new[] { ("-", ".", 2), ("", "::", 0), ("minus", ",", 3),
+			("\u2212\0\u03A9", "\0\uD83D\uDE00", 6), ("\uD800", "\uDFFF", 99) })
+		foreach (var value in values)
+		foreach (var format in new[] { "F", "f", "F0", "f1", "F3", "F65", "F000000000000000003", "F\0ignored", "f3\0ignored" })
+		{
+			var info = new System.Globalization.NumberFormatInfo
+				{ NegativeSign = sign, NumberDecimalSeparator = separator, NumberDecimalDigits = digits, NumberNegativePattern = 0 };
+			var expected = ((IFormattable)value).ToString(format, info);
+			foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+			{
+				var storage = Enumerable.Repeat('#', size + 2).ToArray();
+				var provider = new RecordingNumberProvider { Result = info };
+				var success = TryStandardInteger(value, format, storage.AsSpan(1, size), out var written, provider);
+				Assert.Equal(size >= expected.Length, success); Assert.Equal(success ? expected.Length : 0, written);
+				Assert.Equal(1, provider.Queries);
+				Assert.Equal('#', storage[0]); Assert.Equal('#', storage[^1]);
+				Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(storage, 1, size));
+			}
+		}
+		var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
+		try
+		{
+			System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+			foreach (var result in new object?[] { null, "wrong" })
+			foreach (var value in new object[] { -12, 0, 12u, long.MinValue, ulong.MaxValue })
+			foreach (var format in new[] { "F", "F0", "F2" })
+			{
+				var provider = new RecordingNumberProvider { Result = result };
+				var expected = ((IFormattable)value).ToString(format, provider); provider.Queries = 0;
+				var storage = new char[expected.Length];
+				Assert.True(TryStandardInteger(value, format, storage, out var written, provider));
+				Assert.Equal(expected, new string(storage)); Assert.Equal(expected.Length, written); Assert.Equal(1, provider.Queries);
+			}
+		}
+		finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
+		var throwing = new RecordingNumberProvider { Throw = true };
+		var hostWritten = 37;
+		Assert.Throws<InvalidOperationException>(() => 0u.TryFormat(Span<char>.Empty, out hostWritten, "F0", throwing));
+		var actualWritten = 37;
+		Assert.Throws<InvalidOperationException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "F0", throwing, Span<char>.Empty, out actualWritten));
+		Assert.Equal(hostWritten, actualWritten);
+		throwing.Queries = 0;
+		Assert.Throws<FormatException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "F1000000000", throwing, Span<char>.Empty, out _));
+		Assert.Equal(0, throwing.Queries);
+		var guard = new[] { '#' };
+		Assert.False(ShadowNumberFormatting.TryFormatInt64(long.MinValue, "F999999999", null, guard, out var count));
+		Assert.Equal(0, count); Assert.Equal('#', guard[0]);
+	}
+	[Fact]
+	public void ScientificAndGeneralIntegerFormatsMatchCoreLibRoundingAndProviders()
+	{
+		object[] values = [sbyte.MinValue, (sbyte)-1, (sbyte)0, sbyte.MaxValue, (byte)0, byte.MaxValue,
+			short.MinValue, (short)-1, (short)0, short.MaxValue, (ushort)0, ushort.MaxValue,
+			int.MinValue, -1, 0, int.MaxValue, 0u, uint.MaxValue, long.MinValue, -1L, 0L, long.MaxValue, 0UL, ulong.MaxValue,
+			25, -25, 250, -250, 1250, -1250, 1499, -1499, 950, -950, 9995, -9995, 1000, -1000,
+			9999999999999999999UL, 999999999999999999UL, -999999999999999999L, 10000000000000000000UL];
+		foreach (var (sign, separator, plus) in new[] { ("-", ".", "+"), ("", "::", ""), ("minus", ",", "plus"),
+			("\u2212\0\u03A9", "\0\uD83D\uDE00", "\uD800\0"), ("\uDFFF", "\uD800", "\uD83D\uDE00") })
+		foreach (var value in values)
+		foreach (var format in new[] { "E", "e0", "E1", "E2", "e3", "E6", "E19", "e21", "E65", "E\0ignored", "E000000000000000003",
+			"G1", "g2", "G3", "g4", "G6", "G19", "g20", "G21", "G65", "G999999999", "R", "r0", "R1", "r2", "R20", "r65", "R\0ignored" })
+		{
+			var info = new System.Globalization.NumberFormatInfo { NegativeSign = sign, NumberDecimalSeparator = separator,
+				PositiveSign = plus, NumberDecimalDigits = 99, NumberNegativePattern = 0 };
+			var expected = ((IFormattable)value).ToString(format, info);
+			foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+			{
+				var storage = Enumerable.Repeat('#', size + 2).ToArray();
+				var provider = new RecordingNumberProvider { Result = info };
+				var success = TryStandardInteger(value, format, storage.AsSpan(1, size), out var written, provider);
+				Assert.Equal(size >= expected.Length, success); Assert.Equal(success ? expected.Length : 0, written);
+				Assert.Equal(1, provider.Queries);
+				Assert.Equal('#', storage[0]); Assert.Equal('#', storage[^1]);
+				Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(storage, 1, size));
+			}
+		}
+		var throwing = new RecordingNumberProvider { Throw = true }; var writtenOnThrow = 37;
+		Assert.Throws<InvalidOperationException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "R", throwing, Span<char>.Empty, out writtenOnThrow));
+		Assert.Equal(37, writtenOnThrow);
+		foreach (var format in new[] { "E1000000000", "G1000000000", "R1000000000" })
+		{
+			throwing.Queries = 0;
+			Assert.Throws<FormatException>(() => ShadowNumberFormatting.TryFormatUInt64(ulong.MaxValue, format, throwing, Span<char>.Empty, out _));
+			Assert.Equal(0, throwing.Queries);
+		}
+		var guard = new[] { '#' };
+		Assert.False(ShadowNumberFormatting.TryFormatInt64(long.MinValue, "E999999999", null, guard, out var count));
+		Assert.Equal(0, count); Assert.Equal('#', guard[0]);
+	}
+	[Fact]
+	public void GroupedIntegerFormatsMatchCoreLibGroupingPatternsAndGuardedSpans()
+	{
+		object[] values = [sbyte.MinValue, (sbyte)-1, (sbyte)0, sbyte.MaxValue, (byte)0, byte.MaxValue,
+			short.MinValue, (short)-1, (short)0, short.MaxValue, (ushort)0, ushort.MaxValue,
+			int.MinValue, -1, 0, int.MaxValue, 0u, uint.MaxValue, long.MinValue, -1L, 0L, long.MaxValue, 0UL, ulong.MaxValue,
+			999, -999, 1000, -1000, 10000000000000000000UL];
+		int[][] grouping = [[], [0], [3], [3, 2], [3, 2, 0], [1], [1, 0], [9], [9, 1, 2, 0], [2, 3, 4, 5, 6, 7, 8, 9, 0]];
+		foreach (var groups in grouping)
+		for (var pattern = 0; pattern < 5; pattern++)
+		foreach (var (sign, separator, group, digits) in new[] { ("-", ".", ",", 2), ("", "::", "", 0),
+			("minus", ",", "group", 3), ("\u2212\0\u03A9", "\uD83D\uDE00", "\0\uD800", 99) })
+		foreach (var value in values)
+		foreach (var format in new[] { "N", "n0", "N3", "n65", "N\0ignored", "N000000000003" })
+		{
+			var info = new System.Globalization.NumberFormatInfo { NumberGroupSizes = groups, NumberNegativePattern = pattern,
+				NegativeSign = sign, NumberDecimalSeparator = separator, NumberGroupSeparator = group, NumberDecimalDigits = digits };
+			var expected = ((IFormattable)value).ToString(format, info);
+			foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+			{
+				var storage = Enumerable.Repeat('#', size + 2).ToArray();
+				var provider = new RecordingNumberProvider { Result = info };
+				var success = TryStandardInteger(value, format, storage.AsSpan(1, size), out var written, provider);
+				Assert.Equal(size >= expected.Length, success); Assert.Equal(success ? expected.Length : 0, written); Assert.Equal(1, provider.Queries);
+				Assert.Equal('#', storage[0]); Assert.Equal('#', storage[^1]);
+				Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(storage, 1, size));
+			}
+		}
+		var throwing = new RecordingNumberProvider { Throw = true }; var countOnThrow = 37;
+		Assert.Throws<InvalidOperationException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "N0", throwing, Span<char>.Empty, out countOnThrow));
+		Assert.Equal(37, countOnThrow);
+		throwing.Queries = 0;
+		Assert.Throws<FormatException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "N1000000000", throwing, Span<char>.Empty, out _));
+		Assert.Equal(0, throwing.Queries);
+		var guard = new[] { '#' };
+		Assert.False(ShadowNumberFormatting.TryFormatInt64(long.MinValue, "N999999999", null, guard, out var count));
+		Assert.Equal(0, count); Assert.Equal('#', guard[0]);
+		// Group-size reads must not clone the array.
+		var allocationInfo = new System.Globalization.NumberFormatInfo { NumberGroupSizes = [3, 2, 0] };
+		var destination = new char[128];
+		TryStandardInteger(long.MinValue, "N", destination, out _, allocationInfo);
+		object boxed = long.MinValue;
+		var before = GC.GetAllocatedBytesForCurrentThread();
+		for (var index = 0; index < 100; index++) TryStandardInteger(boxed, "N", destination, out _, allocationInfo);
+		Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+	}
+
+	[Fact]
+	public void CurrencyIntegerFormatsMatchCoreLibPatternsAndGuardedSpans()
+	{
+		object[] values = [sbyte.MinValue, sbyte.MaxValue, byte.MaxValue, short.MinValue, short.MaxValue, ushort.MaxValue,
+			int.MinValue, int.MaxValue, uint.MaxValue, long.MinValue, long.MaxValue, ulong.MaxValue, 0, 0u, 0L, 0UL, -1, 999, -1000];
+		int[][] grouping = [[], [0], [3], [3, 2], [3, 2, 0], [1], [1, 0], [9]];
+		foreach (var groups in grouping)
+		for (var pattern = 0; pattern < 17; pattern++)
+		foreach (var (sign, separator, group, symbol, digits) in new[] { ("-", ".", ",", "\u00A4", 2),
+			("", "::", "", "", 0), ("minus", ",", "group", "$", 3), ("\u2212\0\u03A9", "\uD83D\uDE00", "\0\uD800", "$-#\0\uD800", 99) })
+		{
+			var info = new System.Globalization.NumberFormatInfo { CurrencyGroupSizes = groups, CurrencyNegativePattern = pattern,
+				CurrencyPositivePattern = pattern % 4, NegativeSign = sign, CurrencyDecimalSeparator = separator,
+				CurrencyGroupSeparator = group, CurrencySymbol = symbol, CurrencyDecimalDigits = digits,
+				NumberDecimalSeparator = "wrong", NumberGroupSeparator = "wrong", NumberDecimalDigits = 7, NumberGroupSizes = [1], NumberNegativePattern = 4 };
+			foreach (var value in values)
+			foreach (var format in new[] { "C", "c0", "C3", "c65", "C\0ignored", "C000000000003" })
+			{
+				var expected = ((IFormattable)value).ToString(format, info);
+				foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+				{
+					var storage = Enumerable.Repeat('#', size + 2).ToArray();
+					var provider = new RecordingNumberProvider { Result = info };
+					var success = TryStandardInteger(value, format, storage.AsSpan(1, size), out var written, provider);
+					Assert.Equal(size >= expected.Length, success); Assert.Equal(success ? expected.Length : 0, written); Assert.Equal(1, provider.Queries);
+					Assert.Equal('#', storage[0]); Assert.Equal('#', storage[^1]);
+					Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(storage, 1, size));
+				}
+			}
+		}
+		foreach (var result in new object?[] { null, new object() })
+		foreach (var value in new object[] { -1000, 0u, ulong.MaxValue })
+		{
+			var provider = new RecordingNumberProvider { Result = result };
+			var storage = new char[128];
+			Assert.True(TryStandardInteger(value, "C", storage, out var written, provider));
+			Assert.Equal(((IFormattable)value).ToString("C", System.Globalization.CultureInfo.CurrentCulture), new string(storage, 0, written));
+			Assert.Equal(1, provider.Queries);
+		}
+		var throwing = new RecordingNumberProvider { Throw = true }; var countOnThrow = 37;
+		Assert.Throws<InvalidOperationException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "C0", throwing, Span<char>.Empty, out countOnThrow));
+		Assert.Equal(37, countOnThrow);
+		throwing.Queries = 0;
+		Assert.Throws<FormatException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "C1000000000", throwing, Span<char>.Empty, out _));
+		Assert.Equal(0, throwing.Queries);
+		var guard = new[] { '#' };
+		Assert.False(ShadowNumberFormatting.TryFormatInt64(long.MinValue, "C999999999", null, guard, out var count));
+		Assert.Equal(0, count); Assert.Equal('#', guard[0]);
+		var allocationInfo = new System.Globalization.NumberFormatInfo { CurrencyGroupSizes = [3, 2, 0] };
+		var destination = new char[128]; object boxed = long.MinValue;
+		TryStandardInteger(boxed, "C", destination, out _, allocationInfo);
+		var before = GC.GetAllocatedBytesForCurrentThread();
+		for (var index = 0; index < 100; index++) TryStandardInteger(boxed, "C", destination, out _, allocationInfo);
+		Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+	}
+
+	[Fact]
+	public void PercentIntegerFormatsMatchCoreLibPatternsAndGuardedSpans()
+	{
+		object[] values = [sbyte.MinValue, sbyte.MaxValue, byte.MaxValue, short.MinValue, short.MaxValue, ushort.MaxValue,
+			int.MinValue, int.MaxValue, uint.MaxValue, long.MinValue, long.MaxValue, ulong.MaxValue, 0, 0u, 0L, 0UL, -1, 999, -1000];
+		int[][] grouping = [[], [0], [3], [3, 2], [3, 2, 0], [1], [1, 0], [9]];
+		foreach (var groups in grouping)
+		for (var pattern = 0; pattern < 12; pattern++)
+		foreach (var (sign, separator, group, symbol, digits) in new[] { ("-", ".", ",", "%", 2),
+			("", "::", "", "", 0), ("minus", ",", "group", "%", 3), ("\u2212\0\u03A9", "\uD83D\uDE00", "\0\uD800", "%-#\0\uD800", 99) })
+		{
+			var info = new System.Globalization.NumberFormatInfo { PercentGroupSizes = groups, PercentNegativePattern = pattern,
+				PercentPositivePattern = pattern % 4, NegativeSign = sign, PercentDecimalSeparator = separator,
+				PercentGroupSeparator = group, PercentSymbol = symbol, PercentDecimalDigits = digits,
+				NumberDecimalSeparator = "wrong", NumberGroupSeparator = "wrong", NumberDecimalDigits = 7, NumberGroupSizes = [1], NumberNegativePattern = 4, CurrencySymbol = "wrong", CurrencyGroupSizes = [1], CurrencyGroupSeparator = "wrong", CurrencyDecimalSeparator = "wrong", CurrencyDecimalDigits = 9, CurrencyNegativePattern = 16 };
+			foreach (var value in values)
+			foreach (var format in new[] { "P", "p0", "P3", "p65", "P\0ignored", "P000000000003" })
+			{
+				var expected = ((IFormattable)value).ToString(format, info);
+				foreach (var size in new[] { 0, expected.Length - 1, expected.Length, expected.Length + 1 })
+				{
+					var storage = Enumerable.Repeat('#', size + 2).ToArray();
+					var provider = new RecordingNumberProvider { Result = info };
+					var success = TryStandardInteger(value, format, storage.AsSpan(1, size), out var written, provider);
+					Assert.Equal(size >= expected.Length, success); Assert.Equal(success ? expected.Length : 0, written); Assert.Equal(1, provider.Queries);
+					Assert.Equal('#', storage[0]); Assert.Equal('#', storage[^1]);
+					Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(storage, 1, size));
+				}
+			}
+		}
+		foreach (var result in new object?[] { null, new object() })
+		foreach (var value in new object[] { -1000, 0u, ulong.MaxValue })
+		{
+			var provider = new RecordingNumberProvider { Result = result };
+			var storage = new char[128];
+			Assert.True(TryStandardInteger(value, "P", storage, out var written, provider));
+			Assert.Equal(((IFormattable)value).ToString("P", System.Globalization.CultureInfo.CurrentCulture), new string(storage, 0, written));
+			Assert.Equal(1, provider.Queries);
+		}
+		var throwing = new RecordingNumberProvider { Throw = true }; var countOnThrow = 37;
+		Assert.Throws<InvalidOperationException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "P0", throwing, Span<char>.Empty, out countOnThrow));
+		Assert.Equal(37, countOnThrow);
+		throwing.Queries = 0;
+		Assert.Throws<FormatException>(() => ShadowNumberFormatting.TryFormatUInt32(0, "P1000000000", throwing, Span<char>.Empty, out _));
+		Assert.Equal(0, throwing.Queries);
+		var guard = new[] { '#' };
+		Assert.False(ShadowNumberFormatting.TryFormatInt64(long.MinValue, "P999999999", null, guard, out var count));
+		Assert.Equal(0, count); Assert.Equal('#', guard[0]);
+		var allocationInfo = new System.Globalization.NumberFormatInfo { PercentGroupSizes = [3, 2, 0] };
+		var destination = new char[128]; object boxed = long.MinValue;
+		TryStandardInteger(boxed, "P", destination, out _, allocationInfo);
+		var before = GC.GetAllocatedBytesForCurrentThread();
+		for (var index = 0; index < 100; index++) TryStandardInteger(boxed, "P", destination, out _, allocationInfo);
+		Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+	}
+
+	private sealed class RecordingNumberProvider : IFormatProvider
+	{
+		public object? Result;
+		public int Queries;
+		public bool Throw;
+		public object? GetFormat(Type? formatType)
+		{
+			Assert.Equal(typeof(System.Globalization.NumberFormatInfo), formatType);
+			Queries++;
+			if (Throw) throw new InvalidOperationException();
+			return Result;
+		}
+	}
+
+	[Fact]
+	public void CoreLibTwoCharacterSearchMatchesHostSlices()
+	{
+		for (var length = 0; length <= 65; length++)
+		for (var offset = 0; offset <= 3; offset++)
+		{
+			var storage = Enumerable.Repeat('#', length + offset + 2).ToArray();
+			for (var index = 0; index < length; index++) storage[index + offset] = "ab\0\u03A9\uD800{}"[index % 7];
+			var original = storage.ToArray();
+			ReadOnlySpan<char> span = storage.AsSpan(offset, length);
+			foreach (var (first, second) in new[] { ('{', '}'), ('}', '{'), ('\0', '\uD800'), ('#', '#'), ('a', 'a'), ('z', '\uFFFF') })
+				Assert.Equal(span.IndexOfAny(first, second), ShadowCharacterSpans.IndexOfAny(span, first, second));
+			Assert.Equal(original, storage);
+		}
+		Assert.Equal(-1, ShadowCharacterSpans.IndexOfAny(default, '\0', '\0'));
+	}
+
+	[Theory]
+	[InlineData("pre{", "seedpre")]
+	[InlineData("pre}", "seedpre")]
+	[InlineData("pre{2}", "seedpre")]
+	[InlineData("pre{0}mid{1", "seedpreamid")]
+	[InlineData("pre{0,+2}", "seedpre")]
+	[InlineData("pre{-1}", "seedpre")]
+	[InlineData("pre{0:{{}}}", "seedpre")]
+	public void CoreLibCompositeFormatFailurePrefixMatchesHost(string format, string expected)
+	{
+		var builder = new System.Text.StringBuilder(1).Append("seed");
+		Assert.Throws<FormatException>(() => builder.AppendFormat(format, "a", "b"));
+		Assert.Equal(expected, builder.ToString());
+		builder.Clear().Append("seed");
+		Assert.Equal("format", Assert.Throws<ArgumentNullException>(() => builder.AppendFormat((string)null!, "a")).ParamName);
+		Assert.Equal("seed", builder.ToString());
+	}
+
+	[Fact]
+	public void ExperimentalInt32CopiesAndPrimitiveClearsMatchHostArrayContracts()
+	{
+		for (var sourceIndex = 0; sourceIndex <= 8; sourceIndex++)
+		for (var destinationIndex = 0; destinationIndex <= 8; destinationIndex++)
+		for (var length = 0; length <= 8 - sourceIndex && length <= 8 - destinationIndex; length++)
+		{
+			var expected = Enumerable.Range(0, 8).Select(value => value * 1234567 - 3456).ToArray();
+			var actual = expected.ToArray();
+			Array.Copy(expected, sourceIndex, expected, destinationIndex, length);
+			ShadowArray.CopyInt32(actual, sourceIndex, actual, destinationIndex, length);
+			Assert.Equal(expected, actual);
+		}
+		for (var index = 0; index <= 8; index++)
+		for (var length = 0; length <= 8 - index; length++)
+		{
+			Array[] values = [Enumerable.Repeat((byte)0xA5, 8).ToArray(), Enumerable.Repeat('\uFFFF', 8).ToArray(),
+				Enumerable.Range(1, 8).ToArray(), Enumerable.Repeat<object>(new object(), 8).ToArray(), Enumerable.Repeat("keep", 8).ToArray()];
+			foreach (var actual in values)
+			{
+				var expected = (Array)actual.Clone();
+				Array.Clear(expected, index, length); ShadowArray.ClearPrimitive(actual, index, length);
+				Assert.Equal(expected.Cast<object?>(), actual.Cast<object?>());
+			}
+		}
+		Assert.Throws<NotSupportedException>(() => ShadowArray.CopyInt32(new int[1, 1], 0, new int[1], 0, 0));
+		Assert.Throws<NotSupportedException>(() => ShadowArray.ClearPrimitive(new int[1, 1], 0, 0));
+	}
+
+	[Fact]
+	public void CoreLibOrdinalCharacterEqualityMatchesSlicesWithoutChangingStorage()
+	{
+		const string pattern = "aba\0\u03A9\uD83D\uDE00\uD800\uFFFF";
+		foreach (var length in new[] { 0, 1, 4, 16, 32, 65, 257 })
+		{
+			var left = new char[length + 2];
+			var right = new char[length + 4];
+			Array.Fill(left, 'L'); Array.Fill(right, 'R');
+			for (var index = 0; index < length; index++) left[index + 1] = right[index + 2] = pattern[index % pattern.Length];
+			var leftBefore = left.ToArray(); var rightBefore = right.ToArray();
+			var first = left.AsSpan(1, length); var second = right.AsSpan(2, length);
+			Assert.True(ShadowCharacterSpans.EqualsOrdinal(first, second));
+			Assert.True(ShadowCharacterSpans.EqualsOrdinal(first, first));
+			Assert.Equal(length == 0, ShadowCharacterSpans.EqualsOrdinal(first, default));
+			Assert.False(ShadowCharacterSpans.EqualsOrdinal(first, right.AsSpan(1, length + 1)));
+			for (var index = 0; index < length; index++)
+			{
+				second[index] = 'Z';
+				Assert.False(ShadowCharacterSpans.EqualsOrdinal(first, second));
+				Assert.False(ShadowCharacterSpans.EqualsOrdinal(second, first));
+				second[index] = first[index];
+			}
+			Assert.Equal(leftBefore, left); Assert.Equal(rightBefore, right);
+		}
+		Assert.False(ShadowCharacterSpans.EqualsOrdinal("A", "a"));
+		Assert.False(ShadowCharacterSpans.EqualsOrdinal("\u00E9", "e\u0301"));
+		Assert.False(ShadowCharacterSpans.EqualsOrdinal("\uD83D\uDE00", "\uDE00\uD83D"));
+	}
+
+	private static void CheckAmbientCustomSpan(object value, int capacity)
+	{
+		var expected = ((IFormattable)value).ToString("000.0", null);
+		var storage = Enumerable.Repeat('#', capacity + 2).ToArray();
+		bool success = TryStandardInteger(value, "000.0", storage.AsSpan(1, capacity), out int written, null);
+		Assert.Equal(capacity >= expected.Length, success);
+		Assert.Equal(success ? expected.Length : 0, written);
+		for (int index = 0; index < storage.Length; index++)
+			Assert.Equal(success && index > 0 && index <= written ? expected[index - 1] : '#', storage[index]);
+	}
+
+	[Fact]
+	public void CoreLibDefault64BitFormattingPreservesSlicesAndSupportsAmbientCustomFormats()
+	{
+		var values = new HashSet<ulong> { 0, 1, uint.MaxValue, 1UL << 32, (1UL << 32) + 1, long.MaxValue, 1UL << 63, ulong.MaxValue };
+		for (ulong power = 10; ; power *= 10)
+		{
+			values.UnionWith([power - 1, power, power + 1]);
+			if (power > ulong.MaxValue / 10) break;
+		}
+		foreach (var value in values.Where(value => value <= long.MaxValue).ToArray())
+			values.Add(unchecked((ulong)-(long)value));
+		foreach (var value in values)
+		foreach (var signed in new[] { false, true })
+		{
+			var expected = signed ? unchecked((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture)
+				: value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+			for (var size = 0; size <= expected.Length + 1; size++)
+			{
+				var buffer = Enumerable.Repeat('#', size + 2).ToArray();
+				var destination = buffer.AsSpan(1, size);
+				var success = signed
+					? ShadowNumberFormatting.TryFormatInt64(unchecked((long)value), default, null, destination, out var written)
+					: ShadowNumberFormatting.TryFormatUInt64(value, default, null, destination, out written);
+				Assert.Equal(size >= expected.Length, success);
+				Assert.Equal(success ? expected.Length : 0, written);
+				Assert.Equal('#', buffer[0]);
+				Assert.Equal('#', buffer[^1]);
+				Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(destination));
+			}
+		}
+		var provider = System.Globalization.CultureInfo.InvariantCulture;
+		CheckAmbientCustomSpan(42L, 20);
+		CheckAmbientCustomSpan(42UL, 20);
+		var providerBuffer = new char[20];
+		Assert.True(ShadowNumberFormatting.TryFormatInt64(42, default, provider, providerBuffer, out var providerWritten));
+		Assert.Equal("42", new string(providerBuffer, 0, providerWritten));
+		Assert.True(ShadowNumberFormatting.TryFormatUInt64(42, default, provider, providerBuffer, out providerWritten));
+		Assert.Equal("42", new string(providerBuffer, 0, providerWritten));
+		Assert.Equal(42L.ToString("000.0"), ShadowNumberFormatting.FormatInt64(42, "000.0", null));
+		Assert.Equal(42UL.ToString("000.0"), ShadowNumberFormatting.FormatUInt64(42, "000.0", null));
+	}
+
+	[Theory]
+	[InlineData(0u)]
+	[InlineData(9u)]
+	[InlineData(10u)]
+	[InlineData(99u)]
+	[InlineData(100u)]
+	[InlineData(999_999_999u)]
+	[InlineData(1_000_000_000u)]
+	[InlineData(2_147_483_647u)]
+	[InlineData(2_147_483_648u)]
+	[InlineData(uint.MaxValue)]
+	public void CoreLibDefaultUnsignedFormattingUsesExactCapacityWithoutPartialWrites(uint value)
+	{
+		var expected = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+		for (var size = 0; size <= expected.Length + 1; size++)
+		{
+			var destination = new char[size];
+			Array.Fill(destination, '#');
+			var success = ShadowNumberFormatting.TryFormatUInt32(value, default, null, destination, out var written);
+			Assert.Equal(size >= expected.Length, success);
+			Assert.Equal(success ? expected.Length : 0, written);
+			Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(destination));
+		}
+		CheckAmbientCustomSpan(value, 10);
+		var providerBuffer = new char[10];
+		Assert.True(ShadowNumberFormatting.TryFormatUInt32(value, default, System.Globalization.CultureInfo.InvariantCulture, providerBuffer, out var providerWritten));
+		Assert.Equal(expected, new string(providerBuffer, 0, providerWritten));
+		Assert.Equal(value.ToString("000.0"), ShadowNumberFormatting.FormatUInt32(value, "000.0", null));
+	}
+
+	[Theory]
+	[InlineData(0)]
+	[InlineData(9)]
+	[InlineData(10)]
+	[InlineData(-1)]
+	[InlineData(-100)]
+	[InlineData(int.MinValue)]
+	[InlineData(int.MaxValue)]
+	public void CoreLibDefaultIntegerFormattingUsesExactCapacityWithoutPartialWrites(int value)
+	{
+		var expected = value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+		for (var size = 0; size <= expected.Length + 1; size++)
+		{
+			var destination = new char[size];
+			Array.Fill(destination, '#');
+			var success = ShadowNumberFormatting.TryFormatInt32(value, -1, default, null, destination, out var written);
+			Assert.Equal(size >= expected.Length, success);
+			Assert.Equal(success ? expected.Length : 0, written);
+			Assert.Equal(success ? expected + new string('#', size - written) : new string('#', size), new string(destination));
+		}
+		CheckAmbientCustomSpan(value, 12);
+		var providerBuffer = new char[12];
+		Assert.True(ShadowNumberFormatting.TryFormatInt32(value, -1, default, System.Globalization.CultureInfo.InvariantCulture, providerBuffer, out var providerWritten));
+		Assert.Equal(expected, new string(providerBuffer, 0, providerWritten));
+	}
+
 	[Theory]
 	[InlineData(0L)]
 	[InlineData(1L)]
@@ -57,6 +619,40 @@ public sealed class ManagedRuntimeShadowTests
 	[Fact]
 	public void ShadowCultureInfoOmitsDateTimeGlobalization() =>
 		Assert.Null(new ShadowCultureInfo().GetDateTimeFormat());
+
+	[Fact]
+	public void ShadowInvariantCultureRetainsSharedReadOnlyNumberSettings()
+	{
+		var culture = ShadowCultureInfo.GetInvariantCulture();
+		var info = culture.NumberFormat;
+		System.GC.Collect();
+		Assert.Same(culture, ShadowCultureInfo.GetInvariantCulture());
+		Assert.Same(info, ShadowCultureInfo.GetInvariantCulture().NumberFormat);
+		Assert.True(culture.IsReadOnly);
+		Assert.True(info.IsReadOnly);
+		Assert.Throws<InvalidOperationException>(() => culture.NumberFormat = new System.Globalization.NumberFormatInfo());
+		Assert.Throws<InvalidOperationException>(() => info.NegativeSign = "changed");
+	}
+
+	[Fact]
+	public void ShadowCultureInfoCachesMutableInvariantNumbersAndRejectsUnavailableLocaleData()
+	{
+		var culture = new ShadowCultureInfo();
+		culture.InitializeName("");
+		var info = culture.GetNumberFormat();
+		Assert.Same(info, culture.GetNumberFormat());
+		Assert.False(info.IsReadOnly);
+		Assert.Equal("-", info.NegativeSign);
+		Assert.Equal(".", info.NumberDecimalSeparator);
+		var replacement = new System.Globalization.NumberFormatInfo { NegativeSign = "custom" };
+		culture.SetNumberFormat(replacement);
+		Assert.Same(replacement, culture.GetNumberFormat());
+		Assert.Throws<ArgumentNullException>(() => culture.SetNumberFormat(null!));
+		Assert.Same(replacement, culture.GetNumberFormat());
+		Assert.Throws<ArgumentNullException>(() => culture.InitializeName(null!));
+		Assert.Throws<NotSupportedException>(() => culture.InitializeName("en-US"));
+		Assert.Throws<NotSupportedException>(() => culture.InitializeNameWithOverrides("fi-FI", false));
+	}
 
 	[Fact]
 	public void ShadowSystemResourcesReturnsTheRequestedKey()
@@ -492,6 +1088,38 @@ public sealed class ManagedRuntimeShadowTests
 		var empty = new ShadowList<int>().GetEnumerator();
 		Assert.False(empty.MoveNext());
 		Assert.Equal(0, empty.Current);
+	}
+
+	[Fact]
+	public void ShadowListInterfaceEnumerationMatchesCoreLib()
+	{
+		Check(new List<string>(), new ShadowList<string>());
+		var actual = new ShadowList<string>(); actual.Add("first"); actual.Add("second");
+		Check(new List<string> { "first", "second" }, actual);
+		void Check(List<string> expected, ShadowList<string> shadow)
+		{
+			var expectedIterator = ((IEnumerable<string>)expected).GetEnumerator();
+			var actualIterator = ((IEnumerable<string>)shadow).GetEnumerator();
+			Assert.Equal(Observe(() => expectedIterator.Current), Observe(() => actualIterator.Current));
+			Assert.Equal(Observe(() => ((System.Collections.IEnumerator)expectedIterator).Current), Observe(() => ((System.Collections.IEnumerator)actualIterator).Current));
+			while (expectedIterator.MoveNext()) { Assert.True(actualIterator.MoveNext()); Assert.Equal(expectedIterator.Current, actualIterator.Current); }
+			Assert.False(actualIterator.MoveNext());
+			Assert.Equal(Observe(() => expectedIterator.Current), Observe(() => actualIterator.Current));
+			Assert.Equal(Observe(() => ((System.Collections.IEnumerator)expectedIterator).Current), Observe(() => ((System.Collections.IEnumerator)actualIterator).Current));
+			((System.Collections.IEnumerator)expectedIterator).Reset(); ((System.Collections.IEnumerator)actualIterator).Reset();
+			Assert.Equal(expectedIterator.MoveNext(), actualIterator.MoveNext());
+			expected.Add("mutation"); shadow.Add("mutation");
+			Assert.Equal(Observe(() => expectedIterator.MoveNext()), Observe(() => actualIterator.MoveNext()));
+			Assert.Equal(Observe(() => { ((System.Collections.IEnumerator)expectedIterator).Reset(); return null; }), Observe(() => { ((System.Collections.IEnumerator)actualIterator).Reset(); return null; }));
+			expectedIterator.Dispose(); actualIterator.Dispose();
+		}
+		static object? Observe(Func<object?> operation)
+		{
+			try { return operation(); } catch (InvalidOperationException) { return typeof(InvalidOperationException); }
+		}
+		IEnumerable<string> empty = new ShadowList<string>();
+		Assert.Same(empty.GetEnumerator(), empty.GetEnumerator());
+		Assert.Same(empty.GetEnumerator(), ((System.Collections.IEnumerable)empty).GetEnumerator());
 	}
 
 	[Fact]

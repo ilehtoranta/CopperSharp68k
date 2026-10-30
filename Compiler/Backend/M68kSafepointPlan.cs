@@ -319,10 +319,11 @@ internal static class M68kRootSynchronizer
 		M68kSafepointPlan plan)
 	{
 		const int EmptyRoot = -1;
-		var entryStates = function.Blocks.ToDictionary(
-			static block => block.Id,
-			static _ => new Dictionary<int, int>());
+		var entryStates = new Dictionary<int, Dictionary<int, int>>();
 		var exitStates = new Dictionary<int, Dictionary<int, int>>();
+		var lostFacts = function.Blocks.ToDictionary(
+			static block => block.Id,
+			static _ => new HashSet<int>());
 		var changed = true;
 		while (changed)
 		{
@@ -334,7 +335,21 @@ internal static class M68kRootSynchronizer
 					block,
 					exitStates,
 					plan);
-				if (!RootStatesEqual(entryStates[block.Id], incoming))
+				if (entryStates.TryGetValue(block.Id, out var priorIncoming))
+				{
+					// SSA aliases in a root slot can rotate around a loop. Once a
+					// previously inferred fact is lost, keep it unknown: repeatedly
+					// rediscovering aliases is non-monotone and can fail to converge.
+					foreach (var (slot, priorValue) in priorIncoming)
+					{
+						if (!incoming.TryGetValue(slot, out var value) || value != priorValue)
+							lostFacts[block.Id].Add(slot);
+					}
+				}
+				// Missing facts on the first visit may simply come from a
+				// predecessor not yet analyzed. Allow those facts to arrive later.
+				foreach (var slot in lostFacts[block.Id]) incoming.Remove(slot);
+				if (priorIncoming is null || !RootStatesEqual(priorIncoming, incoming))
 				{
 					entryStates[block.Id] = incoming;
 					changed = true;
@@ -396,6 +411,7 @@ internal static class M68kRootSynchronizer
 		IReadOnlyDictionary<int, Dictionary<int, int>> exitStates,
 		M68kSafepointPlan plan)
 	{
+		if (block.Id == function.EntryBlockId) return new Dictionary<int, int>();
 		Dictionary<int, int>? result = null;
 		foreach (var predecessorId in block.Predecessors)
 		{

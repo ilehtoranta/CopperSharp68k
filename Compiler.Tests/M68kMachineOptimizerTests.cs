@@ -15,6 +15,189 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kMachineOptimizerTests
 {
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void CanonicalGcOwnersTraverseSharedPhiPathsAndCycles(bool distinctOwners)
+	{
+		var function = new M68kMachineFunction("shared-gc-owner-paths", 0);
+		var block = AddBlock(function, 0, 0);
+		int Owner() => function.CreateValue(CilStackValueKind.Reference,
+			M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true).Id;
+		var firstOwner = Owner();
+		var secondOwner = distinctOwners ? Owner() : firstOwner;
+		var first = firstOwner;
+		var second = secondOwner;
+		var joined = new List<int>();
+		// Two shared inputs at each level create exponentially many paths,
+		// while the number of distinct dependency nodes stays small.
+		for (var depth = 0; depth < 40; depth++)
+		{
+			var nextFirst = Owner();
+			var nextSecond = Owner();
+			foreach (var value in new[] { nextFirst, nextSecond })
+			{
+				block.Phis.Add(new M68kMachinePhi(value,
+					new Dictionary<int, int> { [0] = first, [1] = second }));
+				joined.Add(value);
+			}
+			first = nextFirst;
+			second = nextSecond;
+		}
+		// Close a cycle without removing either terminal owner.
+		var cyclicInputs = new Dictionary<int, int>(block.Phis[0].Inputs) { [2] = first };
+		block.Phis[0] = block.Phis[0] with { Inputs = cyclicInputs };
+		var closedCycle = Owner();
+		block.Phis.Add(new M68kMachinePhi(closedCycle,
+			new Dictionary<int, int> { [0] = closedCycle }));
+		var canonical = M68kByrefProvenanceAnalyzer.BuildCanonicalGcOwners(function);
+		Assert.Equal(firstOwner, canonical[firstOwner]);
+		Assert.Equal(secondOwner, canonical[secondOwner]);
+		Assert.Equal(closedCycle, canonical[closedCycle]);
+		foreach (var value in joined)
+			Assert.Equal(distinctOwners ? value : firstOwner, canonical[value]);
+	}
+
+	[Theory]
+	[InlineData("owned")]
+	[InlineData("null")]
+	[InlineData("static")]
+	[InlineData("frame")]
+	[InlineData("borrowed")]
+	[InlineData("unknown")]
+	public void ByrefJoinsSelectAnExactGcOwnerAndRejectUntrackedLifetimes(string secondKind)
+	{
+		var function = new M68kMachineFunction("joined-byref-owners", 0);
+		var entry = AddBlock(function, 0, 0);
+		var first = AddBlock(function, 1, 1);
+		var second = AddBlock(function, 2, 2);
+		var join = AddBlock(function, 3, 3);
+		Connect(entry, first); Connect(entry, second); Connect(first, join); Connect(second, join);
+		var owners = new[] { 0, 1 }.Select(_ => function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true)).ToArray();
+		foreach (var owner in owners) entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0, definitions: [owner.Id], argumentIndex: owner.Id));
+		var addresses = new[] { 0, 1, 2 }.Select(_ => function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address)).ToArray();
+		first.Instructions.Add(function.CreateInstruction(M68kMachineOperation.ArrayAddress, 1, uses: [owners[0].Id], definitions: [addresses[0].Id]));
+		second.Instructions.Add(secondKind switch
+		{
+			"owned" => function.CreateInstruction(M68kMachineOperation.ArrayAddress, 2, uses: [owners[1].Id], definitions: [addresses[1].Id]),
+			"null" => function.CreateInstruction(M68kMachineOperation.Constant, 2, definitions: [addresses[1].Id], constantValue: M68kMachineConstant.Null) with { ManagedByrefProjection = M68kManagedByrefProjection.Null },
+			"static" => function.CreateInstruction(M68kMachineOperation.Address, 2, definitions: [addresses[1].Id], sourceInstruction: new CilInstruction(2, OpCodes.Ldsflda, 1, 3)),
+			"frame" => function.CreateInstruction(M68kMachineOperation.LocalAddress, 2, definitions: [addresses[1].Id], argumentIndex: 0),
+			"borrowed" => function.CreateInstruction(M68kMachineOperation.Argument, 2, definitions: [addresses[1].Id], argumentIndex: 2),
+			_ => function.CreateInstruction(M68kMachineOperation.Call, 2, definitions: [addresses[1].Id])
+		});
+		join.Phis.Add(new M68kMachinePhi(addresses[2].Id, new Dictionary<int, int> { [first.Id] = addresses[0].Id, [second.Id] = addresses[1].Id }));
+		var safepoint = function.CreateInstruction(M68kMachineOperation.Call, 3, uses: [addresses[2].Id], isSafepoint: true);
+		join.Instructions.Add(safepoint);
+		if (secondKind is "frame" or "borrowed" or "unknown")
+		{
+			Assert.Throws<M68kCompilationException>(() => M68kByrefOwnerRooting.Insert(function, allowCallerBorrowedByrefs: true));
+			Assert.DoesNotContain(join.Phis, phi => function.Values[phi.Definition].IsGcReference);
+			return;
+		}
+		M68kByrefOwnerRooting.Insert(function, allowCallerBorrowedByrefs: true);
+		var ownerPhi = Assert.Single(join.Phis, phi => function.Values[phi.Definition].IsGcReference);
+		Assert.Equal(owners[0].Id, ownerPhi.Inputs[first.Id]);
+		if (secondKind == "owned") Assert.Equal(owners[1].Id, ownerPhi.Inputs[second.Id]);
+		else Assert.Contains(entry.Instructions, instruction => instruction.Definitions.Contains(ownerPhi.Inputs[second.Id]) && instruction.ConstantValue == M68kMachineConstant.Null);
+		var keepAlive = Assert.Single(join.Instructions, instruction => instruction.Operation == M68kMachineOperation.ByrefOwnerKeepAlive);
+		Assert.Equal([ownerPhi.Definition], keepAlive.Uses);
+		Assert.True(join.Instructions.IndexOf(keepAlive) > join.Instructions.IndexOf(safepoint));
+		M68kCriticalEdgeSplitter.SplitPhiEdges(function);
+		M68kMachineIrVerifier.Verify(function);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void LoopByrefPhisRetainKnownProvenanceAndConservativelyMergeUnresolvedCycles(bool unknownIncoming)
+	{
+		var function = new M68kMachineFunction("loop-byref-provenance", 0);
+		var entry = AddBlock(function, 0, 0);
+		var loop = AddBlock(function, 1, 1);
+		Connect(entry, loop);
+		Connect(loop, loop);
+		var seed = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		var current = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		var next = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalAddress, 0, definitions: [seed.Id], argumentIndex: 0));
+		loop.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 1, uses: [current.Id], definitions: [next.Id]));
+		var inputs = new Dictionary<int, int> { [entry.Id] = seed.Id, [loop.Id] = next.Id };
+		if (unknownIncoming)
+		{
+			var unresolved = AddBlock(function, 2, 2);
+			Connect(loop, unresolved);
+			Connect(unresolved, unresolved);
+			Connect(unresolved, loop);
+			var unknown = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+			unresolved.Phis.Add(new M68kMachinePhi(unknown.Id, new Dictionary<int, int> { [loop.Id] = unknown.Id, [unresolved.Id] = unknown.Id }));
+			inputs[unresolved.Id] = unknown.Id;
+		}
+		loop.Phis.Add(new M68kMachinePhi(current.Id, inputs));
+
+		var provenance = M68kByrefProvenanceAnalyzer.Analyze(function, allowCallerBorrowedByrefs: true, out _);
+		Assert.Equal(M68kByrefProvenanceKind.Frame, provenance[seed.Id].Kind);
+		var expected = unknownIncoming ? M68kByrefProvenanceKind.Unknown : M68kByrefProvenanceKind.Frame;
+		Assert.Equal(expected, provenance[current.Id].Kind);
+		Assert.Equal(expected, provenance[next.Id].Kind);
+	}
+
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void ReadonlyByrefArgumentCannotBecomeWritableThroughReassignmentOrLoopPhi(bool reassign)
+	{
+		using var module = new CompilationModule(typeof(CompilerFixtures).Assembly.Location);
+		var method = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::ReadonlyByrefWriteTemplate");
+		var function = new M68kMachineFunction(method.DisplayName, 0);
+		var entry = AddBlock(function, 0, 0);
+		var loop = AddBlock(function, 1, 1);
+		Connect(entry, loop);
+		Connect(loop, loop);
+		var seed = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		var current = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		var next = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		if (reassign)
+		{
+			var writable = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+			entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.ArgumentAddress, 0, definitions: [writable.Id], argumentIndex: 1));
+			entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 0, uses: [writable.Id], definitions: [seed.Id],
+				sourceInstruction: new CilInstruction(0, OpCodes.Starg_S, 0, 1)));
+		}
+		else
+			entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0, definitions: [seed.Id], argumentIndex: 0));
+		loop.Phis.Add(new M68kMachinePhi(current.Id, new Dictionary<int, int> { [entry.Id] = seed.Id, [loop.Id] = next.Id }));
+		loop.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 1, uses: [current.Id], definitions: [next.Id]));
+		loop.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Store, 2, uses: [next.Id], memoryEffect: M68kMachineMemoryEffect.Write,
+			sourceInstruction: new CilInstruction(2, OpCodes.Stind_I4, null, 3)));
+		var error = Assert.Throws<M68kCompilationException>(() => M68kManagedByrefTypeTracker.TrackAndValidate(function, method, module));
+		Assert.Equal(M68kDiagnosticIds.UnsupportedInstruction, error.DiagnosticId);
+		Assert.Contains("Write through readonly managed byref", error.Message);
+	}
+
+	[Fact]
+	public void SpanElementOwnerCopyRetainsReadonlyReferentType()
+	{
+		using var module = new CompilationModule(typeof(CompilerFixtures).Assembly.Location);
+		var method = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::ReadonlyByrefWriteTemplate");
+		var function = new M68kMachineFunction(method.DisplayName, 0);
+		var block = AddBlock(function, 0, 0);
+		var address = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		var owner = function.CreateValue(CilStackValueKind.Reference, M68kMachineValueWidth.Long, M68kRegisterSet.Address, isGcReference: true);
+		var element = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0, definitions: [address.Id], argumentIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 1, uses: [address.Id, owner.Id], definitions: [element.Id]) with
+			{ ManagedByrefProjection = M68kManagedByrefProjection.SpanData });
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Store, 2, uses: [element.Id], memoryEffect: M68kMachineMemoryEffect.Write,
+			sourceInstruction: new CilInstruction(2, OpCodes.Stind_I4, null, 3)));
+		var error = Assert.Throws<M68kCompilationException>(() => M68kManagedByrefTypeTracker.TrackAndValidate(function, method, module));
+		Assert.Contains("Write through readonly managed byref", error.Message);
+		Assert.True(function.ManagedByrefTypes[element.Id].IsReadOnly);
+		Assert.Equal("int", function.ManagedByrefTypes[element.Id].ReferentType.DisplayName);
+		var provenance = M68kByrefProvenanceAnalyzer.Analyze(function, allowCallerBorrowedByrefs: true, out _);
+		Assert.Equal(owner.Id, provenance[element.Id].OwnerValue);
+	}
+
 	[Fact]
 	public void CallAbiLoadsPlatformBaseDirectlyIntoFixedRegister()
 	{
@@ -1568,6 +1751,47 @@ public sealed class M68kMachineOptimizerTests
 			instruction.Operation == M68kMachineOperation.LocalLoad);
 	}
 
+	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void PromotedFixedStoreOperandSurvivesRegisterReuse(bool gcReference)
+	{
+		var function = new M68kMachineFunction("memory-fixed-reference", 0);
+		var block = AddBlock(function, 0, 0);
+		function.LocalHomes[0] = new M68kFrameHome(0, 4, false);
+		var memory = FrameMemory(0, 4) with { IsManagedRoot = gcReference };
+		var firstSource = gcReference ? CreateReference(function) : CreateLong(function);
+		var secondSource = gcReference ? CreateReference(function) : CreateLong(function);
+		var kind = gcReference ? CilStackValueKind.Reference : CilStackValueKind.Int32;
+		var first = function.CreateValue(kind, M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.A4), precoloredRegister: M68kRegister.A4, isGcReference: gcReference);
+		var second = function.CreateValue(kind, M68kMachineValueWidth.Long,
+			M68kRegisterSet.From(M68kRegister.A4), precoloredRegister: M68kRegister.A4, isGcReference: gcReference);
+		var loaded = gcReference ? CreateReference(function) : CreateLong(function);
+		AddArgument(function, block, firstSource.Id, 0);
+		AddArgument(function, block, secondSource.Id, 1);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 2,
+			uses: [firstSource.Id], definitions: [first.Id]));
+		block.Instructions.Add(FrameStore(function, memory, first.Id, 3));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 4, isSafepoint: true));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 5,
+			uses: [secondSource.Id], definitions: [second.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 6, uses: [second.Id]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 7, isSafepoint: true));
+		block.Instructions.Add(FrameLoad(function, memory, loaded.Id, 8));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 9, uses: [loaded.Id]));
+
+		var statistics = RunPromotion(function);
+		Assert.Equal(1, statistics.LoadsForwarded);
+		Assert.Equal(1, statistics.StoresRemoved);
+		var roots = block.Instructions.Where(static instruction => instruction.Operation == M68kMachineOperation.GcKeepAlive).ToArray();
+		Assert.Equal(gcReference ? 2 : 0, roots.Length);
+		Assert.All(roots, root => Assert.All(root.Uses, value => Assert.Null(function.Values[value].PrecoloredRegister)));
+		var allocated = M68kRegisterAllocatorPipeline.Run(function);
+		Assert.All(roots, root => Assert.All(root.Uses, value =>
+			Assert.Contains(value, allocated.Safepoints.RootSlotByValue.Keys)));
+	}
+
 	[Fact]
 	public void PromotedManagedFieldKeepsValueAndOwnerAliveAtSafepoint()
 	{
@@ -1876,6 +2100,39 @@ public sealed class M68kMachineOptimizerTests
 		Assert.Equal(
 			M68kParameterMemoryEffect.Capture,
 			summaries[callerMethod.Identity].EffectForParameter(2));
+	}
+
+	[Theory]
+	[InlineData((int)M68kMachineOperation.Box)]
+	[InlineData((int)M68kMachineOperation.TypeTest)]
+	[InlineData((int)M68kMachineOperation.Unbox)]
+	[InlineData((int)M68kMachineOperation.ArgumentLoad)]
+	[InlineData((int)M68kMachineOperation.ArgumentAddress)]
+	public void MethodMemorySummariesRetainParametersExposedThroughCastsAndMutableHomes(int operationValue)
+	{
+		var operation = (M68kMachineOperation)operationValue;
+		var method = CreateMethod("Summary.Module", "Summary::Expose", [new CilInstruction(0, OpCodes.Nop, null, 1)], methodRow: 1);
+		var callerMethod = CreateMethod("Summary.Module", "Summary::Caller", [new CilInstruction(0, OpCodes.Nop, null, 1)], methodRow: 2);
+		var function = new M68kMachineFunction(method.DisplayName, 0, method);
+		var block = AddBlock(function, 0, 0);
+		var parameter = CreateReference(function);
+		var result = CreateReference(function);
+		AddArgument(function, block, parameter.Id, 0);
+		var home = operation is M68kMachineOperation.ArgumentLoad or M68kMachineOperation.ArgumentAddress;
+		block.Instructions.Add(function.CreateInstruction(operation, 1,
+			uses: home ? [] : [parameter.Id], definitions: [result.Id], argumentIndex: home ? 0 : null));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 2, uses: [result.Id]));
+		var caller = new M68kMachineFunction(callerMethod.DisplayName, 0, callerMethod);
+		var callerBlock = AddBlock(caller, 0, 0);
+		var argument = CreateReference(caller);
+		AddArgument(caller, callerBlock, argument.Id, 0);
+		AddSummaryCall(caller, callerBlock, new CilInstruction(0, OpCodes.Call, 0x06000001, 1), method, [argument.Id]);
+		using var module = new CompilationModule(typeof(CompilerFixtures).Assembly.Location);
+		var summaries = M68kMethodMemorySummaryAnalyzer.Compute([method, callerMethod],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction> { [method.Identity] = function, [callerMethod.Identity] = caller }, module);
+		var expected = M68kParameterMemoryEffect.Read | M68kParameterMemoryEffect.Write | M68kParameterMemoryEffect.Capture;
+		Assert.Equal(expected, summaries[method.Identity].EffectForParameter(0));
+		Assert.Equal(expected, summaries[callerMethod.Identity].EffectForParameter(0));
 	}
 
 	[Fact]

@@ -41,6 +41,7 @@ internal static class M68kAllocatedFramePlanner
 		var gcHomeOffsets = new HashSet<int>();
 		foreach (var home in function.LocalHomes.Values.OrderBy(static home => home.Index))
 		{
+			if (home.Size <= 0) throw new InvalidOperationException("A local frame home must have a positive size.");
 			nextOffset = Align(nextOffset, Math.Min(home.Size, 4));
 			localOffsets.Add(home.Index, nextOffset);
 			if (home.IsGcReference)
@@ -55,6 +56,7 @@ internal static class M68kAllocatedFramePlanner
 		}
 		foreach (var home in function.ArgumentHomes.Values.OrderBy(static home => home.Index))
 		{
+			if (home.Size <= 0) throw new InvalidOperationException("An argument frame home must have a positive size.");
 			nextOffset = Align(nextOffset, Math.Min(home.Size, 4));
 			argumentHomeOffsets.Add(home.Index, nextOffset);
 			if (home.IsGcReference)

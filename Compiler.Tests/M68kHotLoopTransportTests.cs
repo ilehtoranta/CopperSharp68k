@@ -6,6 +6,48 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kHotLoopTransportTests
 {
 	[Theory]
+	[InlineData("dead-before-branch", true)]
+	[InlineData("address-move", true)]
+	[InlineData("live-on-one-edge", false)]
+	[InlineData("live-flags", false)]
+	[InlineData("partial-overwrite", false)]
+	[InlineData("unowned-range", false)]
+	[InlineData("return-address", false)]
+	public void ApplicationRegisterMovesRespectCfgLivenessAndMetadata(string shape, bool smaller)
+	{
+		var before = Build(false);
+		var after = Build(true);
+		Assert.Equal(smaller, after.Bytes.Length < before.Bytes.Length);
+		foreach (var model in Models)
+		foreach (var value in new uint[] { 0, 1, 0x7fffffff, 0x80000000, 0xffffffff })
+		foreach (var flags in Enumerable.Range(0, 32))
+			Equal(Run(before, model, value, flags), Run(after, model, value, flags));
+
+		LinkedCode Build(bool enabled)
+		{
+			var assembler = NewAssembler(enabled);
+			assembler.GeneratedTransportRegistersOnly = true;
+			if (shape == "unowned-range") assembler.GeneratedCodeSizeRanges = [];
+			assembler.Mark("start");
+			assembler.EmitWord(0x5286); // ADDQ.L #1,D6: retain a distinct referenced method entry
+			if (shape == "return-address") assembler.MarkReturnAddress("resume");
+			assembler.EmitWord(shape == "address-move" ? (ushort)0x204A : (ushort)0x2007);
+			if (shape != "live-flags") assembler.EmitWord(0x4A84); // TST.L D4
+			assembler.EmitBranch(M68kCondition.Equal, "alternate");
+			assembler.EmitWord(0x5285); // ADDQ.L #1,D5: keep the two successors distinct
+			assembler.EmitBranch(M68kCondition.True, "join");
+			assembler.Mark("alternate");
+			if (shape == "live-on-one-edge") assembler.EmitWord(0x2600); // MOVE.L D0,D3
+			else assembler.EmitWord(0x5385); // SUBQ.L #1,D5
+			assembler.Mark("join");
+			assembler.EmitWord(shape == "address-move" ? (ushort)0x204B :
+				shape == "partial-overwrite" ? (ushort)0x1003 : (ushort)0x7000);
+			Return(assembler); assembler.Mark("end");
+			return Finish(assembler, M68kCpuTarget.M68000);
+		}
+	}
+
+	[Theory]
 	[InlineData("compare-source", true)]
 	[InlineData("compare-destination", true)]
 	[InlineData("compare-both", true)]

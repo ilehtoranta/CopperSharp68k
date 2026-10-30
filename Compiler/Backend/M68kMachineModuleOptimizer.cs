@@ -184,14 +184,19 @@ internal static class M68kMachineModuleOptimizer
 			}
 		}
 
+		foreach (var function in functions.Values)
+			if (FoldInlinedGuestMemoryDisplacements(function, module))
+				function.OptimizationStatistics = M68kMachineOptimizer.Run(function, cpu);
+
 		RunMemoryPromotionFixedPoint(
 			methods,
 			methodsByIdentity,
 			functions,
 			module,
 			cpu);
-
 		beforeRetention?.Invoke();
+		foreach (var function in functions.Values)
+			CilMachineIrBuilder.EliminateUnusedLocalHomes(function);
 		var perMethod = functions
 			.Where(static item => item.Value.OptimizationStatistics is not null)
 			.ToDictionary(
@@ -253,6 +258,58 @@ internal static class M68kMachineModuleOptimizer
 		}
 	}
 
+	private static bool FoldInlinedGuestMemoryDisplacements(M68kMachineFunction function, CompilationModule module)
+	{
+		var definitions = function.Blocks.SelectMany(b => b.Instructions)
+			.SelectMany(i => i.Definitions.Select(v => (Value: v, Instruction: i)))
+			.ToDictionary(p => p.Value, p => p.Instruction);
+		var changed = false;
+		foreach (var block in function.Blocks)
+		for (var index = 0; index < block.Instructions.Count; index++)
+		{
+			var instruction = block.Instructions[index];
+			if (instruction.Immediate is not null || instruction.Uses.Length < 2 ||
+				!IsGuestMemoryIntrinsic(instruction, module)) continue;
+			var value = instruction.Uses[1];
+			var visited = new HashSet<int>();
+			while (visited.Add(value) && definitions.TryGetValue(value, out var definition))
+			{
+				if (definition.Operation == M68kMachineOperation.Copy && definition.Uses is [var source])
+				{
+					value = source;
+					continue;
+				}
+				if (definition.ConstantValue is { } constant && constant.TryGetIntegral(out var displacement) &&
+					displacement is >= short.MinValue and <= short.MaxValue)
+				{
+					block.Instructions[index] = instruction with
+					{
+						Uses = instruction.Uses.RemoveAt(1),
+						Immediate = (int)displacement
+					};
+					if (definitions.TryGetValue(instruction.Uses[0], out var addressCopy) &&
+						addressCopy.Operation == M68kMachineOperation.Copy)
+					{
+						var copyIndex = block.Instructions.FindIndex(i => i.Id == addressCopy.Id);
+						if (copyIndex >= 0) block.Instructions[copyIndex] = addressCopy with { AllowCopyCoalescing = true };
+					}
+					// The indexed-store ABI reserved D1 for its value. With a
+					// displacement embedded in the instruction any data register works.
+					if (instruction.Uses.Length == 3 && definitions.TryGetValue(instruction.Uses[2], out var valueCopy) &&
+						valueCopy.Operation == M68kMachineOperation.Copy && valueCopy.Definitions is [var stored])
+						function.Values[stored] = function.Values[stored] with
+						{
+							AllowedRegisters = M68kRegisterSet.Data,
+							PrecoloredRegister = null
+						};
+					changed = true;
+				}
+				break;
+			}
+		}
+		return changed;
+	}
+
 	private static void RunMemoryPromotionFixedPoint(
 		IReadOnlyList<CilMethod> methods,
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod> methodsByIdentity,
@@ -263,6 +320,15 @@ internal static class M68kMachineModuleOptimizer
 		const int maximumIterations = 8;
 		for (var iteration = 0; iteration < maximumIterations; iteration++)
 		{
+			var changed = false;
+			foreach (var function in functions.Values)
+			{
+				if (M68kLocalViewScalarizer.Run(function, module))
+				{
+					function.OptimizationStatistics = M68kMachineOptimizer.Run(function, cpu);
+					changed = true;
+				}
+			}
 			var summaries = M68kMethodMemorySummaryAnalyzer.Compute(
 				methods,
 				functions,
@@ -287,7 +353,6 @@ internal static class M68kMachineModuleOptimizer
 				functions,
 				module);
 			var localGlobals = FindLocallyOwnedGlobals(functions);
-			var changed = false;
 			foreach (var (identity, function) in functions)
 			{
 				if (!methodsByIdentity.TryGetValue(identity, out var method) ||
@@ -549,6 +614,11 @@ internal static class M68kMachineModuleOptimizer
 				}
 				var aggressive = (targetMethod.ImplAttributes &
 					MethodImplAttributes.AggressiveInlining) != 0;
+				var valueTypeAccessor = aggressive && targetMethod.Signature.Header.IsInstance &&
+					(targetMethod.Attributes & MethodAttributes.SpecialName) != 0 &&
+					(targetMethod.Name.StartsWith("get_", StringComparison.Ordinal) ||
+					 targetMethod.Name.StartsWith("set_", StringComparison.Ordinal)) &&
+					module.GetMethodDeclaringType(targetMethod).Kind == CilTypeKind.ValueType;
 				var trivialValueTypeConstructor =
 					IsTrivialValueTypeConstructor(
 						targetMethod,
@@ -564,6 +634,7 @@ internal static class M68kMachineModuleOptimizer
 						module,
 						aggressive,
 						trivialValueTypeConstructor,
+						valueTypeAccessor,
 						additionalMemoryHelper,
 						out var body,
 						out var arguments,
@@ -629,7 +700,7 @@ internal static class M68kMachineModuleOptimizer
 				// field store. Counting them as lasting growth would retain a BSR/RTS
 				// pair for a strictly smaller, faster local store.
 				var forceInline = !additionalMemoryHelper && guestMemoryIntrinsicWrapper ||
-					trivialValueTypeConstructor;
+					trivialValueTypeConstructor || valueTypeAccessor;
 				var acceptedNormally = delta <= 0 &&
 					M68kTargetCostModel.Accept(beforeCost, afterCost, cpu, sizeFirstCosts);
 				var pressurePenalty = checked(4L * Math.Max(
@@ -754,6 +825,20 @@ internal static class M68kMachineModuleOptimizer
 			}
 		}
 
+		// APTR is a verified transparent word. Its caller can carry those raw
+		// bits as ManagedPointer while the wrapper's argument is Int32. Admit
+		// that equivalence only for the intrinsic's address operand; offsets,
+		// stored values, results and GC references retain exact kind checks.
+		var nativeAddressValues = new HashSet<int>();
+		if (parameterCount > 0 &&
+			targetMethod.Signature.ParameterTypes[0] is
+				{ Kind: CilTypeKind.ValueType, DisplayName: "Amiga.APTR" } addressType &&
+			module.IsTransparentScalarType(addressType) &&
+			argumentValues.TryGetValue(instanceArgumentCount, out var addressArgument))
+		{
+			nativeAddressValues.Add(addressArgument);
+			nativeAddressValues.Add(intrinsic.Uses[0]);
+		}
 		var admittedInstructions = new HashSet<int> { intrinsic.Id };
 		var operandPlans = new List<(
 			int WrapperArgumentIndex,
@@ -951,6 +1036,19 @@ internal static class M68kMachineModuleOptimizer
 			}
 			return false;
 		}
+		// The wrapper's return used a fixed ABI register. The intrinsic has
+		// no such ABI: retaining D0 here would force live loads out of D0 even
+		// when the new operation can write directly to another register.
+		for (var index = 0; index < call.Definitions.Length; index++)
+		{
+			var result = caller.Values[call.Definitions[index]];
+			var nativeResult = target.Values[intrinsic.Definitions[index]];
+			caller.Values[result.Id] = result with
+			{
+				AllowedRegisters = nativeResult.AllowedRegisters,
+				PrecoloredRegister = nativeResult.PrecoloredRegister
+			};
+		}
 		return true;
 
 		int CloneCopy(M68kMachineInstruction sourceCopy, int sourceValue)
@@ -998,16 +1096,21 @@ internal static class M68kMachineModuleOptimizer
 			return clonedValue.Id;
 		}
 
-		static bool CanSubstituteMachineValue(
+		bool CanSubstituteMachineValue(
 			M68kMachineValue replacement,
 			M68kMachineValue original) =>
 			HaveCompatibleRepresentation(replacement, original) &&
 			replacement.AllowedRegisters.Except(original.AllowedRegisters).IsEmpty;
 
-		static bool HaveCompatibleRepresentation(
+		bool HaveCompatibleRepresentation(
 			M68kMachineValue replacement,
 			M68kMachineValue original) =>
-			replacement.Kind == original.Kind &&
+			(replacement.Kind == original.Kind ||
+			 nativeAddressValues.Contains(original.Id) &&
+			 replacement.Width == M68kMachineValueWidth.Long &&
+			 !replacement.IsGcReference && !original.IsGcReference &&
+			 replacement.Kind is CilStackValueKind.Int32 or CilStackValueKind.ManagedPointer &&
+			 original.Kind is CilStackValueKind.Int32 or CilStackValueKind.ManagedPointer) &&
 			replacement.Width == original.Width &&
 			replacement.IsGcReference == original.IsGcReference;
 
@@ -1118,13 +1221,11 @@ internal static class M68kMachineModuleOptimizer
 		if (constructor.Name != ".ctor" ||
 			!constructor.Signature.Header.IsInstance ||
 			!constructor.Signature.ReturnType.IsVoid ||
-			constructor.Signature.ParameterTypes is not [var parameter] ||
-			parameter.Kind != CilTypeKind.UnsignedInteger ||
-			parameter.Size != 4 ||
+			constructor.Signature.ParameterTypes.Length is < 1 or > 3 ||
 			constructor.Locals.Length != 0 ||
 			constructor.ExceptionRegions.Count != 0 ||
 			module.GetMethodDeclaringType(constructor).Kind != CilTypeKind.ValueType ||
-			logicalCall.ArgumentValueIds.Length != 2 ||
+			logicalCall.ArgumentValueIds.Length != constructor.Signature.ParameterTypes.Length + 1 ||
 			logicalCall.ResultValueIds.Length != 0)
 		{
 			return false;
@@ -1133,29 +1234,27 @@ internal static class M68kMachineModuleOptimizer
 		var body = constructor.Instructions
 			.Where(static instruction => instruction.OpCode != OpCodes.Nop)
 			.ToArray();
-		if (body is not [var loadThis, var loadValue, var store, var returnInstruction] ||
-			!TryGetArgumentIndex(loadThis, out var thisIndex) ||
-			thisIndex != 0 ||
-			!TryGetArgumentIndex(loadValue, out var valueIndex) ||
-			valueIndex != 1 ||
-			store.OpCode != OpCodes.Stfld ||
-			returnInstruction.OpCode != OpCodes.Ret)
+		var count = constructor.Signature.ParameterTypes.Length;
+		if (body.Length != count * 3 + 1 || body[^1].OpCode != OpCodes.Ret)
 		{
 			return false;
 		}
-
-		var field = module.ResolveFieldToken(
-			(int)store.Operand!,
-			constructor,
-			store.Offset);
-		return !field.IsStatic &&
-			field.DeclaringType == constructor.DeclaringType &&
-			string.Equals(
-				field.ModuleName,
-				constructor.ModuleName,
-				StringComparison.Ordinal) &&
-			field.Type.Kind == CilTypeKind.UnsignedInteger &&
-			field.Type.Size == 4;
+		for (var index = 0; index < count; index++)
+		{
+			var store = body[index * 3 + 2];
+			if (!TryGetArgumentIndex(body[index * 3], out var thisIndex) || thisIndex != 0 ||
+				!TryGetArgumentIndex(body[index * 3 + 1], out var valueIndex) ||
+				valueIndex < 1 || valueIndex > count || store.OpCode != OpCodes.Stfld)
+				return false;
+			var parameter = constructor.Signature.ParameterTypes[valueIndex - 1];
+			var field = module.ResolveFieldToken((int)store.Operand!, constructor, store.Offset);
+			if (field.IsStatic || field.DeclaringType != constructor.DeclaringType ||
+				field.ModuleName != constructor.ModuleName || field.Type != parameter ||
+				parameter.Kind == CilTypeKind.ManagedReference ||
+				!(parameter.IsSupportedScalar && parameter.Size <= 4 || module.IsTransparentScalarType(parameter)))
+				return false;
+		}
+		return true;
 
 		static bool TryGetArgumentIndex(
 			CilInstruction instruction,
@@ -1170,6 +1269,11 @@ internal static class M68kMachineModuleOptimizer
 			if (op == OpCodes.Ldarg_1)
 			{
 				index = 1;
+				return true;
+			}
+			if (op == OpCodes.Ldarg_2 || op == OpCodes.Ldarg_3)
+			{
+				index = op == OpCodes.Ldarg_2 ? 2 : 3;
 				return true;
 			}
 			if (op == OpCodes.Ldarg || op == OpCodes.Ldarg_S)
@@ -1188,6 +1292,7 @@ internal static class M68kMachineModuleOptimizer
 		CompilationModule module,
 		bool allowGuestMemoryIntrinsic,
 		bool allowTrivialValueTypeConstructor,
+		bool allowValueTypeAccessor,
 		bool allowAdditionalMemory,
 		out IReadOnlyList<M68kMachineInstruction> body,
 		out IReadOnlyDictionary<int, int> arguments,
@@ -1224,9 +1329,26 @@ internal static class M68kMachineModuleOptimizer
 				return false;
 			}
 		}
+		if (allowValueTypeAccessor)
+		{
+			foreach (var load in instructions.Where(i => i.Operation == M68kMachineOperation.ArgumentLoad))
+			{
+				if (load.ArgumentIndex is not { } index || index < 0 || index >= logicalCall.ArgumentValueIds.Length ||
+					load.Definitions is not [var value] || load.MemoryOffset != 0 || load.MemorySize != 4 ||
+					!target.ArgumentHomes.TryGetValue(index, out var home) || home.Size != 4 || home.HasGcReferences ||
+					instructions.Any(i => i.ArgumentIndex == index && i.Operation is
+						M68kMachineOperation.ArgumentAddress or M68kMachineOperation.ArgumentStore)) continue;
+				// An address-only scalar parameter may have no explicit Argument
+				// value; its prologue home is initialized by the ABI. Once Raw has
+				// become a read-only ArgumentLoad, the caller's argument is its seed.
+				argumentMap[value] = logicalCall.ArgumentValueIds[index];
+			}
+		}
 		var inlineBody = instructions
 			.Where(static instruction => instruction.Operation is not
 				M68kMachineOperation.Argument and not M68kMachineOperation.Return)
+			.Where(instruction => instruction.Operation != M68kMachineOperation.ArgumentLoad ||
+				instruction.Definitions is not [var value] || !argumentMap.ContainsKey(value))
 			.ToArray();
 		var guestMemoryIntrinsicCount = inlineBody.Count(instruction =>
 			IsGuestMemoryIntrinsic(instruction, module));
@@ -1235,7 +1357,7 @@ internal static class M68kMachineModuleOptimizer
 		var ordinaryMemoryCount = inlineBody.Count(IsOrdinaryMemory);
 		var isTrivialValueTypeConstructorBody =
 			allowTrivialValueTypeConstructor &&
-			trivialConstructorStoreCount == 1 &&
+			trivialConstructorStoreCount is >= 1 and <= 3 &&
 			inlineBody.All(instruction =>
 				IsPureScalarInstruction(instruction) ||
 				IsTrivialValueTypeConstructorStore(instruction));
@@ -1243,11 +1365,14 @@ internal static class M68kMachineModuleOptimizer
 			!IsPureScalarInstruction(instruction) &&
 			!(isTrivialValueTypeConstructorBody &&
 			  IsTrivialValueTypeConstructorStore(instruction)) &&
+			!(allowValueTypeAccessor && IsOrdinaryMemory(instruction) &&
+			  instruction.Operation == M68kMachineOperation.Load &&
+			  instruction.SourceInstruction?.OpCode == OpCodes.Ldfld) &&
 			!(allowAdditionalMemory && IsOrdinaryMemory(instruction)) &&
 			!((allowGuestMemoryIntrinsic || allowAdditionalMemory) &&
 			  IsGuestMemoryIntrinsic(instruction, module))) ||
-			guestMemoryIntrinsicCount + ordinaryMemoryCount > (allowAdditionalMemory ? 3 : 1) ||
-			guestMemoryIntrinsicCount + ordinaryMemoryCount != 0 && inlineBody.Length > (allowAdditionalMemory ? 24 : 8))
+			guestMemoryIntrinsicCount + ordinaryMemoryCount > (allowAdditionalMemory || allowValueTypeAccessor || isTrivialValueTypeConstructorBody ? 3 : 1) ||
+			guestMemoryIntrinsicCount + ordinaryMemoryCount != 0 && inlineBody.Length > (allowAdditionalMemory || allowValueTypeAccessor || isTrivialValueTypeConstructorBody ? 24 : 8))
 		{
 			return false;
 		}
@@ -1340,6 +1465,8 @@ internal static class M68kMachineModuleOptimizer
 					isRematerializable: source.IsRematerializable,
 					spillWeight: source.SpillWeight);
 				values.Add(definition, clone.Id);
+				if (target.ManagedByrefTypes.TryGetValue(definition, out var byrefType))
+					caller.ManagedByrefTypes[clone.Id] = byrefType;
 			}
 		}
 		// Logical call operands outlive their physical materialization. For
@@ -1407,6 +1534,13 @@ internal static class M68kMachineModuleOptimizer
 			var mappedReturn = values.GetValueOrDefault(
 				returnValues[index],
 				arguments.GetValueOrDefault(returnValues[index]));
+			var returned = caller.Values[mappedReturn];
+			var resultValue = caller.Values[logicalCall.ResultValueIds[index]];
+			if (!returned.IsGcReference && returned.Width == M68kMachineValueWidth.Long &&
+				returned.AllowedRegisters == M68kRegisterSet.DataOrAddress &&
+				resultValue.PrecoloredRegister is null && resultValue.Kind == returned.Kind &&
+				resultValue.AllowedRegisters == M68kRegisterSet.Data)
+				caller.Values[resultValue.Id] = resultValue with { AllowedRegisters = M68kRegisterSet.DataOrAddress };
 			result.Add(caller.CreateInstruction(
 				M68kMachineOperation.Copy,
 				call.IlOffset,
@@ -1478,7 +1612,7 @@ internal static class M68kMachineModuleOptimizer
 			candidates = candidates.Prepend(declaration);
 		}
 		return candidates
-			.Select(static candidate => candidate.Identity)
+			.Select(candidate => module.ApplyTargetRuntimeOverride(candidate).Identity)
 			.Where(functions.ContainsKey)
 			.Distinct()
 			.OrderBy(static identity => identity.ModuleName, StringComparer.Ordinal)

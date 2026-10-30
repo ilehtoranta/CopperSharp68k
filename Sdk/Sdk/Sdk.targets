@@ -16,6 +16,8 @@
     <CopperSharpFloatingPoint Condition="'$(CopperSharpFloatingPoint)' == ''">disabled</CopperSharpFloatingPoint>
     <CopperSharpClrPolicy Condition="'$(CopperSharpClrPolicy)' == ''">auto</CopperSharpClrPolicy>
     <CopperSharpExceptionMode Condition="'$(CopperSharpExceptionMode)' == ''">full</CopperSharpExceptionMode>
+    <CopperSharpSymbols Condition="'$(CopperSharpSymbols)' == ''">on</CopperSharpSymbols>
+    <CopperSharpCodeSizeOptimizations Condition="'$(CopperSharpCodeSizeOptimizations)' == ''">off</CopperSharpCodeSizeOptimizations>
     <CopperSharpCompilerAssembly>$(MSBuildThisFileDirectory)../tools/net10.0/any/CopperSharp.Compiler.Cli.dll</CopperSharpCompilerAssembly>
     <CopperSharpOutputPath Condition="'$(CopperSharpOutputPath)' == ''">$(PublishDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpOutputPath>
     <CopperSharpFrameworkReportPath Condition="'$(CopperSharpFrameworkReportPath)' == ''">$(CopperSharpOutputPath).framework.json</CopperSharpFrameworkReportPath>
@@ -78,6 +80,8 @@
       <_CopperSharpResponseLine Include="clr=$(CopperSharpClrPolicy)" />
       <_CopperSharpResponseLine Include="exceptions=$(CopperSharpExceptionMode)" />
       <_CopperSharpResponseLine Include="format=$(CopperSharpOutputFormat)" />
+      <_CopperSharpResponseLine Include="symbols=$(CopperSharpSymbols)" />
+      <_CopperSharpResponseLine Include="code-size-optimizations=$(CopperSharpCodeSizeOptimizations)" />
       <_CopperSharpResponseLine Include="runtime=$(CopperSharpRuntimeProfile)" />
       <_CopperSharpResponseLine Include="compatibility-report=$(CopperSharpFrameworkReportPath)" />
       <_CopperSharpResponseLine Include="framework-implementation-manifest=$([System.IO.Path]::GetFullPath('$(CopperSharpFrameworkImplementationManifest)'))"
@@ -132,6 +136,8 @@
       <_CopperSharpBuildResponseLine Include="clr=$(CopperSharpClrPolicy)" />
       <_CopperSharpBuildResponseLine Include="exceptions=$(CopperSharpExceptionMode)" />
       <_CopperSharpBuildResponseLine Include="format=$(CopperSharpOutputFormat)" />
+      <_CopperSharpBuildResponseLine Include="symbols=$(CopperSharpSymbols)" />
+      <_CopperSharpBuildResponseLine Include="code-size-optimizations=$(CopperSharpCodeSizeOptimizations)" />
       <_CopperSharpBuildResponseLine Include="runtime=$(CopperSharpRuntimeProfile)" />
       <_CopperSharpBuildResponseLine Include="compatibility-report=$(CopperSharpBuildFrameworkReportPath)" />
       <_CopperSharpBuildResponseLine Include="framework-implementation-manifest=$([System.IO.Path]::GetFullPath('$(CopperSharpFrameworkImplementationManifest)'))"

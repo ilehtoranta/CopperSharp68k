@@ -40,6 +40,8 @@ internal static class M68kStaticAnalyzer
 			{
 				continue;
 			}
+			if (module.RegisterStringDispatchLayout(method) is { } stringLayout)
+				reachableDispatchLayouts.TryAdd(stringLayout.Identity, stringLayout);
 
 			if (request.ExceptionMode == M68kExceptionMode.Yolo &&
 				method.ExceptionRegions.Count != 0)
@@ -84,6 +86,8 @@ internal static class M68kStaticAnalyzer
 			foreach (var declaration in usedVirtualDeclarations.Values)
 			{
 				var implementation = module.TryGetVirtualImplementation(layout, declaration);
+				if (implementation is not null)
+					implementation = module.ApplyTargetRuntimeOverride(implementation);
 				if (implementation is not null && !visited.Contains(implementation))
 				{
 					pending.Enqueue(implementation);
@@ -190,6 +194,9 @@ internal static class M68kStaticAnalyzer
 		IDictionary<CilMethodIdentity, CilMethod> usedVirtualDeclarations)
 	{
 		var op = instruction.OpCode;
+		if (op == OpCodes.Box && module.RegisterBoxedDispatchLayout(
+			module.ResolveTypeToken((int)instruction.Operand!, method, instruction.Offset), method.ModuleName) is { } boxedLayout)
+			reachableDispatchLayouts.TryAdd(boxedLayout.Identity, boxedLayout);
 		MethodReference? target = null;
 		if (op == OpCodes.Newobj)
 		{
@@ -198,7 +205,7 @@ internal static class M68kStaticAnalyzer
 
 		// Value-type construction uses frame storage. Still traverse its body below
 		// so any real heap allocations performed by that constructor are checked.
-		if ((op == OpCodes.Newobj &&
+		if ((op == OpCodes.Newobj && target?.IsConstructorFactory != true &&
 			(target is null || target.Definition is not { } constructor ||
 				(!module.IsTransparentScalarConstructor(constructor) &&
 				 !module.IsValueTypeConstructor(constructor)))) ||
@@ -232,8 +239,12 @@ internal static class M68kStaticAnalyzer
 		}
 
 		target ??= module.ResolveMethodToken((int)instruction.Operand!, method, instruction.Offset);
+		if (CompilationModule.IsString(target.Signature.ReturnType) && module.RegisterStringDispatchLayout() is { } stringLayout)
+			reachableDispatchLayouts.TryAdd(stringLayout.Identity, stringLayout);
 		if (op == OpCodes.Newobj &&
-			target.Definition is { IsImport: false } layoutConstructor)
+			!target.IsConstructorFactory &&
+			target.Definition is { IsImport: false } layoutConstructor &&
+			!module.IsValueTypeConstructor(layoutConstructor))
 		{
 			var layout = module.GetTypeLayout(layoutConstructor);
 			if (ValidateFinalizableAllocation(
@@ -247,9 +258,17 @@ internal static class M68kStaticAnalyzer
 				pending.Enqueue(finalizer);
 			}
 			reachableDispatchLayouts.TryAdd(layout.Identity, layout);
+			module.RegisterReachableDispatchLayout(layout);
 		}
 		ValidateCallDispatch(method, instruction, target);
-		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
+		if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: false } constrainedDeclaration &&
+			instruction.ConstrainedTypeToken is { } valueTypeToken &&
+			module.TryResolveConstrainedValueInterfaceImplementation(method, valueTypeToken, instruction.Offset,
+				constrainedDeclaration, out var valueImplementation))
+		{
+			pending.Enqueue(valueImplementation);
+		}
+		else if (target.Definition is { IsImport: false, DeclaringTypeIsInterface: true } interfaceMethod)
 		{
 			if (instruction.ConstrainedTypeToken is { } constrainedTypeToken)
 			{

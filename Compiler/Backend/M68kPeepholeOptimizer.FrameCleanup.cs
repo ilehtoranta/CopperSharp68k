@@ -19,8 +19,34 @@ internal sealed partial class M68kPeepholeOptimizer
 				((store.Opcode >> 3) & 7) > 1 ||
 				!TryGetMoveDestination(store, out var mode, out var baseRegister) ||
 				mode is not (2 or 5) || store.Length != (mode == 5 ? 4 : 2) ||
-				store.Offset + store.Length != next.Offset ||
-				HasInternalLabel(store) ||
+				store.Offset + store.Length != next.Offset)
+			{
+				continue;
+			}
+			// Reject impossible transfers before requesting the global address-entry
+			// snapshot. A duplicate store through A7 remains eligible; only MOVEA
+			// destinations must exclude the stack pointer.
+			var sameStore = next.Opcode == store.Opcode && next.Length == store.Length &&
+				(mode != 5 || next.ExtensionWord == store.ExtensionWord);
+			var reloadsFrame = false;
+			var destination = (next.Opcode >> 9) & 7;
+			if (!sameStore)
+			{
+				if ((next.Opcode & 0xF1C0) != 0x2040)
+				{
+					continue;
+				}
+				reloadsFrame = ((next.Opcode >> 3) & 7) == mode &&
+					(next.Opcode & 7) == baseRegister && next.Length == store.Length &&
+					(mode != 5 || next.ExtensionWord == store.ExtensionWord);
+				var copiesStoredRegister = next.Length == 2 &&
+					(next.Opcode & 0x3F) == (store.Opcode & 0x3F);
+				if ((!reloadsFrame && !copiesStoredRegister) || destination == 7)
+				{
+					continue;
+				}
+			}
+			if (HasInternalLabel(store) ||
 				!CanFoldAcrossUnreferencedIlLabels(store.Offset, store.Offset + store.Length) ||
 				HasFrameTransferBoundary(next) ||
 				_assembler.TryGetInstructionEffects(store.Offset, out _) ||
@@ -30,32 +56,11 @@ internal sealed partial class M68kPeepholeOptimizer
 			{
 				continue;
 			}
-			bool SameStore(M68kEmittedInstruction instruction) =>
-				instruction.Opcode == store.Opcode && instruction.Length == store.Length &&
-				(mode != 5 || instruction.ExtensionWord == store.ExtensionWord);
-			if (SameStore(next))
+			if (sameStore)
 			{
 				// Same value/address/width and identical MOVE flags, including X.
 				_buffer.RemoveBytes(next.Offset, next.Length);
 				return true;
-			}
-			if ((next.Opcode & 0xF1C0) != 0x2040)
-			{
-				continue;
-			}
-			var reloadsFrame = ((next.Opcode >> 3) & 7) == mode &&
-				(next.Opcode & 7) == baseRegister && next.Length == store.Length &&
-				(mode != 5 || next.ExtensionWord == store.ExtensionWord);
-			var copiesStoredRegister = next.Length == 2 &&
-				(next.Opcode & 0x3F) == (store.Opcode & 0x3F);
-			if (!reloadsFrame && !copiesStoredRegister)
-			{
-				continue;
-			}
-			var destination = (next.Opcode >> 9) & 7;
-			if (destination == 7)
-			{
-				continue; // Never turn a frame reload into a stack-pointer update.
 			}
 			var redundantStores = new List<M68kEmittedInstruction>();
 			if (destination != baseRegister)

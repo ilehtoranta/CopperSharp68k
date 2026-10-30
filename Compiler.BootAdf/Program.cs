@@ -117,99 +117,11 @@ static string? GetOption(string[] values, string name)
     return index >= 0 && index + 1 < values.Length ? values[index + 1] : null;
 }
 
-static async Task CreateFileSystemAdfAsync(
-    string sourceDirectory,
-    string outputPath,
-    string volumeName)
+static async Task CreateFileSystemAdfAsync(string sourceDirectory, string outputPath, string volumeName)
 {
-    if (!SystemDirectory.Exists(sourceDirectory))
-    {
-        throw new DirectoryNotFoundException(sourceDirectory);
-    }
-
+    var image = await CopperSharp.Compiler.BootAdf.FileSystemAdf.CreateAsync(sourceDirectory, volumeName);
     SystemDirectory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-    await using var image = new FileStream(
-        outputPath,
-        FileMode.Create,
-        FileAccess.ReadWrite,
-        FileShare.Read,
-        bufferSize: 4096,
-        FileOptions.Asynchronous);
-    image.SetLength(FloppyDiskConstants.DoubleDensity.Size);
-    await FastFileSystemFormatter.Format(
-        image,
-        FloppyDiskConstants.DoubleDensity.LowCyl,
-        FloppyDiskConstants.DoubleDensity.HighCyl,
-        FloppyDiskConstants.DoubleDensity.ReservedBlocks,
-        FloppyDiskConstants.DoubleDensity.Heads,
-        FloppyDiskConstants.DoubleDensity.Sectors,
-        FloppyDiskConstants.BlockSize,
-        FloppyDiskConstants.FileSystemBlockSize,
-        DosTypeHelper.FormatDosType("DOS0"),
-        volumeName);
-
-    var bootBlock = BootBlockBuilder.Build(
-        new BootBlock
-        {
-            DosType = DosTypeHelper.FormatDosType("DOS0"),
-            RootBlockOffset = 880
-        },
-        BootBlockSize);
-    image.Position = 0;
-    await image.WriteAsync(bootBlock);
-
-    await using var volume = await FastFileSystemVolume.MountAdf(image);
-    await CopyDirectoryAsync(volume, sourceDirectory);
-    await volume.Flush();
-    await RepairOfsRootBlockAsync(image);
-    await image.FlushAsync();
-}
-
-static async Task RepairOfsRootBlockAsync(Stream image)
-{
-    // Hst.Amiga uses the root block's extension field for its newer FFS
-    // layouts. Classic DOS\0 requires this field to be zero; Kickstart 1.3
-    // otherwise rejects an otherwise valid OFS disk as non-bootable.
-    var block = new byte[SectorSize];
-    image.Position = 880L * SectorSize;
-    await image.ReadExactlyAsync(block);
-    BinaryPrimitives.WriteUInt32BigEndian(block.AsSpan(SectorSize - 8), 0);
-    BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(20), 0);
-    var sum = 0;
-    for (var offset = 0; offset < block.Length; offset += 4)
-    {
-        sum = unchecked(sum + BinaryPrimitives.ReadInt32BigEndian(block.AsSpan(offset, 4)));
-    }
-    BinaryPrimitives.WriteInt32BigEndian(block.AsSpan(20), unchecked(-sum));
-    image.Position = 880L * SectorSize;
-    await image.WriteAsync(block);
-}
-
-static async Task CopyDirectoryAsync(
-    FastFileSystemVolume volume,
-    string sourceDirectory)
-{
-    foreach (var filePath in SystemDirectory.EnumerateFiles(sourceDirectory).Order(StringComparer.Ordinal))
-    {
-        var fileName = Path.GetFileName(filePath);
-        await using var destination = await volume.OpenFile(
-            fileName,
-            AmigaFileMode.Write,
-            overwrite: true,
-            ignoreProtectionBits: true);
-        await using var source = SystemFile.OpenRead(filePath);
-        await source.CopyToAsync(destination);
-    }
-
-    foreach (var directoryPath in SystemDirectory.EnumerateDirectories(sourceDirectory).Order(StringComparer.Ordinal))
-    {
-        var directoryName = Path.GetFileName(directoryPath);
-        var parentPath = await volume.GetCurrentPath();
-        await volume.CreateDirectory(directoryName);
-        await volume.ChangeDirectory(directoryName);
-        await CopyDirectoryAsync(volume, directoryPath);
-        await volume.ChangeDirectory(parentPath);
-    }
+    await SystemFile.WriteAllBytesAsync(outputPath, image);
 }
 
 static void BuildBootBlock(Span<byte> block, int transferLength)

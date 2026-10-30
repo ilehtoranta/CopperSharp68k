@@ -53,7 +53,8 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod entry,
 		bool usesManagedRuntime,
 		bool usesAmigaStartupArguments,
-		bool usesExceptionRuntime)
+		bool usesExceptionRuntime,
+		bool entryFollowsAdapter)
 	{
 		const string label = "entry:managed";
 		var usesManagedLifecycle = _managedLifecycles.Count != 0;
@@ -130,7 +131,7 @@ internal sealed partial class M68kCodeGenerator
 			if (UsesBuiltInManagedPool)
 			{
 				EmitAddressImmediateToRegister(M68kRegister.D0, GcConfigLabel);
-				_assembler.EmitBsr(RuntimeInitLabel);
+				_assembler.EmitJsr(RuntimeInitLabel, external: false);
 			}
 			else
 			{
@@ -248,6 +249,9 @@ internal sealed partial class M68kCodeGenerator
 			return label;
 		}
 
+		// Call-graph layout can place another method immediately after this
+		// platform-base prefix. A process entry must still enter its own root.
+		if (!entryFollowsAdapter) _assembler.EmitJmp(MethodLabel(entry), external: false);
 		return label;
 	}
 
@@ -328,7 +332,9 @@ internal sealed partial class M68kCodeGenerator
 	{
 		if (UsesBuiltInManagedPool)
 		{
-			_assembler.EmitBsr(internalLabel);
+			// Runtime helpers can be separated from the entry stub by large
+			// managed bodies. Final layout shortens this call only when in range.
+			_assembler.EmitJsr(internalLabel, external: false);
 		}
 		else
 		{
@@ -421,16 +427,16 @@ internal sealed partial class M68kCodeGenerator
 
 		_assembler.AlignWord();
 		_assembler.Mark(RuntimeMarkRootsLabel);
+		// Cursor/PC use D0/D1 and both table addresses use A0/A1. Only the
+		// extended frame anchor is a stack argument in the managed ABI.
 		EmitRootWalkArguments();
 		if (UsesExtendedUnwindMetadata)
 		{
 			EmitPushRegister(M68kRegister.A5);
 		}
-		EmitPushRegister(M68kRegister.A1);
-		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitCall(MethodLabel(
 			UsesExtendedUnwindMetadata ? runtime.MarkRootsExtended : runtime.MarkRoots));
-		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 3 : 2);
+		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 1 : 0);
 		_assembler.EmitWord(0x4E75); // RTS
 
 		_assembler.AlignWord();
@@ -440,8 +446,6 @@ internal sealed partial class M68kCodeGenerator
 		{
 			EmitPushRegister(M68kRegister.A5);
 		}
-		EmitPushRegister(M68kRegister.A1);
-		EmitPushRegister(M68kRegister.A0);
 		_assembler.EmitCall(MethodLabel(
 			UsesExtendedUnwindMetadata
 				? _usesFinalizers
@@ -450,7 +454,7 @@ internal sealed partial class M68kCodeGenerator
 				: _usesFinalizers
 					? runtime.CollectFinalizableWithRoots
 					: runtime.CollectWithRoots));
-		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 3 : 2);
+		EmitDiscardStackArguments(UsesExtendedUnwindMetadata ? 1 : 0);
 		if (_usesFinalizers)
 		{
 			_assembler.EmitCall(MethodLabel(runtime.DrainFinalizers));
@@ -465,9 +469,14 @@ internal sealed partial class M68kCodeGenerator
 		EmitRootWalkArguments();
 		if (UsesExtendedUnwindMetadata)
 		{
+			// A2 is an external collector argument but remains callee-saved in
+			// the managed ABI. Preserve the caller's value after capturing the
+			// original stack cursor and resume PC for the root walker.
+			EmitPushRegister(M68kRegister.A2);
 			_assembler.EmitWord(0x244D); // MOVEA.L A5,A2 current frame anchor
 		}
 		_assembler.EmitJsr(M68kRuntimeImports.GcCollect, external: true);
+		if (UsesExtendedUnwindMetadata) EmitPopRegister(M68kRegister.A2);
 		_assembler.EmitWord(0x4E75); // RTS
 	}
 

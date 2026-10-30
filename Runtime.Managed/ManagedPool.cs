@@ -31,6 +31,9 @@ public static class ManagedPool
 	private const uint FinalizerCountIncrement = 1u << FinalizerCountShift;
 	private const uint FinalizerCountMask = 0xFFFF_FF00;
 	private const int TypeFinalizerOffset = 20;
+	private const uint AggregateArrayReferenceFlag = 0x8000_0000;
+	private const int AggregateArrayElementSizeOffset = 28;
+	private const int AggregateArrayElementBitmapOffset = 32;
 
 	public static uint HeapStart;
 	public static uint HeapEnd;
@@ -392,20 +395,12 @@ public static class ManagedPool
 		M68kAddress methodTable,
 		M68kAddress staticRoots)
 	{
-		var methodTableAddress = M68kAddress.ToUInt32(methodTable);
 		var cursor = cursorAddress;
 		var currentPc = resumePc;
 		while (cursor != 0)
 		{
-			var siteCount = M68kAddress.ReadUInt32(methodTable, 0);
-			var siteAddress = methodTableAddress + 4;
-			while (siteCount != 0 &&
-				M68kAddress.ReadUInt32(M68kAddress.FromUInt32(siteAddress), 0) != currentPc)
-			{
-				siteAddress += 20;
-				siteCount--;
-			}
-			if (siteCount == 0)
+			var siteAddress = FindRootSite(methodTable, currentPc, 20);
+			if (siteAddress == 0)
 			{
 				break;
 			}
@@ -461,21 +456,13 @@ public static class ManagedPool
 		M68kAddress staticRoots,
 		uint frameAnchor)
 	{
-		var methodTableAddress = M68kAddress.ToUInt32(methodTable);
 		var cursor = cursorAddress;
 		var currentPc = resumePc;
 		var currentFrameAnchor = frameAnchor;
 		while (cursor != 0)
 		{
-			var siteCount = M68kAddress.ReadUInt32(methodTable, 0);
-			var siteAddress = methodTableAddress + 4;
-			while (siteCount != 0 &&
-				M68kAddress.ReadUInt32(M68kAddress.FromUInt32(siteAddress), 0) != currentPc)
-			{
-				siteAddress += 24;
-				siteCount--;
-			}
-			if (siteCount == 0)
+			var siteAddress = FindRootSite(methodTable, currentPc, 24);
+			if (siteAddress == 0)
 			{
 				break;
 			}
@@ -519,6 +506,27 @@ public static class ManagedPool
 		}
 
 		MarkStaticRoots(staticRoots);
+	}
+
+	// Tables are ordered by relocated return address. Lower-bound search keeps
+	// the first registered site when multiple calls share an optimized address.
+	private static uint FindRootSite(M68kAddress methodTable, uint resumePc, uint entryBytes)
+	{
+		var count = M68kAddress.ReadUInt32(methodTable, 0);
+		var start = M68kAddress.ToUInt32(methodTable) + 4;
+		uint low = 0;
+		var high = count;
+		while (low < high)
+		{
+			var middle = low + ((high - low) >> 1);
+			var address = start + middle * entryBytes;
+			if (M68kAddress.ReadUInt32(M68kAddress.FromUInt32(address), 0) < resumePc)
+				low = middle + 1;
+			else high = middle;
+		}
+		if (low == count) return 0;
+		var site = start + low * entryBytes;
+		return M68kAddress.ReadUInt32(M68kAddress.FromUInt32(site), 0) == resumePc ? site : 0;
 	}
 
 	private static void MarkStaticRoots(M68kAddress staticRoots)
@@ -787,13 +795,26 @@ public static class ManagedPool
 		var fixedSize = M68kAddress.ReadUInt32(descriptor, 0);
 		if (fixedSize == 0)
 		{
-			if (M68kAddress.ReadUInt32(descriptor, 4) == 0)
+			var references = M68kAddress.ReadUInt32(descriptor, 4);
+			if (references == 0)
 			{
 				return;
 			}
 
 			var length = M68kAddress.ReadUInt32(payload, 8);
 			var elementAddress = payloadAddress + 12;
+			if ((references & AggregateArrayReferenceFlag) != 0)
+			{
+				var elementSize = M68kAddress.ReadUInt32(descriptor, AggregateArrayElementSizeOffset);
+				var elementBitmap = M68kAddress.ReadUInt32(descriptor, AggregateArrayElementBitmapOffset);
+				while (length != 0)
+				{
+					TraceFields(elementAddress, elementBitmap);
+					elementAddress += elementSize;
+					length--;
+				}
+				return;
+			}
 			while (length != 0)
 			{
 				Mark(M68kAddress.ReadUInt32(
@@ -805,8 +826,11 @@ public static class ManagedPool
 			return;
 		}
 
-		var bitmap = M68kAddress.ReadUInt32(descriptor, 4);
-		var fieldAddress = payloadAddress + 8;
+		TraceFields(payloadAddress + 8, M68kAddress.ReadUInt32(descriptor, 4));
+	}
+
+	private static void TraceFields(uint fieldAddress, uint bitmap)
+	{
 		while (bitmap != 0)
 		{
 			if ((bitmap & 1) != 0)

@@ -1,0 +1,155 @@
+# Native AmigaDOS Hunk runner
+
+## Native StringBuilder checks
+
+The runner test project uses the pinned .NET 10.0.9 win-x64 CoreLib implementation
+for StringBuilder tests. Restore downloads that package and copies the CIL input
+into `PinnedCoreLib/10.0.9`; the test helper verifies its SHA-256 before compiling.
+The framework pack uses the compiler's normal pinned admission rules and does
+not enable unlisted managed bodies. These cases require the StringBuilder
+compiler/runtime support currently present in the working tree.
+
+Five scenarios cover presized append, chunk growth, invariant decimal/hex
+composite formatting, interpolated integer formatting, and allocation pressure
+with explicit GC while a builder and its string snapshot remain live. Every
+scenario checks exact native stdout and return value 42 with Disabled and
+FixedPoint optimization. The 8 KiB managed heap is allocated through Exec.
+The 68000 and 68040 interpreters share compiled 68000 payloads; the 68040 JIT
+uses 68040 payloads. Completion polling and boot limits retain their meaning.
+
+`scripts/test-native-os.ps1` retains their Hunk images, maps and JSON records
+under `StringBuilder` in the results directory. Set
+`COPPERSHARP_NATIVE_STRINGBUILDER_RESULTS` for the same evidence when invoking
+the test project directly. Records identify CoreLib, compiler, fixture, runtime,
+runner, Amiga engine and CPU engine hashes, as well as the actual native result.
+This is semantic/GC coverage; boot-inclusive cycles are not StringBuilder costs.
+
+This optional runner boots a standard OFS floppy in the current CopperScreen
+Lightweight engine. The 901,120-byte ADF is mounted from host memory and stays
+in memory during execution. No disk image is saved unless `--save-adf` is given.
+The source files used to construct it are staged in a unique temporary directory
+and removed before emulation starts. ROM bytes are supplied by the user and
+are never put on the ADF.
+
+The disk contains `S/startup-sequence`, `LAUNCH`, `PROGRAM`, `RUN.ID`, and `ARGS`.
+Kickstart starts the shell's startup sequence normally. The compiled launcher
+opens `dos.library`, uses native `LoadSeg`, runs the payload through native
+`RunCommand` with a 64 KiB stack, unloads it, and writes `RESULT.BIN` through DOS.
+No host Hunk loader, fake library vectors, guest-memory result injection, or
+host-directory mount participates in this path.
+
+The launcher opens `STDOUT.TXT` through DOS and selects it as the payload's
+standard output. It restores the previous output, flushes and closes the file
+before publishing completion. JSON `StandardOutput` contains its Latin-1 text;
+`PayloadOutput` still contains the separate `PAYLOAD.OK` probe file. Launch status
+2 means output could not be opened; status 3 means flushing or closing failed.
+
+The completion record has a magic, version, a fresh 32-byte run identifier,
+launch status, and the full 32-bit return value, all integers in big-endian form.
+Only an exact matching record counts as completion. Floppy snapshots may be
+temporarily unreadable during a native DMA write; polling retries these and
+reports a persistent unreadable track as `DiskSnapshotError`.
+The same bounded polling also retries filesystem snapshots whose directory
+references have been written before their entry sectors. Persistent filesystem
+errors remain visible in `DiskSnapshotError`; the runner never repairs them.
+
+## Build and verify
+
+Use the repository's pinned .NET SDK and an adjacent `CopperScreen` checkout.
+The project accepts `-p:CopperScreenRoot=ABSOLUTE_PATH` for other locations.
+The current engine's CPU package may use its local development feed. Restore
+with that checkout's NuGet configuration, rather than changing its package pin:
+
+```powershell
+dotnet restore Compiler.NativeOsRunner/CopperSharp.Compiler.NativeOsRunner.csproj --configfile ../CopperScreen/NuGet.Config
+dotnet build Compiler.NativeOsRunner/CopperSharp.Compiler.NativeOsRunner.csproj -c Release --no-restore
+$env:COPPERSHARP_KICKSTART31_ROM = 'C:/path/to/kickstart-3.1-a500.rom'
+./scripts/test-native-os.ps1
+./scripts/test-native-os.ps1 -IncludeCompilerIntegration
+```
+
+The script requires a ROM and runs both protocol and native execution tests.
+FileStats executions compare Disabled and FixedPoint optimizer modes against
+exact reports for empty, high-bit and binary data, a quoted filename, a missing
+file, an extra argument and an empty command line. The script saves their Hunk
+images and per-run records under `FileStats` in its results directory. Set
+`COPPERSHARP_NATIVE_FILESTATS_RESULTS` to retain the same evidence when invoking
+the test project directly.
+Directly running the test project without the ROM runs the protocol tests and
+explicitly skips native execution. This optional project is separate from the
+main test suite so compiler unit tests do not require an emulator checkout.
+
+```powershell
+dotnet Compiler.NativeOsRunner/bin/Release/net10.0/CopperSharp.Compiler.NativeOsRunner.dll --fixture DosProbe --expect-d0 42
+dotnet Compiler.NativeOsRunner/bin/Release/net10.0/CopperSharp.Compiler.NativeOsRunner.dll --hunk program.hunk --arguments 'OK' --expect-d0 0xDEADBEEF --save-adf run.adf
+```
+
+`--rom` overrides the environment variable. `--fixture` accepts `Answer`,
+`HighBitAnswer`, `DosProbe`, and `ArgumentProbe` (the latter expects `--arguments OK`).
+Arguments must be single-line ASCII, at most 1023 bytes; the launcher supplies
+the terminating newline. Decimal expected values accept signed Int32 or unsigned
+UInt32 ranges; hexadecimal accepts all 32 bits. The CLI emits JSON and exits
+0 on a successful matching return, 2 on execution failure or expectation mismatch,
+and 1 on input/build errors. `LaunchFailed`, `FrameLimitReached`, `HostTimeout`,
+and `CpuHalted` cannot satisfy the success check.
+
+`--input-file HOST_FILE` copies one file into the ADF root under its filename.
+The session API accepts multiple files through `inputFiles`. Names must be
+unique ignoring case, ASCII, at most 30 characters, and valid host filenames;
+paths, volume prefixes, trailing dots/spaces and runner filenames are rejected.
+The files are copied before native boot and included in `InitialAdfSha256`.
+They must fit on the floppy together with the launcher and payload.
+
+For example, run a compiled FileStats Hunk against a host input file:
+
+```powershell
+dotnet Compiler.NativeOsRunner/bin/Release/net10.0/CopperSharp.Compiler.NativeOsRunner.dll --hunk filestats.hunk --input-file INPUT.BIN --arguments INPUT.BIN --expect-d0 0
+```
+
+FileStats uses DOS [`ReadArgs`](https://wiki.amigaos.net/wiki/Basic_Input_and_Output_Programming) with `FILE/A` for newline-terminated command
+lines, including quoted filenames with spaces. Direct callers supplying a
+filename without the DOS newline retain their existing pointer contract.
+It requests `dos.library` version 37 or newer and releases both the parser's
+attached buffers and the supplied argument structure after reporting.
+
+The local installation records the verified runner DLL path in the user
+environment variable `COPPERSHARP_NATIVE_OS_RUNNER`. Invoke it with `dotnet`;
+this variable does not change the retired integration suite's configuration.
+
+## Profile and limits
+
+The initial validated profile is Kickstart 3.1 A500, PAL OCS, 512 KiB Chip RAM
+and 512 KiB Slow RAM, 68000 interpreter. `RunCommand` requires DOS v37 or newer;
+Kickstart 1.3 is not supported by this launcher. The runner accepts 68020 and
+68040 configurations, with JIT restricted to 68040 by the current engine.
+The migrated integration matrix validates the 68040 interpreter running 68000
+images and the 68040 JIT running 68040 images, including native floating point.
+The 68020 configuration still requires separate validation. Accelerator timing
+is approximate, and there is no 68000 JIT backend in this engine.
+
+The default bounds are 1500 frames and 120 seconds of host emulation time.
+Reported frames and cycles include boot, floppy access, payload execution,
+and completion polling. They are not payload-only costs or replacements for
+the retired CLI's instruction/cycle baselines. Hashes identify the ROM, input
+Hunk, and initial ADF; the run identifier and filesystem timestamps vary per run.
+
+`CopperScreenHeadlessIntegrationTests` now use this native OS protocol through
+`COPPERSHARP_NATIVE_OS_RUNNER`, or automatically locate a built runner in this
+repository. Their fixtures retain their expected values, GC pool sizes, and
+compiler CPU targets. Managed fixtures compile with `AmigaM68kCompiler` so Exec
+allocates their pool instead of reserving an absolute address in OS-owned RAM.
+
+The 17 former 68000 JIT rows now explicitly use a 68040 interpreter to execute
+their 68000 images. This changes CPU coverage; it does not establish 68000 JIT
+parity. Existing 68040 JIT rows still use JIT, and every successful run checks
+the reported CPU and execution mode. The original FileStats payload-only cost
+test remains skipped with its 100,000-cycle and 10,000-instruction assertions
+intact. A separate native-launch test bounds boot-inclusive frames and cycles;
+it is not a replacement benchmark. Native DOS's newline-only empty command line
+is accepted as empty input by FileStats.
+
+`-IncludeCompilerIntegration` enables this suite in addition to the runner tests,
+and saves per-run JSON records under `CompilerIntegration` in the results directory.
+Absent ROM configuration is an explicit test skip. A configured but broken ROM
+or runner fails the tests. The legacy `COPPERSCREEN_HEADLESS_CLI` variable and
+retired MedPlayer project reference are no longer used.
