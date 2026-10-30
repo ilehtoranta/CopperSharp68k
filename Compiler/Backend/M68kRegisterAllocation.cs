@@ -1119,7 +1119,8 @@ internal static class M68kGraphColoringAllocator
 			var simplifiable = remaining
 				.Select(group => groups[group])
 				.Where(group =>
-					EffectiveDegree(groups, groupNeighbors, remaining, group) <
+					EffectiveDegree(groups, groupNeighbors, remaining, group,
+						function.SimplifyLoopPhis) <
 					AvailableColorCount(group))
 				// Spill-generated reload/store scratch values must be colored before
 				// their live-through neighbors. Push them last so stack coloring pops
@@ -1136,7 +1137,8 @@ internal static class M68kGraphColoringAllocator
 							groups,
 							groupNeighbors,
 							remaining,
-							group)))
+								group,
+								function.SimplifyLoopPhis)))
 					.ThenBy(static group => group.Id)
 					.First()
 					.Id;
@@ -1713,16 +1715,23 @@ internal static class M68kGraphColoringAllocator
 		}
 	}
 
+	// AvailableColorCount already excludes forbidden colors. Under the opt-in
+	// policy, count an interfering scalar only if their feasible domains overlap;
+	// otherwise call-clobbered and reserved colors inflate pressure twice. Keep
+	// the existing approximation for register pairs and for the legacy policy.
 	private static int EffectiveDegree(
 		IReadOnlyDictionary<int, AllocationGroup> groups,
 		IReadOnlyDictionary<int, HashSet<int>> neighbors,
 		IReadOnlySet<int> remaining,
-		AllocationGroup group) =>
+		AllocationGroup group,
+		bool feasibleDomains) =>
 		neighbors[group.Id].Count(neighbor =>
 			(remaining.Contains(neighbor) ||
 			 groups[neighbor].PrecoloredRegister is not null) &&
-			group.AllowedRegisters.Overlaps(
-				groups[neighbor].AllowedRegisters));
+			(feasibleDomains && !group.IsPair && !groups[neighbor].IsPair
+				? group.AllowedRegisters.Except(group.ForbiddenRegisters).Overlaps(
+					groups[neighbor].AllowedRegisters.Except(groups[neighbor].ForbiddenRegisters))
+				: group.AllowedRegisters.Overlaps(groups[neighbor].AllowedRegisters)));
 
 	private static int AvailableColorCount(
 		AllocationGroup group) =>

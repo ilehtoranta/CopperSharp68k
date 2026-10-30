@@ -21,7 +21,8 @@ internal sealed partial class M68kPeepholeOptimizer
 		instruction.Kind is M68kInstructionKind.Call or M68kInstructionKind.UnconditionalBranch &&
 		_buffer.Addresses.Any(address => address.Offset == instruction.Offset + 2 && address.Addend != 0);
 
-	private bool CanFoldAcrossUnreferencedIlLabels(int startOffset, int endOffset)
+	private bool CanFoldAcrossUnreferencedIlLabels(int startOffset, int endOffset,
+		bool allowUnreferencedMarkers = false)
 	{
 		// The allocated emitter records IL positions even when they are not
 		// control-flow targets. They are hidden by assembly rendering, but still
@@ -34,10 +35,10 @@ internal sealed partial class M68kPeepholeOptimizer
 			if (!_buffer.Labels.TryGetValue(name, out var offset) ||
 				offset <= startOffset || offset >= endOffset) continue;
 			var marker = name.LastIndexOf(":IL_", StringComparison.Ordinal);
-			if (!name.StartsWith("method:", StringComparison.Ordinal) ||
+			if ((!allowUnreferencedMarkers && (!name.StartsWith("method:", StringComparison.Ordinal) ||
 				marker < 0 || name.Length - marker - 4 < 4 ||
 				!name[(marker + 4)..].All(character => character is
-					>= '0' and <= '9' or >= 'A' and <= 'F' or >= 'a' and <= 'f') ||
+					>= '0' and <= '9' or >= 'A' and <= 'F' or >= 'a' and <= 'f'))) ||
 				_unrelocatableLabelNames.Contains(name)) return false;
 		}
 		// An address can enter through a label plus an addend without naming an

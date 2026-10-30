@@ -10,6 +10,7 @@ internal sealed partial class M68kPeepholeOptimizer
 	{
 		if (TryCompactPrivateStackCopies(dataflow)) return true;
 		if (_assembler.GeneratedCodeSizeOptions?.RemoveRedundantTransport != true) return false;
+		if (TryForwardGeneratedRegisterCopies(dataflow) || TryRemoveGeneratedZeroOperandTransport(dataflow)) return true;
 		var instructions = dataflow.Instructions;
 		for (var i = 0; i < instructions.Count; i++)
 		{

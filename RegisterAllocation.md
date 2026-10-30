@@ -121,3 +121,25 @@ register-copy instructions. The text helper is 604 bytes before bank repair,
 profiles return from 4,700 to 4,696 bytes after HUNK alignment, tying the already
 installed pre-repair image. This is a compiler regression fix, not a new
 installed-byte saving. Whole-image measurements remain the adoption criterion.
+
+### Count feasible scalar colors when estimating pressure
+
+Under `SimplifyLoopPhis`, the simplification and spill-priority degree estimates
+count a scalar neighbor only when the two allowed sets still overlap after
+removing each group's forbidden registers. Call clobbers, fixed neighbors and
+reserved registers already reduce `AvailableColorCount`; counting conflicts on
+those unavailable colors again can force a premature spill choice. In a small
+four-value reproduction this spills a one-color value despite a valid three-color
+assignment. The feasible-domain estimate finds that assignment without repair.
+
+The interference graph and all allocation constraints remain intact. This only
+changes the coloring order and spill estimate, never whether an assignment is
+legal. Register pairs keep the existing degree approximation, and policy-off
+clients keep the previous behavior. Final allocation verification, spill
+rewriting, preservation planning and frame layout still run normally.
+
+CopperOS List and Search reproduce smaller complete resident HUNK images in
+both profiles. Broadening bank repair to full-width values was measured
+separately and rejected because it grew Search. The CopperOS qualification
+report binds the accepted images to compiler regressions, both-profile vector
+checks, original DOS checks for the shipping entries, and final installed hashes.
