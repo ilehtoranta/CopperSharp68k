@@ -1,0 +1,4083 @@
+{
+  "date": "2026-10-30",
+  "branch": "codex/recovery-20261030",
+  "publishedBase": "73b60492f1d5f6c1ab1ae5538f01dab27723b0cb",
+  "originalPrimaryHead": "daab9bcf82ef6cf54b391cea8ff5e556cb352776",
+  "originalStagedSnapshot": "d050aa3e695c3e523bec1930ec179004dd94d921",
+  "originalWorkingSnapshot": "fa6f5b91d453806205e5d96df0b8c57291bf4a84",
+  "preservation": {
+    "gitBundle": "repository.bundle in external recovery directory",
+    "rawByteCopies": "raw-primary/ with SHA-256 manifest in external recovery directory",
+    "ignoredFiles": "Preserved in existing checkouts; no clean/prune/removal performed.",
+    "staging": "Original indexes and independent staged/working snapshots retained; integrated work is committed on recovery branch."
+  },
+  "detachedCiCommit": {
+    "commit": "0478d466f71d40da2cfed2400938c8744ac63d78",
+    "disposition": "EOR fix already implemented upstream; additional operand/reset regressions recovered."
+  },
+  "worktrees": [
+    {
+      "id": 1,
+      "name": "CopperSharp68k",
+      "exists": true,
+      "head": "daab9bcf82ef6cf54b391cea8ff5e556cb352776",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-01/head",
+      "stagedSnapshot": "d050aa3e695c3e523bec1930ec179004dd94d921",
+      "workingSnapshot": "fa6f5b91d453806205e5d96df0b8c57291bf4a84",
+      "disposition": "reconciled"
+    },
+    {
+      "id": 2,
+      "name": "CopperSharp68k",
+      "exists": true,
+      "head": "0478d466f71d40da2cfed2400938c8744ac63d78",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-02/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "CI implementation already present; additional regressions integrated."
+    },
+    {
+      "id": 3,
+      "name": "CopperSharp68k",
+      "exists": true,
+      "head": "12cf1fab540a17ad7108c67764f23147f4276860",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-03/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 4,
+      "name": "source-compiler",
+      "exists": true,
+      "head": "384f977672fce902fa4b23c44a8723edfb0454d3",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-04/head",
+      "stagedSnapshot": "ee76f75543549a68939f5abe2ff90476a1f61e4c",
+      "workingSnapshot": "cf4e2597b70c15a065edb2a6780b751ce450c46a",
+      "disposition": "Deletion-only temporary checkout state preserved in snapshot; published source remains integrated."
+    },
+    {
+      "id": 5,
+      "name": "commit-compiler",
+      "exists": true,
+      "head": "f56aa55d5dc09622ce2a172bb9eba019a666e7ba",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-05/head",
+      "stagedSnapshot": "73f7910b87c3870f42a02bac8fc7bf53f7726079",
+      "workingSnapshot": "c849d0552044e9edec352878724e1919c3243bb3",
+      "disposition": "Deletion-only temporary checkout state preserved in snapshot; published source remains integrated."
+    },
+    {
+      "id": 6,
+      "name": "CopperSharp68k",
+      "exists": true,
+      "head": "affdd46f580d997b25553240cb3508f49ffcd346",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-06/head",
+      "stagedSnapshot": "6ae23d5e3ef511d51ea371c25ce017c08f42f6cb",
+      "workingSnapshot": "43d6c883ef02ae96d4c2d49c560e340399d6e97b",
+      "disposition": "Deletion-only temporary checkout state preserved in snapshot; published source remains integrated."
+    },
+    {
+      "id": 7,
+      "name": "rom-policy-publish",
+      "exists": true,
+      "head": "7b06a2df0eab1062e0b7b920f501bcb52b2972b6",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-07/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 8,
+      "name": "MainMergeReview",
+      "exists": true,
+      "head": "63f91d00817e2cf979aba75de20e6cce5ffe5fcc",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-08/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 9,
+      "name": "worktree",
+      "exists": true,
+      "head": "6cc5181d178b8dba48d21afbc840ad2ae8ce0cf3",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-09/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 10,
+      "name": "CopperSharp68k-dir-size-20261017",
+      "exists": false,
+      "head": "69d01d18f686d72f2e281918042846a512307e50",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-10/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 11,
+      "name": "CopperSharp68k-list-search-spills-20261018",
+      "exists": false,
+      "head": "daab9bcf82ef6cf54b391cea8ff5e556cb352776",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-11/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 12,
+      "name": "CopperSharp68k-optimizer-port-20261019",
+      "exists": false,
+      "head": "d99e717607c02e72fa7567b3170834f21976dc44",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-12/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 13,
+      "name": "CopperSharp68k-publish-search-hotloop",
+      "exists": false,
+      "head": "133429dbe03b670affd84dab1816836c7ca7d60b",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-13/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 14,
+      "name": "CopperSharp68k-search-allocation-20261018",
+      "exists": false,
+      "head": "9eaa2aac4847ec7b873324df93248ba01ab532e5",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-14/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 15,
+      "name": "CopperSharp68k-search-hotloops-20261018",
+      "exists": false,
+      "head": "daab9bcf82ef6cf54b391cea8ff5e556cb352776",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-15/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 16,
+      "name": "CopperSharp68k-search-pressure-20261011",
+      "exists": false,
+      "head": "02a7fa3a18ab90d01375c2cc7ac06753b828872c",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-16/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 17,
+      "name": "CopperSharp68k-search-trace-20261018",
+      "exists": false,
+      "head": "9eaa2aac4847ec7b873324df93248ba01ab532e5",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-17/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 18,
+      "name": "CopperSharp68k-type-allocation-20261018",
+      "exists": false,
+      "head": "c536d318bc47521e1c0e1eb352ae8e509f2ea6fa",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-18/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 19,
+      "name": "CopperSharp68k-version-inline-20261016",
+      "exists": false,
+      "head": "eb04dac67d2ac2f6e5a41fde5254e56a808bc8d5",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-19/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 20,
+      "name": "CopperSharp68k-version-phis-20261017",
+      "exists": false,
+      "head": "55628a021c7a069b7d10fd352c2b89d3828d2483",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-20/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 21,
+      "name": "CopperSharp68k-wt-coalesce",
+      "exists": false,
+      "head": "d2a7cd926f2b3ca8b8347b1c744939a316ae31ee",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-21/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 22,
+      "name": "CopperSharp68k-wt-codegen-size",
+      "exists": false,
+      "head": "3a05e8b76cb55a5420189265b0acc0005798c074",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-22/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 23,
+      "name": "CopperSharp68k-wt-command-size",
+      "exists": false,
+      "head": "b73f3794246be849706492df0bab2e2ba24636ec",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-23/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 24,
+      "name": "CopperSharp68k-wt-fixmain",
+      "exists": false,
+      "head": "371eafbbfc2a293df7ec43a312fd84ddcb94afe5",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-24/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    },
+    {
+      "id": 25,
+      "name": "CopperSharp68k-wt-stack-size",
+      "exists": false,
+      "head": "1234d0b4206058eda284799bbcdca9f6b322cc2e",
+      "recoveryRef": "refs/codex/recovery/CopperSharp68k-20261030-979496abe54447c8a949269fc4c049ec/worktree-25/head",
+      "stagedSnapshot": null,
+      "workingSnapshot": null,
+      "disposition": "Committed content already published; original tip preserved."
+    }
+  ],
+  "entries": [
+    {
+      "layer": "staged",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.ControlFlowCleanup.cs",
+      "blob": "f583e675229c0386d90f11af372a737c8e088e8f",
+      "upstream": "5e1167e988a60c7b42bca1760d442cb6a21e820a",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Allow-unreferenced-marker behavior already published with indexed boundary checks; retain newer upstream implementation."
+    },
+    {
+      "layer": "staged",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.TransportSize.cs",
+      "blob": "91775ff690b5d58b900c6641a0912f23164ecddc",
+      "upstream": "4cc743cb0d574de1e9b875ce974b74aa9cde3baf",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "staged",
+      "path": "Compiler/Backend/M68kRegisterAllocation.cs",
+      "blob": "16b23deb0bf138fc5d332260efa1d2a3dd3a3bb0",
+      "upstream": "68c79986abd22a183d9d2305589f3e2b4d7154a4",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered feasible scalar-color pressure, adapted to upstream cached degree updates, and pair-alias repair guard, tests and explanation."
+    },
+    {
+      "layer": "staged",
+      "path": "Compiler/Backend/M68kValueRangeAnalysis.cs",
+      "blob": "7b65c60df94806156fe9cecff036abfc1da5feb0",
+      "upstream": "0bdfbb445e8452953f473f2b45013cbf87a594d3",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Older local variant removes published profiling and scratch-state reuse; keep newer upstream behavior."
+    },
+    {
+      "layer": "staged",
+      "path": "RegisterAllocation.md",
+      "blob": "4dd59344258af367cdfa30bc030e7b2afc059e08",
+      "upstream": "4d489d7abb3c875c48e0c73c29d0bc2e9d795c3b",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered feasible scalar-color pressure, adapted to upstream cached degree updates, and pair-alias repair guard, tests and explanation."
+    },
+    {
+      "layer": "staged",
+      "path": "CodeSizeHotLoops.md",
+      "blob": "19d73055208f1490cf17b06991ad3c4d882e5679",
+      "upstream": "19d73055208f1490cf17b06991ad3c4d882e5679",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "staged",
+      "path": "Compiler.Tests/M68kFeasibleColorDegreeTests.cs",
+      "blob": "f422f5e223ac24a2d5cc4d19622aaa5a40ef7e22",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered feasible scalar-color pressure, adapted to upstream cached degree updates, and pair-alias repair guard, tests and explanation."
+    },
+    {
+      "layer": "staged",
+      "path": "Compiler.Tests/M68kHotLoopTransportTests.cs",
+      "blob": "efe48d82eb91469e5b73ed551e493930ec660eed",
+      "upstream": "53c6660f9e41e2f199b1e026e472a626dc512347",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "staged",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.HotLoopTransport.cs",
+      "blob": "951cd6f97d218350b9b952e82cc5de3bf49a18af",
+      "upstream": "9d9ae6e6fd8e9bb76714cb1583d59a0c44ef6d53",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.BootAdf/CopperSharp.Compiler.BootAdf.csproj",
+      "blob": "a70eb577ef24258a8ae7327a909422b7843425a4",
+      "upstream": "050735f7e782a7134b16099f5effcec9c67505e6",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered shared FileSystemAdf implementation and local dependency update; duplicate CLI filesystem writer removed."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.BootAdf/Program.cs",
+      "blob": "cb4dc5584ebebe0cd7c36373405093725dd9203e",
+      "upstream": "12a1f95a4b59fd85792fea1408f4a2d0e0b80e41",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered shared FileSystemAdf implementation and local dependency update; duplicate CLI filesystem writer removed."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Cli/Program.cs",
+      "blob": "5dd48477addf2b79f3a961b47d08f9527523644c",
+      "upstream": "16430c1e34d74686b55777e08ef89b12f5378883",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "All ROM policy modes already supported upstream; local multiline spelling is equivalent."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Cli/README.md",
+      "blob": "f0d48684f7b9953f1f171cfdf8772712fd2a94b6",
+      "upstream": "6aa4ae6f40a3eba51cf94dda160a8876a8d7b5a6",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CompilerExecutionTests.cs",
+      "blob": "778f2a84a61da922e1269e3d1b0c40276385d187",
+      "upstream": "15a22b3d552fbade752284d409152c82f9d35442",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered arithmetic shape expectations. Current upstream console-method counts, newer fixtures and stronger regression coverage retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CompilerFixtures.cs",
+      "blob": "32473c10b64acf1df487601ba13c6fd77afd5f1e",
+      "upstream": "b03885a75c6bb4c03d091ea3d1414034cac5c4df",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local variant removes newer published culture, byref, boxing and formatting regressions; current upstream fixtures retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CopperScreenHeadlessIntegrationTests.cs",
+      "blob": "07a2a7184177175753c576724b5b5cba3729f61a",
+      "upstream": "b117846d3d7c4379d2d5d905fef3c6113e6fe1ed",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Current upstream retains additional executable/hash evidence removed by the older local variant."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CopperSharp.Compiler.Tests.csproj",
+      "blob": "9210599773ab37f907de0215571a104a7a1579fb",
+      "upstream": "187ccf30111f5d4c33fe341ebedf7ecdc5923404",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered local NuGetPackageRoot separator normalization."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FramePreservationEmissionTests.cs",
+      "blob": "cc002086fff48084bec9b506a7f01d78b3e5ece2",
+      "upstream": "cc002086fff48084bec9b506a7f01d78b3e5ece2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FrameworkCompatibilityTests.cs",
+      "blob": "7379a561d159046171ada4dfba4eafc656565a45",
+      "upstream": "7379a561d159046171ada4dfba4eafc656565a45",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FrameworkImplementationPackTests.cs",
+      "blob": "09081a99ed66f624ca4c30d6a0ad7431d046add5",
+      "upstream": "09081a99ed66f624ca4c30d6a0ad7431d046add5",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GeneratedCodeSizeExecutionTests.cs",
+      "blob": "7b77a4d8d4ec2b785c30b6d42898899dd31046d5",
+      "upstream": "eabc96d64f2e1f6874a72288e59000ca88bcd952",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered freestanding profile matrix while retaining upstream ROM coverage."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuestMemoryWrapperFoldingTests.cs",
+      "blob": "4bc5e3e9845fbfd99a635274dabcddc62b763ddd",
+      "upstream": "4bc5e3e9845fbfd99a635274dabcddc62b763ddd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/IntuitionGadgetClassAuthorityTests.cs",
+      "blob": "923283a039bbde8f96d3e83bfe5641888633656c",
+      "upstream": "d70f38683ddc6d57ed78058b837049215ad42de6",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered 232-byte Preferences layout, 16-bit EnableCLI, corrected codec offsets and unaligned/guard regression checks."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/LongPairComparisonExecutionTests.cs",
+      "blob": "e935e31cac0eb3dbf3745491c8bc3c98245b61ad",
+      "upstream": "e935e31cac0eb3dbf3745491c8bc3c98245b61ad",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kBranchRelaxationTests.cs",
+      "blob": "56c4922bb5ed3b96266b9a4e004b6b7ea5dd48f8",
+      "upstream": "56c4922bb5ed3b96266b9a4e004b6b7ea5dd48f8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kFrameClearRunsExecutionTests.cs",
+      "blob": "de35d70d2a7739f0a0e029062e310c35039d82fa",
+      "upstream": "e6134783bbb810f6301c5f1c0040a57806e79499",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Equivalent helper signature formatting; current implementation and tests already retain all options."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kInstructionDataflowTests.cs",
+      "blob": "9d5db9cee5c8219761267c20a91d892c5dc7e51f",
+      "upstream": "9d5db9cee5c8219761267c20a91d892c5dc7e51f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kMachineOptimizerTests.cs",
+      "blob": "76d9a508b4a047549b146f72fa9e69c615902493",
+      "upstream": "a6c8203be6fc4b2b9dbf6f962755e684076f9f83",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kMethodLocalTerminalTests.cs",
+      "blob": "57daba47b940db5079398bcdaaf3f80ab0d96677",
+      "upstream": "57daba47b940db5079398bcdaaf3f80ab0d96677",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kRegisterAllocationTests.cs",
+      "blob": "2d484517bd81033312595d56accde92add663512",
+      "upstream": "c8d706a6b6def107a00eed2ce965f877e8fa67c6",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered additional incoming scalar-spill convergence and observed-home tests; branch-layout tests already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ManagedRuntimeShadowTests.cs",
+      "blob": "ecb0315029f52bc58619796607740f9383c233ac",
+      "upstream": "0168e8df864039a95249623f0c183b432265efd4",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Net10ProfileBaselineTests.cs",
+      "blob": "cd53c7330f801eb1486e22005e2a857518949350",
+      "upstream": "cd53c7330f801eb1486e22005e2a857518949350",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ResidentCodeSizeExecutionTests.cs",
+      "blob": "98167bb21f1fb34771faeaf8687f5d252428124c",
+      "upstream": "b0f5d17c6a3e275e74237424ba107887f8fbde04",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered freestanding profile matrix while retaining upstream ROM coverage."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/RunCommandStackBridgeTests.cs",
+      "blob": "062bf73ee9d0b09bfde20bc876dbd1adf32c03f9",
+      "upstream": "062bf73ee9d0b09bfde20bc876dbd1adf32c03f9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/TransparentPointerFieldLoweringTests.cs",
+      "blob": "ef7bfffaf3dae4735cb4bcd8964eacca39a98c8f",
+      "upstream": "ef7bfffaf3dae4735cb4bcd8964eacca39a98c8f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/CilMachineIrBuilder.cs",
+      "blob": "8030322e1dbe233161895421b01e616707b852f5",
+      "upstream": "328c93e1eef89d712f5d6848a86536e43ead482d",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Static constrained receiver ABI is already fixed upstream with the effective instance-argument override check; recovered independent static ABI tests."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/CilStackAnalyzer.cs",
+      "blob": "ae92700b2fd939092548600da54cd44269189519",
+      "upstream": "ae92700b2fd939092548600da54cd44269189519",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kAggregateReturnForwarding.cs",
+      "blob": "c47d13bec7cdcc6cb8cf3507487165e9fc3f4337",
+      "upstream": "c47d13bec7cdcc6cb8cf3507487165e9fc3f4337",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kAllocatedFrame.cs",
+      "blob": "7a3fa8fb48e0fc3ccd029b23d031b681e72707cf",
+      "upstream": "7a3fa8fb48e0fc3ccd029b23d031b681e72707cf",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kArithmeticFrameMemory.cs",
+      "blob": "758cc3e304f626aadfc57bad21d5c59c56214097",
+      "upstream": "758cc3e304f626aadfc57bad21d5c59c56214097",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kAssembler.cs",
+      "blob": "0b8808eea348d9a6050192a6c2353619dfff630c",
+      "upstream": "0ee9d8a6a2bf4f6570a1c1dcddf90a2705cdb62d",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local decoding/lazy-analysis variant is superseded by published text-free recognition, deferred analyses, reusable snapshots/storage and profiling. Keep current implementation and matching tests; branch timing changes already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kAssemblyBuffer.cs",
+      "blob": "b52c5e5bfd47c724404cc18e753009bbdc17d01c",
+      "upstream": "56fae36e7c46d1121acf0139867a15396fa129f3",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Branch timing fixup field already published; retain current buffer behavior."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kBlockLayout.cs",
+      "blob": "aeb9f95f16ba099d7bcfed08cdcf29181a0f02a3",
+      "upstream": "aeb9f95f16ba099d7bcfed08cdcf29181a0f02a3",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kBulkCopyLowering.cs",
+      "blob": "a74811254c5c499eb435507221c37e12da284492",
+      "upstream": "a74811254c5c499eb435507221c37e12da284492",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kByrefProvenance.cs",
+      "blob": "b81d6476afb41309c1951a4a32565a1a725f404e",
+      "upstream": "b81d6476afb41309c1951a4a32565a1a725f404e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.Allocated.cs",
+      "blob": "0f023dae963c0adfdbdfd6e76766235c9da4de87",
+      "upstream": "8b3af2e5c17064f42bef3a93fbd73e1554e40218",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Incoming-spill, frame-clear and branch changes already published. Recovered assigned-register diagnostics with safe lookup for spilled values; unsafe repeated call-resolution diagnostics retained only in original snapshot."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.ExceptionRuntime.cs",
+      "blob": "0234eab83a45a58592a14dc6484f946f54ed9a8a",
+      "upstream": "962d2135426e9b44fe8de9125a009d095aa2b335",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.FrameCleanup.cs",
+      "blob": "a48c237bf27ff865857f7bea0994a8803b83122d",
+      "upstream": "a48c237bf27ff865857f7bea0994a8803b83122d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.FrameClearRuns.cs",
+      "blob": "2f4a10219300d30534d65a16f433b0b6f98b1c16",
+      "upstream": "2f4a10219300d30534d65a16f433b0b6f98b1c16",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.ManagedPoolRuntime.cs",
+      "blob": "c831550a08379270bcf121a4224ac7767c39f71e",
+      "upstream": "cc0ea87ca5deb3daf63c0a3a214957e2936bcc3e",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered clustered-entry adapter jump and 30,000-byte call-cluster capacity."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.MethodLayout.cs",
+      "blob": "b5b926905be1c9cc88041f62898838b0c6a4e049",
+      "upstream": "27b3a910dfdb5506c2a300c4f057821d9a090262",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered clustered-entry adapter jump and 30,000-byte call-cluster capacity."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.cs",
+      "blob": "6512bffad6379e5deffb133678ee853033076a13",
+      "upstream": "62bb29721c46068f3c938bc1be36f788917d3704",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered freestanding size-policy eligibility, entry layout and low-32-bit partial-product multiply plus guarded DIVU.W. Retained newer upstream descriptor, reachability, GC and framework fixes."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kConditionCodeOptimizer.cs",
+      "blob": "c5b40c303fc552566999f509485c15a3ced169b9",
+      "upstream": "e498b84d3708f13e3549ffb64263857577b9ca55",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local decoding/lazy-analysis variant is superseded by published text-free recognition, deferred analyses, reusable snapshots/storage and profiling. Keep current implementation and matching tests; branch timing changes already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kExactMemoryAnnotator.cs",
+      "blob": "64ff52879da67bcbd8ea3364f26bc893784cc5fa",
+      "upstream": "64ff52879da67bcbd8ea3364f26bc893784cc5fa",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kInstructionDataflow.cs",
+      "blob": "7c52d11534f1e81d9e175433e49b70d5608fb2a4",
+      "upstream": "c6367bc133c2d9b107028d0ae472416592d8d188",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local decoding/lazy-analysis variant is superseded by published text-free recognition, deferred analyses, reusable snapshots/storage and profiling. Keep current implementation and matching tests; branch timing changes already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kMachineIr.cs",
+      "blob": "8f487d7a720941c7eed438eabe288314f69d3583",
+      "upstream": "40e0d54fbe495aeb6f1b3abe71b1575fb9ece20c",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kMachineMemoryAnalysis.cs",
+      "blob": "e6a5418d23c86927f4ebac693029754dee46ddbf",
+      "upstream": "e6a5418d23c86927f4ebac693029754dee46ddbf",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kMachineModuleOptimizer.cs",
+      "blob": "628d8ef5220067fb1cd62a421755d342bab6f9c8",
+      "upstream": "628d8ef5220067fb1cd62a421755d342bab6f9c8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kMemoryPromotionPass.cs",
+      "blob": "484daa031ae1740b6e4d3ddcd909d8a27742652a",
+      "upstream": "f70a65863897a82b4a41d030d6ca673ddd78e588",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kMethodMemorySummary.cs",
+      "blob": "a22a8ceec7f0ed9ccaa0fae9f59daef1f75c413f",
+      "upstream": "a22a8ceec7f0ed9ccaa0fae9f59daef1f75c413f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kOptimizerPipeline.cs",
+      "blob": "7665bdd7e9fe25b78fc265ed90893a4a72f26471",
+      "upstream": "55502a0214d7cb8396df792e7e2254045a3749ad",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered scoped cleanup after helper inlining with fresh method scopes; retained upstream profiling."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.ControlFlowCleanup.cs",
+      "blob": "310075e549ea21ddaac557ebbf4cf50c17ac935b",
+      "upstream": "5e1167e988a60c7b42bca1760d442cb6a21e820a",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Allow-unreferenced-marker behavior already published with indexed boundary checks; retain newer upstream implementation."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.FrameCleanup.cs",
+      "blob": "0b88a3ba006a4cdbe849e61dbb7674165105742a",
+      "upstream": "0b88a3ba006a4cdbe849e61dbb7674165105742a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.TransportSize.cs",
+      "blob": "4cc743cb0d574de1e9b875ce974b74aa9cde3baf",
+      "upstream": "4cc743cb0d574de1e9b875ce974b74aa9cde3baf",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.cs",
+      "blob": "fd562726c6be0fbf72285f848c7be39261a146a8",
+      "upstream": "82b5281bc18965c6396feec40a0a293ffd2fcf8d",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local decoding/lazy-analysis variant is superseded by published text-free recognition, deferred analyses, reusable snapshots/storage and profiling. Keep current implementation and matching tests; branch timing changes already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kRegisterAllocation.cs",
+      "blob": "f061e159511c5ae325544fb43a2e341634e4fa4f",
+      "upstream": "68c79986abd22a183d9d2305589f3e2b4d7154a4",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered feasible scalar-color pressure, adapted to upstream cached degree updates, and pair-alias repair guard, tests and explanation."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kRuntimeAbi.cs",
+      "blob": "7a4df24a8dc5272777e51bd1aef4b6dbc7e56554",
+      "upstream": "d525df97394517225326731aa3b09a6d7da4d9f6",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kSafepointPlan.cs",
+      "blob": "1a20a3438cf2e3eb1250391f6a8931603c5d690d",
+      "upstream": "1a20a3438cf2e3eb1250391f6a8931603c5d690d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kSpillAndCopy.cs",
+      "blob": "c703e12942caed3ccb2cf4e33b3334bfe2ade0c0",
+      "upstream": "34a9db5c98d20c6f968c6bd300ef0fe1c1537e8d",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Phi-width normalization already published; local differences are equivalent formatting."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kTerminalEpilogueMerger.Local.cs",
+      "blob": "f5768d4a0ef62030898dd964b9d1740a122fcb65",
+      "upstream": "f5768d4a0ef62030898dd964b9d1740a122fcb65",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kTerminalEpilogueMerger.cs",
+      "blob": "5e2b9e4d56dbd27d1bdc881ffbe1e31a44f34a7a",
+      "upstream": "5e2b9e4d56dbd27d1bdc881ffbe1e31a44f34a7a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kValueRangeAnalysis.cs",
+      "blob": "7b65c60df94806156fe9cecff036abfc1da5feb0",
+      "upstream": "0bdfbb445e8452953f473f2b45013cbf87a594d3",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Older local variant removes published profiling and scratch-state reuse; keep newer upstream behavior."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/CompatibilityTesting.md",
+      "blob": "0434b8979816205b5dba108570f434976cd4eb3e",
+      "upstream": "794a0c9935b8e9f673a92f47ff92f200a2b81f2d",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Older qualification prose/evidence preserved in original snapshot and byte backup; retain current upstream documentation with later results and provenance."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/FrameworkBinding.cs",
+      "blob": "d782e35ddcbda847c280d41fbfc1d6a3bb104ec0",
+      "upstream": "d782e35ddcbda847c280d41fbfc1d6a3bb104ec0",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/FrameworkBinding.md",
+      "blob": "1b64ca15941a3eebfe248209152dad75c3c8d78e",
+      "upstream": "1b64ca15941a3eebfe248209152dad75c3c8d78e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/FrameworkBindingRegistry.cs",
+      "blob": "6529ada73ee8e0e083b83966a7ed11a141590e11",
+      "upstream": "6529ada73ee8e0e083b83966a7ed11a141590e11",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/FrameworkImplementationPack.cs",
+      "blob": "4fbead027017055b9b7912a38f00f92beed3bfcb",
+      "upstream": "4fbead027017055b9b7912a38f00f92beed3bfcb",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/FrameworkImplementationProfile.cs",
+      "blob": "9fdef84d1267f7f2343485c6402e103c485629e9",
+      "upstream": "5fbe50f5d666ffbfba54576ce4972e30339f2288",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local constructor-admission proposal superseded upstream by the narrowly owned NotSupported runtime guard and stronger positive/negative binding tests."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/FrameworkReachabilityAnalyzer.cs",
+      "blob": "11cce9cf156d97ea35360627f7086034591c1b60",
+      "upstream": "4249913993dfc786ecbb4670c9b68ea1c8cb0045",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local variant removes newer published culture/framework/bitmap/generic-index corrections; retain current upstream behavior, including stateless application value support."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/ManagedRuntime.md",
+      "blob": "fe8c9893f63b0e7c9ec82e43978e863dd3888853",
+      "upstream": "c498201dd6cc51a8d5cdedc0462b53bb7c7d123c",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/Net10FrameworkContract.cs",
+      "blob": "0a7a5a4d83f9d5c93dff0d4bad471cbd3c68ebc2",
+      "upstream": "0a7a5a4d83f9d5c93dff0d4bad471cbd3c68ebc2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/net10.0-10.0.9.json",
+      "blob": "85fd4d5118dafd95ce375aedb3f923d490982133",
+      "upstream": "85fd4d5118dafd95ce375aedb3f923d490982133",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/M68kCompiler.cs",
+      "blob": "f9e5fba173b43461911505ebcd90b75b2c75a06a",
+      "upstream": "8aab421afc91f441e1776001e7167a4a73b041db",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/M68kStaticAnalyzer.cs",
+      "blob": "abbf18683783cac4c392c13928575cb2882c40aa",
+      "upstream": "abbf18683783cac4c392c13928575cb2882c40aa",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CilType.cs",
+      "blob": "6821976326853aa8136ad5eda10cf0de5893820a",
+      "upstream": "6821976326853aa8136ad5eda10cf0de5893820a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CompilationModule.cs",
+      "blob": "2be4202a7a10a172e1401ea0e1236872446b4914",
+      "upstream": "0f74f4680941ab68a658ecb291ed56a761841086",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local variant removes newer published culture/framework/bitmap/generic-index corrections; retain current upstream behavior, including stateless application value support."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/PublicApi.cs",
+      "blob": "d7b19cfa9ef7227619e8a0b8026c7b186438afec",
+      "upstream": "567418a0c138c7a43516fbea1277fe59137ecc6d",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "All public policy options and profile documentation already present upstream; local prose variant preserved in snapshot."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Runtime.cs",
+      "blob": "2761665373a4611d4e220442bb97460f05f5f814",
+      "upstream": "2761665373a4611d4e220442bb97460f05f5f814",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "MachineIrOptimizations.md",
+      "blob": "0e66f8837829c8804c8b7dbd0d7b117db6867f6f",
+      "upstream": "0e66f8837829c8804c8b7dbd0d7b117db6867f6f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "PeepholeOptimizations.md",
+      "blob": "95120241afc1837320c988330049244a3c9e4df2",
+      "upstream": "95120241afc1837320c988330049244a3c9e4df2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "RegisterAllocation.md",
+      "blob": "4dd59344258af367cdfa30bc030e7b2afc059e08",
+      "upstream": "4d489d7abb3c875c48e0c73c29d0bc2e9d795c3b",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered feasible scalar-color pressure, adapted to upstream cached degree updates, and pair-alias repair guard, tests and explanation."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.AmigaPal/ConsolePal.cs",
+      "blob": "996b07aaf038e89e386b06d3b62417d1ed7b1690",
+      "upstream": "8506bab34b9f90063c3e0fc4f429ed7870ec4a4d",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/CopperSharp.Runtime.Managed.csproj",
+      "blob": "fe232edace2d331929990f1719fe792a8ba25ed8",
+      "upstream": "fe232edace2d331929990f1719fe792a8ba25ed8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/FrameworkShadows.cs",
+      "blob": "79e7ad1dfe8553de742423cd9a84a9ac4708bed9",
+      "upstream": "20e9f17084838be12726387b283e6e2b331cca34",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local variant removes newer published culture/framework/bitmap/generic-index corrections; retain current upstream behavior, including stateless application value support."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ManagedPool.cs",
+      "blob": "7f0066f92172e000dae3d73d488b5e8260e188f0",
+      "upstream": "4913b8407a4b0c985f96136a7726f9262101d493",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Sdk.Amiga/Examples/FileStats/Program.cs",
+      "blob": "07d88afdc98cf82b591aca5df10fc51510627356",
+      "upstream": "07d88afdc98cf82b591aca5df10fc51510627356",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Sdk.Amiga/Intuition/GuestCodecs.cs",
+      "blob": "1e5208c746372c9a35a69c0c23bc46542fa5805b",
+      "upstream": "0e3bee91c0a7c3ada1a5bc2e4d2f5155d9ddb1d1",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered 232-byte Preferences layout, 16-bit EnableCLI, corrected codec offsets and unaligned/guard regression checks."
+    },
+    {
+      "layer": "working",
+      "path": "Sdk.Amiga/Intuition/Preferences.cs",
+      "blob": "2abd6188f12762c059f6475eb0c2c4c12b5fa683",
+      "upstream": "3d14d4815d155086ba08417ad05504a7496c73cb",
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered 232-byte Preferences layout, 16-bit EnableCLI, corrected codec offsets and unaligned/guard regression checks."
+    },
+    {
+      "layer": "working",
+      "path": "Sdk/README.md",
+      "blob": "de90c90fa6d1159f7c2ed887fd914239ca70a519",
+      "upstream": "de90c90fa6d1159f7c2ed887fd914239ca70a519",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Sdk/Sdk/Sdk.targets",
+      "blob": "f3b7f01711a993422aff7864658ebc9b1d9f3e71",
+      "upstream": "f3b7f01711a993422aff7864658ebc9b1d9f3e71",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "CodeSizeHotLoops.md",
+      "blob": "19d73055208f1490cf17b06991ad3c4d882e5679",
+      "upstream": "19d73055208f1490cf17b06991ad3c4d882e5679",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.BootAdf/FileSystemAdf.cs",
+      "blob": "1791441b5c7c7a1beb0c27d11ee1b7974694d60d",
+      "upstream": "1791441b5c7c7a1beb0c27d11ee1b7974694d60d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner.Tests/CopperSharp.Compiler.NativeOsRunner.Tests.csproj",
+      "blob": "66c0902c690180ecf2bd1699c6b2871c3d5ae19a",
+      "upstream": "66c0902c690180ecf2bd1699c6b2871c3d5ae19a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner.Tests/FileStatsNativeOsTests.cs",
+      "blob": "d8119f4a1eab376b63ef747a266949e56eb629ed",
+      "upstream": "d8119f4a1eab376b63ef747a266949e56eb629ed",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner.Tests/NativeOsExecutionTests.cs",
+      "blob": "f187aeff5409e93a5cd49394e251dd17d6d63bbe",
+      "upstream": "f187aeff5409e93a5cd49394e251dd17d6d63bbe",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner.Tests/NativeOsProtocolTests.cs",
+      "blob": "76557608a74a1e61bb8cc9fdd43634ea703568aa",
+      "upstream": "76557608a74a1e61bb8cc9fdd43634ea703568aa",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner.Tests/PinnedCoreLibPack.cs",
+      "blob": "f1398075325a34216ec32ca13767895629878acd",
+      "upstream": "f1398075325a34216ec32ca13767895629878acd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner.Tests/StringBuilderNativeOsTests.cs",
+      "blob": "9c712583e805c21f92387945f31087e4b4b32c31",
+      "upstream": "9eaf5d56618f08614da5947ffbd36193887f5c06",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner/CopperSharp.Compiler.NativeOsRunner.csproj",
+      "blob": "f4ca86ae1b120e1433b4a66890b9d4bb0d8a5918",
+      "upstream": "f4ca86ae1b120e1433b4a66890b9d4bb0d8a5918",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner/NativeOsSession.cs",
+      "blob": "9860ef236c02d753a3117eb8c60bd27058717b7c",
+      "upstream": "9860ef236c02d753a3117eb8c60bd27058717b7c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner/Program.cs",
+      "blob": "def772f46a6d5fa0f68b98b645829a6712ef6b9d",
+      "upstream": "def772f46a6d5fa0f68b98b645829a6712ef6b9d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.NativeOsRunner/README.md",
+      "blob": "976d283aa8ce10fe128c774bce26f6e598cb5a34",
+      "upstream": "b63621d68bddda50c7b4db3a7c0054510106c9e3",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Older qualification prose/evidence preserved in original snapshot and byte backup; retain current upstream documentation with later results and provenance."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests.MultiModule/ExternalBorrowedView.cs",
+      "blob": "a7254a8d9b3ec752a16ce10a866a704ad4f0cc4d",
+      "upstream": "a7254a8d9b3ec752a16ce10a866a704ad4f0cc4d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests.NativeOsFixture/CopperSharp.Compiler.Tests.NativeOsFixture.csproj",
+      "blob": "cfdce34450836e6a8af5bdd2737d0a423dbd05ed",
+      "upstream": "d0841611d1fdbec719127a50e08ed77d70364144",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests.NativeOsFixture/NativeOsFixture.cs",
+      "blob": "9a27f9e7329f83fe2e5a47dcc3369d1c9de0366e",
+      "upstream": "9a27f9e7329f83fe2e5a47dcc3369d1c9de0366e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests.NativeOsFixture/StringBuilderNativeFixture.cs",
+      "blob": "e7a8e19794fb45f2072b33d7924eb21f64be573e",
+      "upstream": "125f13a1fe7271b9623ffea2631915cb6f94130a",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/AggregateInterfaceReferenceReturnFixtures.cs",
+      "blob": "5fe30dc09a726ed1f849c3d6835a35fba6f75ee1",
+      "upstream": "5fe30dc09a726ed1f849c3d6835a35fba6f75ee1",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/AggregateInterfaceReturnFixtures.cs",
+      "blob": "9d166769000ce52a4f8b6980111b1a3b9663d547",
+      "upstream": "9d166769000ce52a4f8b6980111b1a3b9663d547",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/AggregateInterfaceReturnTests.cs",
+      "blob": "80ac94add6ad8539cf2f9c93bc2575241bfd1ee1",
+      "upstream": "80ac94add6ad8539cf2f9c93bc2575241bfd1ee1",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/AmbientCultureFixtures.cs",
+      "blob": "0703e4dc690fc3ed8beaa6adfa7ca49a1b696994",
+      "upstream": "98944fa9a8f91bccd9b647d34e989b010e59f623",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ApplicationCodeSizeTests.cs",
+      "blob": "e1036feec38925ec4dd9486ad3b52a7375a61fe6",
+      "upstream": "5d6794180c9cb848715c2becab486e030c3a5362",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local version drops newer published negative-option assertions; current coverage retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ApplicationMetadataSizeTests.cs",
+      "blob": "2acd36fea8dfd9a5ced34554a082be86dee146e5",
+      "upstream": "03cc44fa2eeebb1e767423acd634987f8a5bd9fd",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Base64CodecContractTests.cs",
+      "blob": "09bb1c750e4c7a851cb84e5b11875b1baa829f5d",
+      "upstream": "09bb1c750e4c7a851cb84e5b11875b1baa829f5d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Base64CodecFixtures.cs",
+      "blob": "8ab74d94b0f94bb2743508ba076c0c0295490ca4",
+      "upstream": "8ab74d94b0f94bb2743508ba076c0c0295490ca4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/BorrowedMemoryViewTests.cs",
+      "blob": "b6fcb03ec194980843c5e21f2b283b97a21ff302",
+      "upstream": "b888bd7fd031cd35d8adcc4be10fb4e045e27fe3",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local exact-cycle equality is superseded by upstream non-regression bounds that allow faster generated code. Original assertion retained in snapshot."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/BufferReferenceCopyFixtures.cs",
+      "blob": "a78b006c31b5e291b51179d7fef353149a3d8888",
+      "upstream": "a78b006c31b5e291b51179d7fef353149a3d8888",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/BufferReferenceCopyTests.cs",
+      "blob": "007d94dad2dee0baf15cadc6641b6f79e5b57101",
+      "upstream": "007d94dad2dee0baf15cadc6641b6f79e5b57101",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CollectorFrameAnchorFixtures.cs",
+      "blob": "d76498881fa946634b76814dd4be002056c1fc85",
+      "upstream": "d76498881fa946634b76814dd4be002056c1fc85",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ConsolePackingSizeTests.cs",
+      "blob": "60fb548bfad86fe61a527d469c01625e0ec4333c",
+      "upstream": "60fb548bfad86fe61a527d469c01625e0ec4333c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibBigIntegerFixtureBuilder.cs",
+      "blob": "725e97ddad368289efa849cf86a051c97e6c9664",
+      "upstream": "725e97ddad368289efa849cf86a051c97e6c9664",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibCharacterFixtureBuilder.cs",
+      "blob": "f3d25db49b50b72fc07198e363cb1db51f6fc352",
+      "upstream": "f3d25db49b50b72fc07198e363cb1db51f6fc352",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibClosureAdmissionTests.cs",
+      "blob": "4a3a6b85306e25ec85ccf145977b3c286db3e86f",
+      "upstream": "583881f79427537fe6ed4038a7fe8d19029ca394",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local constructor-admission proposal superseded upstream by the narrowly owned NotSupported runtime guard and stronger positive/negative binding tests."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibCodecAdmissionTests.cs",
+      "blob": "3b247d12846531a528af9defbfadc09f6800e8c3",
+      "upstream": "3b247d12846531a528af9defbfadc09f6800e8c3",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibCodecExecutionTests.cs",
+      "blob": "3b893b8a1b8a2682c1bf51e1f7750296ec3219a7",
+      "upstream": "3b893b8a1b8a2682c1bf51e1f7750296ec3219a7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibCodecPipelineFixtures.cs",
+      "blob": "7382f02d933cd52d80ed623444337fe2c639e1e8",
+      "upstream": "7382f02d933cd52d80ed623444337fe2c639e1e8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CoreLibCodecStreamingFixtures.cs",
+      "blob": "e3f9330c92e233e8c9b3940c5d5b13643c502372",
+      "upstream": "e3f9330c92e233e8c9b3940c5d5b13643c502372",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CultureProviderFixtures.cs",
+      "blob": "bb585c662e1418327b8e174af62f1fb8aa36b4f6",
+      "upstream": "bb585c662e1418327b8e174af62f1fb8aa36b4f6",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CultureProviderTests.cs",
+      "blob": "0f0e8aeeddac249872a36b2a2f3fea30311bb02d",
+      "upstream": "93dac601bcc08227576a661ec5308736f7e80bca",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CurrencyFormattingFixtures.cs",
+      "blob": "0ebd6a113a0b5537c0eb03d6145a8ffe68ca7a9e",
+      "upstream": "468d8ee1ae5aa5c25dd2082c6f21b35c2f53afbf",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CustomIntegerFormattingFixtures.cs",
+      "blob": "2a2018cdf7da8ea96db7ee803a0aa34888126509",
+      "upstream": "2a2018cdf7da8ea96db7ee803a0aa34888126509",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/CustomIntegerFormattingTests.cs",
+      "blob": "78aff5cfb750265ebfea71fd4f504070291675bb",
+      "upstream": "78aff5cfb750265ebfea71fd4f504070291675bb",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DateOnlyCoreLibTests.cs",
+      "blob": "aff2744e58ffe3d869d0fd81a73a887055746642",
+      "upstream": "aff2744e58ffe3d869d0fd81a73a887055746642",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DateOnlyParsingContractTests.cs",
+      "blob": "0ccb579e7ed99b985e5dd98be3f2fc2efe3e3e88",
+      "upstream": "0ccb579e7ed99b985e5dd98be3f2fc2efe3e3e88",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalCapacityFixtures.cs",
+      "blob": "6af66a1c77822bbe3326d692f879092d9fea72d7",
+      "upstream": "6af66a1c77822bbe3326d692f879092d9fea72d7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalConstantFieldTests.cs",
+      "blob": "2ca717044fa0817777ab16de37efc2807e0f3838",
+      "upstream": "2ca717044fa0817777ab16de37efc2807e0f3838",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalCustomEnumerableFixtures.cs",
+      "blob": "9266cf0d5c2adde7093ffb3d3016b705bb3ae672",
+      "upstream": "9266cf0d5c2adde7093ffb3d3016b705bb3ae672",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalCustomEnumerableTests.cs",
+      "blob": "6f2f829d214b4909687cdc0dbe4871e15b7bcd72",
+      "upstream": "6f2f829d214b4909687cdc0dbe4871e15b7bcd72",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalFormattingContractsFixtures.cs",
+      "blob": "0bce56db1a57139dbed07372bc99f9630bfe26ff",
+      "upstream": "0bce56db1a57139dbed07372bc99f9630bfe26ff",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalFormattingFixtures.cs",
+      "blob": "7e15ca5d275ce115081da3c0dc478f28c3b7d3a6",
+      "upstream": "7e15ca5d275ce115081da3c0dc478f28c3b7d3a6",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/DecimalFormattingTests.cs",
+      "blob": "e6eddf9dd888d6fb6b4a45c586480319643d1e19",
+      "upstream": "e6eddf9dd888d6fb6b4a45c586480319643d1e19",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/EnumFormattingContractsFixtures.cs",
+      "blob": "0942b2f2f782c5d3fbb5f2ecb6c8219d1494fbd7",
+      "upstream": "0942b2f2f782c5d3fbb5f2ecb6c8219d1494fbd7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/EnumFormattingFixtures.cs",
+      "blob": "c597762d82520fde5bb23b00161767224c4c0320",
+      "upstream": "c597762d82520fde5bb23b00161767224c4c0320",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/EnumFormattingMatrixFixtures.cs",
+      "blob": "8cf3e5ff36f2945f9b5dcccc36c0d7f6a66d2433",
+      "upstream": "8cf3e5ff36f2945f9b5dcccc36c0d7f6a66d2433",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/EnumFormattingTests.cs",
+      "blob": "4a409a34e4036e70f52520a62363f7965cf3855d",
+      "upstream": "4a409a34e4036e70f52520a62363f7965cf3855d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FixedBufferLayoutTests.cs",
+      "blob": "e2adcda900bca815a47043e8cb04958b19656a71",
+      "upstream": "e2adcda900bca815a47043e8cb04958b19656a71",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointAllocationFixtures.cs",
+      "blob": "9fba4fd6e7ec0f7584a2f035fe05d7239c41fb5e",
+      "upstream": "9fba4fd6e7ec0f7584a2f035fe05d7239c41fb5e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointArithmeticFixtureBuilder.cs",
+      "blob": "315dfe8a02c35195b68d84dcf1c0254498a91337",
+      "upstream": "315dfe8a02c35195b68d84dcf1c0254498a91337",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointArithmeticTests.cs",
+      "blob": "dff3522807973e8f2a7d731be455737e31194c73",
+      "upstream": "dff3522807973e8f2a7d731be455737e31194c73",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointArrayFixtures.cs",
+      "blob": "65bb24f6b7c283f96baccead96193610bd970095",
+      "upstream": "65bb24f6b7c283f96baccead96193610bd970095",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointCapacityFixtures.cs",
+      "blob": "dc0cf117829bb2518b4eca5663c7416361467495",
+      "upstream": "dc0cf117829bb2518b4eca5663c7416361467495",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointComparisonFixtureBuilder.cs",
+      "blob": "eb5fc6159f2e552982a9e654dae522f28543135d",
+      "upstream": "eb5fc6159f2e552982a9e654dae522f28543135d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointConversionTests.cs",
+      "blob": "1f73bdc63f09d3617b2957ce6a5b8a65eb5739ad",
+      "upstream": "1f73bdc63f09d3617b2957ce6a5b8a65eb5739ad",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointCustomCallbackFixtures.cs",
+      "blob": "8678c1b8641975da262ac3c879326a060e81074f",
+      "upstream": "8678c1b8641975da262ac3c879326a060e81074f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointCustomEnumerableFixtures.cs",
+      "blob": "a0e7359a87c08da20303e799e60cadfa84319472",
+      "upstream": "a0e7359a87c08da20303e799e60cadfa84319472",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointEnumerableFixtures.cs",
+      "blob": "303838486d8aa922fdc4435fe1fdb380d7ec4801",
+      "upstream": "303838486d8aa922fdc4435fe1fdb380d7ec4801",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointExplicitFormattingFixtures.cs",
+      "blob": "16fd420bbdb96418e9676f7a760cf6847acaaf12",
+      "upstream": "16fd420bbdb96418e9676f7a760cf6847acaaf12",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointFormattingFixtures.cs",
+      "blob": "30febde928c55c5308c7d3bc0f68c32dd89785fe",
+      "upstream": "30febde928c55c5308c7d3bc0f68c32dd89785fe",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointFormattingTests.cs",
+      "blob": "e2e744d05ebfef5c73340787b9ecfbcac092087d",
+      "upstream": "e2e744d05ebfef5c73340787b9ecfbcac092087d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointHandlerConsumersFixtures.cs",
+      "blob": "f790cc7857bc9a5730e38df9be5ca91389ec90c0",
+      "upstream": "f790cc7857bc9a5730e38df9be5ca91389ec90c0",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointObjectFormattingFixtures.cs",
+      "blob": "d889fd2c12411d100835dfeea55fe68e83c87b20",
+      "upstream": "d889fd2c12411d100835dfeea55fe68e83c87b20",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FloatingPointProviderContractsFixtures.cs",
+      "blob": "db8ca9a121d6df4ec44c186fd2786e362542a5d5",
+      "upstream": "db8ca9a121d6df4ec44c186fd2786e362542a5d5",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FrameHomeRomOptInTests.cs",
+      "blob": "e18023141edc2c08298b33c798d9605f5c2f267a",
+      "upstream": "e18023141edc2c08298b33c798d9605f5c2f267a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FrameSliceForwardingTests.cs",
+      "blob": "6dd034f96d2346369cef80104f1ed744ca6f37c8",
+      "upstream": "6dd034f96d2346369cef80104f1ed744ca6f37c8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FreestandingClusterEntryTests.cs",
+      "blob": "bbe42556959281f5b28c649d3373b0ca6548987a",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered persistent callback state and clustered platform-prefix entry execution tests."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/FreestandingCodeSizeStateTests.cs",
+      "blob": "36218c401d1e3b7a18bf62ada87fa0ad00d32887",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered persistent callback state and clustered platform-prefix entry execution tests."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GcFrameRootClassificationTests.cs",
+      "blob": "f2c6eed56a07ca309012fbddd38c2a32f35da5ab",
+      "upstream": "f2c6eed56a07ca309012fbddd38c2a32f35da5ab",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GeneratedHelperCleanupScopeTests.cs",
+      "blob": "bb98d68dc1d0f830bcfc718acf5c762d8797c5e5",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered scoped cleanup after helper inlining with fresh method scopes; retained upstream profiling."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericApplicationNullableJoinFixtures.cs",
+      "blob": "a2f0ff96d8db4fd508e8beca8ee337b11bc3ae7f",
+      "upstream": "a2f0ff96d8db4fd508e8beca8ee337b11bc3ae7f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericApplicationReferenceJoinFixtures.cs",
+      "blob": "9ee77b2328937ecf04bcdb838fe46ea9b07c7b3c",
+      "upstream": "9ee77b2328937ecf04bcdb838fe46ea9b07c7b3c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericApplicationReferenceJoinTests.cs",
+      "blob": "ffcccc307ff3dcdb7fb349b5676576c06edbfb9d",
+      "upstream": "ffcccc307ff3dcdb7fb349b5676576c06edbfb9d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericApplicationValueJoinContractsFixtures.cs",
+      "blob": "e0da229f198c23398d67c99e898bd4c67076d491",
+      "upstream": "e0da229f198c23398d67c99e898bd4c67076d491",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericApplicationValueJoinFixtures.cs",
+      "blob": "3bfea37c08733dd4169343e5a1bd641d62cc95e2",
+      "upstream": "3bfea37c08733dd4169343e5a1bd641d62cc95e2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericApplicationValueJoinTests.cs",
+      "blob": "65f94c9cc10762988a6385cb1c6cd777321dcfea",
+      "upstream": "65f94c9cc10762988a6385cb1c6cd777321dcfea",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericBooleanCharJoinFixtures.cs",
+      "blob": "7179ad9806936df527408bdec4b7f63104cfa9de",
+      "upstream": "7179ad9806936df527408bdec4b7f63104cfa9de",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericDecimalNullableJoinFixtures.cs",
+      "blob": "b620608f6b52cd0dfe60976630bcd041b1e7a49d",
+      "upstream": "b620608f6b52cd0dfe60976630bcd041b1e7a49d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericExceptionSpecializationFixtures.cs",
+      "blob": "35c0c781f69e24e7625eef5974521b5d7cd4ec23",
+      "upstream": "35c0c781f69e24e7625eef5974521b5d7cd4ec23",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericFloatingNullableJoinFixtures.cs",
+      "blob": "df3bbff5aee5885a45602f5c7bf4a71588c2a542",
+      "upstream": "df3bbff5aee5885a45602f5c7bf4a71588c2a542",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericJoinBoxedIteratorFixtures.cs",
+      "blob": "ceb352aa0ac8e09b716406dc84dfc03a746fe4de",
+      "upstream": "ceb352aa0ac8e09b716406dc84dfc03a746fe4de",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericJoinCapacityFixtures.cs",
+      "blob": "336985602cf56c3c072d742afdbefe04e940e390",
+      "upstream": "336985602cf56c3c072d742afdbefe04e940e390",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericJoinContractsFixtures.cs",
+      "blob": "da32c4def952aff406a33d256ead92ea4e48f663",
+      "upstream": "da32c4def952aff406a33d256ead92ea4e48f663",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericJoinEnumerationFixtures.cs",
+      "blob": "67a53cad500624948dca2c6754098a3fa66a4c6e",
+      "upstream": "67a53cad500624948dca2c6754098a3fa66a4c6e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericJoinEnumerationTests.cs",
+      "blob": "c130d091c5a5da0a310af93f87589f222021e0e6",
+      "upstream": "c130d091c5a5da0a310af93f87589f222021e0e6",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericJoinFrameworkEnumFixtures.cs",
+      "blob": "21a20ded91c40a163c1cd9639549ac7d3d32df15",
+      "upstream": "21a20ded91c40a163c1cd9639549ac7d3d32df15",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericNullableJoinFixtures.cs",
+      "blob": "892cf434e4ea6a54deebcb05a1937e408e30fa5a",
+      "upstream": "892cf434e4ea6a54deebcb05a1937e408e30fa5a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericSmallNullableJoinFixtures.cs",
+      "blob": "cae66355992d8541faf09b0951e2d6274fd9733b",
+      "upstream": "cae66355992d8541faf09b0951e2d6274fd9733b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GenericWideNullableJoinFixtures.cs",
+      "blob": "39a7ba5a46629a39fadb5bc809f2593441e64556",
+      "upstream": "39a7ba5a46629a39fadb5bc809f2593441e64556",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuidAdmissionTests.cs",
+      "blob": "5c773fa2d17fd70e914f82d6064a64bae404f168",
+      "upstream": "5c773fa2d17fd70e914f82d6064a64bae404f168",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuidAdversarialFixtures.cs",
+      "blob": "1670f3fdda1eae509af128d85d14b3dab7d7523e",
+      "upstream": "1670f3fdda1eae509af128d85d14b3dab7d7523e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuidCoreLibFixtures.cs",
+      "blob": "bd28d6ffae06158069618b454e475ce6f3c5bfa2",
+      "upstream": "bd28d6ffae06158069618b454e475ce6f3c5bfa2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuidCoreLibTests.cs",
+      "blob": "e6e2ab025ec3f0ed556861b19dc314ad1a3e31c4",
+      "upstream": "e6e2ab025ec3f0ed556861b19dc314ad1a3e31c4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuidTextContractTests.cs",
+      "blob": "ea344fa79ab43668683e7a4fe172a44af251f288",
+      "upstream": "ea344fa79ab43668683e7a4fe172a44af251f288",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/GuidTextFixtures.cs",
+      "blob": "f28458a6178a78cda40a295aa6e62285bf08b3d5",
+      "upstream": "f28458a6178a78cda40a295aa6e62285bf08b3d5",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/HardwareSupportFixtureBuilder.cs",
+      "blob": "4ff4470e496607977be9eac1016ac0906398f8a1",
+      "upstream": "4ff4470e496607977be9eac1016ac0906398f8a1",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/HardwareSupportTests.cs",
+      "blob": "23d05e85302e14c5c55902cf27fc6bc3a698e933",
+      "upstream": "23d05e85302e14c5c55902cf27fc6bc3a698e933",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/HexCodecContractTests.cs",
+      "blob": "97e570bcd3c9b160386acd4639fde2179af6292b",
+      "upstream": "97e570bcd3c9b160386acd4639fde2179af6292b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/HexCodecFixtures.cs",
+      "blob": "337f13054fd346bee246996d54bbc8bcfca51e87",
+      "upstream": "337f13054fd346bee246996d54bbc8bcfca51e87",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InitializedArrayTests.cs",
+      "blob": "edf3239e59e000e9b84da7987f81e59734c07d65",
+      "upstream": "edf3239e59e000e9b84da7987f81e59734c07d65",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InitializedSpanFixtureBuilder.cs",
+      "blob": "cfa3aedcae6bc8c5c565061257fd5d0e1291eed6",
+      "upstream": "cfa3aedcae6bc8c5c565061257fd5d0e1291eed6",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Int32CustomEnumerableFixtures.cs",
+      "blob": "b884265d7f0da7f62429e47ab4c8a33f459f758b",
+      "upstream": "b884265d7f0da7f62429e47ab4c8a33f459f758b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Int32CustomEnumerableTests.cs",
+      "blob": "5af80e82719944d2bbd4d71f43cd724e7e9da47e",
+      "upstream": "5af80e82719944d2bbd4d71f43cd724e7e9da47e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Integer64ArithmeticTests.cs",
+      "blob": "09e989c9754d1017210f5173afa1fd0a536b5e5c",
+      "upstream": "09e989c9754d1017210f5173afa1fd0a536b5e5c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InterpolatedHandlerSpecializationTests.cs",
+      "blob": "8de6b22002fb320959cf93ce5738dc082a19bc9c",
+      "upstream": "8de6b22002fb320959cf93ce5738dc082a19bc9c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InterpolatedStringBuilderFixtures.cs",
+      "blob": "ef4edd148f6b5064f64a0116609cd0434d2d1fbd",
+      "upstream": "ef4edd148f6b5064f64a0116609cd0434d2d1fbd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InvariantParserProviderExecutionTests.cs",
+      "blob": "ee8dfb26e9b9ae3fee2c24e695da66e56a2f2683",
+      "upstream": "ee8dfb26e9b9ae3fee2c24e695da66e56a2f2683",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InvariantParserProviderFixtures.cs",
+      "blob": "cc8723d09640e0081d50f5bd0e42a8b368445e17",
+      "upstream": "cc8723d09640e0081d50f5bd0e42a8b368445e17",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/InvariantParserProviderTests.cs",
+      "blob": "fa9de98176d6d78d2d7bbfe998e05635e6bda67e",
+      "upstream": "fa9de98176d6d78d2d7bbfe998e05635e6bda67e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kBranchFallthroughTimingTests.cs",
+      "blob": "09dd49020ff7f2ab7b39adf721d0395543818bf8",
+      "upstream": "09dd49020ff7f2ab7b39adf721d0395543818bf8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kComparisonPromotionTests.cs",
+      "blob": "4312fd02440014c7c32b25cac0cd61176c88e439",
+      "upstream": "4312fd02440014c7c32b25cac0cd61176c88e439",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kConditionLabelIndexTests.cs",
+      "blob": "89111dc2b5fb94b42ceb612b7df585021ccf8091",
+      "upstream": "89111dc2b5fb94b42ceb612b7df585021ccf8091",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kConditionPeepholeHandoffTests.cs",
+      "blob": "09dd1630e10d04995fdedc517ccb928035e54a08",
+      "upstream": "09dd1630e10d04995fdedc517ccb928035e54a08",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kDataflowFixupSnapshotTests.cs",
+      "blob": "cc12a8c81f884422c114bb16a0e1e9a6db531830",
+      "upstream": "cc12a8c81f884422c114bb16a0e1e9a6db531830",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kDeferredAnalysisTests.cs",
+      "blob": "b39bcf03926368f6d7a3ee5a806717e989805377",
+      "upstream": "8d68251c4e4c721e9aadea20652462b022e63406",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local decoding/lazy-analysis variant is superseded by published text-free recognition, deferred analyses, reusable snapshots/storage and profiling. Keep current implementation and matching tests; branch timing changes already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kEffectOffsetRebaseTests.cs",
+      "blob": "ef9aafdd0f28490ab230a6fea2379ddb87e0b38b",
+      "upstream": "ef9aafdd0f28490ab230a6fea2379ddb87e0b38b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kFeasibleColorDegreeTests.cs",
+      "blob": "f422f5e223ac24a2d5cc4d19622aaa5a40ef7e22",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered feasible scalar-color pressure, adapted to upstream cached degree updates, and pair-alias repair guard, tests and explanation."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kFixupTableScanTests.cs",
+      "blob": "cc403b97bbf1425703bc6077b4094d85e3215b4e",
+      "upstream": "08b279c6e4747f839d3c6b381d6111dd56ab88b0",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local variant removes newer duplicate-recovery and empty-range tests; current coverage retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kFrameTransferShapeTests.cs",
+      "blob": "ae246913fcec1cc3f14e12b12e466622af5d1450",
+      "upstream": "ae246913fcec1cc3f14e12b12e466622af5d1450",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kHotLoopTransportTests.cs",
+      "blob": "8e3370eb7f5597c024c73b5dee1a46516a47c53f",
+      "upstream": "53c6660f9e41e2f199b1e026e472a626dc512347",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kLabelRetargetingTests.cs",
+      "blob": "dba1e7e57aae9150026f8fb1c714826693c655d5",
+      "upstream": "dba1e7e57aae9150026f8fb1c714826693c655d5",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kLayoutLookupTests.cs",
+      "blob": "a8577e7098eb1f7ff3960637f9c881f55c21570e",
+      "upstream": "a8577e7098eb1f7ff3960637f9c881f55c21570e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kMethodAnalysisScopeTests.cs",
+      "blob": "d55bf958c099f6e9b5bfed5f13a9b063f3a4ccc9",
+      "upstream": "d55bf958c099f6e9b5bfed5f13a9b063f3a4ccc9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kMethodEndLabelIndexTests.cs",
+      "blob": "d9a8105a06c12ce84b2ac472489026e7964119cb",
+      "upstream": "d9a8105a06c12ce84b2ac472489026e7964119cb",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kMethodEndOffsetIndexTests.cs",
+      "blob": "4edeb4de3800b7db3940e0ce99e5fcb6a7a6ad2f",
+      "upstream": "4edeb4de3800b7db3940e0ce99e5fcb6a7a6ad2f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kOffsetIndexTests.cs",
+      "blob": "2d90625992458bd0989c5121bf1905a10b6927ae",
+      "upstream": "2d90625992458bd0989c5121bf1905a10b6927ae",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kOptimizerSnapshotTests.cs",
+      "blob": "b6fabad1c3a5e732835df4d3a5afe999d25b3cfd",
+      "upstream": "b6fabad1c3a5e732835df4d3a5afe999d25b3cfd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kPhiSpillWidthTests.cs",
+      "blob": "d4439dab7e4d826a4b8de7675046d6143b9915df",
+      "upstream": "d4439dab7e4d826a4b8de7675046d6143b9915df",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kRelaxationRetryBudgetTests.cs",
+      "blob": "96b52cd1525267d07c46f0dadb31a57a1c0c05a9",
+      "upstream": "96b52cd1525267d07c46f0dadb31a57a1c0c05a9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kRoundAnalysisReuseTests.cs",
+      "blob": "5c2ee7adb4fb1aa5ab474f2c8816a4f282129fac",
+      "upstream": "5c2ee7adb4fb1aa5ab474f2c8816a4f282129fac",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kScopedAddressFixupSnapshotTests.cs",
+      "blob": "2f5e0db83dd2b84c777ec24d3cd5c7cc0becebd3",
+      "upstream": "2f5e0db83dd2b84c777ec24d3cd5c7cc0becebd3",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kScopedFixupTableTests.cs",
+      "blob": "5fbc873f71c45ffdc63fa509f156a2f6de8224fc",
+      "upstream": "5fbc873f71c45ffdc63fa509f156a2f6de8224fc",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kTerminalLayoutShapeTests.cs",
+      "blob": "5247e347ea02df6e220cd3c0cc8695168206717b",
+      "upstream": "5247e347ea02df6e220cd3c0cc8695168206717b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kTextFreeDecodeTests.cs",
+      "blob": "7718a4fab3d3034c8b0e9d62873da674bc96bd9b",
+      "upstream": "804a37414c9c39e6e03667bd304a53349dc55d27",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local decoding/lazy-analysis variant is superseded by published text-free recognition, deferred analyses, reusable snapshots/storage and profiling. Keep current implementation and matching tests; branch timing changes already published."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/M68kWordBranchWorklistTests.cs",
+      "blob": "6586d315a7079e5f23faf1d10bf16af01ae8f5ab",
+      "upstream": "6586d315a7079e5f23faf1d10bf16af01ae8f5ab",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/MemberwiseCloneFixtures.cs",
+      "blob": "e64fe4837359fb4f8a9b4bf445e4a8f2157893dd",
+      "upstream": "e64fe4837359fb4f8a9b4bf445e4a8f2157893dd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/MemberwiseCloneTests.cs",
+      "blob": "333a9c6b23b2520878df50f08cc32f6e33983e93",
+      "upstream": "333a9c6b23b2520878df50f08cc32f6e33983e93",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/NarrowCodecComparisonFixtures.cs",
+      "blob": "de39a08f5ace8ce6095316d1c3a096c5d66bca91",
+      "upstream": "de39a08f5ace8ce6095316d1c3a096c5d66bca91",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/NativeOsIntegrationAttributes.cs",
+      "blob": "a89a1451b5c1f40070c5b11708e9e2b1b057ed5b",
+      "upstream": "a89a1451b5c1f40070c5b11708e9e2b1b057ed5b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/NativePointerProvenanceTests.cs",
+      "blob": "2f4d6bbcdfbb48feabe43dde899ddb8f5b83f748",
+      "upstream": "2f4d6bbcdfbb48feabe43dde899ddb8f5b83f748",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/NumericConversionFixtureBuilder.cs",
+      "blob": "371dee97305284907cef9a2cbfa4378bf7bb16bc",
+      "upstream": "371dee97305284907cef9a2cbfa4378bf7bb16bc",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/NumericLoweringTests.cs",
+      "blob": "180327339e97566125bd4ce7acf2ac8d2e0e6ab7",
+      "upstream": "180327339e97566125bd4ce7acf2ac8d2e0e6ab7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ObjectCustomEnumerableFixtures.cs",
+      "blob": "86c6e0d5ed4120add80f5617c0186c7fb3453442",
+      "upstream": "86c6e0d5ed4120add80f5617c0186c7fb3453442",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ObjectCustomEnumerableTests.cs",
+      "blob": "358c052a105421a55f50117256abbfdb8037d5c1",
+      "upstream": "358c052a105421a55f50117256abbfdb8037d5c1",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ParsedCompositeFormatContractsFixtures.cs",
+      "blob": "6457a1fe0e0b213e65310a600c11ce485944815b",
+      "upstream": "6457a1fe0e0b213e65310a600c11ce485944815b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ParsedCompositeFormatFixtures.cs",
+      "blob": "4ddd599dbe531fbef2660305857a0b21d7d5605b",
+      "upstream": "4ddd599dbe531fbef2660305857a0b21d7d5605b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ParsedCompositeFormatTests.cs",
+      "blob": "9141904c1d8cdf5ab30c7ead52dbfc24694d3230",
+      "upstream": "9141904c1d8cdf5ab30c7ead52dbfc24694d3230",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/PercentFormattingFixtures.cs",
+      "blob": "b796657ede01db0eb2c5bc4ebcdaa8de9e69361f",
+      "upstream": "79397c2333723d2d0ad1f81b1b3935a422c687ae",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/PointerStringFixtures.cs",
+      "blob": "f5eb2944927abfcc170b4f509a5f489b147a7c5f",
+      "upstream": "f5eb2944927abfcc170b4f509a5f489b147a7c5f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/PointerStringTests.cs",
+      "blob": "b20635dfefaec9713da7f9c6219cc843a6535ff4",
+      "upstream": "b20635dfefaec9713da7f9c6219cc843a6535ff4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/PrivateEnvironmentFixtureBuilder.cs",
+      "blob": "14c5f8afe584cbfc4741d6f56030734be54b3831",
+      "upstream": "14c5f8afe584cbfc4741d6f56030734be54b3831",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/PrivateEnvironmentTests.cs",
+      "blob": "c69e8029a29e3f87daadf96a958d776d6a70f9ff",
+      "upstream": "c69e8029a29e3f87daadf96a958d776d6a70f9ff",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/RomGeneratedPeepholeOptionTests.cs",
+      "blob": "56309c3fd35e255c61f127370b283b4505079cac",
+      "upstream": "56309c3fd35e255c61f127370b283b4505079cac",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/RuntimeArithmeticTests.cs",
+      "blob": "ca533f4d73023189b9f5fbebfc67781b09e19be8",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered full operand corpus and independent host arithmetic oracle in both optimizer modes and shared-core settings; reduced test bus allocation without changing coverage."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/SortedRootLookupTests.cs",
+      "blob": "987c3efcfbd2a7410df9ea9f509b89839e239933",
+      "upstream": "987c3efcfbd2a7410df9ea9f509b89839e239933",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StaticConstrainedInterfaceAbiFixtures.cs",
+      "blob": "e0c9d52afc43eb2fee6cb2fd84f5bdfa6c967524",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered independent mixed-argument static constrained ABI regression for the already-published effective-receiver fix."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StaticConstrainedInterfaceAbiTests.cs",
+      "blob": "d3b37298030d3200375285797f95d4e2f6bddc48",
+      "upstream": null,
+      "status": "candidate",
+      "disposition": "integrated-with-upstream",
+      "reason": "Recovered independent mixed-argument static constrained ABI regression for the already-published effective-receiver fix."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderApplicationJoinAdmissionTests.cs",
+      "blob": "751a18c4a93b83c03b4a8eab3e51b8ce12953d47",
+      "upstream": "751a18c4a93b83c03b4a8eab3e51b8ce12953d47",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderArrayMemoryAdmissionTests.cs",
+      "blob": "1727a0ba81ca90aa92ff8cb86377f77d90855930",
+      "upstream": "1727a0ba81ca90aa92ff8cb86377f77d90855930",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderArraySpanAdmissionTests.cs",
+      "blob": "16d20a95118a0060c2f653c9f0976341b02c98cf",
+      "upstream": "16d20a95118a0060c2f653c9f0976341b02c98cf",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderBenchmarkFixtures.cs",
+      "blob": "371b5ef8976538cb35e364864facff3685a9c2d1",
+      "upstream": "371b5ef8976538cb35e364864facff3685a9c2d1",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderBenchmarkTests.cs",
+      "blob": "842f59ccdcf5ffcbb080ad7d901b9c5b9fff9981",
+      "upstream": "842f59ccdcf5ffcbb080ad7d901b9c5b9fff9981",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderBooleanCharAdmissionTests.cs",
+      "blob": "4e89225ad5a5de49e93f294f3ecf7efa0712b73e",
+      "upstream": "4e89225ad5a5de49e93f294f3ecf7efa0712b73e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderBoundedAdmissionTests.cs",
+      "blob": "7d75944f41bb018035d1ee81402fb713364a07d7",
+      "upstream": "7d75944f41bb018035d1ee81402fb713364a07d7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderCharacterTextAdmissionTests.cs",
+      "blob": "34b095c6c2de06be16f9471c8885f2e0e7ce3cf4",
+      "upstream": "34b095c6c2de06be16f9471c8885f2e0e7ce3cf4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderConcatenationAdmissionTests.cs",
+      "blob": "ac7a42e3b11b6c28162bee3237d63706ff1786c9",
+      "upstream": "ac7a42e3b11b6c28162bee3237d63706ff1786c9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderConcatenationExecutionTests.cs",
+      "blob": "a8749822836194f82cca828c688f890712155cf2",
+      "upstream": "a8749822836194f82cca828c688f890712155cf2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderConcatenationFixtures.cs",
+      "blob": "94a79d2efb7dfdf7f53d24d5b37564f006517f45",
+      "upstream": "94a79d2efb7dfdf7f53d24d5b37564f006517f45",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderCultureAdmissionTests.cs",
+      "blob": "c89464e772cb6ffba89263c133abdfdde665eb39",
+      "upstream": "c89464e772cb6ffba89263c133abdfdde665eb39",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDecimalArrayJoinFixtures.cs",
+      "blob": "5ff366b32c300df801a9c51721ae23032d05fabc",
+      "upstream": "5ff366b32c300df801a9c51721ae23032d05fabc",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDecimalListAdmissionTests.cs",
+      "blob": "73773f16e37187bba2c9a3dc0fc2e83b6bb40f4e",
+      "upstream": "73773f16e37187bba2c9a3dc0fc2e83b6bb40f4e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDecimalListFixtures.cs",
+      "blob": "9692dfc8f5d58a31cab6a00ae52ef85fddd5b21b",
+      "upstream": "9692dfc8f5d58a31cab6a00ae52ef85fddd5b21b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDefaultClassFormattingFixtures.cs",
+      "blob": "7aa5cf8f62060c6d5a1f5cbcdded19975a9603ec",
+      "upstream": "7aa5cf8f62060c6d5a1f5cbcdded19975a9603ec",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDefaultValueFormattingFixtures.cs",
+      "blob": "9f378386d50b59dcb5f1d8bc96d37346c869307f",
+      "upstream": "9f378386d50b59dcb5f1d8bc96d37346c869307f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDerivedListFixtures.cs",
+      "blob": "160a675db7122764db1fa1fb0cba6708042b2629",
+      "upstream": "160a675db7122764db1fa1fb0cba6708042b2629",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderDerivedListTests.cs",
+      "blob": "8a7a27bb20e7623b9bc70dd23cb00574fdf565f0",
+      "upstream": "8a7a27bb20e7623b9bc70dd23cb00574fdf565f0",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderEffectsTests.cs",
+      "blob": "a1fd87765cd85bae21bf5b2ae56a794b465135c2",
+      "upstream": "a1fd87765cd85bae21bf5b2ae56a794b465135c2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderEnumerationAdmissionTests.cs",
+      "blob": "1c7586cf80b38a9944c77d2d98ee4871a292fdad",
+      "upstream": "1c7586cf80b38a9944c77d2d98ee4871a292fdad",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderExceptionAdmissionTests.cs",
+      "blob": "04b06b738af45771bedd8b8db52fa7e0b61f7adf",
+      "upstream": "04b06b738af45771bedd8b8db52fa7e0b61f7adf",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderFormattingInterfaceTests.cs",
+      "blob": "5a605cbbdad4d0d04d5092bd78c9a2ea047b6bd0",
+      "upstream": "5a605cbbdad4d0d04d5092bd78c9a2ea047b6bd0",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderFormattingPrimitiveTests.cs",
+      "blob": "7f46432c3585f63ac60b5ac4c3d95376f1135d84",
+      "upstream": "7f46432c3585f63ac60b5ac4c3d95376f1135d84",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderGeneralObjectTests.cs",
+      "blob": "1ce12608c4d464a8f29d2e7aadee449bbd001548",
+      "upstream": "1ce12608c4d464a8f29d2e7aadee449bbd001548",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderImplementationInputTests.cs",
+      "blob": "09bed41ec2f5a693c492fcf9e17cb0ceeb848509",
+      "upstream": "09bed41ec2f5a693c492fcf9e17cb0ceeb848509",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderIndexAndChunkFailureTests.cs",
+      "blob": "5e7940ebfb93e49c47820cfb7ef208fe42be65cd",
+      "upstream": "5e7940ebfb93e49c47820cfb7ef208fe42be65cd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderIntegralAdmissionTests.cs",
+      "blob": "5427d45706896acab04e0c3024e2c4b4d6fb54e5",
+      "upstream": "5427d45706896acab04e0c3024e2c4b4d6fb54e5",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderIntegralEnumJoinAdmissionTests.cs",
+      "blob": "426bb316354c5be211106ac7b6028191ad6f2f2b",
+      "upstream": "426bb316354c5be211106ac7b6028191ad6f2f2b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderIntegralInsertionTests.cs",
+      "blob": "ddf3b157b8a8458c65d569b74c504a088ba5c25c",
+      "upstream": "ddf3b157b8a8458c65d569b74c504a088ba5c25c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderMemoryDependencyAdmissionTests.cs",
+      "blob": "035e8a4868ae7dabc22a4d8bac512be28b2cb82c",
+      "upstream": "035e8a4868ae7dabc22a4d8bac512be28b2cb82c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderMemoryFixtures.cs",
+      "blob": "38790a65726ab5a7ff8b15d45a5131e6bb6d413f",
+      "upstream": "38790a65726ab5a7ff8b15d45a5131e6bb6d413f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderMemoryTests.cs",
+      "blob": "5e77831e406da60c9076245d4469c866baa0b593",
+      "upstream": "5e77831e406da60c9076245d4469c866baa0b593",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderNewLineAdmissionTests.cs",
+      "blob": "3966b747139236cfeba0cb7cfb61f06dd4238870",
+      "upstream": "3966b747139236cfeba0cb7cfb61f06dd4238870",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderNullableJoinAdmissionTests.cs",
+      "blob": "04198c0b7208a4b9c1397046aef1b40bce2fdcc6",
+      "upstream": "04198c0b7208a4b9c1397046aef1b40bce2fdcc6",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderNumberSettingsAdmissionTests.cs",
+      "blob": "b8a1451817c0b3d3e660dd608d31ff03c93d5024",
+      "upstream": "b8a1451817c0b3d3e660dd608d31ff03c93d5024",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderNumberSettingsFixtures.cs",
+      "blob": "7c26dfcbeda3d18f42f7ecebe1b64bf43e34a8b3",
+      "upstream": "7c26dfcbeda3d18f42f7ecebe1b64bf43e34a8b3",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderNumericProviderTests.cs",
+      "blob": "947427a4bd9b87651e5d9ff5240d242d1d8791ba",
+      "upstream": "947427a4bd9b87651e5d9ff5240d242d1d8791ba",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderObjectBufferAdmissionTests.cs",
+      "blob": "d6a08aefbe9f1bd4b5c2e47c07d2826f5aa184e2",
+      "upstream": "d6a08aefbe9f1bd4b5c2e47c07d2826f5aa184e2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderObjectEnumContractFixtures.cs",
+      "blob": "e4e5365eca61e487495c172b32156c10bc7be57d",
+      "upstream": "e4e5365eca61e487495c172b32156c10bc7be57d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderObjectEnumFixtures.cs",
+      "blob": "ab99317f5e0f3bd4782c622d1e672600bf77b8e7",
+      "upstream": "ab99317f5e0f3bd4782c622d1e672600bf77b8e7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderObjectEnumTests.cs",
+      "blob": "33519ce730dab3e7beece1b5ddc24246c64208af",
+      "upstream": "33519ce730dab3e7beece1b5ddc24246c64208af",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderPinnedPackTests.cs",
+      "blob": "8e0fca1dd094f1d6fae316762d4952f2ee0516f3",
+      "upstream": "8e0fca1dd094f1d6fae316762d4952f2ee0516f3",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderProtocolAbiTests.cs",
+      "blob": "75a633e55f48c4d1bf64aec19c0ae67a12eb973f",
+      "upstream": "34c0d43e9fea81ec7230daf7bce746d6c6ff5f79",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Local variant predates published protocol-ABI admission coverage; retain current tests."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderProviderArrayFormatFixtures.cs",
+      "blob": "ee4c0bc0a64ddf76d8eeb7ad5f41407403b41195",
+      "upstream": "ee4c0bc0a64ddf76d8eeb7ad5f41407403b41195",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderPublicAcceptanceFixtures.cs",
+      "blob": "48eb02e132ac7ef4c8d32aaa4de93883ee777b17",
+      "upstream": "48eb02e132ac7ef4c8d32aaa4de93883ee777b17",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderPublicSurfaceTests.cs",
+      "blob": "f47c7473c5d20e55a9bfb47682caafcdd000b6c4",
+      "upstream": "f47c7473c5d20e55a9bfb47682caafcdd000b6c4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderReferenceSpanAdmissionTests.cs",
+      "blob": "03155377db5bdcc8dabce880c6a9926e3a63f12f",
+      "upstream": "03155377db5bdcc8dabce880c6a9926e3a63f12f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderReferencedValueFormattingFixtures.cs",
+      "blob": "96468ffccb73320b0f6c68635a8a50cedeabe4ed",
+      "upstream": "96468ffccb73320b0f6c68635a8a50cedeabe4ed",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderReplacementAdmissionTests.cs",
+      "blob": "2766d63a78716a08afbfa046baa70f53a6f08e01",
+      "upstream": "2766d63a78716a08afbfa046baa70f53a6f08e01",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderSpanReplacementFixtures.cs",
+      "blob": "dc517bb326202d637318be7eb9968e8de10793be",
+      "upstream": "dc517bb326202d637318be7eb9968e8de10793be",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableAllocationTests.cs",
+      "blob": "d003f1654757201828afe90cfe15a1e2aaf74b8c",
+      "upstream": "d003f1654757201828afe90cfe15a1e2aaf74b8c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableCompositeTests.cs",
+      "blob": "245c2f0b73cf145b58d512a258127ec5cf53f742",
+      "upstream": "245c2f0b73cf145b58d512a258127ec5cf53f742",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableDecimalTests.cs",
+      "blob": "319687b54e53a5d4b96a02e5ebe74e9d11e4b265",
+      "upstream": "319687b54e53a5d4b96a02e5ebe74e9d11e4b265",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableFloatingTests.cs",
+      "blob": "749c23157dce1aa65cdbc2d8de2cd66205d39ae4",
+      "upstream": "749c23157dce1aa65cdbc2d8de2cd66205d39ae4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableHandlerTests.cs",
+      "blob": "12cbbd7311f8e41a617cb914f1a6a60b02fde4c9",
+      "upstream": "12cbbd7311f8e41a617cb914f1a6a60b02fde4c9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableTextFixtures.cs",
+      "blob": "9a1ff68902af25ebfa88f61f62a18549a8cf9387",
+      "upstream": "9a1ff68902af25ebfa88f61f62a18549a8cf9387",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStableTextTests.cs",
+      "blob": "4d260aa6fdd73492f6fc7606970de12b02a70cc2",
+      "upstream": "ab73bce4795d4a99f554701ba4948fde0b02911c",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStringConstructorFixtures.cs",
+      "blob": "2d224b7b1b1ab2679f104f572c7b7588d0689aac",
+      "upstream": "2d224b7b1b1ab2679f104f572c7b7588d0689aac",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderStringSpanAdmissionTests.cs",
+      "blob": "c2a04183cb9619ca819bbddcb2be3519a5f9e0fc",
+      "upstream": "c2a04183cb9619ca819bbddcb2be3519a5f9e0fc",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderValueFormattingFixtures.cs",
+      "blob": "c68d453b420df644693863a715c4fed702599f4e",
+      "upstream": "c68d453b420df644693863a715c4fed702599f4e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringBuilderValueFormattingTests.cs",
+      "blob": "fe8c8d5aa57029a1283837224252fa4fafad6a36",
+      "upstream": "849591a8be0279b16592b3f3507b877f4fe43ac3",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringCustomEnumerableFixtures.cs",
+      "blob": "612d7ca712eb987577b2fc0b770ed3b376ad8013",
+      "upstream": "612d7ca712eb987577b2fc0b770ed3b376ad8013",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/StringCustomEnumerableTests.cs",
+      "blob": "853ad3091222dbdf91455f6cfc42ab43c44a20e9",
+      "upstream": "853ad3091222dbdf91455f6cfc42ab43c44a20e9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/TimeOnlyParsingContractTests.cs",
+      "blob": "9e204439ba0547597c10ccd0567446cd01be5d9c",
+      "upstream": "9e204439ba0547597c10ccd0567446cd01be5d9c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/UInt32MemmoveFixtureBuilder.cs",
+      "blob": "f81685c8dacf9949e9ccf7c806ff5fa502bf831d",
+      "upstream": "f81685c8dacf9949e9ccf7c806ff5fa502bf831d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Utf8CodecContractTests.cs",
+      "blob": "f8a0a118d50a955db27aea09b888fd9bc35a842f",
+      "upstream": "f8a0a118d50a955db27aea09b888fd9bc35a842f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/Utf8CodecFixtures.cs",
+      "blob": "c6b39f006d10d680b97e564bf752ab093ed3a23e",
+      "upstream": "c6b39f006d10d680b97e564bf752ab093ed3a23e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/ValueTypePredicateSpecializationTests.cs",
+      "blob": "e505af5c43b4581c94ea93d887b7bc79740f43f2",
+      "upstream": "e505af5c43b4581c94ea93d887b7bc79740f43f2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler.Tests/WordRotateExecutionTests.cs",
+      "blob": "8aac7e89c4c07e2e96c19e79f08a047483abfdb8",
+      "upstream": "8aac7e89c4c07e2e96c19e79f08a047483abfdb8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.ApplicationSize.cs",
+      "blob": "882cd64b03d15bd59efb282ce11cad6b5a0eb872",
+      "upstream": "5559280d067c91f21ddb0d0b5379992b2569054c",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.BoxedFormatting.cs",
+      "blob": "74185b004da83da9210ba73a26e24f4823039ce9",
+      "upstream": "74185b004da83da9210ba73a26e24f4823039ce9",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.EnumData.cs",
+      "blob": "dcd52d6c4aecfaa1a37c789695a34ca9efe05120",
+      "upstream": "dcd52d6c4aecfaa1a37c789695a34ca9efe05120",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.InitializedSpans.cs",
+      "blob": "e54f98f65a472d5038d9e164d9b4c5a529021818",
+      "upstream": "e54f98f65a472d5038d9e164d9b4c5a529021818",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kCodeGenerator.RuntimeTypeObjects.cs",
+      "blob": "0b0c11881dce53727bd46fb7b26f67a7bc176f67",
+      "upstream": "0b0c11881dce53727bd46fb7b26f67a7bc176f67",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kComparisonPromotion.cs",
+      "blob": "0d4b4cb10dbb817e3e1ab1728493f083549aa392",
+      "upstream": "0d4b4cb10dbb817e3e1ab1728493f083549aa392",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kIncomingArgumentSpills.cs",
+      "blob": "0886fde7f1c94f64256ad8cd318e62eb0b104e3a",
+      "upstream": "0886fde7f1c94f64256ad8cd318e62eb0b104e3a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kLocalViewScalarizer.cs",
+      "blob": "3901307027fcb426c25a0ef0340994e1a81803b2",
+      "upstream": "08348d0cd50cd3f9534f63f09d5f8341d988a9d7",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kNarrowDataOverflowException.cs",
+      "blob": "e0c2273d080c3324392c6e8de175612081ab07d8",
+      "upstream": "e0c2273d080c3324392c6e8de175612081ab07d8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kOffsetMap.cs",
+      "blob": "06990c28988f62f6230c11c0fcd9fa885dbfa9b8",
+      "upstream": "06990c28988f62f6230c11c0fcd9fa885dbfa9b8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Backend/M68kPeepholeOptimizer.HotLoopTransport.cs",
+      "blob": "da43c0094a5380ee7bc19bf04abeb109866005c5",
+      "upstream": "9d9ae6e6fd8e9bb76714cb1583d59a0c44ef6d53",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/Base64CodecSurface.cs",
+      "blob": "947ca26eef6d651aa4578f89ceb50bbe71327a40",
+      "upstream": "947ca26eef6d651aa4578f89ceb50bbe71327a40",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/CoreLibClosureReport.md",
+      "blob": "51657ed1628884201f8d97c840927d903b5b0f46",
+      "upstream": "51657ed1628884201f8d97c840927d903b5b0f46",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/CoreLibCodecSurface.cs",
+      "blob": "5a4a2abec772efb5b9d9ab4be713171d7f2eb1fd",
+      "upstream": "5a4a2abec772efb5b9d9ab4be713171d7f2eb1fd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/CoreLibCodecs.md",
+      "blob": "67b0f970e3e21e9829437d1c0207f547292b1e32",
+      "upstream": "35b5a508435afc65ff1e367602c668ea58f9dbac",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Older qualification prose/evidence preserved in original snapshot and byte backup; retain current upstream documentation with later results and provenance."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/DateOnlySurface.cs",
+      "blob": "9c7e3c3e6887c1d2321a538b58aa7e8707abff40",
+      "upstream": "9c7e3c3e6887c1d2321a538b58aa7e8707abff40",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/GuidSurface.cs",
+      "blob": "88b27a62774807d08829f9523c3df02aff041207",
+      "upstream": "88b27a62774807d08829f9523c3df02aff041207",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/HexCodecSurface.cs",
+      "blob": "c9d69f0000eed6cb8e361544725d674d4ab0ebb7",
+      "upstream": "c9d69f0000eed6cb8e361544725d674d4ab0ebb7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderBoxedEnumSurface.cs",
+      "blob": "0b07abb82086c1a4cc183889539af58a4a971fca",
+      "upstream": "0b07abb82086c1a4cc183889539af58a4a971fca",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderCompositeSurface.cs",
+      "blob": "ee2ff58d559ea3c576b72630a8c4dae50cdc8b06",
+      "upstream": "ee2ff58d559ea3c576b72630a8c4dae50cdc8b06",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderConcatenationSurface.cs",
+      "blob": "684c09822a3d5f33e762865be96971dc195d073d",
+      "upstream": "684c09822a3d5f33e762865be96971dc195d073d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderDecimalListSurface.cs",
+      "blob": "b7ac7dc1ded0ab77abfe8d772dac696fa2148012",
+      "upstream": "b7ac7dc1ded0ab77abfe8d772dac696fa2148012",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderDecimalSurface.cs",
+      "blob": "a9229c599fd6c9a68d181e9379cb68cf869e805b",
+      "upstream": "a9229c599fd6c9a68d181e9379cb68cf869e805b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderEnumerationInterfaces.cs",
+      "blob": "d44973087b9d901fbbf2fc9190974d691508efd7",
+      "upstream": "d44973087b9d901fbbf2fc9190974d691508efd7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderExceptionSurface.cs",
+      "blob": "7a65b9012b9eed0d1d4b434bd967d5af99d2c7f2",
+      "upstream": "7a65b9012b9eed0d1d4b434bd967d5af99d2c7f2",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderFloatingSurface.cs",
+      "blob": "aee7c7d0e09e9ca585dde9f411ad272f2a0fa7d8",
+      "upstream": "aee7c7d0e09e9ca585dde9f411ad272f2a0fa7d8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderFormattingInterfaces.cs",
+      "blob": "eeef669c89f3c4bbc7c2c66be8bc940672092ed8",
+      "upstream": "eeef669c89f3c4bbc7c2c66be8bc940672092ed8",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderFrameworkSurface.cs",
+      "blob": "9653553538f329b914ef10171a870616c17c82ce",
+      "upstream": "9653553538f329b914ef10171a870616c17c82ce",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderImplementationInput.cs",
+      "blob": "402714933dd611271e1d6d4d356696ff56a0d46f",
+      "upstream": "402714933dd611271e1d6d4d356696ff56a0d46f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderInterpolatedHandlerSurface.cs",
+      "blob": "ed1a8d3466dfb19f2ded206be7bb918641de508e",
+      "upstream": "ed1a8d3466dfb19f2ded206be7bb918641de508e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderNumberSettingsSurface.cs",
+      "blob": "ba0aa4bfe0b9ff1d894fa31f45dcd3a4e325a3bc",
+      "upstream": "ba0aa4bfe0b9ff1d894fa31f45dcd3a4e325a3bc",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderNumericSurface.cs",
+      "blob": "8438c7dd9cdf9ef20756498992910315137de821",
+      "upstream": "8438c7dd9cdf9ef20756498992910315137de821",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderObjectBufferSurface.cs",
+      "blob": "9d6d8b2c88cf2662d412ce2bbf6670cfd7a260f4",
+      "upstream": "9d6d8b2c88cf2662d412ce2bbf6670cfd7a260f4",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/StringBuilderReplacementSurface.cs",
+      "blob": "96a57490b4de22ff9b4cb94a763bfc7a412cd1c7",
+      "upstream": "96a57490b4de22ff9b4cb94a763bfc7a412cd1c7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/TimeOnlySurface.cs",
+      "blob": "84fb1c25f3254e74c019c5443c289b0d7bb2ea58",
+      "upstream": "84fb1c25f3254e74c019c5443c289b0d7bb2ea58",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/Utf8CodecSurface.cs",
+      "blob": "5f2db390c89e9e284183d89597da76a7227144dd",
+      "upstream": "5f2db390c89e9e284183d89597da76a7227144dd",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Framework/corelib-closure-roots.json",
+      "blob": "1aa1237edb8284bd0d337deb6d1987121be89c8c",
+      "upstream": "1aa1237edb8284bd0d337deb6d1987121be89c8c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/MemoryViews.md",
+      "blob": "0546ed5893115e2299015da465a993447a091716",
+      "upstream": "0546ed5893115e2299015da465a993447a091716",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CilEnumData.cs",
+      "blob": "6a240d209f2f9bde3a1e44f1afec42d906f2a890",
+      "upstream": "6a240d209f2f9bde3a1e44f1afec42d906f2a890",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CilHardwareSupportSpecializer.cs",
+      "blob": "e261b57d43c731445285846dc5aa9496c8fcdc13",
+      "upstream": "e261b57d43c731445285846dc5aa9496c8fcdc13",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CilTypePredicateSpecializer.cs",
+      "blob": "eb5059ce28b215c222462665bb833e589d305414",
+      "upstream": "eb5059ce28b215c222462665bb833e589d305414",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CompilationModule.CoreLibCodecs.cs",
+      "blob": "dafb8e6eb42b16bea844890640e16a8d0547991e",
+      "upstream": "dafb8e6eb42b16bea844890640e16a8d0547991e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CompilationModule.GenericJoin.cs",
+      "blob": "ec43c16fc537cda8b5a567c2511211800240bd55",
+      "upstream": "ec43c16fc537cda8b5a567c2511211800240bd55",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CompilationModule.Guid.cs",
+      "blob": "feefdedddc471242a74004210cd444907843155f",
+      "upstream": "feefdedddc471242a74004210cd444907843155f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CompilationModule.InvariantParsing.cs",
+      "blob": "7ba886071a40d9a64f72598c1323a45566e2650d",
+      "upstream": "7ba886071a40d9a64f72598c1323a45566e2650d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/CompilationModule.Numeric.cs",
+      "blob": "a61bbf4f102ad4312de5ff4ff7ec7904bb8bc36f",
+      "upstream": "a61bbf4f102ad4312de5ff4ff7ec7904bb8bc36f",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Compiler/Metadata/InvariantParserProviderAnalysis.cs",
+      "blob": "814c9c1ea57d50147c433207039d217d4c9eef68",
+      "upstream": "814c9c1ea57d50147c433207039d217d4c9eef68",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/CustomNumberFormatting.cs",
+      "blob": "6ad914225b08ee6e7aa954ebdedcb8087a8ae37e",
+      "upstream": "6ad914225b08ee6e7aa954ebdedcb8087a8ae37e",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/DecimalConstants.cs",
+      "blob": "94f5b59d462ae5d1ce164243eb3b50bca035fda7",
+      "upstream": "94f5b59d462ae5d1ce164243eb3b50bca035fda7",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/DecimalFormatting.cs",
+      "blob": "f6bc0345287d0cdd96dea748f99d5b69509ece52",
+      "upstream": "f6bc0345287d0cdd96dea748f99d5b69509ece52",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/DecimalJoinEnumeration.cs",
+      "blob": "34ac24e77d3021dbb6b5a2c8b53ab3711100ec34",
+      "upstream": "8d0234ebbc4aee2e2696044f6c30dd020e9658a9",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Whitespace-only variation of published source."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/EnumFormatting.cs",
+      "blob": "ddac45239755c2ca390ed8956a415290b5a56dd0",
+      "upstream": "ddac45239755c2ca390ed8956a415290b5a56dd0",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/FloatingPointArithmetic.cs",
+      "blob": "6be4366ff6cdd60ea1e15613f3adc955cf705eb1",
+      "upstream": "6be4366ff6cdd60ea1e15613f3adc955cf705eb1",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/FloatingPointBits.cs",
+      "blob": "b6eda17f55c0f2a8e04d1e24f887cf4e94ee3e68",
+      "upstream": "b6eda17f55c0f2a8e04d1e24f887cf4e94ee3e68",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/FloatingPointConversions.cs",
+      "blob": "d592635c3a52d76816389c51319b018f0eb4a14b",
+      "upstream": "d592635c3a52d76816389c51319b018f0eb4a14b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/FloatingPointJoinEnumeration.cs",
+      "blob": "72a1b42f32dab227fd96b6c30bd6174eac28e38d",
+      "upstream": "14ef11afe901cd2c525c1760029edd3d87c4e441",
+      "status": "candidate",
+      "disposition": "upstream-equivalent-or-superseded",
+      "reason": "Whitespace-only variation of published source."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/GenericJoinEnumeration.cs",
+      "blob": "e381da561d7371bec57f996578c6e577bf46b58b",
+      "upstream": "e381da561d7371bec57f996578c6e577bf46b58b",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/GroupedIntegerFormatting.cs",
+      "blob": "30e4112b868e3ad79f49def204e95a751b345581",
+      "upstream": "30e4112b868e3ad79f49def204e95a751b345581",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/Integer64Arithmetic.cs",
+      "blob": "75be6507551ddc7d7fcd5d75a4ffb8fbc6af3b09",
+      "upstream": "75be6507551ddc7d7fcd5d75a4ffb8fbc6af3b09",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/InterpolatedStringHandlerBuffer.cs",
+      "blob": "090bb316472b28b41c1ec37d4082b6273d9984cf",
+      "upstream": "090bb316472b28b41c1ec37d4082b6273d9984cf",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/RuntimeTypeNames.cs",
+      "blob": "c7e9ed5e34253f9adb974da93ac9d6987d79382a",
+      "upstream": "c7e9ed5e34253f9adb974da93ac9d6987d79382a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ScientificIntegerFormatting.cs",
+      "blob": "0a51d978fbba15459185b524cdb37f329bcfacda",
+      "upstream": "0a51d978fbba15459185b524cdb37f329bcfacda",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowBase64.cs",
+      "blob": "6cdbd5ef20b1252d29e6e7f684f472ecd47d2980",
+      "upstream": "6cdbd5ef20b1252d29e6e7f684f472ecd47d2980",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowConvertBase64.cs",
+      "blob": "b4eef26741c4ed4bdd502f7b2fb2fa0a7dff008c",
+      "upstream": "b4eef26741c4ed4bdd502f7b2fb2fa0a7dff008c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowConvertHex.cs",
+      "blob": "430eaf5d012f0b78975676368e9a95d88d1a4a05",
+      "upstream": "430eaf5d012f0b78975676368e9a95d88d1a4a05",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowDateOnlyCalendar.cs",
+      "blob": "fa8a6edc3dc2e4c5b9326fdeb947248ed90c2e71",
+      "upstream": "fa8a6edc3dc2e4c5b9326fdeb947248ed90c2e71",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowDateOnlyFormatting.cs",
+      "blob": "5c19944b8ec50f5500492368a54f3904fb826d8c",
+      "upstream": "5c19944b8ec50f5500492368a54f3904fb826d8c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowDateOnlyParsing.cs",
+      "blob": "7f77e97db3c670f479bdd37880b14a5e1059cede",
+      "upstream": "7f77e97db3c670f479bdd37880b14a5e1059cede",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowGuid.Formatting.cs",
+      "blob": "1e9e06c4038a479ede5e3c8d42d001bfdbea541d",
+      "upstream": "1e9e06c4038a479ede5e3c8d42d001bfdbea541d",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowGuid.Parsing.cs",
+      "blob": "f58acd1bdf96af528d565393d843c3fef7e51f65",
+      "upstream": "f58acd1bdf96af528d565393d843c3fef7e51f65",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowGuid.cs",
+      "blob": "90d6e4ed5e6fcaefbf32ee9f9f7a2766cf845eaa",
+      "upstream": "90d6e4ed5e6fcaefbf32ee9f9f7a2766cf845eaa",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowTimeOnly.cs",
+      "blob": "152b882e57ea208973c2e56debf616032a9a5363",
+      "upstream": "152b882e57ea208973c2e56debf616032a9a5363",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowTimeOnlyParsing.cs",
+      "blob": "100bf74adf7ac7aa9df09db26b30e7f7b202fd73",
+      "upstream": "100bf74adf7ac7aa9df09db26b30e7f7b202fd73",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/ShadowUtf8.cs",
+      "blob": "c8062589789cc04d0e2a7f2ae935a9d9f0422b56",
+      "upstream": "c8062589789cc04d0e2a7f2ae935a9d9f0422b56",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "Runtime.Managed/StandardIntegerFormatting.cs",
+      "blob": "59d13c5ab1c50c50489054828afcdbc4d922a657",
+      "upstream": "59d13c5ab1c50c50489054828afcdbc4d922a657",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "scripts/analyze-framework-closure.ps1",
+      "blob": "c8da38c8be0c6565e8611649342a148357b1700a",
+      "upstream": "c8da38c8be0c6565e8611649342a148357b1700a",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "scripts/create-pinned-corelib-pack.ps1",
+      "blob": "986e8b697cfaef4749af7909ced6cb2acea20833",
+      "upstream": "986e8b697cfaef4749af7909ced6cb2acea20833",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "scripts/measure-executable-size.ps1",
+      "blob": "0bb11e7cf863bd7657f197054619e9b9c8dae0f2",
+      "upstream": "b78daae5c52a316df4fbeb3e40e402e1eccd3b15",
+      "status": "published-historical",
+      "disposition": "published-historical",
+      "reason": "Exact blob is reachable in published history; newer upstream version retained."
+    },
+    {
+      "layer": "working",
+      "path": "scripts/qualify-corelib-aot.ps1",
+      "blob": "acd64c49c3f1d960bc733ece45aa0474b6830d8c",
+      "upstream": "acd64c49c3f1d960bc733ece45aa0474b6830d8c",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    },
+    {
+      "layer": "working",
+      "path": "scripts/test-native-os.ps1",
+      "blob": "ce49fb84843519913d2827c2db23953188e5e981",
+      "upstream": "ce49fb84843519913d2827c2db23953188e5e981",
+      "status": "published-current",
+      "disposition": "published-current",
+      "reason": "Exact blob matches published tip."
+    }
+  ],
+  "completedDate": "2026-10-31",
+  "snapshotArchiveCommit": "6eab776",
+  "primaryCheckoutOutcome": "Clean main exactly at origin/main; all reconciled unpublished source and original snapshot ancestry retained on codex/recovery-20261030.",
+  "fixtureIsolation": "Recovered freestanding exports live in Compiler.Tests.RecoveryFixtures, preserving unrelated default-export compilation behavior.",
+  "profileReview": "20261030-profile-diff.json",
+  "validation": {
+    "results": [
+      {
+        "file": "recovery-size-arithmetic.trx",
+        "total": 1324,
+        "passed": 1322,
+        "failed": 2,
+        "skipped": 0
+      },
+      {
+        "file": "recovery-adf-protocol.trx",
+        "total": 9,
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "recovery-native-smoke.trx",
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "recovery-fixture-isolation.trx",
+        "total": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "recovery-fast-final.trx",
+        "total": 6797,
+        "passed": 6796,
+        "failed": 1,
+        "skipped": 0
+      },
+      {
+        "file": "recovery-pinned-focused.trx",
+        "total": 152,
+        "passed": 151,
+        "failed": 1,
+        "skipped": 0
+      },
+      {
+        "file": "recovery-profile-reproduced.trx",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "published-loop-phi-pinned-sdk.trx",
+        "total": 2,
+        "passed": 0,
+        "failed": 2,
+        "skipped": 0
+      },
+      {
+        "file": "published-pinned-release.trx",
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "file": "published-profile-pinned-release.trx",
+        "total": 1,
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      }
+    ],
+    "reviewedSnapshot": "The only Release broad/focused failure was the exact profile snapshot; measurements were reviewed against published main on SDK 10.0.301, the snapshot was updated, and its exact reproduction rerun passed. Both SDKs produced identical recovered measurements.",
+    "existingDebugFailures": "Two LoopPhiPolicyIsOptInAndRestrictedToItsQualifiedProfile strict-size assertions also fail on clean published main under both SDKs; Release forms pass. Assertions retained.",
+    "initialBroadRun": "Stopped after a symbol-order failure caused by export fixtures. Fixtures isolated into separate assembly; targeted rerun and subsequent broad run pass that check.",
+    "pinnedSdk": "10.0.301, installed only inside external recovery directory",
+    "wholeCpuExecutionMatrix": "Not run; targeted CPU execution, arithmetic boundary corpus and six native OS smoke cases were run.",
+    "solutionBuild": "Release solution build passed under isolated SDK 10.0.301; zero errors."
+  }
+}

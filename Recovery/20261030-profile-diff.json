@@ -1,0 +1,421 @@
+{
+  "sdk": "10.0.301",
+  "configuration": "Release",
+  "publishedBase": "73b60492f1d5f6c1ab1ae5538f01dab27723b0cb",
+  "inheritedSnapshotDrift": [
+    {
+      "name": "fixture:ArithmeticEntry",
+      "changes": [
+        {
+          "field": "Mc68000Cycles",
+          "before": 3218,
+          "after": 3222
+        }
+      ]
+    },
+    {
+      "name": "example:CopperBars",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 1416,
+          "after": 1412
+        },
+        {
+          "field": "CodeBytes",
+          "before": 1264,
+          "after": 1260
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 12701,
+          "after": 12674
+        },
+        {
+          "field": "InstructionCount",
+          "before": 398,
+          "after": 397
+        },
+        {
+          "field": "ExplicitStackOperationCount",
+          "before": 25,
+          "after": 26
+        }
+      ]
+    },
+    {
+      "name": "example:FileStats",
+      "changes": [
+        {
+          "field": "CodeBytes",
+          "before": 920,
+          "after": 924
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 8159,
+          "after": 8189
+        },
+        {
+          "field": "InstructionCount",
+          "before": 258,
+          "after": 259
+        }
+      ]
+    },
+    {
+      "name": "example:StopwatchBenchmark",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 9844,
+          "after": 9840
+        },
+        {
+          "field": "CodeBytes",
+          "before": 8608,
+          "after": 8604
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 115160,
+          "after": 115129
+        },
+        {
+          "field": "StackMemoryInstructions",
+          "before": 335,
+          "after": 334
+        },
+        {
+          "field": "InstructionCount",
+          "before": 1559,
+          "after": 1556
+        },
+        {
+          "field": "ExplicitStackOperationCount",
+          "before": 90,
+          "after": 91
+        }
+      ]
+    }
+  ],
+  "recoveredWorkDelta": [
+    {
+      "name": "fixture:ArithmeticEntry",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 424,
+          "after": 460
+        },
+        {
+          "field": "CodeBytes",
+          "before": 164,
+          "after": 200
+        },
+        {
+          "field": "Mc68000Cycles",
+          "before": 3222,
+          "after": 696
+        }
+      ]
+    },
+    {
+      "name": "example:FileStats",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 1072,
+          "after": 1108
+        },
+        {
+          "field": "CodeBytes",
+          "before": 924,
+          "after": 956
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 8189,
+          "after": 8523
+        },
+        {
+          "field": "InstructionCount",
+          "before": 259,
+          "after": 273
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 21,
+          "after": 24
+        }
+      ]
+    },
+    {
+      "name": "example:IFFInspect",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 6832,
+          "after": 6840
+        },
+        {
+          "field": "CodeBytes",
+          "before": 5748,
+          "after": 5756
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 85200,
+          "after": 84992
+        },
+        {
+          "field": "InstructionCount",
+          "before": 1138,
+          "after": 1144
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 165,
+          "after": 161
+        }
+      ]
+    },
+    {
+      "name": "example:Polymorphism",
+      "changes": [
+        {
+          "field": "CodeBytes",
+          "before": 650,
+          "after": 652
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 7125,
+          "after": 7006
+        },
+        {
+          "field": "InstructionCount",
+          "before": 188,
+          "after": 190
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 16,
+          "after": 14
+        }
+      ]
+    },
+    {
+      "name": "example:StopwatchBenchmark",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 9840,
+          "after": 9932
+        },
+        {
+          "field": "CodeBytes",
+          "before": 8604,
+          "after": 8696
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 115129,
+          "after": 116175
+        },
+        {
+          "field": "InstructionCount",
+          "before": 1556,
+          "after": 1598
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 156,
+          "after": 165
+        }
+      ]
+    }
+  ],
+  "updatedSnapshotDelta": [
+    {
+      "name": "fixture:ArithmeticEntry",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 424,
+          "after": 460
+        },
+        {
+          "field": "CodeBytes",
+          "before": 164,
+          "after": 200
+        },
+        {
+          "field": "Mc68000Cycles",
+          "before": 3218,
+          "after": 696
+        }
+      ]
+    },
+    {
+      "name": "example:CopperBars",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 1416,
+          "after": 1412
+        },
+        {
+          "field": "CodeBytes",
+          "before": 1264,
+          "after": 1260
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 12701,
+          "after": 12674
+        },
+        {
+          "field": "InstructionCount",
+          "before": 398,
+          "after": 397
+        },
+        {
+          "field": "ExplicitStackOperationCount",
+          "before": 25,
+          "after": 26
+        }
+      ]
+    },
+    {
+      "name": "example:FileStats",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 1072,
+          "after": 1108
+        },
+        {
+          "field": "CodeBytes",
+          "before": 920,
+          "after": 956
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 8159,
+          "after": 8523
+        },
+        {
+          "field": "InstructionCount",
+          "before": 258,
+          "after": 273
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 21,
+          "after": 24
+        }
+      ]
+    },
+    {
+      "name": "example:IFFInspect",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 6832,
+          "after": 6840
+        },
+        {
+          "field": "CodeBytes",
+          "before": 5748,
+          "after": 5756
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 85200,
+          "after": 84992
+        },
+        {
+          "field": "InstructionCount",
+          "before": 1138,
+          "after": 1144
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 165,
+          "after": 161
+        }
+      ]
+    },
+    {
+      "name": "example:Polymorphism",
+      "changes": [
+        {
+          "field": "CodeBytes",
+          "before": 650,
+          "after": 652
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 7125,
+          "after": 7006
+        },
+        {
+          "field": "InstructionCount",
+          "before": 188,
+          "after": 190
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 16,
+          "after": 14
+        }
+      ]
+    },
+    {
+      "name": "example:StopwatchBenchmark",
+      "changes": [
+        {
+          "field": "ImageBytes",
+          "before": 9844,
+          "after": 9932
+        },
+        {
+          "field": "CodeBytes",
+          "before": 8608,
+          "after": 8696
+        },
+        {
+          "field": "AssemblyTextBytes",
+          "before": 115160,
+          "after": 116175
+        },
+        {
+          "field": "StackMemoryInstructions",
+          "before": 335,
+          "after": 334
+        },
+        {
+          "field": "InstructionCount",
+          "before": 1559,
+          "after": 1598
+        },
+        {
+          "field": "BranchInstructionCount",
+          "before": 156,
+          "after": 165
+        },
+        {
+          "field": "ExplicitStackOperationCount",
+          "before": 90,
+          "after": 91
+        }
+      ]
+    }
+  ],
+  "review": [
+    "All differences are numeric code/assembly/instruction or cycle measurements; runtime features, calls to external targets, reachable assembly identities and managed allocation counts retain their published values.",
+    "ArithmeticEntry: 3222 to 696 measured MC68000 cycles, with 36 additional code bytes. Guarded hardware division and partial-product multiplication retain the fallback and correctness corpus.",
+    "The original exact JSON comparison remains unchanged. Debug-only loop-phi size assertions are recorded separately and reproduced on the published base."
+  ]
+}
