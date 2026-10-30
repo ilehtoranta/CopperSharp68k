@@ -115,6 +115,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_addressEntryBoundaryIndex = null;
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
+				_generatedSizeIntervals = null;
 				_roundBranches = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets();
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(

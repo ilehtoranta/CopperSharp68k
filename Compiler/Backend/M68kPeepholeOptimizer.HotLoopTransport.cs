@@ -177,6 +177,9 @@ internal sealed partial class M68kPeepholeOptimizer
 	{
 		foreach (var instruction in dataflow.Instructions)
 		{
+			// The expensive label and dataflow checks only matter for these two
+			// opcodes. Most instructions in a ROM cannot match either rewrite.
+			if ((instruction.Opcode & 0xF1F8) is not (0x8080 or 0x1000)) continue;
 			if (!instruction.IsDecoded || instruction.Length != 2 || HasInternalLabel(instruction) ||
 				!CanFoldAcrossUnreferencedIlLabels(instruction.Offset, instruction.Offset + instruction.Length,
 					allowUnreferencedMarkers: true) ||

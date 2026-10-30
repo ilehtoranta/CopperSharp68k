@@ -5116,7 +5116,10 @@ internal static class CilMachineIrBuilder
 			argumentConstraints[0] = CallArgumentConstraint.RegisterClass(
 				function.Values[sourceUses[0]].AllowedRegisters);
 		}
+		// Static abstract interface calls can also have a constrained implementation,
+		// but their first argument is not a receiver and must retain its normal ABI.
 		if (constrainedImplementation is not null &&
+			(hasInstanceArgumentOverride ?? abiTarget.Signature.Header.IsInstance) &&
 			argumentConstraints.Count != 0 &&
 			module.IsTransparentScalarType(new CilType(
 				CilTypeKind.ValueType,
