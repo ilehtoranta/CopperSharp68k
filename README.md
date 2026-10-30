@@ -14,6 +14,8 @@ separate so additional targets such as MorphOS/PPC can be added later.
 - `Compiler.Cli` - command-line driver.
 - `Targets.Amiga` - Amiga library-call resolver and platform helpers.
 - `Sdk.Amiga` - Amiga ABI declarations for compiled code.
+- [`website`](website/README.md) - recovered website files, local build, and
+  SDK reference generator; `gh-pages` retains the published site.
 - `Compiler.Tests` - compiler tests. These use a sibling
   `MedPlayer/Copper68k` checkout when available, otherwise the `Copper68k`
   package.

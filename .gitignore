@@ -528,5 +528,7 @@ benchmark-results
 .codex-temp
 *.asm
 
-# The website is maintained as an independent Git repository.
-/website/
+# Website sources are versioned here; builds stay local.
+/website/dist/
+/website/.build/
+!/website/public/*.png

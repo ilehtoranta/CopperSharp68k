@@ -1,0 +1,299 @@
+{
+  "publicationCommit": "0f0ed8d30ca8b454fdc5ec3615e122f5be62d8cf",
+  "recoveredOn": "2026-10-31",
+  "status": "Published HTML, CSS, JavaScript and assets recovered byte-for-byte. Original Vinext/React authoring files and SDK reference generator were not found; the static build and reference generator in this directory are reconstructed replacements.",
+  "originalFramework": "Vinext 0.0.50 (from the publication manifest)",
+  "publishedReference": {
+    "entries": 8747,
+    "modules": 40,
+    "types": 908
+  },
+  "reconstructedTemplates": [
+    {
+      "target": "src/reference-shell.html",
+      "source": "reference/index.html"
+    },
+    {
+      "target": "src/published-routes.json",
+      "source": "reference-index.json",
+      "purpose": "Compatibility routes for unambiguous deployed public type URLs; not an API snapshot used to generate current declarations."
+    }
+  ],
+  "files": [
+    {
+      "source": ".assetsignore",
+      "target": "public/.assetsignore",
+      "sha256": "4f83140d5f4293ab55bd1207327e995c83258f1e7d3145b1b5d7a3d17fdfe0a7"
+    },
+    {
+      "source": ".nojekyll",
+      "target": "public/.nojekyll",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "source": "404.html",
+      "target": "src/pages/404.html",
+      "sha256": "889b56d9398f3a37ba5e2c39dd37639ef7ac94d8ebe58d145b4f9b00045f396d"
+    },
+    {
+      "source": "_headers",
+      "target": "public/_headers",
+      "sha256": "9e55124bccd40b43dbc6e002daa777fa8f32a230420152910784ca65501d9e0f"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-8ac0455e797f/geist-001175b1.woff2",
+      "target": "public/assets/_vinext_fonts/geist-8ac0455e797f/geist-001175b1.woff2",
+      "sha256": "58a6b173d5ca1dec92166ea3c6cb1a84a4144556d10928ac14e8e6b40e4787bd"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-8ac0455e797f/geist-52306abf.woff2",
+      "target": "public/assets/_vinext_fonts/geist-8ac0455e797f/geist-52306abf.woff2",
+      "sha256": "f689f638f29fff460a2d5749edb5d5c38d7bef0389f32032d871f23fc6ebb008"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-8ac0455e797f/geist-875ccdd4.woff2",
+      "target": "public/assets/_vinext_fonts/geist-8ac0455e797f/geist-875ccdd4.woff2",
+      "sha256": "6129fc8571c3e0cb0a4c41f5160c974a843b055009dc4ad8858bd808e18a2d86"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-8ac0455e797f/geist-98bbbccb.woff2",
+      "target": "public/assets/_vinext_fonts/geist-8ac0455e797f/geist-98bbbccb.woff2",
+      "sha256": "9b6f5ff45b278c744b5f379a2c4ecbaf858a842b8eaf82ac8d21b699ca16c608"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-8ac0455e797f/geist-ff2310f5.woff2",
+      "target": "public/assets/_vinext_fonts/geist-8ac0455e797f/geist-ff2310f5.woff2",
+      "sha256": "b7a545bbb08256bd809f11cfe66d88da3e22d169ea4407737b1ef0ec1ed3d791"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-013b2f2f.woff2",
+      "target": "public/assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-013b2f2f.woff2",
+      "sha256": "5f3d6ad60f29d6cb708414ec6887163d63bf197377ef5417d2483ff31ace6c3b"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-0638449e.woff2",
+      "target": "public/assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-0638449e.woff2",
+      "sha256": "d67e4a94ba498635f764ddca7d1ec4271f5642f032eb24b426764480f66f8497"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-44745446.woff2",
+      "target": "public/assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-44745446.woff2",
+      "sha256": "745994b5cd950ec201b66526375f057d540847cccfc70f4f24f5f571d26d3923"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-44e03052.woff2",
+      "target": "public/assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-44e03052.woff2",
+      "sha256": "75b3bedbebc35f347c0ae3b416aa871941555357e7b0f83767eb5987875589ed"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-971fb274.woff2",
+      "target": "public/assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-971fb274.woff2",
+      "sha256": "16e1d48b6dd29eb240aec5db36184eb182933c082cd43de7f35af686d58087d2"
+    },
+    {
+      "source": "assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-f6b33328.woff2",
+      "target": "public/assets/_vinext_fonts/geist-mono-00e989178794/geist-mono-f6b33328.woff2",
+      "sha256": "e27f657e38d52887baa3b6b2f812bef93dfdd356f0810e40edd4ee284cc7e9f6"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2",
+      "sha256": "311098be73eac339128f0b5a6e33d72645b6f87488541fdf467c402152d297fd"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2",
+      "sha256": "c6f09ee0e0a24b7c85ecb2a601eb99332f65b1f6b37c31e0bbe73fb307625eca"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2",
+      "sha256": "69744cabbccc9faf77516ce9b744361e1e6be7f8081400006035a153797d2965"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2",
+      "sha256": "1b6b18fd0fd240bc6d5850f4df621484722d4b5d3650ebdd1e3a8bbd81c75854"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2",
+      "sha256": "b814a03d7e57b0626a906f76911b9361d173a1aabc5544c40f72d6a35a1e4940"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2",
+      "sha256": "77f03e26f981c582bdba3a7abed4baa2d3149211c01366bb3ab3ba7622ec4ae5"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2",
+      "sha256": "ad4580d8cb4b5f627c2d18457656732f7f7b070f7837fbc380e08054157e6f6c"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2",
+      "sha256": "a76f53ca6612e7b3828eec2311098675b7f9849ae4169a8bcef6302aec02a6c0"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2",
+      "sha256": "f1050dc5317b43434c0aeda599d4624c774ffc162e87a8cf204b949b6a85816d"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2",
+      "sha256": "d524dc8ff6dbf7ed69772f3b2ff4affaf5a89b5762b270e36c3f21da0d4e39f5"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2",
+      "sha256": "7b59d6bf7f8b8408ac28f27d01dca9a890abeae77045d343b1d8ccb089a92e54"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2",
+      "sha256": "c36f509c0a8f9f85f29cb44bc8701d8a9e0b14c499e77a884f789ead7093a7ac"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2",
+      "sha256": "b2529fba93fd07a50ffb8fc3d103eb04b0c298d4f6564d2833c44fde286de7e4"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2",
+      "sha256": "0a8b854cc18641bd1b8222afa7ec82a75e59bc6501f777744ec87db1b6cd7a2c"
+    },
+    {
+      "source": "assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2",
+      "target": "public/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2",
+      "sha256": "f746246b6b0b641f99d9e26e0bf4e42197bde692126857857f0195a94362d52a"
+    },
+    {
+      "source": "assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2",
+      "target": "public/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2",
+      "sha256": "e8c0b39992f06b3dc9a9834494088014859f363bf6ca8792b6bb07e17c7965f3"
+    },
+    {
+      "source": "assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2",
+      "target": "public/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2",
+      "sha256": "ce093b341d9c10658ee1eaa85c5f8042ff3307bc6ccfc5f405616eb437f0009e"
+    },
+    {
+      "source": "assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2",
+      "target": "public/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2",
+      "sha256": "e310b55a7fd9677f5e3555e6c6c4d064fa1f1d24393f0ddbe217cea12a8c432f"
+    },
+    {
+      "source": "assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2",
+      "target": "public/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2",
+      "sha256": "bab757f8a0a1bc04055ee98cb5777f3254aab11f6d222366e1f40a36f390506a"
+    },
+    {
+      "source": "assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2",
+      "target": "public/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2",
+      "sha256": "95a493061fe0a8d0d027c2892747134ba747141112d3be4d5022e70ab7d3a1a6"
+    },
+    {
+      "source": "assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2",
+      "target": "public/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2",
+      "sha256": "40af11327fe5308166c6cb5787808b042db6da889abf602f0a4876c49675d87e"
+    },
+    {
+      "source": "assets/framework-XU8gKkFC.js",
+      "target": "public/assets/framework-XU8gKkFC.js",
+      "sha256": "b1aff339554868991407e12903b13fd8fcbc0ba5e4fe3d0872ab2fa0394765db"
+    },
+    {
+      "source": "assets/index-CL9cI6Mc.css",
+      "target": "public/assets/index-CL9cI6Mc.css",
+      "sha256": "767b7d73cf6b3542ff1251ff7d8b5925f934cd4280a398a51c7e2634437e420f"
+    },
+    {
+      "source": "assets/index-DnJntgll.js",
+      "target": "public/assets/index-DnJntgll.js",
+      "sha256": "c07af687171fc65e7296932867f1af3d07bb1d05cd37f801987f27bdee124c75"
+    },
+    {
+      "source": "assets/layout-segment-context-DFNB39Oa.js",
+      "target": "public/assets/layout-segment-context-DFNB39Oa.js",
+      "sha256": "0449d3dc047f23c9ebfa6e6303f665559b76179b41af812e6ec066fbd5294cfa"
+    },
+    {
+      "source": "assets/rolldown-runtime-S-ySWqyJ.js",
+      "target": "public/assets/rolldown-runtime-S-ySWqyJ.js",
+      "sha256": "5db5ba82eef00d1dee7e86e663098c9427d01183a88d357437daff295aec3e75"
+    },
+    {
+      "source": "compatibility/index.html",
+      "target": "src/pages/compatibility/index.html",
+      "sha256": "1a910ef83ba5324c2eaa3636027605a606e577e1e80e05482662800d3685fb3b"
+    },
+    {
+      "source": "coppersharp-emblem.png",
+      "target": "public/coppersharp-emblem.png",
+      "sha256": "d6d9468ea9fe9762ba415efbbcae5002d6cdeea574f2f0e625f95f9f4d93ac91"
+    },
+    {
+      "source": "favicon.svg",
+      "target": "public/favicon.svg",
+      "sha256": "e6d2e59b7b5bbb0342e0fb496dfc262decbfe4426bbb7b047aec8d467d1dc6f7"
+    },
+    {
+      "source": "file.svg",
+      "target": "public/file.svg",
+      "sha256": "2b67812c325c199a02536cdbeea0c593a72f707d323b72ee3e08dbab06753bd4"
+    },
+    {
+      "source": "getting-started/index.html",
+      "target": "src/pages/getting-started/index.html",
+      "sha256": "d5f9b09c6b3cba433f3e4a6239bdaa47f98cd6d4571a8b9437864a833bf033d6"
+    },
+    {
+      "source": "globe.svg",
+      "target": "public/globe.svg",
+      "sha256": "b614b9bf183925957661ac851498fe1d8029fd43a62fbfed86f9e2624a57e7cf"
+    },
+    {
+      "source": "google8664730f1a0147d1.html",
+      "target": "public/google8664730f1a0147d1.html",
+      "sha256": "b561e8230e2f1e9e3038e9cba56f3d482b4f0372dbf03f6f714359599e0d91ed"
+    },
+    {
+      "source": "index.html",
+      "target": "src/pages/index.html",
+      "sha256": "889b56d9398f3a37ba5e2c39dd37639ef7ac94d8ebe58d145b4f9b00045f396d"
+    },
+    {
+      "source": "llms.txt",
+      "target": "public/llms.txt",
+      "sha256": "7bccbaf47eaeab3ae3d70dbfb23febd288e4ec49cfc3c768079db40017437860"
+    },
+    {
+      "source": "og.png",
+      "target": "public/og.png",
+      "sha256": "eecd6fcc1f5132063e2a7a0b7f3261b83c71e390580c211776bcaa13868ee77b"
+    },
+    {
+      "source": "reference-search.js",
+      "target": "public/reference-search.js",
+      "sha256": "107ae874d95943f50c0db3605518d0fb436a0a3e31fd536dde3d72abef099c60"
+    },
+    {
+      "source": "robots.txt",
+      "target": "public/robots.txt",
+      "sha256": "8b27595958c49a454d5130dec011af86361c8504695717314690d3a651ad77e6"
+    },
+    {
+      "source": "window.svg",
+      "target": "public/window.svg",
+      "sha256": "644768c4aaeb4767bce293344eeb0c125fb804a94d801440424072202d85e3a1"
+    },
+    {
+      "source": ".vite/manifest.json",
+      "target": "recovery/publication-manifest.json",
+      "sha256": "595e13b0743169ff6a51f6020c90301922ef21c806e864fbe423f9ccff158374"
+    }
+  ]
+}

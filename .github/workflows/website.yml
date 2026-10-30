@@ -1,0 +1,35 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ['website/**', 'Sdk.Amiga/**', 'Compiler/**', 'Directory.Build.props', 'global.json', '.github/workflows/website.yml']
+  pull_request:
+    paths: ['website/**', 'Sdk.Amiga/**', 'Compiler/**', 'Directory.Build.props', 'global.json', '.github/workflows/website.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build and validate the website
+        working-directory: website
+        run: npm test
+      - name: Retain the reviewable static site
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-preview
+          path: website/dist
+          include-hidden-files: true
+          retention-days: 14
