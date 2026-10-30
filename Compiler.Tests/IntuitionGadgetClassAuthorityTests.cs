@@ -565,10 +565,13 @@ public sealed class IntuitionGadgetClassAuthorityTests
 	[Fact]
 	public void PreferencesLayoutAndCodecCoverEveryNdk31Byte()
 	{
+		// Commodore Includes_and_Autodocs Structure.offs: EnableCLI is a
+		// WORD at $7c; PrinterFilename starts at $80, sizeof is $e8.
+		Assert.Equal(232u, Preferences.Size);
 		Assert.Equal(30, IntuitionPreferencesConstants.FILENAME_SIZE);
 		Assert.Equal(16, IntuitionPreferencesConstants.DEVNAME_SIZE);
 		Assert.Equal(36, IntuitionPreferencesConstants.POINTERSIZE);
-		AssertLayout<Preferences>(234,
+		AssertLayout<Preferences>(232,
 			(nameof(Preferences.FontHeight), 0), (nameof(Preferences.PrinterPort), 1),
 			(nameof(Preferences.BaudRate), 2), (nameof(Preferences.KeyRptSpeed), 4),
 			(nameof(Preferences.KeyRptDelay), 12), (nameof(Preferences.DoubleClick), 20),
@@ -580,42 +583,49 @@ public sealed class IntuitionGadgetClassAuthorityTests
 			(nameof(Preferences.color3), 116), (nameof(Preferences.ViewXOffset), 118),
 			(nameof(Preferences.ViewYOffset), 119), (nameof(Preferences.ViewInitX), 120),
 			(nameof(Preferences.ViewInitY), 122), (nameof(Preferences.EnableCLI), 124),
-			(nameof(Preferences.PrinterType), 128),
-			(nameof(Preferences.PrinterFilename), 130),
-			(nameof(Preferences.PrintPitch), 160),
-			(nameof(Preferences.PrintQuality), 162),
-			(nameof(Preferences.PrintSpacing), 164),
-			(nameof(Preferences.PrintLeftMargin), 166),
-			(nameof(Preferences.PrintRightMargin), 168),
-			(nameof(Preferences.PrintImage), 170),
-			(nameof(Preferences.PrintAspect), 172),
-			(nameof(Preferences.PrintShade), 174),
-			(nameof(Preferences.PrintThreshold), 176),
-			(nameof(Preferences.PaperSize), 178),
-			(nameof(Preferences.PaperLength), 180),
-			(nameof(Preferences.PaperType), 182),
-			(nameof(Preferences.SerRWBits), 184),
-			(nameof(Preferences.SerStopBuf), 185),
-			(nameof(Preferences.SerParShk), 186), (nameof(Preferences.LaceWB), 187),
-			(nameof(Preferences.Pad), 188), (nameof(Preferences.PrtDevName), 200),
-			(nameof(Preferences.DefaultPrtUnit), 216),
-			(nameof(Preferences.DefaultSerUnit), 217),
-			(nameof(Preferences.RowSizeChange), 218),
-			(nameof(Preferences.ColumnSizeChange), 219),
-			(nameof(Preferences.PrintFlags), 220),
-			(nameof(Preferences.PrintMaxWidth), 222),
-			(nameof(Preferences.PrintMaxHeight), 224),
-			(nameof(Preferences.PrintDensity), 226),
-			(nameof(Preferences.PrintXOffset), 227),
-			(nameof(Preferences.wb_Width), 228), (nameof(Preferences.wb_Height), 230),
-			(nameof(Preferences.wb_Depth), 232), (nameof(Preferences.ext_size), 233));
+			(nameof(Preferences.PrinterType), 126),
+			(nameof(Preferences.PrinterFilename), 128),
+			(nameof(Preferences.PrintPitch), 158),
+			(nameof(Preferences.PrintQuality), 160),
+			(nameof(Preferences.PrintSpacing), 162),
+			(nameof(Preferences.PrintLeftMargin), 164),
+			(nameof(Preferences.PrintRightMargin), 166),
+			(nameof(Preferences.PrintImage), 168),
+			(nameof(Preferences.PrintAspect), 170),
+			(nameof(Preferences.PrintShade), 172),
+			(nameof(Preferences.PrintThreshold), 174),
+			(nameof(Preferences.PaperSize), 176),
+			(nameof(Preferences.PaperLength), 178),
+			(nameof(Preferences.PaperType), 180),
+			(nameof(Preferences.SerRWBits), 182),
+			(nameof(Preferences.SerStopBuf), 183),
+			(nameof(Preferences.SerParShk), 184), (nameof(Preferences.LaceWB), 185),
+			(nameof(Preferences.Pad), 186), (nameof(Preferences.PrtDevName), 198),
+			(nameof(Preferences.DefaultPrtUnit), 214),
+			(nameof(Preferences.DefaultSerUnit), 215),
+			(nameof(Preferences.RowSizeChange), 216),
+			(nameof(Preferences.ColumnSizeChange), 217),
+			(nameof(Preferences.PrintFlags), 218),
+			(nameof(Preferences.PrintMaxWidth), 220),
+			(nameof(Preferences.PrintMaxHeight), 222),
+			(nameof(Preferences.PrintDensity), 224),
+			(nameof(Preferences.PrintXOffset), 225),
+			(nameof(Preferences.wb_Width), 226), (nameof(Preferences.wb_Height), 228),
+			(nameof(Preferences.wb_Depth), 230), (nameof(Preferences.ext_size), 231));
 		var memory = new TestMemory(0x4000u, 1024);
-		var source = P(0x4020u);
-		var destination = P(0x4120u);
+		var source = P(0x4021u);
+		var destination = P(0x4121u);
+		memory.WriteUInt8(P(destination.Raw - 1), 0, 0xCC);
+		memory.WriteUInt8(destination, 232, 0xCC);
 		for (var offset = 0; offset < (int)Preferences.Size; offset++)
 			memory.WriteUInt8(source, offset, unchecked((byte)(offset * 73 + 19)));
 		var value = IntuitionPreferencesGuestCodec.Read(ref memory, source);
+		Assert.Equal(unchecked((short)memory.ReadUInt16(source, 124)), value.EnableCLI);
+		Assert.Equal(memory.ReadUInt16(source, 126), value.PrinterType);
+		Assert.Equal(memory.ReadUInt16(source, 226), value.wb_Width);
 		IntuitionPreferencesGuestCodec.Write(ref memory, destination, value);
+		Assert.Equal(0xCC, memory.ReadUInt8(P(destination.Raw - 1), 0));
+		Assert.Equal(0xCC, memory.ReadUInt8(destination, 232));
 		for (var offset = 0; offset < (int)Preferences.Size; offset++)
 			Assert.Equal(memory.ReadUInt8(source, offset),
 				memory.ReadUInt8(destination, offset));

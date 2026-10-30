@@ -1184,7 +1184,7 @@ internal static class M68kGraphColoringAllocator
 		// simplifying. Only removal of a neighbor changes an effective degree.
 		// Preserve the original ordering while updating those degrees locally.
 		var degrees = remaining.ToDictionary(id => id,
-			id => EffectiveDegree(groups, groupNeighbors, remaining, groups[id]));
+			id => EffectiveDegree(groups, groupNeighbors, remaining, groups[id], function.SimplifyLoopPhis));
 		var colors = remaining.ToDictionary(id => id, id => AvailableColorCount(groups[id]));
 		var simplifiableGroups = new SortedSet<(bool SpillTemporary, int Id)>();
 		var spillCandidates = new SortedSet<(double Priority, int Id)>();
@@ -1204,7 +1204,7 @@ internal static class M68kGraphColoringAllocator
 			foreach (var neighbor in groupNeighbors[selected])
 			{
 				if (!remaining.Contains(neighbor) ||
-					!groups[neighbor].AllowedRegisters.Overlaps(groups[selected].AllowedRegisters)) continue;
+					!ColorDomainsOverlap(groups[neighbor], groups[selected], function.SimplifyLoopPhis)) continue;
 				spillCandidates.Remove((SpillPriority(groups[neighbor], degrees[neighbor]), neighbor));
 				degrees[neighbor]--;
 				spillCandidates.Add((SpillPriority(groups[neighbor], degrees[neighbor]), neighbor));
@@ -1250,7 +1250,9 @@ internal static class M68kGraphColoringAllocator
 			if (!CandidateIsAvailable(group, selected, forbidden) || !PairAliasesAllow(selected) ||
 				!group.AllowedRegisters.Contains(selected))
 			{
-				if (function.SimplifyLoopPhis && TryReassignScalarNeighbor(
+				if (function.SimplifyLoopPhis &&
+					pairAliases.Values.All(static aliases => aliases.Count == 0) &&
+					TryReassignScalarNeighbor(
 					function, group, groups, groupNeighbors, allocatedGroups,
 					stack, graph, groupForValue, out selected))
 				{
@@ -2118,16 +2120,21 @@ internal static class M68kGraphColoringAllocator
 		}
 	}
 
+	// Use the same domain test for initial pressure and cached degree updates.
+	private static bool ColorDomainsOverlap(AllocationGroup left, AllocationGroup right, bool feasibleDomains) =>
+		feasibleDomains && !left.IsPair && !right.IsPair
+			? left.AllowedRegisters.Except(left.ForbiddenRegisters).Overlaps(
+				right.AllowedRegisters.Except(right.ForbiddenRegisters))
+			: left.AllowedRegisters.Overlaps(right.AllowedRegisters);
+
 	private static int EffectiveDegree(
 		IReadOnlyDictionary<int, AllocationGroup> groups,
 		IReadOnlyDictionary<int, HashSet<int>> neighbors,
 		IReadOnlySet<int> remaining,
-		AllocationGroup group) =>
+		AllocationGroup group, bool feasibleDomains) =>
 		neighbors[group.Id].Count(neighbor =>
-			(remaining.Contains(neighbor) ||
-			 groups[neighbor].PrecoloredRegister is not null) &&
-			group.AllowedRegisters.Overlaps(
-				groups[neighbor].AllowedRegisters));
+			(remaining.Contains(neighbor) || groups[neighbor].PrecoloredRegister is not null) &&
+			ColorDomainsOverlap(group, groups[neighbor], feasibleDomains));
 
 	private static int AvailableColorCount(
 		AllocationGroup group) =>

@@ -11,6 +11,39 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kInstructionDataflowTests
 {
 	[Theory]
+	[InlineData(0xB705)] // EOR.B D3,D5
+	[InlineData(0xB745)] // EOR.W D3,D5
+	[InlineData(0xB785)] // EOR.L D3,D5
+	public void EorDefinesItsEffectiveAddressDataRegister(int opcode)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord((ushort)opcode);
+		var effects = M68kInstructionDataflow.GetEffects(Assert.Single(assembler.GetInstructionStream()));
+		Assert.Equal((1 << 3) | (1 << 5), effects.UsesData);
+		Assert.Equal(1 << 5, effects.DefinesData);
+		Assert.Equal(0, effects.UsesAddress);
+		Assert.Equal(0, effects.DefinesAddress);
+		Assert.Equal(M68kMemorySet.None, effects.ReadsMemory);
+		Assert.Equal(M68kMemorySet.None, effects.WritesMemory);
+	}
+
+	[Fact]
+	public void EorInvalidatesAnEarlierKnownZeroBeforeChecksumReset()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x7400); // MOVEQ #0,D2
+		assembler.EmitWord(0xB182); // EOR.L D0,D2 (D0 is unknown)
+		assembler.EmitWord(0x7400); // Independent accumulator reset
+		assembler.EmitWord(0x2002); // MOVE.L D2,D0
+		assembler.EmitWord(0x4E75);
+		var flow = M68kInstructionDataflow.Analyze(assembler);
+		Assert.False(flow.GetDataValueBefore(4, 2).IsExact(out _));
+		assembler.OptimizeForCpu(M68kCpuTarget.M68000);
+		Assert.Contains(assembler.GetInstructionStream(), instruction => instruction.Opcode == 0x7400);
+	}
+
+
+	[Theory]
 	[InlineData(0xB902)] // EOR.B D4,D2
 	[InlineData(0xB942)] // EOR.W D4,D2
 	[InlineData(0xB982)] // EOR.L D4,D2 (FileStats checksum).

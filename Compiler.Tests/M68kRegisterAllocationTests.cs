@@ -1413,6 +1413,54 @@ public sealed class M68kRegisterAllocationTests
 		M68kGraphColoringAllocator.VerifyAllocation(function, graph, allocation);
 	}
 
+	[Theory]
+	[InlineData((int)M68kMachineValueWidth.Byte)]
+	[InlineData((int)M68kMachineValueWidth.Word)]
+	[InlineData((int)M68kMachineValueWidth.Long)]
+	public void ManyIncomingScalarArgumentsConvergeWithDirectAndCopiedSpills(int widthValue)
+	{
+		var width = (M68kMachineValueWidth)widthValue;
+		var kind = width == M68kMachineValueWidth.Byte ? CilStackValueKind.UnsignedByte :
+			width == M68kMachineValueWidth.Word ? CilStackValueKind.UnsignedWord : CilStackValueKind.Int32;
+		var function = new M68kMachineFunction("incoming-many-scalars", 0);
+		var block = AddBlock(function, 0, 0);
+		var values = new List<int>();
+		var registers = new[] { M68kRegister.D0, M68kRegister.D1, M68kRegister.A0, M68kRegister.A1 };
+		for (var index = 0; index < 12; index++)
+		{
+			var value = function.CreateValue(kind, width, M68kRegisterSet.Data);
+			values.Add(value.Id);
+			if (index < registers.Length)
+			{
+				var register = registers[index];
+				var sourceWidth = register >= M68kRegister.A0 ? M68kMachineValueWidth.Long : width;
+				var incoming = function.CreateValue(sourceWidth == width ? kind : CilStackValueKind.Int32, sourceWidth,
+					M68kRegisterSet.From(register), precoloredRegister: register);
+				block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0, definitions: [incoming.Id], argumentIndex: index));
+				block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 0, uses: [incoming.Id], definitions: [value.Id], allowCopyCoalescing: sourceWidth == width));
+			}
+			else block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0, definitions: [value.Id], argumentIndex: index));
+		}
+		foreach (var value in values) block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 1, uses: [value]));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 2));
+		var allocated = M68kRegisterAllocatorPipeline.Run(function);
+		Assert.InRange(allocated.Statistics.AllocationIterations, 2, 8);
+		Assert.NotEmpty(allocated.Spills.Slots);
+		Assert.NotEmpty(M68kIncomingArgumentSpills.FindScalarSpills(allocated.Function));
+	}
+
+	[Fact]
+	public void IncomingSpillWithOtherUsesRetainsItsRegisterHome()
+	{
+		var function = new M68kMachineFunction("incoming-observed-spill", 0);
+		var block = AddBlock(function, 0, 0);
+		var value = function.CreateValue(CilStackValueKind.Int32, M68kMachineValueWidth.Long, M68kRegisterSet.Data, isSpillTemporary: true);
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0, definitions: [value.Id], argumentIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.SpillStore, 0, uses: [value.Id], memoryEffect: M68kMachineMemoryEffect.Write, spillSlotIndex: 0));
+		block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Return, 1, uses: [value.Id]));
+		Assert.Empty(M68kIncomingArgumentSpills.FindScalarSpills(function));
+	}
+
 	[Fact]
 	public void AllocatorSpillsWhenDataRegisterPressureExceedsEight()
 	{
