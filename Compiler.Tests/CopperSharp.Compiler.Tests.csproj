@@ -35,6 +35,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Compiler\CopperSharp.Compiler.csproj" />
+    <ProjectReference Include="../Compiler.Tests.RecoveryFixtures/CopperSharp.Compiler.Tests.RecoveryFixtures.csproj" />
 	<ProjectReference Include="..\Compiler.Tests.PackageDependency\CopperSharp.Compiler.Tests.PackageDependency.csproj" />
 	<ProjectReference Include="..\Compiler.Tests.FunctionAddressFixtures\CopperSharp.Compiler.Tests.FunctionAddressFixtures.csproj" />
 	<ProjectReference Include="..\Compiler.Tests.PromotedLocalFixture\CopperSharp.Compiler.Tests.PromotedLocalFixture.csproj" />

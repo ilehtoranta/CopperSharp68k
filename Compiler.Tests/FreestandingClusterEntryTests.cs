@@ -48,20 +48,3 @@ public sealed class FreestandingClusterEntryTests
         }
     }
 }
-
-public static class FreestandingClusterEntryFixture
-{
-    public static uint Entry() => global::Amiga.Exec.FindTask(CString.FromPointer(0)).Raw + 3;
-
-    [M68kExport("freestanding.cluster.hot")]
-    [return: M68kRegister(M68kRegister.D0)]
-    public static uint Hot([M68kRegister(M68kRegister.D0)] uint value) => Mix(value) + Mix(value + 1) + Mix(value + 2) +
-        Mix(value + 3) + Mix(value + 4) + Mix(value + 5) + Mix(value + 6) + Mix(value + 7);
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static uint Mix(uint value)
-    {
-        for (var i = 0; i < 32; i++) value = (value ^ (value >> 3)) * 17 + (uint)i;
-        return value;
-    }
-}

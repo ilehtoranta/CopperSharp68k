@@ -61,20 +61,3 @@ public sealed class FreestandingCodeSizeStateTests
         }
     }
 }
-
-public static unsafe class FreestandingStateFixture
-{
-    private static uint counter;
-    public static uint Entry()
-    {
-        *(uint*)0x40000 = APTR.ExportAddress("freestanding.state.add").Raw;
-        *(uint*)0x40004 = APTR.ExportAddress("freestanding.state.read").Raw;
-        return Add(1);
-    }
-    [M68kExport("freestanding.state.add")]
-    [return: M68kRegister(M68kRegister.D0)]
-    public static uint Add([M68kRegister(M68kRegister.D0)] uint value) => counter += value;
-    [M68kExport("freestanding.state.read")]
-    [return: M68kRegister(M68kRegister.D0)]
-    public static uint Read() => counter;
-}
