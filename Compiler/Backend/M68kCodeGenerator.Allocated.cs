@@ -108,6 +108,7 @@ internal sealed partial class M68kCodeGenerator
 						$"{instruction.Operation}/" +
 						$"{instruction.SourceInstruction?.OpCode.Name}" +
 						$"@IL_{instruction.IlOffset:X4}" +
+						$" assigned=[{string.Join(",", instruction.Uses.Select(value => allocated.Allocation.Registers.TryGetValue(value, out var location) ? location.Register.ToString() : "spilled"))}]" +
 						$" uses=[{string.Join(",", instruction.Uses.Select(value =>
 							allocated.Function.Values[value].PrecoloredRegister?.ToString() ?? "uncolored"))}]")
 						.Distinct()));
