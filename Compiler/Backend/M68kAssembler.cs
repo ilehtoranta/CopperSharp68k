@@ -583,12 +583,12 @@ internal sealed class M68kAssembler
 		M68kFpuOperation operation) =>
 		EmitFpuRegisterOperation(destinationFpuRegister, destinationFpuRegister, operation);
 
-	public void EmitBranch(M68kCondition condition, string target)
+	public void EmitBranch(M68kCondition condition, string target, bool preferFastFallthrough = false)
 	{
 		var opcodeOffset = Offset;
 		EmitWord((ushort)(0x6000 | ((int)condition << 8)));
 		EmitWord(0);
-		_branches.Add(new BranchFixup(opcodeOffset, target));
+		_branches.Add(new BranchFixup(opcodeOffset, target, PreferFastFallthrough: preferFastFallthrough));
 	}
 
 	public void EmitDbra(int dataRegister, string target)
@@ -1621,6 +1621,7 @@ internal sealed class M68kAssembler
 		IReadOnlyDictionary<string, uint> imports)
 	{
 		RelaxFinalLayout();
+		OptimizeWordBranchFallthroughs();
 		EnsureBssLongAlignment();
 		var code = _bytes.ToArray();
 		foreach (var branch in _branches)
@@ -1734,6 +1735,72 @@ internal sealed class M68kAssembler
 			_pcRelative
 				.Select(static fixup => fixup.Target)
 				.ToHashSet(StringComparer.Ordinal));
+	}
+
+	// A word Bcc costs 12 cycles when not taken on the 68000. For a
+	// likely loop continuation, B!cc.s over BRA.w costs 10 cycles instead.
+	// Do this after relaxation: short Bcc already has the faster 8-cycle
+	// fallthrough, and growing it would be counterproductive.
+	private void OptimizeWordBranchFallthroughs()
+	{
+		// Insertion must not disturb requested loop alignment.
+		if (_longAlignmentLabels.Count != 0) return;
+		for (var index = 0; index < _branches.Count; index++)
+		{
+			var branch = _branches[index];
+			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			if (!branch.PreferFastFallthrough || !IsWordBranchOpcode(opcode) ||
+				(opcode & 0xF000) != 0x6000 || (opcode & 0x0E00) == 0 ||
+				!CanInsertFastFallthrough(branch)) continue;
+
+			var position = branch.OpcodeOffset + 2;
+			_buffer.InsertBytes(position, 2, shiftBoundaryLabels: true, shiftBoundaryAnchors: true);
+			_buffer.WriteWord(branch.OpcodeOffset, (opcode ^ 0x0100) | 4);
+			_buffer.WriteWord(position, 0x6000); // BRA.w to the original target.
+			var skipLabel = $"fast-fallthrough:{branch.OpcodeOffset}";
+			while (_labels.ContainsKey(skipLabel)) skipLabel += ":";
+			_labels.Add(skipLabel, branch.OpcodeOffset + 6);
+			_branches[index] = branch with
+			{
+				OpcodeOffset = position,
+				CanRelaxToShort = false,
+				PreferFastFallthrough = false
+			};
+			_branches.Add(new BranchFixup(branch.OpcodeOffset, skipLabel, CanRelaxToShort: false));
+		}
+	}
+
+	private bool CanInsertFastFallthrough(BranchFixup candidate)
+	{
+		var position = candidate.OpcodeOffset + 2;
+		if (_buffer.HasLabelAt(position)) return false;
+		int Shift(int offset) => offset >= position ? offset + 2 : offset;
+		foreach (var branch in _branches)
+		{
+			if (!_labels.TryGetValue(branch.Target, out var target)) return false;
+			var source = branch == candidate ? position : Shift(branch.OpcodeOffset);
+			var displacement = Shift(target) - (source + 2);
+			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			if (branch != candidate && IsShortBranchOpcode(opcode))
+			{
+				if (displacement is < sbyte.MinValue or > sbyte.MaxValue || displacement == 0)
+					return false;
+			}
+			else if (displacement is < short.MinValue or > short.MaxValue) return false;
+		}
+		foreach (var fixup in _pcRelative)
+		{
+			if (!_labels.TryGetValue(fixup.Target, out var target)) return false;
+			var displacement = Shift(target) - Shift(fixup.DisplacementOffset);
+			if (displacement is < short.MinValue or > short.MaxValue) return false;
+		}
+		foreach (var fixup in _relativeDataLongs)
+		{
+			if (!fixup.Narrow) continue;
+			var displacement = Shift(_labels[fixup.Target]) - Shift(_labels[fixup.Base]);
+			if (displacement is < short.MinValue or > short.MaxValue) return false;
+		}
+		return true;
 	}
 
 	private void EnsureBssLongAlignment()

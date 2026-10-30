@@ -348,7 +348,8 @@ internal sealed class M68kAssemblyBuffer
 internal readonly record struct BranchFixup(
 	int OpcodeOffset,
 	string Target,
-	bool CanRelaxToShort = true);
+	bool CanRelaxToShort = true,
+	bool PreferFastFallthrough = false);
 
 internal readonly record struct AddressFixup(
 	int Offset,

@@ -7,6 +7,7 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed record M68kBlockLayoutPlan(IReadOnlyList<int> BlockIds)
 {
+	internal IReadOnlySet<int> ColdBlockIds { get; init; } = new HashSet<int>();
 	private sealed class Chain(M68kMachineBlock block)
 	{
 		internal List<M68kMachineBlock> Blocks { get; } = [block];
@@ -81,10 +82,12 @@ internal sealed record M68kBlockLayoutPlan(IReadOnlyList<int> BlockIds)
 			.Select(static group => group
 				.OrderByDescending(static edge => edge.SuccessorIndex)
 				.First())
-			.OrderByDescending(static edge => edge.TargetsEdgeBlock)
-			.ThenBy(static edge => edge.TargetIsCold)
-			.ThenBy(static edge => edge.CompetesWithConditionalEdge)
+			// Do not let a split phi-copy edge take fallthrough away from
+			// a loop body or normal path in favor of an exit or throw path.
+			.OrderBy(static edge => edge.TargetIsCold)
 			.ThenByDescending(static edge => edge.StaysInLoop)
+			.ThenByDescending(static edge => edge.TargetsEdgeBlock)
+			.ThenBy(static edge => edge.CompetesWithConditionalEdge)
 			.ThenByDescending(static edge => edge.IsUnconditional)
 			.ThenByDescending(static edge => edge.SuccessorIndex)
 			.ThenByDescending(static edge => edge.From.LoopDepth)
@@ -137,7 +140,7 @@ internal sealed record M68kBlockLayoutPlan(IReadOnlyList<int> BlockIds)
 			throw new InvalidOperationException(
 				$"Block layout for '{function.DisplayName}' does not contain every emitted block exactly once.");
 		}
-		return new M68kBlockLayoutPlan(orderedBlocks);
+		return new M68kBlockLayoutPlan(orderedBlocks) { ColdBlockIds = coldBlocks };
 	}
 
 	private static bool IsEdgeBlock(

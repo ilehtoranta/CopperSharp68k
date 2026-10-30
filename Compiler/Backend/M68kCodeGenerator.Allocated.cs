@@ -12197,19 +12197,28 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_assembler.EmitBranch(
 				InvertCondition(condition),
-				AllocatedBlockLabel(method, falseTarget));
+				AllocatedBlockLabel(method, falseTarget),
+				PreferFastFallthrough(falseTarget));
 			return;
 		}
 
 		_assembler.EmitBranch(
 			condition,
-			AllocatedBlockLabel(method, trueTarget));
+			AllocatedBlockLabel(method, trueTarget),
+			nextBlockId == falseTarget && PreferFastFallthrough(trueTarget));
 		if (nextBlockId != falseTarget)
 		{
 			_assembler.EmitBranch(
 				M68kCondition.True,
 				AllocatedBlockLabel(method, falseTarget));
 		}
+
+		bool PreferFastFallthrough(int branchTarget) =>
+			_request.OptimizeWordBranchFallthrough && _request.Cpu == M68kCpuTarget.M68000 &&
+			((allocated.BlockLayout.ColdBlockIds.Contains(branchTarget) &&
+			  nextBlockId is { } next && !allocated.BlockLayout.ColdBlockIds.Contains(next)) ||
+			 (block.LoopDepth > 0 && allocated.Function.Blocks
+				.First(candidate => candidate.Id == branchTarget).LoopDepth < block.LoopDepth));
 	}
 
 	private void EmitAllocatedSwitch(

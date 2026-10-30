@@ -684,6 +684,8 @@ public sealed record M68kCodeSizeOptions
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
+	// Allows the compiler's cycle tests to compare identical requests.
+	internal bool OptimizeWordBranchFallthrough { get; init; } = true;
 	/// <summary>
 	/// Default maximum size of compiler-owned resident invocation state placed on
 	/// the current task stack. Larger resident contexts use Exec <c>AllocMem</c>

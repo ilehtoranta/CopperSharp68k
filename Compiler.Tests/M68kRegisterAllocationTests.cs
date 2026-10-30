@@ -197,6 +197,9 @@ public sealed class M68kRegisterAllocationTests
 
 		Assert.Equal(entry.Id, layout.BlockIds[0]);
 		Assert.Equal(hot.Id, layout.BlockIds[1]);
+		Assert.Contains(coldForwarder.Id, layout.ColdBlockIds);
+		Assert.Contains(coldThrow.Id, layout.ColdBlockIds);
+		Assert.DoesNotContain(hot.Id, layout.ColdBlockIds);
 		Assert.True(
 			layout.BlockIds.ToList().IndexOf(coldForwarder.Id) >
 			layout.BlockIds.ToList().IndexOf(hot.Id));
@@ -265,6 +268,47 @@ public sealed class M68kRegisterAllocationTests
 		var layout = CreateIdentityLayout(function);
 
 		Assert.Equal([entry.Id, trueEdge.Id], layout.BlockIds.Take(2));
+	}
+
+	[Fact]
+	public void BlockLayoutPrefersLoopBodyOverSplitExitEdge()
+	{
+		var function = new M68kMachineFunction("layout-split-loop-exit", 0);
+		var entry = AddBlock(function, 0, 0);
+		var header = AddBlock(function, 1, 10);
+		var body = AddBlock(function, 2, 20);
+		var exit = AddBlock(function, 3, 30);
+		var splitExit = AddBlock(function, 4, 30);
+		Connect(entry, header);
+		Connect(header, body);
+		Connect(header, splitExit);
+		Connect(body, header);
+		Connect(splitExit, exit);
+		AddPlainBranch(function, splitExit);
+		M68kControlFlowAnalysis.ComputeLoopDepths(function);
+
+		var layout = CreateIdentityLayout(function);
+
+		Assert.Equal(body.Id, layout.BlockIds[layout.BlockIds.ToList().IndexOf(header.Id) + 1]);
+	}
+
+	[Fact]
+	public void BlockLayoutPrefersNormalPathOverSplitColdEdge()
+	{
+		var function = new M68kMachineFunction("layout-split-cold", 0);
+		var entry = AddBlock(function, 0, 0);
+		var normal = AddBlock(function, 1, 10);
+		var failure = AddBlock(function, 2, 20);
+		var splitFailure = AddBlock(function, 3, 20);
+		Connect(entry, normal);
+		Connect(entry, splitFailure);
+		Connect(splitFailure, failure);
+		AddPlainBranch(function, splitFailure);
+		failure.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Throw, 20));
+
+		var layout = CreateIdentityLayout(function);
+
+		Assert.Equal(normal.Id, layout.BlockIds[1]);
 	}
 
 	[Fact]
