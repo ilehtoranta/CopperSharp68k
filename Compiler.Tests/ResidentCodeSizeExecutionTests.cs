@@ -21,12 +21,13 @@ public sealed class ResidentCodeSizeExecutionTests
             "ReadOnly/ProducerAlias", "ReadOnly/Writable", "Local/Entry", "Local/IdentityEntry" })
         foreach (var peephole in new[] { M68kPeepholeOptimizationMode.Disabled,
             M68kPeepholeOptimizationMode.FixedPoint })
-            yield return [pass, scenario, peephole];
+        foreach (var profile in new[] { M68kRuntimeProfile.Resident, M68kRuntimeProfile.Freestanding })
+            yield return [pass, scenario, peephole, profile];
     }
 
     [Theory, MemberData(nameof(Cases))]
     public void ResidentHunksPreserveAliasesRegistersStackAndRelocation(
-        string pass, string scenario, M68kPeepholeOptimizationMode peephole)
+        string pass, string scenario, M68kPeepholeOptimizationMode peephole, M68kRuntimeProfile profile)
     {
         var parts = scenario.Split('/');
         var type = parts[0] switch {
@@ -38,7 +39,7 @@ public sealed class ResidentCodeSizeExecutionTests
         var entry = type.FullName + "::" + (parts[0] == "Local" ? parts[1] : "Entry" + parts[1]);
         var request = new M68kCompilationRequest {
             AssemblyPath = type.Assembly.Location, EntryPoint = entry,
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = M68kRuntimeProfile.Resident,
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = profile,
             OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, PeepholeOptimization = peephole,
             IncludedExportNames = parts[1] == "IdentityEntry" ? ["resident.size.first", "resident.size.second"] : [],

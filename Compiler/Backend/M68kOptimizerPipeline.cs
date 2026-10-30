@@ -169,32 +169,15 @@ internal sealed class M68kOptimizerPipeline
 				wholeImageIdenticalMethodStatistics);
 			return;
 		}
-		try
-		{
-			RunLayoutCleanup(ref batches, ref rewrites, ref rounds);
-			var methodScopes = BuildMethodAnalysisScopes(methodEnds);
-			for (var index = methodScopes.Length - 1; index >= 0; index--)
-			{
-				var scope = methodScopes[index];
-				_assembler.SetAnalysisScope(
-					scope.StartLabel,
-					scope.EndLabel,
-					scope.LabelNames);
-				RunPassesToFixedPoint(ref batches, ref rewrites, ref rounds,
-					scope.EndLabel);
-			}
-		}
-		finally
-		{
-			_assembler.ClearAnalysisScope();
-		}
+		RunLayoutCleanup(ref batches, ref rewrites, ref rounds);
+		RunMethodPassesToFixedPoint(methodEnds, ref batches, ref rewrites, ref rounds);
 		var helperRewrites = _layoutPass.RunGeneratedHelperInlining();
 		if (helperRewrites != 0)
 		{
 			rewrites += helperRewrites;
 			batches++;
 			rounds++;
-			RunPassesToFixedPoint(ref batches, ref rewrites, ref rounds, "inlined private helpers");
+			RunMethodPassesToFixedPoint(methodEnds, ref batches, ref rewrites, ref rounds);
 		}
 		RunLayoutCleanup(ref batches, ref rewrites, ref rounds);
 		var returnConditionStatistics = RunRepeatedCallResultTestOptimizer(
@@ -216,6 +199,29 @@ internal sealed class M68kOptimizerPipeline
 			terminalStatistics,
 			returnConditionStatistics,
 			identicalMethodStatistics);
+	}
+
+	private void RunMethodPassesToFixedPoint(IReadOnlyList<string> methodEnds,
+		ref int batches, ref int rewrites, ref int rounds)
+	{
+		try
+		{
+			var methodScopes = BuildMethodAnalysisScopes(methodEnds);
+			for (var index = methodScopes.Length - 1; index >= 0; index--)
+			{
+				var scope = methodScopes[index];
+				_assembler.SetAnalysisScope(
+					scope.StartLabel,
+					scope.EndLabel,
+					scope.LabelNames);
+				RunPassesToFixedPoint(ref batches, ref rewrites, ref rounds,
+					scope.EndLabel);
+			}
+		}
+		finally
+		{
+			_assembler.ClearAnalysisScope();
+		}
 	}
 
 	private M68kRepeatedCallResultTestOptimizer.Statistics

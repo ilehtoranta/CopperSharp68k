@@ -74,30 +74,40 @@ public sealed class GeneratedCodeSizeExecutionTests
     }
 
     [Theory]
-    [InlineData("RemoveRedundantTransport", false)]
-    [InlineData("RemoveRedundantTransport", true)]
-    [InlineData("CompactGuestMemory", false)]
-    [InlineData("CompactGuestMemory", true)]
-    [InlineData("NarrowOperations", false)]
-    [InlineData("NarrowOperations", true)]
-    [InlineData("EliminateRedundantInitialization", false)]
-    [InlineData("EliminateRedundantInitialization", true)]
-    [InlineData("SizeFirstCosts", false)]
-    [InlineData("SizeFirstCosts", true)]
-    [InlineData("InlineMemoryHelpers", false)]
-    [InlineData("InlineMemoryHelpers", true)]
-    [InlineData("ShareArithmeticCores", false)]
-    [InlineData("ShareArithmeticCores", true)]
-    [InlineData("CompactPrivateStackCopies", false)]
-    [InlineData("CompactPrivateStackCopies", true)]
-    [InlineData("Combined", false)]
-    [InlineData("Combined", true)]
-    public void GeneratedProfilesPreserveAliasingAndRepeatedInvocation(string pass, bool rom)
+    [InlineData("RemoveRedundantTransport", M68kRuntimeProfile.Resident)]
+    [InlineData("RemoveRedundantTransport", M68kRuntimeProfile.Rom)]
+    [InlineData("RemoveRedundantTransport", M68kRuntimeProfile.Freestanding)]
+    [InlineData("CompactGuestMemory", M68kRuntimeProfile.Resident)]
+    [InlineData("CompactGuestMemory", M68kRuntimeProfile.Rom)]
+    [InlineData("CompactGuestMemory", M68kRuntimeProfile.Freestanding)]
+    [InlineData("NarrowOperations", M68kRuntimeProfile.Resident)]
+    [InlineData("NarrowOperations", M68kRuntimeProfile.Rom)]
+    [InlineData("NarrowOperations", M68kRuntimeProfile.Freestanding)]
+    [InlineData("EliminateRedundantInitialization", M68kRuntimeProfile.Resident)]
+    [InlineData("EliminateRedundantInitialization", M68kRuntimeProfile.Rom)]
+    [InlineData("EliminateRedundantInitialization", M68kRuntimeProfile.Freestanding)]
+    [InlineData("SizeFirstCosts", M68kRuntimeProfile.Resident)]
+    [InlineData("SizeFirstCosts", M68kRuntimeProfile.Rom)]
+    [InlineData("SizeFirstCosts", M68kRuntimeProfile.Freestanding)]
+    [InlineData("InlineMemoryHelpers", M68kRuntimeProfile.Resident)]
+    [InlineData("InlineMemoryHelpers", M68kRuntimeProfile.Rom)]
+    [InlineData("InlineMemoryHelpers", M68kRuntimeProfile.Freestanding)]
+    [InlineData("ShareArithmeticCores", M68kRuntimeProfile.Resident)]
+    [InlineData("ShareArithmeticCores", M68kRuntimeProfile.Rom)]
+    [InlineData("ShareArithmeticCores", M68kRuntimeProfile.Freestanding)]
+    [InlineData("CompactPrivateStackCopies", M68kRuntimeProfile.Resident)]
+    [InlineData("CompactPrivateStackCopies", M68kRuntimeProfile.Rom)]
+    [InlineData("CompactPrivateStackCopies", M68kRuntimeProfile.Freestanding)]
+    [InlineData("Combined", M68kRuntimeProfile.Resident)]
+    [InlineData("Combined", M68kRuntimeProfile.Rom)]
+    [InlineData("Combined", M68kRuntimeProfile.Freestanding)]
+    public void GeneratedProfilesPreserveAliasingAndRepeatedInvocation(string pass, M68kRuntimeProfile profile)
     {
+        var rom = profile == M68kRuntimeProfile.Rom;
         var request = new M68kCompilationRequest {
             AssemblyPath = typeof(GeneratedSizeFixtures).Assembly.Location,
             EntryPoint = typeof(GeneratedSizeFixtures).FullName + "::Entry",
-            Cpu = M68kCpuTarget.M68000, RuntimeProfile = rom ? M68kRuntimeProfile.Rom : M68kRuntimeProfile.Resident,
+            Cpu = M68kCpuTarget.M68000, RuntimeProfile = profile,
             OutputFormat = rom ? M68kOutputFormat.KickstartRom : M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Yolo,
             MemoryManagement = M68kMemoryManagement.None, IncludedExportNames = [],
             Hunk = new() { IncludeSymbols = false }

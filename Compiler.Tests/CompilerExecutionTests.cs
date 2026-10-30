@@ -6544,7 +6544,7 @@ public sealed partial class CompilerExecutionTests
 				StringComparison.Ordinal);
 			Assert.DoesNotContain("\tbtst\td4,d0", assembly, StringComparison.Ordinal);
 			Assert.DoesNotContain("\tbset\td4,d2", assembly, StringComparison.Ordinal);
-			Assert.DoesNotContain("divu.w", assembly, StringComparison.Ordinal);
+			Assert.Contains("divu.w", assembly, StringComparison.Ordinal);
 		}
 	}
 
@@ -23249,14 +23249,15 @@ public sealed partial class CompilerExecutionTests
 	}
 
 	[Fact]
-	public void M68000KeepsCompactLoopForDenseConstantMultiply()
+	public void M68000UsesPartialProductsForDenseConstantMultiply()
 	{
 		var assembly = Compile(
 			M68kCpuTarget.M68000,
 			M68kOutputFormat.Assembly,
 			"CopperSharp.Compiler.Tests.CompilerFixtures::DenseConstantMultiplyEntry");
 
-		Assert.Contains("mul_loop", assembly.Text, StringComparison.Ordinal);
+		Assert.DoesNotContain("mul_loop", assembly.Text, StringComparison.Ordinal);
+		Assert.Contains("mulu.w", assembly.Text, StringComparison.Ordinal);
 		Assert.Contains("#$55555555", assembly.Text, StringComparison.Ordinal);
 	}
 

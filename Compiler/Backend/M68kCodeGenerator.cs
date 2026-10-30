@@ -17,11 +17,11 @@ internal sealed partial class M68kCodeGenerator
 	private readonly M68kCompilationRequest _request;
 	private bool SupportsCodeSizeProfile => _request.RuntimeProfile == M68kRuntimeProfile.Rom ||
 		_request.CodeSizeOptimizations is not null &&
-		_request.RuntimeProfile == M68kRuntimeProfile.Resident &&
+		_request.RuntimeProfile is M68kRuntimeProfile.Resident or M68kRuntimeProfile.Freestanding &&
 		_request.OutputFormat == M68kOutputFormat.Hunk;
 	private bool SupportsGeneratedCodeSizeProfile => _request.CodeSizeOptimizations is not null &&
 		_request.Cpu == M68kCpuTarget.M68000 &&
-		(_request.RuntimeProfile == M68kRuntimeProfile.Resident && _request.OutputFormat == M68kOutputFormat.Hunk ||
+		(_request.RuntimeProfile is M68kRuntimeProfile.Resident or M68kRuntimeProfile.Freestanding && _request.OutputFormat == M68kOutputFormat.Hunk ||
 			_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
 			_request.OutputFormat is M68kOutputFormat.KickstartRom or M68kOutputFormat.Assembly) &&
 		_request.ExceptionMode == M68kExceptionMode.Yolo &&
@@ -381,7 +381,8 @@ internal sealed partial class M68kCodeGenerator
 				entry,
 				usesManagedRuntime,
 				usesAmigaStartupArguments,
-				_hasExceptionFrames);
+				_hasExceptionFrames,
+				MethodLabel(methods.First(method => !_foldedMethodAliases.ContainsKey(method.Identity))) == MethodLabel(entry));
 			if (!entryHasOtherInvocation &&
 				!usesManagedRuntime &&
 				!usesManagedLifecycle)
@@ -5314,18 +5315,20 @@ internal sealed partial class M68kCodeGenerator
 			return;
 		}
 
-		var loop = UniqueLabel("mul_loop");
-		var skip = UniqueLabel("mul_skip");
-		_assembler.EmitWord(0x7400); // MOVEQ #0,D2
-		_assembler.EmitWord(0x761F); // MOVEQ #31,D3
-		_assembler.Mark(loop);
-		_assembler.EmitWord(0xE289); // LSR.L #1,D1
-		_assembler.EmitBranch(M68kCondition.CarryClear, skip);
-		_assembler.EmitWord(0xD480); // ADD.L D0,D2
-		_assembler.Mark(skip);
-		_assembler.EmitWord(0xD080); // ADD.L D0,D0
-		_assembler.EmitDbra(3, loop);
-		_assembler.EmitWord(0x2002); // MOVE.L D2,D0
+		// Only the low 32 bits survive CIL's unchecked multiply. The high/high
+		// term therefore vanishes; three 16x16 products suffice on an MC68000.
+		// D0/D1 are the inputs, D0 the result; scratch stays within D2/D3.
+		_assembler.EmitWord(0x2400); // MOVE.L D0,D2
+		_assembler.EmitWord(0x2601); // MOVE.L D1,D3
+		_assembler.EmitWord(0x4842); // SWAP D2
+		_assembler.EmitWord(0x4843); // SWAP D3
+		_assembler.EmitWord(0xC4C1); // MULU.W D1,D2 (left high * right low)
+		_assembler.EmitWord(0xC6C0); // MULU.W D0,D3 (right high * left low)
+		_assembler.EmitWord(0xD443); // ADD.W D3,D2
+		_assembler.EmitWord(0x4842); // SWAP D2
+		_assembler.EmitWord(0x4242); // CLR.W D2
+		_assembler.EmitWord(0xC0C1); // MULU.W D1,D0 (left low * right low)
+		_assembler.EmitWord(0xD082); // ADD.L D2,D0
 	}
 
 	private void EmitDivide(
@@ -5420,6 +5423,28 @@ internal sealed partial class M68kCodeGenerator
 	}
 	private void EmitUnsignedDivisionCore()
 	{
+		// DIVU.W packs a 16-bit quotient and remainder. Use it only when
+		// both the divisor and quotient fit; otherwise retain the full-width
+		// algorithm. The existing zero-divisor check precedes this core.
+		// Preserve D1 and the shared core's D0/D3/D4 clobber contract.
+		var wide = UniqueLabel("div_wide");
+		var done = UniqueLabel("div_done");
+		_assembler.EmitWord(0x2801); // MOVE.L D1,D4
+		_assembler.EmitWord(0x4844); // SWAP D4
+		_assembler.EmitWord(0x4A44); // TST.W D4
+		_assembler.EmitBranch(M68kCondition.NotEqual, wide);
+		_assembler.EmitWord(0x2600); // MOVE.L D0,D3
+		_assembler.EmitWord(0x4843); // SWAP D3
+		_assembler.EmitWord(0xB641); // CMP.W D1,D3
+		_assembler.EmitBranch(M68kCondition.CarryClear, wide);
+		_assembler.EmitWord(0x80C1); // DIVU.W D1,D0
+		_assembler.EmitWord(0x2600); // MOVE.L D0,D3
+		_assembler.EmitWord(0x0280); // ANDI.L #$ffff,D0
+		_assembler.EmitLong(0xffff);
+		_assembler.EmitWord(0x4243); // CLR.W D3
+		_assembler.EmitWord(0x4843); // SWAP D3
+		_assembler.EmitBranch(M68kCondition.True, done);
+		_assembler.Mark(wide);
 		var loop = UniqueLabel("div_loop");
 		var subtract = UniqueLabel("div_subtract");
 		var noSubtract = UniqueLabel("div_no_sub");
@@ -5436,6 +5461,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x5280); // ADDQ.L #1,D0
 		_assembler.Mark(noSubtract);
 		_assembler.EmitDbra(4, loop);
+		_assembler.Mark(done);
 	}
 
 	private void EmitShift(

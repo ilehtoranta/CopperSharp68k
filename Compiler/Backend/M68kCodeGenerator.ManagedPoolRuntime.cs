@@ -53,7 +53,8 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod entry,
 		bool usesManagedRuntime,
 		bool usesAmigaStartupArguments,
-		bool usesExceptionRuntime)
+		bool usesExceptionRuntime,
+		bool entryFollowsAdapter)
 	{
 		const string label = "entry:managed";
 		var usesManagedLifecycle = _managedLifecycles.Count != 0;
@@ -248,6 +249,9 @@ internal sealed partial class M68kCodeGenerator
 			return label;
 		}
 
+		// Call-graph layout can place another method immediately after this
+		// platform-base prefix. A process entry must still enter its own root.
+		if (!entryFollowsAdapter) _assembler.EmitJmp(MethodLabel(entry), external: false);
 		return label;
 	}
 

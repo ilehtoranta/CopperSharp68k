@@ -75,7 +75,7 @@ internal sealed partial class M68kCodeGenerator
 		var order = M68kCallGraphLayout.Plan(
 			estimatedSizes,
 			edges,
-			clusterCapacity: 12_000);
+			clusterCapacity: 30_000);
 		return order
 			.Select(index => physicalMethods[index])
 			.Concat(methods.Where(method =>
