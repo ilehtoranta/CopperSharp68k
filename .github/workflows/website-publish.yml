@@ -1,0 +1,140 @@
+name: Publish website
+
+on:
+  workflow_run:
+    workflows: [Build]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+
+# Finish an in-flight publication before another one can update gh-pages.
+concurrency:
+  group: website-publication
+  cancel-in-progress: false
+
+env:
+  VALIDATED_SOURCE: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  build:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      contains(fromJSON('["push", "workflow_dispatch"]'), github.event.workflow_run.event)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      publish: ${{ steps.current.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Skip a superseded CI result
+        id: current
+        shell: bash
+        run: |
+          if [[ "$(git rev-parse HEAD)" == "$VALIDATED_SOURCE" ]]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::main has advanced; its own successful Build run will publish the site.'
+          fi
+      - uses: actions/setup-dotnet@v4
+        if: steps.current.outputs.publish == 'true'
+        with:
+          dotnet-version: 10.0.301
+      - uses: actions/setup-node@v4
+        if: steps.current.outputs.publish == 'true'
+        with:
+          node-version: 22
+      - name: Rebuild and validate the website and publisher
+        if: steps.current.outputs.publish == 'true'
+        working-directory: website
+        run: npm test
+      - name: Retain the validated site for publication
+        if: steps.current.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-validated
+          path: website/dist
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: website-validated
+          path: website/dist
+      - name: Append the validated site to gh-pages history
+        shell: bash
+        run: |
+          mkdir -p website/.build
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags origin gh-pages
+          node website/publish.mjs --expected-main "$VALIDATED_SOURCE"
+      - name: Package the published site for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+      - name: Deploy the published site
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify the live source and SDK reference
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          import { setTimeout } from 'node:timers/promises';
+          const files = ['build-info.json', 'compatibility-profile.json', 'reference-index.json'];
+          for (let attempt = 0; ; attempt++) {
+            try {
+              await Promise.all(files.map(async file => {
+                const url = new URL(file, process.env.PAGE_URL);
+                url.searchParams.set('revision', process.env.VALIDATED_SOURCE);
+                const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+                assert.equal(response.status, 200, file);
+                assert.deepEqual(Buffer.from(await response.arrayBuffer()), fs.readFileSync('website/dist/' + file), file);
+              }));
+              console.log('Live source metadata and SDK reference match the validated publication.');
+              break;
+            } catch (error) {
+              if (attempt === 11) throw error;
+              await setTimeout(5000);
+            }
+          }
+          NODE
+      - name: Retain the publication audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-publication-plan
+          path: website/.build/publication-plan.json
+          if-no-files-found: ignore
+          retention-days: 90

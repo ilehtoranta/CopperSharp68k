@@ -5,7 +5,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test test/build.test.mjs",
+    "test": "node --test test/build.test.mjs test/publish.test.mjs",
     "serve": "node serve.mjs"
   }
 }

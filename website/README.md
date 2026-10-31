@@ -117,14 +117,46 @@ type-pattern and feature-group counts. The homepage's SDK module count follows
 the regenerated reference. `compatibility-profile.json` records the source
 revision, last editorial review date and machine-readable profile summary.
 
-There is no automatic deployment. To publish an explicitly requested website
-update, commit the sources to `main`, build and validate the default GitHub Pages
-site, then run:
+### Automatic publication after CI
+
+`.github/workflows/website-publish.yml` runs after the complete **Build** workflow
+succeeds for this repository's `main` branch (push or manual Build run). It skips
+superseded commits, rebuilds the site from that exact revision with the pinned
+SDK, and runs the website and isolated publisher tests before publication.
+Pull requests and unsuccessful Build runs cannot publish. Publications are
+serialized, and the publisher checks that both local and remote `main` still
+match the validated revision before it pushes.
+
+The workflow appends the validated tree to `gh-pages`, then deploys those same
+files with GitHub's Pages artifact and deployment actions. GitHub Pages must use
+**GitHub Actions** as its publishing source: pushes made with `GITHUB_TOKEN`
+do not trigger legacy branch-based Pages builds. `gh-pages` remains the complete,
+fast-forward-only publication archive. No personal access token is needed.
+Only the publication job has repository/Pages write access; validation is
+read-only. The workflow verifies live metadata and reference-index bytes against
+the validated site and retains the site for 14 days and publication plan for
+90 days. It never fetches, updates, deletes, or pushes recovery refs or backups.
+
+To retry a failed publication, rerun **Publish website** for the current source
+revision; rerun **Build** on `main` to request a fresh publication. If `main`
+advances during publication, the source guard stops the stale run; the newer
+revision must pass Build before it can publish. Editorial capability claims
+still need review when the compiler changes.
+
+### Manual publication
+
+To publish an explicitly requested website update locally, commit the sources to
+`main`, build and validate the default GitHub Pages site, then run:
 
 ```powershell
 node website/publish.mjs --dry-run --expected-gh-pages <reviewed-remote-tip>
 node website/publish.mjs --expected-gh-pages <reviewed-remote-tip>
 ```
+
+With GitHub Actions hosting, these commands update the publication archive;
+rerun **Build** on `main` to deploy the validated site through the workflow.
+`--expected-main <validated-source-sha>` adds the exact local/remote source check
+used by CI.
 
 The publisher requires a clean `main` checkout and a build from that exact
 commit. It stages only `dist/` through a temporary isolated index, creates a

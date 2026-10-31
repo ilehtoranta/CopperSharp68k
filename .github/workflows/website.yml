@@ -3,9 +3,9 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ['website/**', 'Sdk.Amiga/**', 'Compiler/**', 'Directory.Build.props', 'global.json', '.github/workflows/website.yml']
+    paths: ['website/**', 'Sdk.Amiga/**', 'Compiler/**', 'Directory.Build.props', 'global.json', '.github/workflows/website*.yml']
   pull_request:
-    paths: ['website/**', 'Sdk.Amiga/**', 'Compiler/**', 'Directory.Build.props', 'global.json', '.github/workflows/website.yml']
+    paths: ['website/**', 'Sdk.Amiga/**', 'Compiler/**', 'Directory.Build.props', 'global.json', '.github/workflows/website*.yml']
   workflow_dispatch:
 
 permissions:

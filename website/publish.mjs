@@ -10,7 +10,7 @@ const repository = path.dirname(website);
 const dist = path.join(website, 'dist');
 const scratch = path.join(website, '.build');
 const { values } = parseArgs({ options: { 'dry-run': { type: 'boolean', default: false },
-  'expected-gh-pages': { type: 'string' } } });
+  'expected-gh-pages': { type: 'string' }, 'expected-main': { type: 'string' } } });
 const git = (...args) => execFileSync('git', args, { cwd: repository, encoding: 'utf8' }).trim();
 const protectedRefs = () => git('for-each-ref', '--format=%(refname) %(objectname)',
   'refs/heads/codex/recovery-20261030', 'refs/codex/backups', 'refs/codex/recovery');
@@ -30,6 +30,8 @@ const heads = new Map(git('ls-remote', '--heads', 'origin', 'main', 'gh-pages').
 const previous = heads.get('refs/heads/gh-pages');
 const remoteMain = heads.get('refs/heads/main');
 if (!previous || !remoteMain) throw new Error('Both remote branches must already exist.');
+if (values['expected-main'] && (source !== values['expected-main'] || remoteMain !== values['expected-main']))
+  throw new Error('main no longer matches the CI-validated source; wait for the current main CI run.');
 if (values['expected-gh-pages'] && values['expected-gh-pages'] !== previous)
   throw new Error('gh-pages changed since it was reviewed; inspect the new publication first.');
 git('merge-base', '--is-ancestor', remoteMain, source);
