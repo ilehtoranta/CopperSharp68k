@@ -1,9 +1,10 @@
 # CI execution-test scheduling
 
 The Build workflow runs the existing fast-test filter and all discovered
-`CompilerExecutionTests` cases. The 16 execution shards may run concurrently;
+`CompilerExecutionTests` cases. The 19 execution shards may run concurrently;
 each runner starts four independent PowerShell/.NET test processes. Production
 compiler code, assertions, CPU targets, and theory data are unchanged.
+Together with the fast-test job, the matrix uses at most 20 concurrent jobs.
 
 `TestSharding.psm1` schedules independently named theory rows separately and
 assigns the longest estimated groups first to the least-loaded worker. Exact
@@ -32,22 +33,27 @@ Each worker compares its complete discovery list with its TRX results, including
 the multiplicity of abbreviated theory display names. Missing, duplicate,
 unexpected, or unexecuted cases fail the shard. Failed test batches do not stop
 later batches or other workers from producing their results. CI retains the
-plans, worker summaries, console logs, and all TRX reports for 14 days. The
-fast job also runs `test-test-sharding.ps1`, which checks scheduling, filter
+plans, worker summaries, console logs, and all TRX reports for 14 days. Worker
+summaries include UTC start/end times, monotonic elapsed seconds, and
+each native batch's elapsed time and exit code. Use these measurements for
+worker wall time: the xUnit adapter's per-case TRX timestamps can describe
+result reporting rather than the actual execution interval. TRX case durations
+remain useful for scheduling weights.
+The fast job also runs `test-test-sharding.ps1`, which checks scheduling, filter
 limits, coverage errors, process isolation, console output, and failure propagation.
 
 Build the solution with the pinned SDK before running a shard locally:
 
 ```powershell
-./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 16 -Workers 4 -Configuration Release
-./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 16 -Workers 4 -Configuration Release -ListOnly
+./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 19 -Workers 4 -Configuration Release
+./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 19 -Workers 4 -Configuration Release -ListOnly
 ```
 
 `Workers` defaults to 1 for local use. Set `DOTNET` to the pinned SDK executable
 when it is installed outside `PATH`. `-DiscoveryFile` permits an offline planning
 review with `-ListOnly`; actual execution always performs fresh discovery.
 
-To refresh the timing profile, download **all 16** execution-result artifacts
+To refresh the timing profile, download **all 19** execution-result artifacts
 from a successful Build run into an empty directory and run:
 
 ```powershell

@@ -25,6 +25,15 @@ Assert-True ($plan[1].Groups[0].Key -eq 'Heavy|target: M68020') 'Heavy groups we
 $reversed = @($cases); [array]::Reverse($reversed)
 $again = @(New-ExecutionTestPlan -Cases $reversed -ShardCount 2 -Workers 2 -TimingProfile $profile)
 Assert-True (($plan | ConvertTo-Json -Depth 8 -Compress) -eq ($again | ConvertTo-Json -Depth 8 -Compress)) 'Planning depends on discovery order.'
+# Exercise the complete CI matrix, including its last shard and every worker.
+$matrixCases = @(Get-ExecutionTestCases -Lines @(1..152 | ForEach-Object { "$($prefix)Matrix(value: $_)" }))
+$matrixPlan = @(New-ExecutionTestPlan -Cases $matrixCases -ShardCount 19 -Workers 4)
+Assert-True ($matrixPlan.Count -eq 76) 'The CI matrix did not create all 76 workers.'
+Assert-True (@($matrixPlan | Where-Object { $_.Groups.Count -eq 0 }).Count -eq 0) 'A CI worker received no cases.'
+$matrixResults = @($matrixPlan | ForEach-Object Groups | ForEach-Object Cases | ForEach-Object {
+    [pscustomobject]@{ Name = $_.DisplayName; Outcome = 'Passed' }
+})
+Assert-ExecutionTestCoverage -Expected @($matrixCases.DisplayName) -Results $matrixResults
 $batches = @(Get-ExecutionTestFilters -Groups $groups -MaximumLength 300)
 Assert-True (@($batches | Where-Object Length -gt 300).Count -eq 0) 'A filter exceeds the native command length limit.'
 Assert-True (($batches -join '|') -eq (($groups | Sort-Object Key -Culture en-US | ForEach-Object Filter) -join '|')) 'Filter batching lost a group.'
@@ -106,6 +115,13 @@ try {
         Assert-True ((Get-Content (Join-Path $root "$mode.log") -Raw) -match '\[worker [12]\] Worker') 'Worker console output was lost.'
         $summaries = @(Get-ChildItem $destination -Recurse -Filter worker-summary.json)
         Assert-True ($summaries.Count -eq 4) 'One failed worker prevented another from completing.'
+        foreach ($summaryFile in $summaries) {
+            $summary = Get-Content -LiteralPath $summaryFile.FullName -Raw | ConvertFrom-Json
+            Assert-True ($summary.ElapsedSeconds -gt 0 -and $summary.Batches.Count -eq 1) 'Worker elapsed or batch timing was lost.'
+            Assert-True ($summary.Batches[0].ElapsedSeconds -gt 0 -and $summary.Batches[0].ElapsedSeconds -le $summary.ElapsedSeconds) 'Batch timing exceeds the complete worker run.'
+            Assert-True ([DateTimeOffset]$summary.FinishedAtUtc -gt [DateTimeOffset]$summary.StartedAtUtc) 'Worker UTC timing is invalid.'
+            Assert-True (($mode -eq 'failed' -and $summary.Batches[0].ExitCode -eq 7) -or ($mode -ne 'failed' -and $summary.Batches[0].ExitCode -eq 0)) 'Native batch exit code was lost.'
+        }
         $environments = @(Get-ChildItem $destination -Recurse -Filter environment.json | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
         Assert-True ($environments.Count -eq 4) 'All four workers did not execute.'
         Assert-True (@($environments.Temporary | Sort-Object -Unique).Count -eq 4) 'Workers share temporary files.'

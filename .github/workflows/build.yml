@@ -67,15 +67,16 @@ jobs:
           retention-days: 14
 
   execution-tests:
-    name: Compiler execution tests (${{ matrix.shard }}/16)
+    name: Compiler execution tests (${{ matrix.shard }}/19)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
     strategy:
       fail-fast: false
-      max-parallel: 16
+      # Leave one of the 20 standard concurrent jobs for the fast-test job.
+      max-parallel: 19
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 
     steps:
       - name: Check out repository
@@ -97,7 +98,7 @@ jobs:
         run: >-
           ./scripts/run-test-shard.ps1
           -ShardNumber ${{ matrix.shard }}
-          -ShardCount 16
+          -ShardCount 19
           -Workers 4
           -Configuration Release
           -ResultsDirectory TestResults
