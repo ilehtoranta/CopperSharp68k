@@ -9,6 +9,9 @@ foreach ($directory in @($worker.ResultsDirectory, $worker.TempDirectory, $worke
 # These changes are local to this worker process, avoiding environment races.
 $env:TEMP = $env:TMP = $env:TMPDIR = $worker.TempDirectory
 $env:COPPERSHARP_TEST_PROBE_ROOT = $worker.ProbeDirectory
+if ([string]::IsNullOrEmpty($env:COPPERSHARP_EXECUTION_PHASE_PROFILE)) {
+    $env:COPPERSHARP_EXECUTION_PHASE_PROFILE = Join-Path $worker.ResultsDirectory 'phase-timings'
+}
 $exitCode = 0
 for ($batch = 0; $batch -lt $worker.Filters.Count; $batch++) {
     Write-Host "Worker $($worker.Worker): batch $($batch + 1)/$($worker.Filters.Count)."

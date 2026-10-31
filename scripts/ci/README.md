@@ -62,3 +62,36 @@ profile records all 4,373 passing execution cases from main `35a29a0a`.
 
 The website publication still waits for the complete Build workflow to pass.
 These scripts do not change publication history, recovery refs, or backups.
+
+## Compilation versus emulation
+
+Workers retain `phase-timings/phases-PID.jsonl` for the floating allocation,
+StringBuilder value-formatting, and stable-text execution families. Each record
+identifies the fixture entry, CPU, guest optimization mode, phase, and elapsed
+milliseconds. Compilation wraps the actual compiler call; emulation includes
+core creation, initialization, instruction stepping, and return checks. Pack
+construction and assertions outside those scopes are excluded. Failed calls
+also produce records; use the TRX reports to establish success before comparing.
+Measurements never cache a compilation or omit a guest execution.
+
+Summarize one run's downloaded execution artifacts with:
+
+```powershell
+./scripts/summarize-execution-phases.ps1 -ResultsDirectory artifacts/passing-execution-results
+```
+
+For a selected local test, set `COPPERSHARP_EXECUTION_PHASE_PROFILE` to a fresh
+directory before starting `dotnet test`. An optional
+`COPPERSHARP_EXECUTION_OPTIMIZER_PROFILE=1` additionally records internal compiler
+stage snapshots there. Leave that second option off for timing comparisons.
+Direct test runs without a phase directory do not collect timings. CI records
+one measurement per compilation/execution, never per instruction. Sum of phase
+times across workers is accumulated elapsed time, not workflow wall time.
+
+The counted execution path removes callbacks used only to increment a counter
+and retains the core's mutable state reference when no observation callback is
+needed. Observation callbacks still run before every instruction that needs
+them. Both paths execute one instruction per iteration, check halt and return,
+and enforce the original instruction budget. Gateway lookups reject addresses
+outside the registered range before consulting the dictionary; endpoints and
+gaps retain their existing behavior.

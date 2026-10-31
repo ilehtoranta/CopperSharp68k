@@ -265,7 +265,8 @@ public sealed partial class CompilerExecutionTests
 				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath)
 			};
-			var result = M68kCompiler.Compile(request);
+			using var scenario = new ExecutionTestProfiling.Scenario(entry, target, mode);
+			var result = CompileProfiled(request);
 			Assert.True(result.FrameworkAnalysis.IsCompatible);
 			Assert.Contains("sha256=" + pack.Sha256, result.Map, StringComparison.Ordinal);
 			Assert.True(HunkLoadAddress + result.Code.Length < 0x0010_0000);
@@ -275,7 +276,6 @@ public sealed partial class CompilerExecutionTests
 			var replacementGrow = entry == "StringBuilderStableReplacementEntry"
 				? result.Symbols.Single(symbol => symbol.Name == "CopperSharp.Runtime.ShadowValueListBuilder`1<int>::Grow") : default;
 			var replacementGrowths = 0;
-			var instructions = 0;
 			// These callback and parsed-format validation matrices use the same ceiling
 			// as the broader formatting runner, with the same native result oracle.
 			var instructionLimit = entry is "CoreLibStringCustomCallbackContractsEntry" or "CoreLibInt32CustomCallbackContractsEntry" or "CoreLibObjectCustomCallbackContractsEntry"
@@ -302,10 +302,10 @@ public sealed partial class CompilerExecutionTests
 			if (entry == "CoreLibStringBuilderFloatingPointSmokeEntry") instructionLimit = 500_000_000;
 			else if (entry is "CoreLibFloatingBoxedFormatProbeEntry" or "CoreLibFloatingHandlerFormatProbeEntry" or "CoreLibFloatingParsedFormatProbeEntry") instructionLimit = 5_000_000;
 			var nativeBus = CreateHunkBus(result);
-			var actual = Execute(nativeBus, model, HunkLoadAddress + result.EntryPoint,
-				beforeInstruction: (cpu, memory) => {
-					instructions++; if (replacementGrow.Size > 0 && cpu.State.ProgramCounter == HunkLoadAddress + replacementGrow.Address) replacementGrowths++;
-				},
+			var actual = ExecuteCounted(nativeBus, model, HunkLoadAddress + result.EntryPoint, out var instructions,
+				beforeInstruction: replacementGrow.Size > 0 ? (cpu, memory) => {
+					if (cpu.State.ProgramCounter == HunkLoadAddress + replacementGrow.Address) replacementGrowths++;
+				} : null,
 				initialStackPointer: 0x0020_0000, maxInstructions: instructionLimit);
 			Assert.True(actual == 42u, $"{entry} on {target} ({mode}) returned {actual}; expected 42.");
 			Assert.True(entry != "StringBuilderStableReplacementEntry" || replacementGrowths > 0, "The replacement fixture must execute integer-buffer growth under collection.");

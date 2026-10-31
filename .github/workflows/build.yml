@@ -112,5 +112,6 @@ jobs:
             TestResults/**/shard-plan.json
             TestResults/**/worker-summary.json
             TestResults/**/worker-*.log
+            TestResults/**/phase-timings/*.jsonl
           if-no-files-found: ignore
           retention-days: 14

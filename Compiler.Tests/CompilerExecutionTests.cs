@@ -4877,7 +4877,8 @@ public sealed partial class CompilerExecutionTests
 			imports[M68kRuntimeImports.GcCollect] = 0x2C00;
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
 		{
-			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			using var scenario = new ExecutionTestProfiling.Scenario(entry, target, mode);
+			var result = CompileProfiled(new M68kCompilationRequest
 			{
 				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
 				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
@@ -4947,9 +4948,7 @@ public sealed partial class CompilerExecutionTests
 			Assert.True(heap <= bus.Memory.Length, $"Floating allocation case {selectedCase} exhausted its external test arena; regions=[{string.Join(',', regions)}].");
 			Array.Clear(bus.Memory, checked((int)address), checked((int)size)); state.D[0] = address;
 		});
-		var instructions = 0;
-		var actual = Execute(bus, model, HunkLoadAddress + result.EntryPoint,
-			beforeInstruction: (_, _) => instructions++,
+		var actual = ExecuteCounted(bus, model, HunkLoadAddress + result.EntryPoint, out var instructions,
 			maxInstructions: shortLeaf ? 100_000_000 : groups == 12 ? 500_000_000 : 2_000_000_000,
 			afterReturn: state => Assert.True(state.A[7] == StackPointer + 4,
 				$"{entry} case {selectedCase}; {mode}; return D0={state.D[0]}, SP=${state.A[7]:X8} expected ${StackPointer + 4:X8}; failures={failures}, regions=[{string.Join(',', regions)}]."));
@@ -5505,7 +5504,8 @@ public sealed partial class CompilerExecutionTests
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
 		foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
 		{
-			var result = M68kCompiler.Compile(new M68kCompilationRequest
+			using var scenario = new ExecutionTestProfiling.Scenario(entry, target, mode);
+			var result = CompileProfiled(new M68kCompilationRequest
 			{
 				ManagedAssemblyPaths = [typeof(CopperSharp.Runtime.AmigaPal.EnvironmentPal).Assembly.Location],
 				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::" + entry,
@@ -25118,39 +25118,57 @@ public sealed partial class CompilerExecutionTests
 	}
 
 	private static uint Execute(
-		TestBus bus,
-		M68kCpuModel model,
-		uint entryPoint,
+		TestBus bus, M68kCpuModel model, uint entryPoint,
 		Action<IM68kCore, TestBus>? beforeInstruction = null,
-		Action<M68kCpuState>? initialize = null,
-		Action<M68kCpuState>? afterReturn = null,
-		int maxInstructions = 200_000,
-		uint initialStackPointer = StackPointer)
+		Action<M68kCpuState>? initialize = null, Action<M68kCpuState>? afterReturn = null,
+		int maxInstructions = 200_000, uint initialStackPointer = StackPointer) =>
+		ExecuteCounted(bus, model, entryPoint, out _, beforeInstruction, initialize, afterReturn, maxInstructions, initialStackPointer);
+
+	private static uint ExecuteCounted(
+		TestBus bus, M68kCpuModel model, uint entryPoint, out int executedInstructions,
+		Action<IM68kCore, TestBus>? beforeInstruction = null,
+		Action<M68kCpuState>? initialize = null, Action<M68kCpuState>? afterReturn = null,
+		int maxInstructions = 200_000, uint initialStackPointer = StackPointer)
 	{
+		using var measurement = new ExecutionTestProfiling.Measurement("emulation");
 		bus.WriteLong(initialStackPointer, ReturnSentinel);
 		using var cpu = M68kCoreFactory.Default.Create(model, bus);
 		cpu.Reset(entryPoint, initialStackPointer);
 		initialize?.Invoke(cpu.State);
-		for (var instruction = 0; instruction < maxInstructions; instruction++)
+		executedInstructions = 0;
+		if (beforeInstruction is null)
 		{
-			if (cpu.State.ProgramCounter == ReturnSentinel)
+			// No callback can replace or reset the core. Keep its mutable state
+			// reference and count in the loop instead of invoking a delegate per step.
+			var state = cpu.State;
+			for (var instruction = 0; instruction < maxInstructions; instruction++)
 			{
-				afterReturn?.Invoke(cpu.State);
-				return cpu.State.D[0];
-			}
-
-			beforeInstruction?.Invoke(cpu, bus);
-			cpu.ExecuteInstruction();
-			if (cpu.State.Halted)
-			{
-				throw new Xunit.Sdk.XunitException(
-					$"{model} halted at ${cpu.State.ProgramCounter:X8}, last opcode ${cpu.State.LastOpcode:X4}.");
+				if (state.ProgramCounter == ReturnSentinel)
+				{
+					executedInstructions = instruction;
+					afterReturn?.Invoke(cpu.State);
+					return cpu.State.D[0];
+				}
+				cpu.ExecuteInstruction();
+				if (state.Halted) throw new Xunit.Sdk.XunitException($"{model} halted at ${state.ProgramCounter:X8}, last opcode ${state.LastOpcode:X4}.");
 			}
 		}
-
-		throw new Xunit.Sdk.XunitException(
-			$"{model} did not return after {maxInstructions} instructions; " +
-			$"PC=${cpu.State.ProgramCounter:X8}.");
+		else
+		{
+			for (var instruction = 0; instruction < maxInstructions; instruction++)
+			{
+				if (cpu.State.ProgramCounter == ReturnSentinel)
+				{
+					executedInstructions = instruction;
+					afterReturn?.Invoke(cpu.State);
+					return cpu.State.D[0];
+				}
+				beforeInstruction(cpu, bus);
+				cpu.ExecuteInstruction();
+				if (cpu.State.Halted) throw new Xunit.Sdk.XunitException($"{model} halted at ${cpu.State.ProgramCounter:X8}, last opcode ${cpu.State.LastOpcode:X4}.");
+			}
+		}
+		throw new Xunit.Sdk.XunitException($"{model} did not return after {maxInstructions} instructions; PC=${cpu.State.ProgramCounter:X8}.");
 	}
 
 	private static void InitializeClassicCalleeSavedRegisters(M68kCpuState state)

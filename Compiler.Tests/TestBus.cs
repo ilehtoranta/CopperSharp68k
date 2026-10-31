@@ -5,6 +5,8 @@ namespace CopperSharp.Compiler.Tests;
 internal sealed class TestBus : IM68kBus
 {
 	private readonly Dictionary<uint, Action<M68kCpuState>> _gateways = new();
+	private uint _firstGateway = uint.MaxValue;
+	private uint _lastGateway;
 
 	public TestBus(int size = 0x0100_0000)
 	{
@@ -47,11 +49,13 @@ internal sealed class TestBus : IM68kBus
 	{
 	}
 
-	public bool HasHostGateway(uint address) => _gateways.ContainsKey(address);
+	public bool HasHostGateway(uint address) =>
+		address >= _firstGateway && address <= _lastGateway && _gateways.ContainsKey(address);
 
 	public bool TryInvokeHostGateway(uint instructionProgramCounter, uint token, M68kCpuState state)
 	{
-		if (!_gateways.TryGetValue(instructionProgramCounter, out var gateway))
+		if (instructionProgramCounter < _firstGateway || instructionProgramCounter > _lastGateway ||
+			!_gateways.TryGetValue(instructionProgramCounter, out var gateway))
 		{
 			return false;
 		}
@@ -63,6 +67,8 @@ internal sealed class TestBus : IM68kBus
 	public void RegisterGateway(uint address, Action<M68kCpuState> gateway)
 	{
 		_gateways.Add(address, gateway);
+		_firstGateway = Math.Min(_firstGateway, address);
+		_lastGateway = Math.Max(_lastGateway, address);
 		WriteWord(address, 0xFF00);
 		WriteLong(address + 2, 1);
 	}
