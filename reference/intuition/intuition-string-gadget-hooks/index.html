@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>IntuitionStringGadgetHooks | CopperSharp Amiga SDK</title><meta name="description" content="Classic string-gadget edit operations, modes, actions, and hooks."/><meta property="og:title" content="IntuitionStringGadgetHooks | CopperSharp Amiga SDK"/><meta property="og:description" content="Classic string-gadget edit operations, modes, actions, and hooks."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-string-gadget-hooks"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-string-gadget-hooks"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/intuition">Intuition</a><span>/</span><span aria-current="page">IntuitionStringGadgetHooks</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code></code></div><h1>IntuitionStringGadgetHooks</h1><p class="reference-full-name">Amiga.IntuitionStringGadgetHooks</p><pre class="reference-signature"><code>public static class IntuitionStringGadgetHooks</code></pre><p class="reference-description">Classic string-gadget edit operations, modes, actions, and hooks.</p><div class="reference-source-row"><span>30 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/Intuition/StringGadgetHooks.cs#L11">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-eo-noop">EO_NOOP</a><a href="#constant-eo-delbackward">EO_DELBACKWARD</a><a href="#constant-eo-delforward">EO_DELFORWARD</a><a href="#constant-eo-movecursor">EO_MOVECURSOR</a><a href="#constant-eo-enter">EO_ENTER</a><a href="#constant-eo-reset">EO_RESET</a><a href="#constant-eo-replacechar">EO_REPLACECHAR</a><a href="#constant-eo-insertchar">EO_INSERTCHAR</a><a href="#constant-eo-badformat">EO_BADFORMAT</a><a href="#constant-eo-bigchange">EO_BIGCHANGE</a><a href="#constant-eo-undo">EO_UNDO</a><a href="#constant-eo-clear">EO_CLEAR</a><a href="#constant-eo-special">EO_SPECIAL</a><a href="#constant-sgm-replace">SGM_REPLACE</a><a href="#constant-sgm-fixedfield">SGM_FIXEDFIELD</a><a href="#constant-sgm-nofilter">SGM_NOFILTER</a><a href="#constant-sgm-nochange">SGM_NOCHANGE</a><a href="#constant-sgm-noworkb">SGM_NOWORKB</a><a href="#constant-sgm-control">SGM_CONTROL</a><a href="#constant-sgm-longint">SGM_LONGINT</a><a href="#constant-sgm-exithelp">SGM_EXITHELP</a><a href="#constant-sga-use">SGA_USE</a><a href="#constant-sga-end">SGA_END</a><a href="#constant-sga-beep">SGA_BEEP</a><a href="#constant-sga-reuse">SGA_REUSE</a><a href="#constant-sga-redisplay">SGA_REDISPLAY</a><a href="#constant-sga-nextactive">SGA_NEXTACTIVE</a><a href="#constant-sga-prevactive">SGA_PREVACTIVE</a><a href="#constant-sgh-key">SGH_KEY</a><a href="#constant-sgh-click">SGH_CLICK</a></aside><div><section class="reference-member-section"><h2>constant declarations</h2><article class="reference-member" id="constant-eo-noop"><header><span class="reference-kind">constant</span><a href="#constant-eo-noop" aria-label="Link to EO_NOOP">#</a></header><h3>EO_NOOP</h3><pre><code>public const ushort EO_NOOP = 1</code></pre></article><article class="reference-member" id="constant-eo-delbackward"><header><span class="reference-kind">constant</span><a href="#constant-eo-delbackward" aria-label="Link to EO_DELBACKWARD">#</a></header><h3>EO_DELBACKWARD</h3><pre><code>public const ushort EO_DELBACKWARD = 2</code></pre></article><article class="reference-member" id="constant-eo-delforward"><header><span class="reference-kind">constant</span><a href="#constant-eo-delforward" aria-label="Link to EO_DELFORWARD">#</a></header><h3>EO_DELFORWARD</h3><pre><code>public const ushort EO_DELFORWARD = 3</code></pre></article><article class="reference-member" id="constant-eo-movecursor"><header><span class="reference-kind">constant</span><a href="#constant-eo-movecursor" aria-label="Link to EO_MOVECURSOR">#</a></header><h3>EO_MOVECURSOR</h3><pre><code>public const ushort EO_MOVECURSOR = 4</code></pre></article><article class="reference-member" id="constant-eo-enter"><header><span class="reference-kind">constant</span><a href="#constant-eo-enter" aria-label="Link to EO_ENTER">#</a></header><h3>EO_ENTER</h3><pre><code>public const ushort EO_ENTER = 5</code></pre></article><article class="reference-member" id="constant-eo-reset"><header><span class="reference-kind">constant</span><a href="#constant-eo-reset" aria-label="Link to EO_RESET">#</a></header><h3>EO_RESET</h3><pre><code>public const ushort EO_RESET = 6</code></pre></article><article class="reference-member" id="constant-eo-replacechar"><header><span class="reference-kind">constant</span><a href="#constant-eo-replacechar" aria-label="Link to EO_REPLACECHAR">#</a></header><h3>EO_REPLACECHAR</h3><pre><code>public const ushort EO_REPLACECHAR = 7</code></pre></article><article class="reference-member" id="constant-eo-insertchar"><header><span class="reference-kind">constant</span><a href="#constant-eo-insertchar" aria-label="Link to EO_INSERTCHAR">#</a></header><h3>EO_INSERTCHAR</h3><pre><code>public const ushort EO_INSERTCHAR = 8</code></pre></article><article class="reference-member" id="constant-eo-badformat"><header><span class="reference-kind">constant</span><a href="#constant-eo-badformat" aria-label="Link to EO_BADFORMAT">#</a></header><h3>EO_BADFORMAT</h3><pre><code>public const ushort EO_BADFORMAT = 9</code></pre></article><article class="reference-member" id="constant-eo-bigchange"><header><span class="reference-kind">constant</span><a href="#constant-eo-bigchange" aria-label="Link to EO_BIGCHANGE">#</a></header><h3>EO_BIGCHANGE</h3><pre><code>public const ushort EO_BIGCHANGE = 10</code></pre></article><article class="reference-member" id="constant-eo-undo"><header><span class="reference-kind">constant</span><a href="#constant-eo-undo" aria-label="Link to EO_UNDO">#</a></header><h3>EO_UNDO</h3><pre><code>public const ushort EO_UNDO = 11</code></pre></article><article class="reference-member" id="constant-eo-clear"><header><span class="reference-kind">constant</span><a href="#constant-eo-clear" aria-label="Link to EO_CLEAR">#</a></header><h3>EO_CLEAR</h3><pre><code>public const ushort EO_CLEAR = 12</code></pre></article><article class="reference-member" id="constant-eo-special"><header><span class="reference-kind">constant</span><a href="#constant-eo-special" aria-label="Link to EO_SPECIAL">#</a></header><h3>EO_SPECIAL</h3><pre><code>public const ushort EO_SPECIAL = 13</code></pre></article><article class="reference-member" id="constant-sgm-replace"><header><span class="reference-kind">constant</span><a href="#constant-sgm-replace" aria-label="Link to SGM_REPLACE">#</a></header><h3>SGM_REPLACE</h3><pre><code>public const uint SGM_REPLACE = 1</code></pre></article><article class="reference-member" id="constant-sgm-fixedfield"><header><span class="reference-kind">constant</span><a href="#constant-sgm-fixedfield" aria-label="Link to SGM_FIXEDFIELD">#</a></header><h3>SGM_FIXEDFIELD</h3><pre><code>public const uint SGM_FIXEDFIELD = 2</code></pre></article><article class="reference-member" id="constant-sgm-nofilter"><header><span class="reference-kind">constant</span><a href="#constant-sgm-nofilter" aria-label="Link to SGM_NOFILTER">#</a></header><h3>SGM_NOFILTER</h3><pre><code>public const uint SGM_NOFILTER = 4</code></pre></article><article class="reference-member" id="constant-sgm-nochange"><header><span class="reference-kind">constant</span><a href="#constant-sgm-nochange" aria-label="Link to SGM_NOCHANGE">#</a></header><h3>SGM_NOCHANGE</h3><pre><code>public const uint SGM_NOCHANGE = 8</code></pre></article><article class="reference-member" id="constant-sgm-noworkb"><header><span class="reference-kind">constant</span><a href="#constant-sgm-noworkb" aria-label="Link to SGM_NOWORKB">#</a></header><h3>SGM_NOWORKB</h3><pre><code>public const uint SGM_NOWORKB = 16</code></pre></article><article class="reference-member" id="constant-sgm-control"><header><span class="reference-kind">constant</span><a href="#constant-sgm-control" aria-label="Link to SGM_CONTROL">#</a></header><h3>SGM_CONTROL</h3><pre><code>public const uint SGM_CONTROL = 32</code></pre></article><article class="reference-member" id="constant-sgm-longint"><header><span class="reference-kind">constant</span><a href="#constant-sgm-longint" aria-label="Link to SGM_LONGINT">#</a></header><h3>SGM_LONGINT</h3><pre><code>public const uint SGM_LONGINT = 64</code></pre></article><article class="reference-member" id="constant-sgm-exithelp"><header><span class="reference-kind">constant</span><a href="#constant-sgm-exithelp" aria-label="Link to SGM_EXITHELP">#</a></header><h3>SGM_EXITHELP</h3><pre><code>public const uint SGM_EXITHELP = 128</code></pre></article><article class="reference-member" id="constant-sga-use"><header><span class="reference-kind">constant</span><a href="#constant-sga-use" aria-label="Link to SGA_USE">#</a></header><h3>SGA_USE</h3><pre><code>public const uint SGA_USE = 1</code></pre></article><article class="reference-member" id="constant-sga-end"><header><span class="reference-kind">constant</span><a href="#constant-sga-end" aria-label="Link to SGA_END">#</a></header><h3>SGA_END</h3><pre><code>public const uint SGA_END = 2</code></pre></article><article class="reference-member" id="constant-sga-beep"><header><span class="reference-kind">constant</span><a href="#constant-sga-beep" aria-label="Link to SGA_BEEP">#</a></header><h3>SGA_BEEP</h3><pre><code>public const uint SGA_BEEP = 4</code></pre></article><article class="reference-member" id="constant-sga-reuse"><header><span class="reference-kind">constant</span><a href="#constant-sga-reuse" aria-label="Link to SGA_REUSE">#</a></header><h3>SGA_REUSE</h3><pre><code>public const uint SGA_REUSE = 8</code></pre></article><article class="reference-member" id="constant-sga-redisplay"><header><span class="reference-kind">constant</span><a href="#constant-sga-redisplay" aria-label="Link to SGA_REDISPLAY">#</a></header><h3>SGA_REDISPLAY</h3><pre><code>public const uint SGA_REDISPLAY = 16</code></pre></article><article class="reference-member" id="constant-sga-nextactive"><header><span class="reference-kind">constant</span><a href="#constant-sga-nextactive" aria-label="Link to SGA_NEXTACTIVE">#</a></header><h3>SGA_NEXTACTIVE</h3><pre><code>public const uint SGA_NEXTACTIVE = 32</code></pre></article><article class="reference-member" id="constant-sga-prevactive"><header><span class="reference-kind">constant</span><a href="#constant-sga-prevactive" aria-label="Link to SGA_PREVACTIVE">#</a></header><h3>SGA_PREVACTIVE</h3><pre><code>public const uint SGA_PREVACTIVE = 64</code></pre></article><article class="reference-member" id="constant-sgh-key"><header><span class="reference-kind">constant</span><a href="#constant-sgh-key" aria-label="Link to SGH_KEY">#</a></header><h3>SGH_KEY</h3><pre><code>public const uint SGH_KEY = 1</code></pre></article><article class="reference-member" id="constant-sgh-click"><header><span class="reference-kind">constant</span><a href="#constant-sgh-click" aria-label="Link to SGH_CLICK">#</a></header><h3>SGH_CLICK</h3><pre><code>public const uint SGH_CLICK = 2</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>IntuitionScreenTags | CopperSharp Amiga SDK</title><meta name="description" content="Classic V40 screen tags, error results, and related sentinels."/><meta property="og:title" content="IntuitionScreenTags | CopperSharp Amiga SDK"/><meta property="og:description" content="Classic V40 screen tags, error results, and related sentinels."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-screen-tags"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-screen-tags"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/intuition">Intuition</a><span>/</span><span aria-current="page">IntuitionScreenTags</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code></code></div><h1>IntuitionScreenTags</h1><p class="reference-full-name">Amiga.IntuitionScreenTags</p><pre class="reference-signature"><code>public static class IntuitionScreenTags</code></pre><p class="reference-description">Classic V40 screen tags, error results, and related sentinels.</p><div class="reference-source-row"><span>54 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/Intuition/ScreenTags.cs#L9">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-sa-dummy">SA_Dummy</a><a href="#constant-sa-left">SA_Left</a><a href="#constant-sa-top">SA_Top</a><a href="#constant-sa-width">SA_Width</a><a href="#constant-sa-height">SA_Height</a><a href="#constant-sa-depth">SA_Depth</a><a href="#constant-sa-detail-pen">SA_DetailPen</a><a href="#constant-sa-block-pen">SA_BlockPen</a><a href="#constant-sa-title">SA_Title</a><a href="#constant-sa-colors">SA_Colors</a><a href="#constant-sa-error-code">SA_ErrorCode</a><a href="#constant-sa-font">SA_Font</a><a href="#constant-sa-sys-font">SA_SysFont</a><a href="#constant-sa-type">SA_Type</a><a href="#constant-sa-bit-map">SA_BitMap</a><a href="#constant-sa-pub-name">SA_PubName</a><a href="#constant-sa-pub-sig">SA_PubSig</a><a href="#constant-sa-pub-task">SA_PubTask</a><a href="#constant-sa-display-id">SA_DisplayID</a><a href="#constant-sa-dclip">SA_DClip</a><a href="#constant-sa-overscan">SA_Overscan</a><a href="#constant-sa-obsolete1">SA_Obsolete1</a><a href="#constant-sa-show-title">SA_ShowTitle</a><a href="#constant-sa-behind">SA_Behind</a><a href="#constant-sa-quiet">SA_Quiet</a><a href="#constant-sa-auto-scroll">SA_AutoScroll</a><a href="#constant-sa-pens">SA_Pens</a><a href="#constant-sa-full-palette">SA_FullPalette</a><a href="#constant-sa-color-map-entries">SA_ColorMapEntries</a><a href="#constant-sa-parent">SA_Parent</a><a href="#constant-sa-draggable">SA_Draggable</a><a href="#constant-sa-exclusive">SA_Exclusive</a><a href="#constant-sa-share-pens">SA_SharePens</a><a href="#constant-sa-back-fill">SA_BackFill</a><a href="#constant-sa-interleaved">SA_Interleaved</a><a href="#constant-sa-colors32">SA_Colors32</a><a href="#constant-sa-video-control">SA_VideoControl</a><a href="#constant-sa-front-child">SA_FrontChild</a><a href="#constant-sa-back-child">SA_BackChild</a><a href="#constant-sa-like-workbench">SA_LikeWorkbench</a><a href="#constant-sa-reserved">SA_Reserved</a><a href="#constant-sa-minimize-isg">SA_MinimizeISG</a><a href="#constant-nstag-ext-vpmode">NSTAG_EXT_VPMODE</a><a href="#constant-stdscreenheight">STDSCREENHEIGHT</a><a href="#constant-stdscreenwidth">STDSCREENWIDTH</a><a href="#constant-oserr-nomonitor">OSERR_NOMONITOR</a><a href="#constant-oserr-nochips">OSERR_NOCHIPS</a><a href="#constant-oserr-nomem">OSERR_NOMEM</a><a href="#constant-oserr-nochipmem">OSERR_NOCHIPMEM</a><a href="#constant-oserr-pubnotunique">OSERR_PUBNOTUNIQUE</a><a href="#constant-oserr-unknownmode">OSERR_UNKNOWNMODE</a><a href="#constant-oserr-toodeep">OSERR_TOODEEP</a><a href="#constant-oserr-attachfail">OSERR_ATTACHFAIL</a><a href="#constant-oserr-notavailable">OSERR_NOTAVAILABLE</a></aside><div><section class="reference-member-section"><h2>constant declarations</h2><article class="reference-member" id="constant-sa-dummy"><header><span class="reference-kind">constant</span><a href="#constant-sa-dummy" aria-label="Link to SA_Dummy">#</a></header><h3>SA_Dummy</h3><pre><code>public const uint SA_Dummy = 2147483680</code></pre></article><article class="reference-member" id="constant-sa-left"><header><span class="reference-kind">constant</span><a href="#constant-sa-left" aria-label="Link to SA_Left">#</a></header><h3>SA_Left</h3><pre><code>public const uint SA_Left = 2147483681</code></pre></article><article class="reference-member" id="constant-sa-top"><header><span class="reference-kind">constant</span><a href="#constant-sa-top" aria-label="Link to SA_Top">#</a></header><h3>SA_Top</h3><pre><code>public const uint SA_Top = 2147483682</code></pre></article><article class="reference-member" id="constant-sa-width"><header><span class="reference-kind">constant</span><a href="#constant-sa-width" aria-label="Link to SA_Width">#</a></header><h3>SA_Width</h3><pre><code>public const uint SA_Width = 2147483683</code></pre></article><article class="reference-member" id="constant-sa-height"><header><span class="reference-kind">constant</span><a href="#constant-sa-height" aria-label="Link to SA_Height">#</a></header><h3>SA_Height</h3><pre><code>public const uint SA_Height = 2147483684</code></pre></article><article class="reference-member" id="constant-sa-depth"><header><span class="reference-kind">constant</span><a href="#constant-sa-depth" aria-label="Link to SA_Depth">#</a></header><h3>SA_Depth</h3><pre><code>public const uint SA_Depth = 2147483685</code></pre></article><article class="reference-member" id="constant-sa-detail-pen"><header><span class="reference-kind">constant</span><a href="#constant-sa-detail-pen" aria-label="Link to SA_DetailPen">#</a></header><h3>SA_DetailPen</h3><pre><code>public const uint SA_DetailPen = 2147483686</code></pre></article><article class="reference-member" id="constant-sa-block-pen"><header><span class="reference-kind">constant</span><a href="#constant-sa-block-pen" aria-label="Link to SA_BlockPen">#</a></header><h3>SA_BlockPen</h3><pre><code>public const uint SA_BlockPen = 2147483687</code></pre></article><article class="reference-member" id="constant-sa-title"><header><span class="reference-kind">constant</span><a href="#constant-sa-title" aria-label="Link to SA_Title">#</a></header><h3>SA_Title</h3><pre><code>public const uint SA_Title = 2147483688</code></pre></article><article class="reference-member" id="constant-sa-colors"><header><span class="reference-kind">constant</span><a href="#constant-sa-colors" aria-label="Link to SA_Colors">#</a></header><h3>SA_Colors</h3><pre><code>public const uint SA_Colors = 2147483689</code></pre></article><article class="reference-member" id="constant-sa-error-code"><header><span class="reference-kind">constant</span><a href="#constant-sa-error-code" aria-label="Link to SA_ErrorCode">#</a></header><h3>SA_ErrorCode</h3><pre><code>public const uint SA_ErrorCode = 2147483690</code></pre></article><article class="reference-member" id="constant-sa-font"><header><span class="reference-kind">constant</span><a href="#constant-sa-font" aria-label="Link to SA_Font">#</a></header><h3>SA_Font</h3><pre><code>public const uint SA_Font = 2147483691</code></pre></article><article class="reference-member" id="constant-sa-sys-font"><header><span class="reference-kind">constant</span><a href="#constant-sa-sys-font" aria-label="Link to SA_SysFont">#</a></header><h3>SA_SysFont</h3><pre><code>public const uint SA_SysFont = 2147483692</code></pre></article><article class="reference-member" id="constant-sa-type"><header><span class="reference-kind">constant</span><a href="#constant-sa-type" aria-label="Link to SA_Type">#</a></header><h3>SA_Type</h3><pre><code>public const uint SA_Type = 2147483693</code></pre></article><article class="reference-member" id="constant-sa-bit-map"><header><span class="reference-kind">constant</span><a href="#constant-sa-bit-map" aria-label="Link to SA_BitMap">#</a></header><h3>SA_BitMap</h3><pre><code>public const uint SA_BitMap = 2147483694</code></pre></article><article class="reference-member" id="constant-sa-pub-name"><header><span class="reference-kind">constant</span><a href="#constant-sa-pub-name" aria-label="Link to SA_PubName">#</a></header><h3>SA_PubName</h3><pre><code>public const uint SA_PubName = 2147483695</code></pre></article><article class="reference-member" id="constant-sa-pub-sig"><header><span class="reference-kind">constant</span><a href="#constant-sa-pub-sig" aria-label="Link to SA_PubSig">#</a></header><h3>SA_PubSig</h3><pre><code>public const uint SA_PubSig = 2147483696</code></pre></article><article class="reference-member" id="constant-sa-pub-task"><header><span class="reference-kind">constant</span><a href="#constant-sa-pub-task" aria-label="Link to SA_PubTask">#</a></header><h3>SA_PubTask</h3><pre><code>public const uint SA_PubTask = 2147483697</code></pre></article><article class="reference-member" id="constant-sa-display-id"><header><span class="reference-kind">constant</span><a href="#constant-sa-display-id" aria-label="Link to SA_DisplayID">#</a></header><h3>SA_DisplayID</h3><pre><code>public const uint SA_DisplayID = 2147483698</code></pre></article><article class="reference-member" id="constant-sa-dclip"><header><span class="reference-kind">constant</span><a href="#constant-sa-dclip" aria-label="Link to SA_DClip">#</a></header><h3>SA_DClip</h3><pre><code>public const uint SA_DClip = 2147483699</code></pre></article><article class="reference-member" id="constant-sa-overscan"><header><span class="reference-kind">constant</span><a href="#constant-sa-overscan" aria-label="Link to SA_Overscan">#</a></header><h3>SA_Overscan</h3><pre><code>public const uint SA_Overscan = 2147483700</code></pre></article><article class="reference-member" id="constant-sa-obsolete1"><header><span class="reference-kind">constant</span><a href="#constant-sa-obsolete1" aria-label="Link to SA_Obsolete1">#</a></header><h3>SA_Obsolete1</h3><pre><code>public const uint SA_Obsolete1 = 2147483701</code></pre></article><article class="reference-member" id="constant-sa-show-title"><header><span class="reference-kind">constant</span><a href="#constant-sa-show-title" aria-label="Link to SA_ShowTitle">#</a></header><h3>SA_ShowTitle</h3><pre><code>public const uint SA_ShowTitle = 2147483702</code></pre></article><article class="reference-member" id="constant-sa-behind"><header><span class="reference-kind">constant</span><a href="#constant-sa-behind" aria-label="Link to SA_Behind">#</a></header><h3>SA_Behind</h3><pre><code>public const uint SA_Behind = 2147483703</code></pre></article><article class="reference-member" id="constant-sa-quiet"><header><span class="reference-kind">constant</span><a href="#constant-sa-quiet" aria-label="Link to SA_Quiet">#</a></header><h3>SA_Quiet</h3><pre><code>public const uint SA_Quiet = 2147483704</code></pre></article><article class="reference-member" id="constant-sa-auto-scroll"><header><span class="reference-kind">constant</span><a href="#constant-sa-auto-scroll" aria-label="Link to SA_AutoScroll">#</a></header><h3>SA_AutoScroll</h3><pre><code>public const uint SA_AutoScroll = 2147483705</code></pre></article><article class="reference-member" id="constant-sa-pens"><header><span class="reference-kind">constant</span><a href="#constant-sa-pens" aria-label="Link to SA_Pens">#</a></header><h3>SA_Pens</h3><pre><code>public const uint SA_Pens = 2147483706</code></pre></article><article class="reference-member" id="constant-sa-full-palette"><header><span class="reference-kind">constant</span><a href="#constant-sa-full-palette" aria-label="Link to SA_FullPalette">#</a></header><h3>SA_FullPalette</h3><pre><code>public const uint SA_FullPalette = 2147483707</code></pre></article><article class="reference-member" id="constant-sa-color-map-entries"><header><span class="reference-kind">constant</span><a href="#constant-sa-color-map-entries" aria-label="Link to SA_ColorMapEntries">#</a></header><h3>SA_ColorMapEntries</h3><pre><code>public const uint SA_ColorMapEntries = 2147483708</code></pre></article><article class="reference-member" id="constant-sa-parent"><header><span class="reference-kind">constant</span><a href="#constant-sa-parent" aria-label="Link to SA_Parent">#</a></header><h3>SA_Parent</h3><pre><code>public const uint SA_Parent = 2147483709</code></pre></article><article class="reference-member" id="constant-sa-draggable"><header><span class="reference-kind">constant</span><a href="#constant-sa-draggable" aria-label="Link to SA_Draggable">#</a></header><h3>SA_Draggable</h3><pre><code>public const uint SA_Draggable = 2147483710</code></pre></article><article class="reference-member" id="constant-sa-exclusive"><header><span class="reference-kind">constant</span><a href="#constant-sa-exclusive" aria-label="Link to SA_Exclusive">#</a></header><h3>SA_Exclusive</h3><pre><code>public const uint SA_Exclusive = 2147483711</code></pre></article><article class="reference-member" id="constant-sa-share-pens"><header><span class="reference-kind">constant</span><a href="#constant-sa-share-pens" aria-label="Link to SA_SharePens">#</a></header><h3>SA_SharePens</h3><pre><code>public const uint SA_SharePens = 2147483712</code></pre></article><article class="reference-member" id="constant-sa-back-fill"><header><span class="reference-kind">constant</span><a href="#constant-sa-back-fill" aria-label="Link to SA_BackFill">#</a></header><h3>SA_BackFill</h3><pre><code>public const uint SA_BackFill = 2147483713</code></pre></article><article class="reference-member" id="constant-sa-interleaved"><header><span class="reference-kind">constant</span><a href="#constant-sa-interleaved" aria-label="Link to SA_Interleaved">#</a></header><h3>SA_Interleaved</h3><pre><code>public const uint SA_Interleaved = 2147483714</code></pre></article><article class="reference-member" id="constant-sa-colors32"><header><span class="reference-kind">constant</span><a href="#constant-sa-colors32" aria-label="Link to SA_Colors32">#</a></header><h3>SA_Colors32</h3><pre><code>public const uint SA_Colors32 = 2147483715</code></pre></article><article class="reference-member" id="constant-sa-video-control"><header><span class="reference-kind">constant</span><a href="#constant-sa-video-control" aria-label="Link to SA_VideoControl">#</a></header><h3>SA_VideoControl</h3><pre><code>public const uint SA_VideoControl = 2147483716</code></pre></article><article class="reference-member" id="constant-sa-front-child"><header><span class="reference-kind">constant</span><a href="#constant-sa-front-child" aria-label="Link to SA_FrontChild">#</a></header><h3>SA_FrontChild</h3><pre><code>public const uint SA_FrontChild = 2147483717</code></pre></article><article class="reference-member" id="constant-sa-back-child"><header><span class="reference-kind">constant</span><a href="#constant-sa-back-child" aria-label="Link to SA_BackChild">#</a></header><h3>SA_BackChild</h3><pre><code>public const uint SA_BackChild = 2147483718</code></pre></article><article class="reference-member" id="constant-sa-like-workbench"><header><span class="reference-kind">constant</span><a href="#constant-sa-like-workbench" aria-label="Link to SA_LikeWorkbench">#</a></header><h3>SA_LikeWorkbench</h3><pre><code>public const uint SA_LikeWorkbench = 2147483719</code></pre></article><article class="reference-member" id="constant-sa-reserved"><header><span class="reference-kind">constant</span><a href="#constant-sa-reserved" aria-label="Link to SA_Reserved">#</a></header><h3>SA_Reserved</h3><pre><code>public const uint SA_Reserved = 2147483720</code></pre></article><article class="reference-member" id="constant-sa-minimize-isg"><header><span class="reference-kind">constant</span><a href="#constant-sa-minimize-isg" aria-label="Link to SA_MinimizeISG">#</a></header><h3>SA_MinimizeISG</h3><pre><code>public const uint SA_MinimizeISG = 2147483721</code></pre></article><article class="reference-member" id="constant-nstag-ext-vpmode"><header><span class="reference-kind">constant</span><a href="#constant-nstag-ext-vpmode" aria-label="Link to NSTAG_EXT_VPMODE">#</a></header><h3>NSTAG_EXT_VPMODE</h3><pre><code>public const uint NSTAG_EXT_VPMODE = 2147483649</code></pre></article><article class="reference-member" id="constant-stdscreenheight"><header><span class="reference-kind">constant</span><a href="#constant-stdscreenheight" aria-label="Link to STDSCREENHEIGHT">#</a></header><h3>STDSCREENHEIGHT</h3><pre><code>public const int STDSCREENHEIGHT = -1</code></pre></article><article class="reference-member" id="constant-stdscreenwidth"><header><span class="reference-kind">constant</span><a href="#constant-stdscreenwidth" aria-label="Link to STDSCREENWIDTH">#</a></header><h3>STDSCREENWIDTH</h3><pre><code>public const int STDSCREENWIDTH = -1</code></pre></article><article class="reference-member" id="constant-oserr-nomonitor"><header><span class="reference-kind">constant</span><a href="#constant-oserr-nomonitor" aria-label="Link to OSERR_NOMONITOR">#</a></header><h3>OSERR_NOMONITOR</h3><pre><code>public const int OSERR_NOMONITOR = 1</code></pre></article><article class="reference-member" id="constant-oserr-nochips"><header><span class="reference-kind">constant</span><a href="#constant-oserr-nochips" aria-label="Link to OSERR_NOCHIPS">#</a></header><h3>OSERR_NOCHIPS</h3><pre><code>public const int OSERR_NOCHIPS = 2</code></pre></article><article class="reference-member" id="constant-oserr-nomem"><header><span class="reference-kind">constant</span><a href="#constant-oserr-nomem" aria-label="Link to OSERR_NOMEM">#</a></header><h3>OSERR_NOMEM</h3><pre><code>public const int OSERR_NOMEM = 3</code></pre></article><article class="reference-member" id="constant-oserr-nochipmem"><header><span class="reference-kind">constant</span><a href="#constant-oserr-nochipmem" aria-label="Link to OSERR_NOCHIPMEM">#</a></header><h3>OSERR_NOCHIPMEM</h3><pre><code>public const int OSERR_NOCHIPMEM = 4</code></pre></article><article class="reference-member" id="constant-oserr-pubnotunique"><header><span class="reference-kind">constant</span><a href="#constant-oserr-pubnotunique" aria-label="Link to OSERR_PUBNOTUNIQUE">#</a></header><h3>OSERR_PUBNOTUNIQUE</h3><pre><code>public const int OSERR_PUBNOTUNIQUE = 5</code></pre></article><article class="reference-member" id="constant-oserr-unknownmode"><header><span class="reference-kind">constant</span><a href="#constant-oserr-unknownmode" aria-label="Link to OSERR_UNKNOWNMODE">#</a></header><h3>OSERR_UNKNOWNMODE</h3><pre><code>public const int OSERR_UNKNOWNMODE = 6</code></pre></article><article class="reference-member" id="constant-oserr-toodeep"><header><span class="reference-kind">constant</span><a href="#constant-oserr-toodeep" aria-label="Link to OSERR_TOODEEP">#</a></header><h3>OSERR_TOODEEP</h3><pre><code>public const int OSERR_TOODEEP = 7</code></pre></article><article class="reference-member" id="constant-oserr-attachfail"><header><span class="reference-kind">constant</span><a href="#constant-oserr-attachfail" aria-label="Link to OSERR_ATTACHFAIL">#</a></header><h3>OSERR_ATTACHFAIL</h3><pre><code>public const int OSERR_ATTACHFAIL = 8</code></pre></article><article class="reference-member" id="constant-oserr-notavailable"><header><span class="reference-kind">constant</span><a href="#constant-oserr-notavailable" aria-label="Link to OSERR_NOTAVAILABLE">#</a></header><h3>OSERR_NOTAVAILABLE</h3><pre><code>public const int OSERR_NOTAVAILABLE = 9</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

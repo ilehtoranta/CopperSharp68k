@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>IntuitionWindowTags | CopperSharp Amiga SDK</title><meta name="description" content="Classic V40 window and SetWindowPointer tag identifiers."/><meta property="og:title" content="IntuitionWindowTags | CopperSharp Amiga SDK"/><meta property="og:description" content="Classic V40 window and SetWindowPointer tag identifiers."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-window-tags"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-window-tags"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/intuition">Intuition</a><span>/</span><span aria-current="page">IntuitionWindowTags</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code></code></div><h1>IntuitionWindowTags</h1><p class="reference-full-name">Amiga.IntuitionWindowTags</p><pre class="reference-signature"><code>public static class IntuitionWindowTags</code></pre><p class="reference-description">Classic V40 window and SetWindowPointer tag identifiers.</p><div class="reference-source-row"><span>58 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/Intuition/WindowTags.cs#L9">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-wa-dummy">WA_Dummy</a><a href="#constant-wa-left">WA_Left</a><a href="#constant-wa-top">WA_Top</a><a href="#constant-wa-width">WA_Width</a><a href="#constant-wa-height">WA_Height</a><a href="#constant-wa-detail-pen">WA_DetailPen</a><a href="#constant-wa-block-pen">WA_BlockPen</a><a href="#constant-wa-idcmp">WA_IDCMP</a><a href="#constant-wa-flags">WA_Flags</a><a href="#constant-wa-gadgets">WA_Gadgets</a><a href="#constant-wa-checkmark">WA_Checkmark</a><a href="#constant-wa-title">WA_Title</a><a href="#constant-wa-screen-title">WA_ScreenTitle</a><a href="#constant-wa-custom-screen">WA_CustomScreen</a><a href="#constant-wa-super-bit-map">WA_SuperBitMap</a><a href="#constant-wa-min-width">WA_MinWidth</a><a href="#constant-wa-min-height">WA_MinHeight</a><a href="#constant-wa-max-width">WA_MaxWidth</a><a href="#constant-wa-max-height">WA_MaxHeight</a><a href="#constant-wa-inner-width">WA_InnerWidth</a><a href="#constant-wa-inner-height">WA_InnerHeight</a><a href="#constant-wa-pub-screen-name">WA_PubScreenName</a><a href="#constant-wa-pub-screen">WA_PubScreen</a><a href="#constant-wa-pub-screen-fall-back">WA_PubScreenFallBack</a><a href="#constant-wa-window-name">WA_WindowName</a><a href="#constant-wa-colors">WA_Colors</a><a href="#constant-wa-zoom">WA_Zoom</a><a href="#constant-wa-mouse-queue">WA_MouseQueue</a><a href="#constant-wa-back-fill">WA_BackFill</a><a href="#constant-wa-rpt-queue">WA_RptQueue</a><a href="#constant-wa-size-gadget">WA_SizeGadget</a><a href="#constant-wa-drag-bar">WA_DragBar</a><a href="#constant-wa-depth-gadget">WA_DepthGadget</a><a href="#constant-wa-close-gadget">WA_CloseGadget</a><a href="#constant-wa-backdrop">WA_Backdrop</a><a href="#constant-wa-report-mouse">WA_ReportMouse</a><a href="#constant-wa-no-care-refresh">WA_NoCareRefresh</a><a href="#constant-wa-borderless">WA_Borderless</a><a href="#constant-wa-activate">WA_Activate</a><a href="#constant-wa-rmbtrap">WA_RMBTrap</a><a href="#constant-wa-wbench-window">WA_WBenchWindow</a><a href="#constant-wa-simple-refresh">WA_SimpleRefresh</a><a href="#constant-wa-smart-refresh">WA_SmartRefresh</a><a href="#constant-wa-size-bright">WA_SizeBRight</a><a href="#constant-wa-size-bbottom">WA_SizeBBottom</a><a href="#constant-wa-auto-adjust">WA_AutoAdjust</a><a href="#constant-wa-gimme-zero-zero">WA_GimmeZeroZero</a><a href="#constant-wa-menu-help">WA_MenuHelp</a><a href="#constant-wa-new-look-menus">WA_NewLookMenus</a><a href="#constant-wa-amiga-key">WA_AmigaKey</a><a href="#constant-wa-notify-depth">WA_NotifyDepth</a><a href="#constant-wa-pointer">WA_Pointer</a><a href="#constant-wa-busy-pointer">WA_BusyPointer</a><a href="#constant-wa-pointer-delay">WA_PointerDelay</a><a href="#constant-wa-tablet-messages">WA_TabletMessages</a><a href="#constant-wa-help-group">WA_HelpGroup</a><a href="#constant-wa-help-group-window">WA_HelpGroupWindow</a><a href="#constant-hc-gadgethelp">HC_GADGETHELP</a></aside><div><section class="reference-member-section"><h2>constant declarations</h2><article class="reference-member" id="constant-wa-dummy"><header><span class="reference-kind">constant</span><a href="#constant-wa-dummy" aria-label="Link to WA_Dummy">#</a></header><h3>WA_Dummy</h3><pre><code>public const uint WA_Dummy = 2147483747</code></pre></article><article class="reference-member" id="constant-wa-left"><header><span class="reference-kind">constant</span><a href="#constant-wa-left" aria-label="Link to WA_Left">#</a></header><h3>WA_Left</h3><pre><code>public const uint WA_Left = 2147483748</code></pre></article><article class="reference-member" id="constant-wa-top"><header><span class="reference-kind">constant</span><a href="#constant-wa-top" aria-label="Link to WA_Top">#</a></header><h3>WA_Top</h3><pre><code>public const uint WA_Top = 2147483749</code></pre></article><article class="reference-member" id="constant-wa-width"><header><span class="reference-kind">constant</span><a href="#constant-wa-width" aria-label="Link to WA_Width">#</a></header><h3>WA_Width</h3><pre><code>public const uint WA_Width = 2147483750</code></pre></article><article class="reference-member" id="constant-wa-height"><header><span class="reference-kind">constant</span><a href="#constant-wa-height" aria-label="Link to WA_Height">#</a></header><h3>WA_Height</h3><pre><code>public const uint WA_Height = 2147483751</code></pre></article><article class="reference-member" id="constant-wa-detail-pen"><header><span class="reference-kind">constant</span><a href="#constant-wa-detail-pen" aria-label="Link to WA_DetailPen">#</a></header><h3>WA_DetailPen</h3><pre><code>public const uint WA_DetailPen = 2147483752</code></pre></article><article class="reference-member" id="constant-wa-block-pen"><header><span class="reference-kind">constant</span><a href="#constant-wa-block-pen" aria-label="Link to WA_BlockPen">#</a></header><h3>WA_BlockPen</h3><pre><code>public const uint WA_BlockPen = 2147483753</code></pre></article><article class="reference-member" id="constant-wa-idcmp"><header><span class="reference-kind">constant</span><a href="#constant-wa-idcmp" aria-label="Link to WA_IDCMP">#</a></header><h3>WA_IDCMP</h3><pre><code>public const uint WA_IDCMP = 2147483754</code></pre></article><article class="reference-member" id="constant-wa-flags"><header><span class="reference-kind">constant</span><a href="#constant-wa-flags" aria-label="Link to WA_Flags">#</a></header><h3>WA_Flags</h3><pre><code>public const uint WA_Flags = 2147483755</code></pre></article><article class="reference-member" id="constant-wa-gadgets"><header><span class="reference-kind">constant</span><a href="#constant-wa-gadgets" aria-label="Link to WA_Gadgets">#</a></header><h3>WA_Gadgets</h3><pre><code>public const uint WA_Gadgets = 2147483756</code></pre></article><article class="reference-member" id="constant-wa-checkmark"><header><span class="reference-kind">constant</span><a href="#constant-wa-checkmark" aria-label="Link to WA_Checkmark">#</a></header><h3>WA_Checkmark</h3><pre><code>public const uint WA_Checkmark = 2147483757</code></pre></article><article class="reference-member" id="constant-wa-title"><header><span class="reference-kind">constant</span><a href="#constant-wa-title" aria-label="Link to WA_Title">#</a></header><h3>WA_Title</h3><pre><code>public const uint WA_Title = 2147483758</code></pre></article><article class="reference-member" id="constant-wa-screen-title"><header><span class="reference-kind">constant</span><a href="#constant-wa-screen-title" aria-label="Link to WA_ScreenTitle">#</a></header><h3>WA_ScreenTitle</h3><pre><code>public const uint WA_ScreenTitle = 2147483759</code></pre></article><article class="reference-member" id="constant-wa-custom-screen"><header><span class="reference-kind">constant</span><a href="#constant-wa-custom-screen" aria-label="Link to WA_CustomScreen">#</a></header><h3>WA_CustomScreen</h3><pre><code>public const uint WA_CustomScreen = 2147483760</code></pre></article><article class="reference-member" id="constant-wa-super-bit-map"><header><span class="reference-kind">constant</span><a href="#constant-wa-super-bit-map" aria-label="Link to WA_SuperBitMap">#</a></header><h3>WA_SuperBitMap</h3><pre><code>public const uint WA_SuperBitMap = 2147483761</code></pre></article><article class="reference-member" id="constant-wa-min-width"><header><span class="reference-kind">constant</span><a href="#constant-wa-min-width" aria-label="Link to WA_MinWidth">#</a></header><h3>WA_MinWidth</h3><pre><code>public const uint WA_MinWidth = 2147483762</code></pre></article><article class="reference-member" id="constant-wa-min-height"><header><span class="reference-kind">constant</span><a href="#constant-wa-min-height" aria-label="Link to WA_MinHeight">#</a></header><h3>WA_MinHeight</h3><pre><code>public const uint WA_MinHeight = 2147483763</code></pre></article><article class="reference-member" id="constant-wa-max-width"><header><span class="reference-kind">constant</span><a href="#constant-wa-max-width" aria-label="Link to WA_MaxWidth">#</a></header><h3>WA_MaxWidth</h3><pre><code>public const uint WA_MaxWidth = 2147483764</code></pre></article><article class="reference-member" id="constant-wa-max-height"><header><span class="reference-kind">constant</span><a href="#constant-wa-max-height" aria-label="Link to WA_MaxHeight">#</a></header><h3>WA_MaxHeight</h3><pre><code>public const uint WA_MaxHeight = 2147483765</code></pre></article><article class="reference-member" id="constant-wa-inner-width"><header><span class="reference-kind">constant</span><a href="#constant-wa-inner-width" aria-label="Link to WA_InnerWidth">#</a></header><h3>WA_InnerWidth</h3><pre><code>public const uint WA_InnerWidth = 2147483766</code></pre></article><article class="reference-member" id="constant-wa-inner-height"><header><span class="reference-kind">constant</span><a href="#constant-wa-inner-height" aria-label="Link to WA_InnerHeight">#</a></header><h3>WA_InnerHeight</h3><pre><code>public const uint WA_InnerHeight = 2147483767</code></pre></article><article class="reference-member" id="constant-wa-pub-screen-name"><header><span class="reference-kind">constant</span><a href="#constant-wa-pub-screen-name" aria-label="Link to WA_PubScreenName">#</a></header><h3>WA_PubScreenName</h3><pre><code>public const uint WA_PubScreenName = 2147483768</code></pre></article><article class="reference-member" id="constant-wa-pub-screen"><header><span class="reference-kind">constant</span><a href="#constant-wa-pub-screen" aria-label="Link to WA_PubScreen">#</a></header><h3>WA_PubScreen</h3><pre><code>public const uint WA_PubScreen = 2147483769</code></pre></article><article class="reference-member" id="constant-wa-pub-screen-fall-back"><header><span class="reference-kind">constant</span><a href="#constant-wa-pub-screen-fall-back" aria-label="Link to WA_PubScreenFallBack">#</a></header><h3>WA_PubScreenFallBack</h3><pre><code>public const uint WA_PubScreenFallBack = 2147483770</code></pre></article><article class="reference-member" id="constant-wa-window-name"><header><span class="reference-kind">constant</span><a href="#constant-wa-window-name" aria-label="Link to WA_WindowName">#</a></header><h3>WA_WindowName</h3><pre><code>public const uint WA_WindowName = 2147483771</code></pre></article><article class="reference-member" id="constant-wa-colors"><header><span class="reference-kind">constant</span><a href="#constant-wa-colors" aria-label="Link to WA_Colors">#</a></header><h3>WA_Colors</h3><pre><code>public const uint WA_Colors = 2147483772</code></pre></article><article class="reference-member" id="constant-wa-zoom"><header><span class="reference-kind">constant</span><a href="#constant-wa-zoom" aria-label="Link to WA_Zoom">#</a></header><h3>WA_Zoom</h3><pre><code>public const uint WA_Zoom = 2147483773</code></pre></article><article class="reference-member" id="constant-wa-mouse-queue"><header><span class="reference-kind">constant</span><a href="#constant-wa-mouse-queue" aria-label="Link to WA_MouseQueue">#</a></header><h3>WA_MouseQueue</h3><pre><code>public const uint WA_MouseQueue = 2147483774</code></pre></article><article class="reference-member" id="constant-wa-back-fill"><header><span class="reference-kind">constant</span><a href="#constant-wa-back-fill" aria-label="Link to WA_BackFill">#</a></header><h3>WA_BackFill</h3><pre><code>public const uint WA_BackFill = 2147483775</code></pre></article><article class="reference-member" id="constant-wa-rpt-queue"><header><span class="reference-kind">constant</span><a href="#constant-wa-rpt-queue" aria-label="Link to WA_RptQueue">#</a></header><h3>WA_RptQueue</h3><pre><code>public const uint WA_RptQueue = 2147483776</code></pre></article><article class="reference-member" id="constant-wa-size-gadget"><header><span class="reference-kind">constant</span><a href="#constant-wa-size-gadget" aria-label="Link to WA_SizeGadget">#</a></header><h3>WA_SizeGadget</h3><pre><code>public const uint WA_SizeGadget = 2147483777</code></pre></article><article class="reference-member" id="constant-wa-drag-bar"><header><span class="reference-kind">constant</span><a href="#constant-wa-drag-bar" aria-label="Link to WA_DragBar">#</a></header><h3>WA_DragBar</h3><pre><code>public const uint WA_DragBar = 2147483778</code></pre></article><article class="reference-member" id="constant-wa-depth-gadget"><header><span class="reference-kind">constant</span><a href="#constant-wa-depth-gadget" aria-label="Link to WA_DepthGadget">#</a></header><h3>WA_DepthGadget</h3><pre><code>public const uint WA_DepthGadget = 2147483779</code></pre></article><article class="reference-member" id="constant-wa-close-gadget"><header><span class="reference-kind">constant</span><a href="#constant-wa-close-gadget" aria-label="Link to WA_CloseGadget">#</a></header><h3>WA_CloseGadget</h3><pre><code>public const uint WA_CloseGadget = 2147483780</code></pre></article><article class="reference-member" id="constant-wa-backdrop"><header><span class="reference-kind">constant</span><a href="#constant-wa-backdrop" aria-label="Link to WA_Backdrop">#</a></header><h3>WA_Backdrop</h3><pre><code>public const uint WA_Backdrop = 2147483781</code></pre></article><article class="reference-member" id="constant-wa-report-mouse"><header><span class="reference-kind">constant</span><a href="#constant-wa-report-mouse" aria-label="Link to WA_ReportMouse">#</a></header><h3>WA_ReportMouse</h3><pre><code>public const uint WA_ReportMouse = 2147483782</code></pre></article><article class="reference-member" id="constant-wa-no-care-refresh"><header><span class="reference-kind">constant</span><a href="#constant-wa-no-care-refresh" aria-label="Link to WA_NoCareRefresh">#</a></header><h3>WA_NoCareRefresh</h3><pre><code>public const uint WA_NoCareRefresh = 2147483783</code></pre></article><article class="reference-member" id="constant-wa-borderless"><header><span class="reference-kind">constant</span><a href="#constant-wa-borderless" aria-label="Link to WA_Borderless">#</a></header><h3>WA_Borderless</h3><pre><code>public const uint WA_Borderless = 2147483784</code></pre></article><article class="reference-member" id="constant-wa-activate"><header><span class="reference-kind">constant</span><a href="#constant-wa-activate" aria-label="Link to WA_Activate">#</a></header><h3>WA_Activate</h3><pre><code>public const uint WA_Activate = 2147483785</code></pre></article><article class="reference-member" id="constant-wa-rmbtrap"><header><span class="reference-kind">constant</span><a href="#constant-wa-rmbtrap" aria-label="Link to WA_RMBTrap">#</a></header><h3>WA_RMBTrap</h3><pre><code>public const uint WA_RMBTrap = 2147483786</code></pre></article><article class="reference-member" id="constant-wa-wbench-window"><header><span class="reference-kind">constant</span><a href="#constant-wa-wbench-window" aria-label="Link to WA_WBenchWindow">#</a></header><h3>WA_WBenchWindow</h3><pre><code>public const uint WA_WBenchWindow = 2147483787</code></pre></article><article class="reference-member" id="constant-wa-simple-refresh"><header><span class="reference-kind">constant</span><a href="#constant-wa-simple-refresh" aria-label="Link to WA_SimpleRefresh">#</a></header><h3>WA_SimpleRefresh</h3><pre><code>public const uint WA_SimpleRefresh = 2147483788</code></pre></article><article class="reference-member" id="constant-wa-smart-refresh"><header><span class="reference-kind">constant</span><a href="#constant-wa-smart-refresh" aria-label="Link to WA_SmartRefresh">#</a></header><h3>WA_SmartRefresh</h3><pre><code>public const uint WA_SmartRefresh = 2147483789</code></pre></article><article class="reference-member" id="constant-wa-size-bright"><header><span class="reference-kind">constant</span><a href="#constant-wa-size-bright" aria-label="Link to WA_SizeBRight">#</a></header><h3>WA_SizeBRight</h3><pre><code>public const uint WA_SizeBRight = 2147483790</code></pre></article><article class="reference-member" id="constant-wa-size-bbottom"><header><span class="reference-kind">constant</span><a href="#constant-wa-size-bbottom" aria-label="Link to WA_SizeBBottom">#</a></header><h3>WA_SizeBBottom</h3><pre><code>public const uint WA_SizeBBottom = 2147483791</code></pre></article><article class="reference-member" id="constant-wa-auto-adjust"><header><span class="reference-kind">constant</span><a href="#constant-wa-auto-adjust" aria-label="Link to WA_AutoAdjust">#</a></header><h3>WA_AutoAdjust</h3><pre><code>public const uint WA_AutoAdjust = 2147483792</code></pre></article><article class="reference-member" id="constant-wa-gimme-zero-zero"><header><span class="reference-kind">constant</span><a href="#constant-wa-gimme-zero-zero" aria-label="Link to WA_GimmeZeroZero">#</a></header><h3>WA_GimmeZeroZero</h3><pre><code>public const uint WA_GimmeZeroZero = 2147483793</code></pre></article><article class="reference-member" id="constant-wa-menu-help"><header><span class="reference-kind">constant</span><a href="#constant-wa-menu-help" aria-label="Link to WA_MenuHelp">#</a></header><h3>WA_MenuHelp</h3><pre><code>public const uint WA_MenuHelp = 2147483794</code></pre></article><article class="reference-member" id="constant-wa-new-look-menus"><header><span class="reference-kind">constant</span><a href="#constant-wa-new-look-menus" aria-label="Link to WA_NewLookMenus">#</a></header><h3>WA_NewLookMenus</h3><pre><code>public const uint WA_NewLookMenus = 2147483795</code></pre></article><article class="reference-member" id="constant-wa-amiga-key"><header><span class="reference-kind">constant</span><a href="#constant-wa-amiga-key" aria-label="Link to WA_AmigaKey">#</a></header><h3>WA_AmigaKey</h3><pre><code>public const uint WA_AmigaKey = 2147483796</code></pre></article><article class="reference-member" id="constant-wa-notify-depth"><header><span class="reference-kind">constant</span><a href="#constant-wa-notify-depth" aria-label="Link to WA_NotifyDepth">#</a></header><h3>WA_NotifyDepth</h3><pre><code>public const uint WA_NotifyDepth = 2147483797</code></pre></article><article class="reference-member" id="constant-wa-pointer"><header><span class="reference-kind">constant</span><a href="#constant-wa-pointer" aria-label="Link to WA_Pointer">#</a></header><h3>WA_Pointer</h3><pre><code>public const uint WA_Pointer = 2147483799</code></pre></article><article class="reference-member" id="constant-wa-busy-pointer"><header><span class="reference-kind">constant</span><a href="#constant-wa-busy-pointer" aria-label="Link to WA_BusyPointer">#</a></header><h3>WA_BusyPointer</h3><pre><code>public const uint WA_BusyPointer = 2147483800</code></pre></article><article class="reference-member" id="constant-wa-pointer-delay"><header><span class="reference-kind">constant</span><a href="#constant-wa-pointer-delay" aria-label="Link to WA_PointerDelay">#</a></header><h3>WA_PointerDelay</h3><pre><code>public const uint WA_PointerDelay = 2147483801</code></pre></article><article class="reference-member" id="constant-wa-tablet-messages"><header><span class="reference-kind">constant</span><a href="#constant-wa-tablet-messages" aria-label="Link to WA_TabletMessages">#</a></header><h3>WA_TabletMessages</h3><pre><code>public const uint WA_TabletMessages = 2147483802</code></pre></article><article class="reference-member" id="constant-wa-help-group"><header><span class="reference-kind">constant</span><a href="#constant-wa-help-group" aria-label="Link to WA_HelpGroup">#</a></header><h3>WA_HelpGroup</h3><pre><code>public const uint WA_HelpGroup = 2147483803</code></pre></article><article class="reference-member" id="constant-wa-help-group-window"><header><span class="reference-kind">constant</span><a href="#constant-wa-help-group-window" aria-label="Link to WA_HelpGroupWindow">#</a></header><h3>WA_HelpGroupWindow</h3><pre><code>public const uint WA_HelpGroupWindow = 2147483804</code></pre></article><article class="reference-member" id="constant-hc-gadgethelp"><header><span class="reference-kind">constant</span><a href="#constant-hc-gadgethelp" aria-label="Link to HC_GADGETHELP">#</a></header><h3>HC_GADGETHELP</h3><pre><code>public const uint HC_GADGETHELP = 1</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

@@ -1,0 +1,12 @@
+.contract-note {
+  margin: 0;
+  padding: 0 18px 18px;
+  color: #a5a3b5;
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+
+.compatibility-notice a {
+  color: #c6a2ff;
+  text-underline-offset: 0.2em;
+}

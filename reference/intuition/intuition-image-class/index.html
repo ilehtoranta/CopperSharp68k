@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>IntuitionImageClass | CopperSharp Amiga SDK</title><meta name="description" content="Classic V40 imageclass attributes, methods, states, and identities."/><meta property="og:title" content="IntuitionImageClass | CopperSharp Amiga SDK"/><meta property="og:description" content="Classic V40 imageclass attributes, methods, states, and identities."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-image-class"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/intuition/intuition-image-class"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/intuition">Intuition</a><span>/</span><span aria-current="page">IntuitionImageClass</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code></code></div><h1>IntuitionImageClass</h1><p class="reference-full-name">Amiga.IntuitionImageClass</p><pre class="reference-signature"><code>public static class IntuitionImageClass</code></pre><p class="reference-description">Classic V40 imageclass attributes, methods, states, and identities.</p><div class="reference-source-row"><span>69 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/Intuition/ImageClass.cs#L11">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-customimagedepth">CUSTOMIMAGEDEPTH</a><a href="#constant-ia-dummy">IA_Dummy</a><a href="#constant-ia-left">IA_Left</a><a href="#constant-ia-top">IA_Top</a><a href="#constant-ia-width">IA_Width</a><a href="#constant-ia-height">IA_Height</a><a href="#constant-ia-fgpen">IA_FGPen</a><a href="#constant-ia-bgpen">IA_BGPen</a><a href="#constant-ia-data">IA_Data</a><a href="#constant-ia-line-width">IA_LineWidth</a><a href="#constant-ia-shadow-pen">IA_ShadowPen</a><a href="#constant-ia-highlight-pen">IA_HighlightPen</a><a href="#constant-sysia-size">SYSIA_Size</a><a href="#constant-sysia-depth">SYSIA_Depth</a><a href="#constant-sysia-which">SYSIA_Which</a><a href="#constant-ia-pens">IA_Pens</a><a href="#constant-sysia-pens">SYSIA_Pens</a><a href="#constant-ia-resolution">IA_Resolution</a><a href="#constant-ia-apattern">IA_APattern</a><a href="#constant-ia-apat-size">IA_APatSize</a><a href="#constant-ia-mode">IA_Mode</a><a href="#constant-ia-font">IA_Font</a><a href="#constant-ia-outline">IA_Outline</a><a href="#constant-ia-recessed">IA_Recessed</a><a href="#constant-ia-double-emboss">IA_DoubleEmboss</a><a href="#constant-ia-edges-only">IA_EdgesOnly</a><a href="#constant-sysia-draw-info">SYSIA_DrawInfo</a><a href="#constant-sysia-reference-font">SYSIA_ReferenceFont</a><a href="#constant-ia-supports-disable">IA_SupportsDisable</a><a href="#constant-ia-frame-type">IA_FrameType</a><a href="#constant-sysisize-medres">SYSISIZE_MEDRES</a><a href="#constant-sysisize-lowres">SYSISIZE_LOWRES</a><a href="#constant-sysisize-hires">SYSISIZE_HIRES</a><a href="#constant-depthimage">DEPTHIMAGE</a><a href="#constant-zoomimage">ZOOMIMAGE</a><a href="#constant-sizeimage">SIZEIMAGE</a><a href="#constant-closeimage">CLOSEIMAGE</a><a href="#constant-sdepthimage">SDEPTHIMAGE</a><a href="#constant-leftimage">LEFTIMAGE</a><a href="#constant-upimage">UPIMAGE</a><a href="#constant-rightimage">RIGHTIMAGE</a><a href="#constant-downimage">DOWNIMAGE</a><a href="#constant-checkimage">CHECKIMAGE</a><a href="#constant-mximage">MXIMAGE</a><a href="#constant-menucheck">MENUCHECK</a><a href="#constant-amigakey">AMIGAKEY</a><a href="#constant-frame-default">FRAME_DEFAULT</a><a href="#constant-frame-button">FRAME_BUTTON</a><a href="#constant-frame-ridge">FRAME_RIDGE</a><a href="#constant-frame-icondropbox">FRAME_ICONDROPBOX</a><a href="#constant-im-draw">IM_DRAW</a><a href="#constant-im-hittest">IM_HITTEST</a><a href="#constant-im-erase">IM_ERASE</a><a href="#constant-im-move">IM_MOVE</a><a href="#constant-im-drawframe">IM_DRAWFRAME</a><a href="#constant-im-framebox">IM_FRAMEBOX</a><a href="#constant-im-hitframe">IM_HITFRAME</a><a href="#constant-im-eraseframe">IM_ERASEFRAME</a><a href="#constant-ids-normal">IDS_NORMAL</a><a href="#constant-ids-selected">IDS_SELECTED</a><a href="#constant-ids-disabled">IDS_DISABLED</a><a href="#constant-ids-busy">IDS_BUSY</a><a href="#constant-ids-indeterminate">IDS_INDETERMINATE</a><a href="#constant-ids-indeterminant">IDS_INDETERMINANT</a><a href="#constant-ids-inactivenormal">IDS_INACTIVENORMAL</a><a href="#constant-ids-inactiveselected">IDS_INACTIVESELECTED</a><a href="#constant-ids-inactivedisabled">IDS_INACTIVEDISABLED</a><a href="#constant-ids-selecteddisabled">IDS_SELECTEDDISABLED</a><a href="#constant-framef-specify">FRAMEF_SPECIFY</a></aside><div><section class="reference-member-section"><h2>constant declarations</h2><article class="reference-member" id="constant-customimagedepth"><header><span class="reference-kind">constant</span><a href="#constant-customimagedepth" aria-label="Link to CUSTOMIMAGEDEPTH">#</a></header><h3>CUSTOMIMAGEDEPTH</h3><pre><code>public const short CUSTOMIMAGEDEPTH = -1</code></pre></article><article class="reference-member" id="constant-ia-dummy"><header><span class="reference-kind">constant</span><a href="#constant-ia-dummy" aria-label="Link to IA_Dummy">#</a></header><h3>IA_Dummy</h3><pre><code>public const uint IA_Dummy = 2147614720</code></pre></article><article class="reference-member" id="constant-ia-left"><header><span class="reference-kind">constant</span><a href="#constant-ia-left" aria-label="Link to IA_Left">#</a></header><h3>IA_Left</h3><pre><code>public const uint IA_Left = 2147614721</code></pre></article><article class="reference-member" id="constant-ia-top"><header><span class="reference-kind">constant</span><a href="#constant-ia-top" aria-label="Link to IA_Top">#</a></header><h3>IA_Top</h3><pre><code>public const uint IA_Top = 2147614722</code></pre></article><article class="reference-member" id="constant-ia-width"><header><span class="reference-kind">constant</span><a href="#constant-ia-width" aria-label="Link to IA_Width">#</a></header><h3>IA_Width</h3><pre><code>public const uint IA_Width = 2147614723</code></pre></article><article class="reference-member" id="constant-ia-height"><header><span class="reference-kind">constant</span><a href="#constant-ia-height" aria-label="Link to IA_Height">#</a></header><h3>IA_Height</h3><pre><code>public const uint IA_Height = 2147614724</code></pre></article><article class="reference-member" id="constant-ia-fgpen"><header><span class="reference-kind">constant</span><a href="#constant-ia-fgpen" aria-label="Link to IA_FGPen">#</a></header><h3>IA_FGPen</h3><pre><code>public const uint IA_FGPen = 2147614725</code></pre></article><article class="reference-member" id="constant-ia-bgpen"><header><span class="reference-kind">constant</span><a href="#constant-ia-bgpen" aria-label="Link to IA_BGPen">#</a></header><h3>IA_BGPen</h3><pre><code>public const uint IA_BGPen = 2147614726</code></pre></article><article class="reference-member" id="constant-ia-data"><header><span class="reference-kind">constant</span><a href="#constant-ia-data" aria-label="Link to IA_Data">#</a></header><h3>IA_Data</h3><pre><code>public const uint IA_Data = 2147614727</code></pre></article><article class="reference-member" id="constant-ia-line-width"><header><span class="reference-kind">constant</span><a href="#constant-ia-line-width" aria-label="Link to IA_LineWidth">#</a></header><h3>IA_LineWidth</h3><pre><code>public const uint IA_LineWidth = 2147614728</code></pre></article><article class="reference-member" id="constant-ia-shadow-pen"><header><span class="reference-kind">constant</span><a href="#constant-ia-shadow-pen" aria-label="Link to IA_ShadowPen">#</a></header><h3>IA_ShadowPen</h3><pre><code>public const uint IA_ShadowPen = 2147614729</code></pre></article><article class="reference-member" id="constant-ia-highlight-pen"><header><span class="reference-kind">constant</span><a href="#constant-ia-highlight-pen" aria-label="Link to IA_HighlightPen">#</a></header><h3>IA_HighlightPen</h3><pre><code>public const uint IA_HighlightPen = 2147614730</code></pre></article><article class="reference-member" id="constant-sysia-size"><header><span class="reference-kind">constant</span><a href="#constant-sysia-size" aria-label="Link to SYSIA_Size">#</a></header><h3>SYSIA_Size</h3><pre><code>public const uint SYSIA_Size = 2147614731</code></pre></article><article class="reference-member" id="constant-sysia-depth"><header><span class="reference-kind">constant</span><a href="#constant-sysia-depth" aria-label="Link to SYSIA_Depth">#</a></header><h3>SYSIA_Depth</h3><pre><code>public const uint SYSIA_Depth = 2147614732</code></pre></article><article class="reference-member" id="constant-sysia-which"><header><span class="reference-kind">constant</span><a href="#constant-sysia-which" aria-label="Link to SYSIA_Which">#</a></header><h3>SYSIA_Which</h3><pre><code>public const uint SYSIA_Which = 2147614733</code></pre></article><article class="reference-member" id="constant-ia-pens"><header><span class="reference-kind">constant</span><a href="#constant-ia-pens" aria-label="Link to IA_Pens">#</a></header><h3>IA_Pens</h3><pre><code>public const uint IA_Pens = 2147614734</code></pre></article><article class="reference-member" id="constant-sysia-pens"><header><span class="reference-kind">constant</span><a href="#constant-sysia-pens" aria-label="Link to SYSIA_Pens">#</a></header><h3>SYSIA_Pens</h3><pre><code>public const uint SYSIA_Pens = 2147614734</code></pre></article><article class="reference-member" id="constant-ia-resolution"><header><span class="reference-kind">constant</span><a href="#constant-ia-resolution" aria-label="Link to IA_Resolution">#</a></header><h3>IA_Resolution</h3><pre><code>public const uint IA_Resolution = 2147614735</code></pre></article><article class="reference-member" id="constant-ia-apattern"><header><span class="reference-kind">constant</span><a href="#constant-ia-apattern" aria-label="Link to IA_APattern">#</a></header><h3>IA_APattern</h3><pre><code>public const uint IA_APattern = 2147614736</code></pre></article><article class="reference-member" id="constant-ia-apat-size"><header><span class="reference-kind">constant</span><a href="#constant-ia-apat-size" aria-label="Link to IA_APatSize">#</a></header><h3>IA_APatSize</h3><pre><code>public const uint IA_APatSize = 2147614737</code></pre></article><article class="reference-member" id="constant-ia-mode"><header><span class="reference-kind">constant</span><a href="#constant-ia-mode" aria-label="Link to IA_Mode">#</a></header><h3>IA_Mode</h3><pre><code>public const uint IA_Mode = 2147614738</code></pre></article><article class="reference-member" id="constant-ia-font"><header><span class="reference-kind">constant</span><a href="#constant-ia-font" aria-label="Link to IA_Font">#</a></header><h3>IA_Font</h3><pre><code>public const uint IA_Font = 2147614739</code></pre></article><article class="reference-member" id="constant-ia-outline"><header><span class="reference-kind">constant</span><a href="#constant-ia-outline" aria-label="Link to IA_Outline">#</a></header><h3>IA_Outline</h3><pre><code>public const uint IA_Outline = 2147614740</code></pre></article><article class="reference-member" id="constant-ia-recessed"><header><span class="reference-kind">constant</span><a href="#constant-ia-recessed" aria-label="Link to IA_Recessed">#</a></header><h3>IA_Recessed</h3><pre><code>public const uint IA_Recessed = 2147614741</code></pre></article><article class="reference-member" id="constant-ia-double-emboss"><header><span class="reference-kind">constant</span><a href="#constant-ia-double-emboss" aria-label="Link to IA_DoubleEmboss">#</a></header><h3>IA_DoubleEmboss</h3><pre><code>public const uint IA_DoubleEmboss = 2147614742</code></pre></article><article class="reference-member" id="constant-ia-edges-only"><header><span class="reference-kind">constant</span><a href="#constant-ia-edges-only" aria-label="Link to IA_EdgesOnly">#</a></header><h3>IA_EdgesOnly</h3><pre><code>public const uint IA_EdgesOnly = 2147614743</code></pre></article><article class="reference-member" id="constant-sysia-draw-info"><header><span class="reference-kind">constant</span><a href="#constant-sysia-draw-info" aria-label="Link to SYSIA_DrawInfo">#</a></header><h3>SYSIA_DrawInfo</h3><pre><code>public const uint SYSIA_DrawInfo = 2147614744</code></pre></article><article class="reference-member" id="constant-sysia-reference-font"><header><span class="reference-kind">constant</span><a href="#constant-sysia-reference-font" aria-label="Link to SYSIA_ReferenceFont">#</a></header><h3>SYSIA_ReferenceFont</h3><pre><code>public const uint SYSIA_ReferenceFont = 2147614745</code></pre></article><article class="reference-member" id="constant-ia-supports-disable"><header><span class="reference-kind">constant</span><a href="#constant-ia-supports-disable" aria-label="Link to IA_SupportsDisable">#</a></header><h3>IA_SupportsDisable</h3><pre><code>public const uint IA_SupportsDisable = 2147614746</code></pre></article><article class="reference-member" id="constant-ia-frame-type"><header><span class="reference-kind">constant</span><a href="#constant-ia-frame-type" aria-label="Link to IA_FrameType">#</a></header><h3>IA_FrameType</h3><pre><code>public const uint IA_FrameType = 2147614747</code></pre></article><article class="reference-member" id="constant-sysisize-medres"><header><span class="reference-kind">constant</span><a href="#constant-sysisize-medres" aria-label="Link to SYSISIZE_MEDRES">#</a></header><h3>SYSISIZE_MEDRES</h3><pre><code>public const uint SYSISIZE_MEDRES = 0</code></pre></article><article class="reference-member" id="constant-sysisize-lowres"><header><span class="reference-kind">constant</span><a href="#constant-sysisize-lowres" aria-label="Link to SYSISIZE_LOWRES">#</a></header><h3>SYSISIZE_LOWRES</h3><pre><code>public const uint SYSISIZE_LOWRES = 1</code></pre></article><article class="reference-member" id="constant-sysisize-hires"><header><span class="reference-kind">constant</span><a href="#constant-sysisize-hires" aria-label="Link to SYSISIZE_HIRES">#</a></header><h3>SYSISIZE_HIRES</h3><pre><code>public const uint SYSISIZE_HIRES = 2</code></pre></article><article class="reference-member" id="constant-depthimage"><header><span class="reference-kind">constant</span><a href="#constant-depthimage" aria-label="Link to DEPTHIMAGE">#</a></header><h3>DEPTHIMAGE</h3><pre><code>public const uint DEPTHIMAGE = 0</code></pre></article><article class="reference-member" id="constant-zoomimage"><header><span class="reference-kind">constant</span><a href="#constant-zoomimage" aria-label="Link to ZOOMIMAGE">#</a></header><h3>ZOOMIMAGE</h3><pre><code>public const uint ZOOMIMAGE = 1</code></pre></article><article class="reference-member" id="constant-sizeimage"><header><span class="reference-kind">constant</span><a href="#constant-sizeimage" aria-label="Link to SIZEIMAGE">#</a></header><h3>SIZEIMAGE</h3><pre><code>public const uint SIZEIMAGE = 2</code></pre></article><article class="reference-member" id="constant-closeimage"><header><span class="reference-kind">constant</span><a href="#constant-closeimage" aria-label="Link to CLOSEIMAGE">#</a></header><h3>CLOSEIMAGE</h3><pre><code>public const uint CLOSEIMAGE = 3</code></pre></article><article class="reference-member" id="constant-sdepthimage"><header><span class="reference-kind">constant</span><a href="#constant-sdepthimage" aria-label="Link to SDEPTHIMAGE">#</a></header><h3>SDEPTHIMAGE</h3><pre><code>public const uint SDEPTHIMAGE = 5</code></pre></article><article class="reference-member" id="constant-leftimage"><header><span class="reference-kind">constant</span><a href="#constant-leftimage" aria-label="Link to LEFTIMAGE">#</a></header><h3>LEFTIMAGE</h3><pre><code>public const uint LEFTIMAGE = 10</code></pre></article><article class="reference-member" id="constant-upimage"><header><span class="reference-kind">constant</span><a href="#constant-upimage" aria-label="Link to UPIMAGE">#</a></header><h3>UPIMAGE</h3><pre><code>public const uint UPIMAGE = 11</code></pre></article><article class="reference-member" id="constant-rightimage"><header><span class="reference-kind">constant</span><a href="#constant-rightimage" aria-label="Link to RIGHTIMAGE">#</a></header><h3>RIGHTIMAGE</h3><pre><code>public const uint RIGHTIMAGE = 12</code></pre></article><article class="reference-member" id="constant-downimage"><header><span class="reference-kind">constant</span><a href="#constant-downimage" aria-label="Link to DOWNIMAGE">#</a></header><h3>DOWNIMAGE</h3><pre><code>public const uint DOWNIMAGE = 13</code></pre></article><article class="reference-member" id="constant-checkimage"><header><span class="reference-kind">constant</span><a href="#constant-checkimage" aria-label="Link to CHECKIMAGE">#</a></header><h3>CHECKIMAGE</h3><pre><code>public const uint CHECKIMAGE = 14</code></pre></article><article class="reference-member" id="constant-mximage"><header><span class="reference-kind">constant</span><a href="#constant-mximage" aria-label="Link to MXIMAGE">#</a></header><h3>MXIMAGE</h3><pre><code>public const uint MXIMAGE = 15</code></pre></article><article class="reference-member" id="constant-menucheck"><header><span class="reference-kind">constant</span><a href="#constant-menucheck" aria-label="Link to MENUCHECK">#</a></header><h3>MENUCHECK</h3><pre><code>public const uint MENUCHECK = 16</code></pre></article><article class="reference-member" id="constant-amigakey"><header><span class="reference-kind">constant</span><a href="#constant-amigakey" aria-label="Link to AMIGAKEY">#</a></header><h3>AMIGAKEY</h3><pre><code>public const uint AMIGAKEY = 17</code></pre></article><article class="reference-member" id="constant-frame-default"><header><span class="reference-kind">constant</span><a href="#constant-frame-default" aria-label="Link to FRAME_DEFAULT">#</a></header><h3>FRAME_DEFAULT</h3><pre><code>public const uint FRAME_DEFAULT = 0</code></pre></article><article class="reference-member" id="constant-frame-button"><header><span class="reference-kind">constant</span><a href="#constant-frame-button" aria-label="Link to FRAME_BUTTON">#</a></header><h3>FRAME_BUTTON</h3><pre><code>public const uint FRAME_BUTTON = 1</code></pre></article><article class="reference-member" id="constant-frame-ridge"><header><span class="reference-kind">constant</span><a href="#constant-frame-ridge" aria-label="Link to FRAME_RIDGE">#</a></header><h3>FRAME_RIDGE</h3><pre><code>public const uint FRAME_RIDGE = 2</code></pre></article><article class="reference-member" id="constant-frame-icondropbox"><header><span class="reference-kind">constant</span><a href="#constant-frame-icondropbox" aria-label="Link to FRAME_ICONDROPBOX">#</a></header><h3>FRAME_ICONDROPBOX</h3><pre><code>public const uint FRAME_ICONDROPBOX = 3</code></pre></article><article class="reference-member" id="constant-im-draw"><header><span class="reference-kind">constant</span><a href="#constant-im-draw" aria-label="Link to IM_DRAW">#</a></header><h3>IM_DRAW</h3><pre><code>public const uint IM_DRAW = 514</code></pre></article><article class="reference-member" id="constant-im-hittest"><header><span class="reference-kind">constant</span><a href="#constant-im-hittest" aria-label="Link to IM_HITTEST">#</a></header><h3>IM_HITTEST</h3><pre><code>public const uint IM_HITTEST = 515</code></pre></article><article class="reference-member" id="constant-im-erase"><header><span class="reference-kind">constant</span><a href="#constant-im-erase" aria-label="Link to IM_ERASE">#</a></header><h3>IM_ERASE</h3><pre><code>public const uint IM_ERASE = 516</code></pre></article><article class="reference-member" id="constant-im-move"><header><span class="reference-kind">constant</span><a href="#constant-im-move" aria-label="Link to IM_MOVE">#</a></header><h3>IM_MOVE</h3><pre><code>public const uint IM_MOVE = 517</code></pre></article><article class="reference-member" id="constant-im-drawframe"><header><span class="reference-kind">constant</span><a href="#constant-im-drawframe" aria-label="Link to IM_DRAWFRAME">#</a></header><h3>IM_DRAWFRAME</h3><pre><code>public const uint IM_DRAWFRAME = 518</code></pre></article><article class="reference-member" id="constant-im-framebox"><header><span class="reference-kind">constant</span><a href="#constant-im-framebox" aria-label="Link to IM_FRAMEBOX">#</a></header><h3>IM_FRAMEBOX</h3><pre><code>public const uint IM_FRAMEBOX = 519</code></pre></article><article class="reference-member" id="constant-im-hitframe"><header><span class="reference-kind">constant</span><a href="#constant-im-hitframe" aria-label="Link to IM_HITFRAME">#</a></header><h3>IM_HITFRAME</h3><pre><code>public const uint IM_HITFRAME = 520</code></pre></article><article class="reference-member" id="constant-im-eraseframe"><header><span class="reference-kind">constant</span><a href="#constant-im-eraseframe" aria-label="Link to IM_ERASEFRAME">#</a></header><h3>IM_ERASEFRAME</h3><pre><code>public const uint IM_ERASEFRAME = 521</code></pre></article><article class="reference-member" id="constant-ids-normal"><header><span class="reference-kind">constant</span><a href="#constant-ids-normal" aria-label="Link to IDS_NORMAL">#</a></header><h3>IDS_NORMAL</h3><pre><code>public const uint IDS_NORMAL = 0</code></pre></article><article class="reference-member" id="constant-ids-selected"><header><span class="reference-kind">constant</span><a href="#constant-ids-selected" aria-label="Link to IDS_SELECTED">#</a></header><h3>IDS_SELECTED</h3><pre><code>public const uint IDS_SELECTED = 1</code></pre></article><article class="reference-member" id="constant-ids-disabled"><header><span class="reference-kind">constant</span><a href="#constant-ids-disabled" aria-label="Link to IDS_DISABLED">#</a></header><h3>IDS_DISABLED</h3><pre><code>public const uint IDS_DISABLED = 2</code></pre></article><article class="reference-member" id="constant-ids-busy"><header><span class="reference-kind">constant</span><a href="#constant-ids-busy" aria-label="Link to IDS_BUSY">#</a></header><h3>IDS_BUSY</h3><pre><code>public const uint IDS_BUSY = 3</code></pre></article><article class="reference-member" id="constant-ids-indeterminate"><header><span class="reference-kind">constant</span><a href="#constant-ids-indeterminate" aria-label="Link to IDS_INDETERMINATE">#</a></header><h3>IDS_INDETERMINATE</h3><pre><code>public const uint IDS_INDETERMINATE = 4</code></pre></article><article class="reference-member" id="constant-ids-indeterminant"><header><span class="reference-kind">constant</span><a href="#constant-ids-indeterminant" aria-label="Link to IDS_INDETERMINANT">#</a></header><h3>IDS_INDETERMINANT</h3><pre><code>public const uint IDS_INDETERMINANT = 4</code></pre></article><article class="reference-member" id="constant-ids-inactivenormal"><header><span class="reference-kind">constant</span><a href="#constant-ids-inactivenormal" aria-label="Link to IDS_INACTIVENORMAL">#</a></header><h3>IDS_INACTIVENORMAL</h3><pre><code>public const uint IDS_INACTIVENORMAL = 5</code></pre></article><article class="reference-member" id="constant-ids-inactiveselected"><header><span class="reference-kind">constant</span><a href="#constant-ids-inactiveselected" aria-label="Link to IDS_INACTIVESELECTED">#</a></header><h3>IDS_INACTIVESELECTED</h3><pre><code>public const uint IDS_INACTIVESELECTED = 6</code></pre></article><article class="reference-member" id="constant-ids-inactivedisabled"><header><span class="reference-kind">constant</span><a href="#constant-ids-inactivedisabled" aria-label="Link to IDS_INACTIVEDISABLED">#</a></header><h3>IDS_INACTIVEDISABLED</h3><pre><code>public const uint IDS_INACTIVEDISABLED = 7</code></pre></article><article class="reference-member" id="constant-ids-selecteddisabled"><header><span class="reference-kind">constant</span><a href="#constant-ids-selecteddisabled" aria-label="Link to IDS_SELECTEDDISABLED">#</a></header><h3>IDS_SELECTEDDISABLED</h3><pre><code>public const uint IDS_SELECTEDDISABLED = 8</code></pre></article><article class="reference-member" id="constant-framef-specify"><header><span class="reference-kind">constant</span><a href="#constant-framef-specify" aria-label="Link to FRAMEF_SPECIFY">#</a></header><h3>FRAMEF_SPECIFY</h3><pre><code>public const uint FRAMEF_SPECIFY = 1</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

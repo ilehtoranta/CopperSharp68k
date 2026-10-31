@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>DosObjectTag | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.DosObjectTag API reference."/><meta property="og:title" content="DosObjectTag | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.DosObjectTag API reference."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/dos/dos-object-tag"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/dos/dos-object-tag"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/dos">DOS</a><span>/</span><span aria-current="page">DosObjectTag</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">enum</span><code></code></div><h1>DosObjectTag</h1><p class="reference-full-name">Amiga.DosObjectTag</p><pre class="reference-signature"><code>public enum DosObjectTag : uint</code></pre><div class="reference-source-row"><span>70 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/DOS/Enums.cs#L118">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#enum-value-file-handle-mode">FileHandleMode</a><a href="#enum-value-directory-length">DirectoryLength</a><a href="#enum-value-command-name-length">CommandNameLength</a><a href="#enum-value-command-file-length">CommandFileLength</a><a href="#enum-value-prompt-length">PromptLength</a><a href="#enum-value-cli-directory">CliDirectory</a><a href="#enum-value-cli-command-name">CliCommandName</a><a href="#enum-value-cli-command-file">CliCommandFile</a><a href="#enum-value-cli-prompt">CliPrompt</a><a href="#enum-value-cli-result2">CliResult2</a><a href="#enum-value-cli-return-code">CliReturnCode</a><a href="#enum-value-cli-fail-level">CliFailLevel</a><a href="#enum-value-cli-interactive">CliInteractive</a><a href="#enum-value-cli-background">CliBackground</a><a href="#enum-value-cli-default-stack">CliDefaultStack</a><a href="#enum-value-device-node-name">DeviceNodeName</a><a href="#enum-value-device-node-message-port">DeviceNodeMessagePort</a><a href="#enum-value-device-node-lock">DeviceNodeLock</a><a href="#enum-value-device-node-handler">DeviceNodeHandler</a><a href="#enum-value-device-node-segment-list">DeviceNodeSegmentList</a><a href="#enum-value-device-node-stack-size">DeviceNodeStackSize</a><a href="#enum-value-device-node-priority">DeviceNodePriority</a><a href="#enum-value-device-node-startup">DeviceNodeStartup</a><a href="#enum-value-device-node-global-vector">DeviceNodeGlobalVector</a><a href="#enum-value-device-node-serial-id">DeviceNodeSerialId</a><a href="#enum-value-device-node-startup-value">DeviceNodeStartupValue</a><a href="#enum-value-device-node-flags">DeviceNodeFlags</a><a href="#enum-value-device-node-status">DeviceNodeStatus</a><a href="#enum-value-device-node-exit-notify-message">DeviceNodeExitNotifyMessage</a><a href="#enum-value-file-sys-startup-message">FileSysStartupMessage</a><a href="#enum-value-file-sys-startup-device">FileSysStartupDevice</a><a href="#enum-value-file-sys-startup-unit">FileSysStartupUnit</a><a href="#enum-value-file-sys-startup-flags">FileSysStartupFlags</a><a href="#enum-value-dos-environment">DosEnvironment</a><a href="#enum-value-dos-environment-table-size">DosEnvironmentTableSize</a><a href="#enum-value-dos-environment-size-block">DosEnvironmentSizeBlock</a><a href="#enum-value-dos-environment-sector-origin">DosEnvironmentSectorOrigin</a><a href="#enum-value-dos-environment-surfaces">DosEnvironmentSurfaces</a><a href="#enum-value-dos-environment-number-of-heads">DosEnvironmentNumberOfHeads</a><a href="#enum-value-dos-environment-sectors-per-block">DosEnvironmentSectorsPerBlock</a><a href="#enum-value-dos-environment-blocks-per-track">DosEnvironmentBlocksPerTrack</a><a href="#enum-value-dos-environment-reserved-blocks">DosEnvironmentReservedBlocks</a><a href="#enum-value-dos-environment-pre-alloc">DosEnvironmentPreAlloc</a><a href="#enum-value-dos-environment-pre-fac">DosEnvironmentPreFac</a><a href="#enum-value-dos-environment-interleave">DosEnvironmentInterleave</a><a href="#enum-value-dos-environment-low-cylinder">DosEnvironmentLowCylinder</a><a href="#enum-value-dos-environment-high-cylinder">DosEnvironmentHighCylinder</a><a href="#enum-value-dos-environment-upper-cylinder">DosEnvironmentUpperCylinder</a><a href="#enum-value-dos-environment-number-of-buffers">DosEnvironmentNumberOfBuffers</a><a href="#enum-value-dos-environment-buffer-memory-type">DosEnvironmentBufferMemoryType</a><a href="#enum-value-dos-environment-maximum-transfer">DosEnvironmentMaximumTransfer</a><a href="#enum-value-dos-environment-mask">DosEnvironmentMask</a><a href="#enum-value-dos-environment-boot-priority">DosEnvironmentBootPriority</a><a href="#enum-value-dos-environment-dos-type">DosEnvironmentDosType</a><a href="#enum-value-dos-environment-baud">DosEnvironmentBaud</a><a href="#enum-value-dos-environment-control">DosEnvironmentControl</a><a href="#enum-value-dos-environment-boot-blocks">DosEnvironmentBootBlocks</a><a href="#enum-value-file-system-dos-type">FileSystemDosType</a><a href="#enum-value-volume-node-name">VolumeNodeName</a><a href="#enum-value-volume-node-message-port">VolumeNodeMessagePort</a><a href="#enum-value-volume-node-lock">VolumeNodeLock</a><a href="#enum-value-volume-node-lock-list">VolumeNodeLockList</a><a href="#enum-value-volume-node-date">VolumeNodeDate</a><a href="#enum-value-volume-node-disk-type">VolumeNodeDiskType</a><a href="#enum-value-assign-node-name">AssignNodeName</a><a href="#enum-value-assign-node-message-port">AssignNodeMessagePort</a><a href="#enum-value-assign-node-lock">AssignNodeLock</a><a href="#enum-value-assign-node-type">AssignNodeType</a><a href="#enum-value-assign-node-assign-name">AssignNodeAssignName</a><a href="#enum-value-assign-node-assign-list">AssignNodeAssignList</a></aside><div><section class="reference-member-section"><h2>enum value declarations</h2><article class="reference-member" id="enum-value-file-handle-mode"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-handle-mode" aria-label="Link to FileHandleMode">#</a></header><h3>FileHandleMode</h3><pre><code>FileHandleMode = 2147485649</code></pre></article><article class="reference-member" id="enum-value-directory-length"><header><span class="reference-kind">enum value</span><a href="#enum-value-directory-length" aria-label="Link to DirectoryLength">#</a></header><h3>DirectoryLength</h3><pre><code>DirectoryLength = 2147485650</code></pre></article><article class="reference-member" id="enum-value-command-name-length"><header><span class="reference-kind">enum value</span><a href="#enum-value-command-name-length" aria-label="Link to CommandNameLength">#</a></header><h3>CommandNameLength</h3><pre><code>CommandNameLength = 2147485651</code></pre></article><article class="reference-member" id="enum-value-command-file-length"><header><span class="reference-kind">enum value</span><a href="#enum-value-command-file-length" aria-label="Link to CommandFileLength">#</a></header><h3>CommandFileLength</h3><pre><code>CommandFileLength = 2147485652</code></pre></article><article class="reference-member" id="enum-value-prompt-length"><header><span class="reference-kind">enum value</span><a href="#enum-value-prompt-length" aria-label="Link to PromptLength">#</a></header><h3>PromptLength</h3><pre><code>PromptLength = 2147485653</code></pre></article><article class="reference-member" id="enum-value-cli-directory"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-directory" aria-label="Link to CliDirectory">#</a></header><h3>CliDirectory</h3><pre><code>CliDirectory = 2147485668</code></pre></article><article class="reference-member" id="enum-value-cli-command-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-command-name" aria-label="Link to CliCommandName">#</a></header><h3>CliCommandName</h3><pre><code>CliCommandName = 2147485669</code></pre></article><article class="reference-member" id="enum-value-cli-command-file"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-command-file" aria-label="Link to CliCommandFile">#</a></header><h3>CliCommandFile</h3><pre><code>CliCommandFile = 2147485670</code></pre></article><article class="reference-member" id="enum-value-cli-prompt"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-prompt" aria-label="Link to CliPrompt">#</a></header><h3>CliPrompt</h3><pre><code>CliPrompt = 2147485671</code></pre></article><article class="reference-member" id="enum-value-cli-result2"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-result2" aria-label="Link to CliResult2">#</a></header><h3>CliResult2</h3><pre><code>CliResult2 = 2147485672</code></pre></article><article class="reference-member" id="enum-value-cli-return-code"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-return-code" aria-label="Link to CliReturnCode">#</a></header><h3>CliReturnCode</h3><pre><code>CliReturnCode = 2147485673</code></pre></article><article class="reference-member" id="enum-value-cli-fail-level"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-fail-level" aria-label="Link to CliFailLevel">#</a></header><h3>CliFailLevel</h3><pre><code>CliFailLevel = 2147485674</code></pre></article><article class="reference-member" id="enum-value-cli-interactive"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-interactive" aria-label="Link to CliInteractive">#</a></header><h3>CliInteractive</h3><pre><code>CliInteractive = 2147485675</code></pre></article><article class="reference-member" id="enum-value-cli-background"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-background" aria-label="Link to CliBackground">#</a></header><h3>CliBackground</h3><pre><code>CliBackground = 2147485676</code></pre></article><article class="reference-member" id="enum-value-cli-default-stack"><header><span class="reference-kind">enum value</span><a href="#enum-value-cli-default-stack" aria-label="Link to CliDefaultStack">#</a></header><h3>CliDefaultStack</h3><pre><code>CliDefaultStack = 2147485677</code></pre></article><article class="reference-member" id="enum-value-device-node-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-name" aria-label="Link to DeviceNodeName">#</a></header><h3>DeviceNodeName</h3><pre><code>DeviceNodeName = 2147485678</code></pre></article><article class="reference-member" id="enum-value-device-node-message-port"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-message-port" aria-label="Link to DeviceNodeMessagePort">#</a></header><h3>DeviceNodeMessagePort</h3><pre><code>DeviceNodeMessagePort = 2147485679</code></pre></article><article class="reference-member" id="enum-value-device-node-lock"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-lock" aria-label="Link to DeviceNodeLock">#</a></header><h3>DeviceNodeLock</h3><pre><code>DeviceNodeLock = 2147485680</code></pre></article><article class="reference-member" id="enum-value-device-node-handler"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-handler" aria-label="Link to DeviceNodeHandler">#</a></header><h3>DeviceNodeHandler</h3><pre><code>DeviceNodeHandler = 2147485681</code></pre></article><article class="reference-member" id="enum-value-device-node-segment-list"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-segment-list" aria-label="Link to DeviceNodeSegmentList">#</a></header><h3>DeviceNodeSegmentList</h3><pre><code>DeviceNodeSegmentList = 2147485682</code></pre></article><article class="reference-member" id="enum-value-device-node-stack-size"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-stack-size" aria-label="Link to DeviceNodeStackSize">#</a></header><h3>DeviceNodeStackSize</h3><pre><code>DeviceNodeStackSize = 2147485683</code></pre></article><article class="reference-member" id="enum-value-device-node-priority"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-priority" aria-label="Link to DeviceNodePriority">#</a></header><h3>DeviceNodePriority</h3><pre><code>DeviceNodePriority = 2147485684</code></pre></article><article class="reference-member" id="enum-value-device-node-startup"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-startup" aria-label="Link to DeviceNodeStartup">#</a></header><h3>DeviceNodeStartup</h3><pre><code>DeviceNodeStartup = 2147485685</code></pre></article><article class="reference-member" id="enum-value-device-node-global-vector"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-global-vector" aria-label="Link to DeviceNodeGlobalVector">#</a></header><h3>DeviceNodeGlobalVector</h3><pre><code>DeviceNodeGlobalVector = 2147485686</code></pre></article><article class="reference-member" id="enum-value-device-node-serial-id"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-serial-id" aria-label="Link to DeviceNodeSerialId">#</a></header><h3>DeviceNodeSerialId</h3><pre><code>DeviceNodeSerialId = 2147485687</code></pre></article><article class="reference-member" id="enum-value-device-node-startup-value"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-startup-value" aria-label="Link to DeviceNodeStartupValue">#</a></header><h3>DeviceNodeStartupValue</h3><pre><code>DeviceNodeStartupValue = 2147485688</code></pre></article><article class="reference-member" id="enum-value-device-node-flags"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-flags" aria-label="Link to DeviceNodeFlags">#</a></header><h3>DeviceNodeFlags</h3><pre><code>DeviceNodeFlags = 2147485689</code></pre></article><article class="reference-member" id="enum-value-device-node-status"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-status" aria-label="Link to DeviceNodeStatus">#</a></header><h3>DeviceNodeStatus</h3><pre><code>DeviceNodeStatus = 2147485690</code></pre></article><article class="reference-member" id="enum-value-device-node-exit-notify-message"><header><span class="reference-kind">enum value</span><a href="#enum-value-device-node-exit-notify-message" aria-label="Link to DeviceNodeExitNotifyMessage">#</a></header><h3>DeviceNodeExitNotifyMessage</h3><pre><code>DeviceNodeExitNotifyMessage = 2147485691</code></pre></article><article class="reference-member" id="enum-value-file-sys-startup-message"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-sys-startup-message" aria-label="Link to FileSysStartupMessage">#</a></header><h3>FileSysStartupMessage</h3><pre><code>FileSysStartupMessage = 2147485698</code></pre></article><article class="reference-member" id="enum-value-file-sys-startup-device"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-sys-startup-device" aria-label="Link to FileSysStartupDevice">#</a></header><h3>FileSysStartupDevice</h3><pre><code>FileSysStartupDevice = 2147485699</code></pre></article><article class="reference-member" id="enum-value-file-sys-startup-unit"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-sys-startup-unit" aria-label="Link to FileSysStartupUnit">#</a></header><h3>FileSysStartupUnit</h3><pre><code>FileSysStartupUnit = 2147485700</code></pre></article><article class="reference-member" id="enum-value-file-sys-startup-flags"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-sys-startup-flags" aria-label="Link to FileSysStartupFlags">#</a></header><h3>FileSysStartupFlags</h3><pre><code>FileSysStartupFlags = 2147485701</code></pre></article><article class="reference-member" id="enum-value-dos-environment"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment" aria-label="Link to DosEnvironment">#</a></header><h3>DosEnvironment</h3><pre><code>DosEnvironment = 2147485708</code></pre></article><article class="reference-member" id="enum-value-dos-environment-table-size"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-table-size" aria-label="Link to DosEnvironmentTableSize">#</a></header><h3>DosEnvironmentTableSize</h3><pre><code>DosEnvironmentTableSize = 2147485709</code></pre></article><article class="reference-member" id="enum-value-dos-environment-size-block"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-size-block" aria-label="Link to DosEnvironmentSizeBlock">#</a></header><h3>DosEnvironmentSizeBlock</h3><pre><code>DosEnvironmentSizeBlock = 2147485710</code></pre></article><article class="reference-member" id="enum-value-dos-environment-sector-origin"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-sector-origin" aria-label="Link to DosEnvironmentSectorOrigin">#</a></header><h3>DosEnvironmentSectorOrigin</h3><pre><code>DosEnvironmentSectorOrigin = 2147485711</code></pre></article><article class="reference-member" id="enum-value-dos-environment-surfaces"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-surfaces" aria-label="Link to DosEnvironmentSurfaces">#</a></header><h3>DosEnvironmentSurfaces</h3><pre><code>DosEnvironmentSurfaces = 2147485712</code></pre></article><article class="reference-member" id="enum-value-dos-environment-number-of-heads"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-number-of-heads" aria-label="Link to DosEnvironmentNumberOfHeads">#</a></header><h3>DosEnvironmentNumberOfHeads</h3><pre><code>DosEnvironmentNumberOfHeads = 2147485712</code></pre></article><article class="reference-member" id="enum-value-dos-environment-sectors-per-block"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-sectors-per-block" aria-label="Link to DosEnvironmentSectorsPerBlock">#</a></header><h3>DosEnvironmentSectorsPerBlock</h3><pre><code>DosEnvironmentSectorsPerBlock = 2147485713</code></pre></article><article class="reference-member" id="enum-value-dos-environment-blocks-per-track"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-blocks-per-track" aria-label="Link to DosEnvironmentBlocksPerTrack">#</a></header><h3>DosEnvironmentBlocksPerTrack</h3><pre><code>DosEnvironmentBlocksPerTrack = 2147485714</code></pre></article><article class="reference-member" id="enum-value-dos-environment-reserved-blocks"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-reserved-blocks" aria-label="Link to DosEnvironmentReservedBlocks">#</a></header><h3>DosEnvironmentReservedBlocks</h3><pre><code>DosEnvironmentReservedBlocks = 2147485715</code></pre></article><article class="reference-member" id="enum-value-dos-environment-pre-alloc"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-pre-alloc" aria-label="Link to DosEnvironmentPreAlloc">#</a></header><h3>DosEnvironmentPreAlloc</h3><pre><code>DosEnvironmentPreAlloc = 2147485716</code></pre></article><article class="reference-member" id="enum-value-dos-environment-pre-fac"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-pre-fac" aria-label="Link to DosEnvironmentPreFac">#</a></header><h3>DosEnvironmentPreFac</h3><pre><code>DosEnvironmentPreFac = 2147485716</code></pre></article><article class="reference-member" id="enum-value-dos-environment-interleave"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-interleave" aria-label="Link to DosEnvironmentInterleave">#</a></header><h3>DosEnvironmentInterleave</h3><pre><code>DosEnvironmentInterleave = 2147485717</code></pre></article><article class="reference-member" id="enum-value-dos-environment-low-cylinder"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-low-cylinder" aria-label="Link to DosEnvironmentLowCylinder">#</a></header><h3>DosEnvironmentLowCylinder</h3><pre><code>DosEnvironmentLowCylinder = 2147485718</code></pre></article><article class="reference-member" id="enum-value-dos-environment-high-cylinder"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-high-cylinder" aria-label="Link to DosEnvironmentHighCylinder">#</a></header><h3>DosEnvironmentHighCylinder</h3><pre><code>DosEnvironmentHighCylinder = 2147485719</code></pre></article><article class="reference-member" id="enum-value-dos-environment-upper-cylinder"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-upper-cylinder" aria-label="Link to DosEnvironmentUpperCylinder">#</a></header><h3>DosEnvironmentUpperCylinder</h3><pre><code>DosEnvironmentUpperCylinder = 2147485719</code></pre></article><article class="reference-member" id="enum-value-dos-environment-number-of-buffers"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-number-of-buffers" aria-label="Link to DosEnvironmentNumberOfBuffers">#</a></header><h3>DosEnvironmentNumberOfBuffers</h3><pre><code>DosEnvironmentNumberOfBuffers = 2147485720</code></pre></article><article class="reference-member" id="enum-value-dos-environment-buffer-memory-type"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-buffer-memory-type" aria-label="Link to DosEnvironmentBufferMemoryType">#</a></header><h3>DosEnvironmentBufferMemoryType</h3><pre><code>DosEnvironmentBufferMemoryType = 2147485721</code></pre></article><article class="reference-member" id="enum-value-dos-environment-maximum-transfer"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-maximum-transfer" aria-label="Link to DosEnvironmentMaximumTransfer">#</a></header><h3>DosEnvironmentMaximumTransfer</h3><pre><code>DosEnvironmentMaximumTransfer = 2147485722</code></pre></article><article class="reference-member" id="enum-value-dos-environment-mask"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-mask" aria-label="Link to DosEnvironmentMask">#</a></header><h3>DosEnvironmentMask</h3><pre><code>DosEnvironmentMask = 2147485723</code></pre></article><article class="reference-member" id="enum-value-dos-environment-boot-priority"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-boot-priority" aria-label="Link to DosEnvironmentBootPriority">#</a></header><h3>DosEnvironmentBootPriority</h3><pre><code>DosEnvironmentBootPriority = 2147485724</code></pre></article><article class="reference-member" id="enum-value-dos-environment-dos-type"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-dos-type" aria-label="Link to DosEnvironmentDosType">#</a></header><h3>DosEnvironmentDosType</h3><pre><code>DosEnvironmentDosType = 2147485725</code></pre></article><article class="reference-member" id="enum-value-dos-environment-baud"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-baud" aria-label="Link to DosEnvironmentBaud">#</a></header><h3>DosEnvironmentBaud</h3><pre><code>DosEnvironmentBaud = 2147485726</code></pre></article><article class="reference-member" id="enum-value-dos-environment-control"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-control" aria-label="Link to DosEnvironmentControl">#</a></header><h3>DosEnvironmentControl</h3><pre><code>DosEnvironmentControl = 2147485727</code></pre></article><article class="reference-member" id="enum-value-dos-environment-boot-blocks"><header><span class="reference-kind">enum value</span><a href="#enum-value-dos-environment-boot-blocks" aria-label="Link to DosEnvironmentBootBlocks">#</a></header><h3>DosEnvironmentBootBlocks</h3><pre><code>DosEnvironmentBootBlocks = 2147485728</code></pre></article><article class="reference-member" id="enum-value-file-system-dos-type"><header><span class="reference-kind">enum value</span><a href="#enum-value-file-system-dos-type" aria-label="Link to FileSystemDosType">#</a></header><h3>FileSystemDosType</h3><pre><code>FileSystemDosType = 2147485738</code></pre></article><article class="reference-member" id="enum-value-volume-node-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume-node-name" aria-label="Link to VolumeNodeName">#</a></header><h3>VolumeNodeName</h3><pre><code>VolumeNodeName = 2147485748</code></pre></article><article class="reference-member" id="enum-value-volume-node-message-port"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume-node-message-port" aria-label="Link to VolumeNodeMessagePort">#</a></header><h3>VolumeNodeMessagePort</h3><pre><code>VolumeNodeMessagePort = 2147485749</code></pre></article><article class="reference-member" id="enum-value-volume-node-lock"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume-node-lock" aria-label="Link to VolumeNodeLock">#</a></header><h3>VolumeNodeLock</h3><pre><code>VolumeNodeLock = 2147485750</code></pre></article><article class="reference-member" id="enum-value-volume-node-lock-list"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume-node-lock-list" aria-label="Link to VolumeNodeLockList">#</a></header><h3>VolumeNodeLockList</h3><pre><code>VolumeNodeLockList = 2147485751</code></pre></article><article class="reference-member" id="enum-value-volume-node-date"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume-node-date" aria-label="Link to VolumeNodeDate">#</a></header><h3>VolumeNodeDate</h3><pre><code>VolumeNodeDate = 2147485752</code></pre></article><article class="reference-member" id="enum-value-volume-node-disk-type"><header><span class="reference-kind">enum value</span><a href="#enum-value-volume-node-disk-type" aria-label="Link to VolumeNodeDiskType">#</a></header><h3>VolumeNodeDiskType</h3><pre><code>VolumeNodeDiskType = 2147485753</code></pre></article><article class="reference-member" id="enum-value-assign-node-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-assign-node-name" aria-label="Link to AssignNodeName">#</a></header><h3>AssignNodeName</h3><pre><code>AssignNodeName = 2147485768</code></pre></article><article class="reference-member" id="enum-value-assign-node-message-port"><header><span class="reference-kind">enum value</span><a href="#enum-value-assign-node-message-port" aria-label="Link to AssignNodeMessagePort">#</a></header><h3>AssignNodeMessagePort</h3><pre><code>AssignNodeMessagePort = 2147485769</code></pre></article><article class="reference-member" id="enum-value-assign-node-lock"><header><span class="reference-kind">enum value</span><a href="#enum-value-assign-node-lock" aria-label="Link to AssignNodeLock">#</a></header><h3>AssignNodeLock</h3><pre><code>AssignNodeLock = 2147485770</code></pre></article><article class="reference-member" id="enum-value-assign-node-type"><header><span class="reference-kind">enum value</span><a href="#enum-value-assign-node-type" aria-label="Link to AssignNodeType">#</a></header><h3>AssignNodeType</h3><pre><code>AssignNodeType = 2147485771</code></pre></article><article class="reference-member" id="enum-value-assign-node-assign-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-assign-node-assign-name" aria-label="Link to AssignNodeAssignName">#</a></header><h3>AssignNodeAssignName</h3><pre><code>AssignNodeAssignName = 2147485772</code></pre></article><article class="reference-member" id="enum-value-assign-node-assign-list"><header><span class="reference-kind">enum value</span><a href="#enum-value-assign-node-assign-list" aria-label="Link to AssignNodeAssignList">#</a></header><h3>AssignNodeAssignList</h3><pre><code>AssignNodeAssignList = 2147485773</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

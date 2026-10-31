@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>TTEngineTag | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.TTEngineTag API reference."/><meta property="og:title" content="TTEngineTag | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.TTEngineTag API reference."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/ttengine/ttengine-tag"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/ttengine/ttengine-tag"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/ttengine">TTEngine</a><span>/</span><span aria-current="page">TTEngineTag</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">enum</span><code></code></div><h1>TTEngineTag</h1><p class="reference-full-name">Amiga.TTEngineTag</p><pre class="reference-signature"><code>public enum TTEngineTag : uint</code></pre><div class="reference-source-row"><span>36 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/TTEngine/Constants.cs#L8">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#enum-value-font-file">FontFile</a><a href="#enum-value-font-style">FontStyle</a><a href="#enum-value-family-table">FamilyTable</a><a href="#enum-value-font-size">FontSize</a><a href="#enum-value-font-weight">FontWeight</a><a href="#enum-value-color-map">ColorMap</a><a href="#enum-value-screen">Screen</a><a href="#enum-value-window">Window</a><a href="#enum-value-font-ascender">FontAscender</a><a href="#enum-value-font-descender">FontDescender</a><a href="#enum-value-antialias">Antialias</a><a href="#enum-value-encoding">Encoding</a><a href="#enum-value-font-name">FontName</a><a href="#enum-value-family-name">FamilyName</a><a href="#enum-value-subfamily-name">SubfamilyName</a><a href="#enum-value-transparency">Transparency</a><a href="#enum-value-scale-x">ScaleX</a><a href="#enum-value-soft-style">SoftStyle</a><a href="#enum-value-foreground">Foreground</a><a href="#enum-value-background">Background</a><a href="#enum-value-font-max-top">FontMaxTop</a><a href="#enum-value-font-baseline">FontBaseline</a><a href="#enum-value-font-max-bottom">FontMaxBottom</a><a href="#enum-value-font-design-height">FontDesignHeight</a><a href="#enum-value-font-real-ascender">FontRealAscender</a><a href="#enum-value-font-real-descender">FontRealDescender</a><a href="#enum-value-font-accented-ascender">FontAccentedAscender</a><a href="#enum-value-custom-encoding">CustomEncoding</a><a href="#enum-value-gamma">Gamma</a><a href="#enum-value-font-fixed-width">FontFixedWidth</a><a href="#enum-value-font-height">FontHeight</a><a href="#enum-value-font-width">FontWidth</a><a href="#enum-value-disk-font-metrics">DiskFontMetrics</a><a href="#enum-value-force-fixed-width">ForceFixedWidth</a><a href="#enum-value-print-mode">PrintMode</a><a href="#enum-value-destination-alpha">DestinationAlpha</a></aside><div><section class="reference-member-section"><h2>enum value declarations</h2><article class="reference-member" id="enum-value-font-file"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-file" aria-label="Link to FontFile">#</a></header><h3>FontFile</h3><pre><code>FontFile = 1859780608</code></pre></article><article class="reference-member" id="enum-value-font-style"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-style" aria-label="Link to FontStyle">#</a></header><h3>FontStyle</h3><pre><code>FontStyle = 1859780609</code></pre></article><article class="reference-member" id="enum-value-family-table"><header><span class="reference-kind">enum value</span><a href="#enum-value-family-table" aria-label="Link to FamilyTable">#</a></header><h3>FamilyTable</h3><pre><code>FamilyTable = 1859780610</code></pre></article><article class="reference-member" id="enum-value-font-size"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-size" aria-label="Link to FontSize">#</a></header><h3>FontSize</h3><pre><code>FontSize = 1859780611</code></pre></article><article class="reference-member" id="enum-value-font-weight"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-weight" aria-label="Link to FontWeight">#</a></header><h3>FontWeight</h3><pre><code>FontWeight = 1859780612</code></pre></article><article class="reference-member" id="enum-value-color-map"><header><span class="reference-kind">enum value</span><a href="#enum-value-color-map" aria-label="Link to ColorMap">#</a></header><h3>ColorMap</h3><pre><code>ColorMap = 1859780613</code></pre></article><article class="reference-member" id="enum-value-screen"><header><span class="reference-kind">enum value</span><a href="#enum-value-screen" aria-label="Link to Screen">#</a></header><h3>Screen</h3><pre><code>Screen = 1859780614</code></pre></article><article class="reference-member" id="enum-value-window"><header><span class="reference-kind">enum value</span><a href="#enum-value-window" aria-label="Link to Window">#</a></header><h3>Window</h3><pre><code>Window = 1859780615</code></pre></article><article class="reference-member" id="enum-value-font-ascender"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-ascender" aria-label="Link to FontAscender">#</a></header><h3>FontAscender</h3><pre><code>FontAscender = 1859780616</code></pre></article><article class="reference-member" id="enum-value-font-descender"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-descender" aria-label="Link to FontDescender">#</a></header><h3>FontDescender</h3><pre><code>FontDescender = 1859780617</code></pre></article><article class="reference-member" id="enum-value-antialias"><header><span class="reference-kind">enum value</span><a href="#enum-value-antialias" aria-label="Link to Antialias">#</a></header><h3>Antialias</h3><pre><code>Antialias = 1859780623</code></pre></article><article class="reference-member" id="enum-value-encoding"><header><span class="reference-kind">enum value</span><a href="#enum-value-encoding" aria-label="Link to Encoding">#</a></header><h3>Encoding</h3><pre><code>Encoding = 1859780624</code></pre></article><article class="reference-member" id="enum-value-font-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-name" aria-label="Link to FontName">#</a></header><h3>FontName</h3><pre><code>FontName = 1859780625</code></pre></article><article class="reference-member" id="enum-value-family-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-family-name" aria-label="Link to FamilyName">#</a></header><h3>FamilyName</h3><pre><code>FamilyName = 1859780626</code></pre></article><article class="reference-member" id="enum-value-subfamily-name"><header><span class="reference-kind">enum value</span><a href="#enum-value-subfamily-name" aria-label="Link to SubfamilyName">#</a></header><h3>SubfamilyName</h3><pre><code>SubfamilyName = 1859780627</code></pre></article><article class="reference-member" id="enum-value-transparency"><header><span class="reference-kind">enum value</span><a href="#enum-value-transparency" aria-label="Link to Transparency">#</a></header><h3>Transparency</h3><pre><code>Transparency = 1859780628</code></pre></article><article class="reference-member" id="enum-value-scale-x"><header><span class="reference-kind">enum value</span><a href="#enum-value-scale-x" aria-label="Link to ScaleX">#</a></header><h3>ScaleX</h3><pre><code>ScaleX = 1859780629</code></pre></article><article class="reference-member" id="enum-value-soft-style"><header><span class="reference-kind">enum value</span><a href="#enum-value-soft-style" aria-label="Link to SoftStyle">#</a></header><h3>SoftStyle</h3><pre><code>SoftStyle = 1859780631</code></pre></article><article class="reference-member" id="enum-value-foreground"><header><span class="reference-kind">enum value</span><a href="#enum-value-foreground" aria-label="Link to Foreground">#</a></header><h3>Foreground</h3><pre><code>Foreground = 1859780632</code></pre></article><article class="reference-member" id="enum-value-background"><header><span class="reference-kind">enum value</span><a href="#enum-value-background" aria-label="Link to Background">#</a></header><h3>Background</h3><pre><code>Background = 1859780633</code></pre></article><article class="reference-member" id="enum-value-font-max-top"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-max-top" aria-label="Link to FontMaxTop">#</a></header><h3>FontMaxTop</h3><pre><code>FontMaxTop = 1859780638</code></pre></article><article class="reference-member" id="enum-value-font-baseline"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-baseline" aria-label="Link to FontBaseline">#</a></header><h3>FontBaseline</h3><pre><code>FontBaseline = 1859780638</code></pre></article><article class="reference-member" id="enum-value-font-max-bottom"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-max-bottom" aria-label="Link to FontMaxBottom">#</a></header><h3>FontMaxBottom</h3><pre><code>FontMaxBottom = 1859780639</code></pre></article><article class="reference-member" id="enum-value-font-design-height"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-design-height" aria-label="Link to FontDesignHeight">#</a></header><h3>FontDesignHeight</h3><pre><code>FontDesignHeight = 1859780640</code></pre></article><article class="reference-member" id="enum-value-font-real-ascender"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-real-ascender" aria-label="Link to FontRealAscender">#</a></header><h3>FontRealAscender</h3><pre><code>FontRealAscender = 1859780641</code></pre></article><article class="reference-member" id="enum-value-font-real-descender"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-real-descender" aria-label="Link to FontRealDescender">#</a></header><h3>FontRealDescender</h3><pre><code>FontRealDescender = 1859780642</code></pre></article><article class="reference-member" id="enum-value-font-accented-ascender"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-accented-ascender" aria-label="Link to FontAccentedAscender">#</a></header><h3>FontAccentedAscender</h3><pre><code>FontAccentedAscender = 1859780643</code></pre></article><article class="reference-member" id="enum-value-custom-encoding"><header><span class="reference-kind">enum value</span><a href="#enum-value-custom-encoding" aria-label="Link to CustomEncoding">#</a></header><h3>CustomEncoding</h3><pre><code>CustomEncoding = 1859780644</code></pre></article><article class="reference-member" id="enum-value-gamma"><header><span class="reference-kind">enum value</span><a href="#enum-value-gamma" aria-label="Link to Gamma">#</a></header><h3>Gamma</h3><pre><code>Gamma = 1859780645</code></pre></article><article class="reference-member" id="enum-value-font-fixed-width"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-fixed-width" aria-label="Link to FontFixedWidth">#</a></header><h3>FontFixedWidth</h3><pre><code>FontFixedWidth = 1859780646</code></pre></article><article class="reference-member" id="enum-value-font-height"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-height" aria-label="Link to FontHeight">#</a></header><h3>FontHeight</h3><pre><code>FontHeight = 1859780647</code></pre></article><article class="reference-member" id="enum-value-font-width"><header><span class="reference-kind">enum value</span><a href="#enum-value-font-width" aria-label="Link to FontWidth">#</a></header><h3>FontWidth</h3><pre><code>FontWidth = 1859780648</code></pre></article><article class="reference-member" id="enum-value-disk-font-metrics"><header><span class="reference-kind">enum value</span><a href="#enum-value-disk-font-metrics" aria-label="Link to DiskFontMetrics">#</a></header><h3>DiskFontMetrics</h3><pre><code>DiskFontMetrics = 1859780649</code></pre></article><article class="reference-member" id="enum-value-force-fixed-width"><header><span class="reference-kind">enum value</span><a href="#enum-value-force-fixed-width" aria-label="Link to ForceFixedWidth">#</a></header><h3>ForceFixedWidth</h3><pre><code>ForceFixedWidth = 1859780656</code></pre></article><article class="reference-member" id="enum-value-print-mode"><header><span class="reference-kind">enum value</span><a href="#enum-value-print-mode" aria-label="Link to PrintMode">#</a></header><h3>PrintMode</h3><pre><code>PrintMode = 1859780659</code></pre></article><article class="reference-member" id="enum-value-destination-alpha"><header><span class="reference-kind">enum value</span><a href="#enum-value-destination-alpha" aria-label="Link to DestinationAlpha">#</a></header><h3>DestinationAlpha</h3><pre><code>DestinationAlpha = 1859780660</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

@@ -1,0 +1,207 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="preload" href="/CopperSharp68k/coppersharp-emblem.png" as="image"/><link rel="stylesheet" href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-rsc-css-href="/CopperSharp68k/assets/index-CL9cI6Mc.css" data-precedence="vite-rsc/importer-resources"/><title>UtilityLvo | CopperSharp Amiga SDK</title><meta name="description" content="Amiga.UtilityLvo API reference."/><meta property="og:title" content="UtilityLvo | CopperSharp Amiga SDK"/><meta property="og:description" content="Amiga.UtilityLvo API reference."/><meta property="og:url" content="https://ilehtoranta.github.io/CopperSharp68k/reference/utility/utility-lvo"/><meta property="og:type" content="website"/><meta name="twitter:card" content="summary_large_image"/><meta name="twitter:title" content="CopperSharp | CIL to Motorola 68k AOT compiler"/><meta name="twitter:description" content="A closed-world CIL-to-Motorola 68k ahead-of-time compiler for Amiga software, ROM images, and assembly output."/><meta name="twitter:image" content="https://ilehtoranta.github.io/CopperSharp68k/og.png"/><link rel="shortcut icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="icon" href="https://ilehtoranta.github.io/CopperSharp68k/coppersharp-emblem.png"/><link rel="canonical" href="https://ilehtoranta.github.io/CopperSharp68k/reference/utility/utility-lvo"/>
+<style data-vinext-fonts>/* cyrillic-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-37facb2a.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-c9a5f13c.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-f00fa027.woff2) format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-bd6e7fdc.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-76dcfc73.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/manrope-76eca2803f7f/manrope-81401990.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_manrope_0qtdyxm { font-family: 'Manrope', sans-serif; }
+
+.__variable_manrope_0qtdyxm { --font-manrope: 'Manrope', sans-serif; }
+
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3a6be21f.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-c969eaac.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-ef6e627b.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-9994c10a.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d7731959.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-1321c702.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-b98a4523.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-d9a6454f.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-60d1ee22.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8d0aead6.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-fffef905.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-4d3fe5e6.woff2) format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-3d252c9a.woff2) format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-486bb381.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/CopperSharp68k/assets/_vinext_fonts/ibm-plex-mono-fb0034d93db3/ibm-plex-mono-8864f199.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+.__font_ibm_plex_mono_1fm2g44 { font-family: 'IBM Plex Mono', sans-serif; }
+
+.__variable_ibm_plex_mono_1fm2g44 { --font-plex-mono: 'IBM Plex Mono', sans-serif; }
+</style>
+<meta name="site-base" content="/CopperSharp68k"/>
+</head><body class="__variable_manrope_0qtdyxm __variable_ibm_plex_mono_1fm2g44"><main class="reference-page">
+<header class="site-header reference-site-header"><a class="brand" href="/CopperSharp68k/" aria-label="CopperSharp home"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="42" height="42"/><span>Copper<span>Sharp</span></span></a><nav aria-label="Reference navigation"><a href="/CopperSharp68k/getting-started/">Getting started</a><a href="/CopperSharp68k/compatibility/">Compatibility</a><a href="/CopperSharp68k/reference" aria-current="page">SDK reference</a><a class="nav-github" href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></nav></header>
+<article class="reference-document"><nav class="reference-breadcrumbs" aria-label="Breadcrumb"><a href="/CopperSharp68k/reference">SDK reference</a><span>/</span><a href="/CopperSharp68k/reference/utility">Utility</a><span>/</span><span aria-current="page">UtilityLvo</span></nav><header class="reference-document-header reference-type-header"><div class="reference-type-labels"><span class="reference-kind">static class</span><code></code></div><h1>UtilityLvo</h1><p class="reference-full-name">Amiga.UtilityLvo</p><pre class="reference-signature"><code>public static class UtilityLvo</code></pre><div class="reference-source-row"><span>38 declared members</span><a href="https://github.com/ilehtoranta/CopperSharp68k/blob/74274cd53419cb918b84e0946332191c4f8fadfe/Sdk.Amiga/Utility/UtilityLvo.cs#L8">View source ↗</a></div></header><div class="reference-type-layout"><aside class="reference-member-index" aria-label="Members on this page"><span>MEMBERS</span><a href="#constant-find-tag-item">FindTagItem</a><a href="#constant-get-tag-data">GetTagData</a><a href="#constant-pack-bool-tags">PackBoolTags</a><a href="#constant-next-tag-item">NextTagItem</a><a href="#constant-filter-tag-changes">FilterTagChanges</a><a href="#constant-map-tags">MapTags</a><a href="#constant-allocate-tag-items">AllocateTagItems</a><a href="#constant-clone-tag-items">CloneTagItems</a><a href="#constant-free-tag-items">FreeTagItems</a><a href="#constant-refresh-tag-item-clones">RefreshTagItemClones</a><a href="#constant-tag-in-array">TagInArray</a><a href="#constant-filter-tag-items">FilterTagItems</a><a href="#constant-call-hook-pkt">CallHookPkt</a><a href="#constant-amiga2-date">Amiga2Date</a><a href="#constant-date2-amiga">Date2Amiga</a><a href="#constant-check-date">CheckDate</a><a href="#constant-smult32">SMult32</a><a href="#constant-umult32">UMult32</a><a href="#constant-sdiv-mod32">SDivMod32</a><a href="#constant-udiv-mod32">UDivMod32</a><a href="#constant-stricmp">Stricmp</a><a href="#constant-strnicmp">Strnicmp</a><a href="#constant-to-upper">ToUpper</a><a href="#constant-to-lower">ToLower</a><a href="#constant-apply-tag-changes">ApplyTagChanges</a><a href="#constant-smult64">SMult64</a><a href="#constant-umult64">UMult64</a><a href="#constant-pack-structure-tags">PackStructureTags</a><a href="#constant-unpack-structure-tags">UnpackStructureTags</a><a href="#constant-add-named-object">AddNamedObject</a><a href="#constant-alloc-named-object-a">AllocNamedObjectA</a><a href="#constant-attempt-rem-named-object">AttemptRemNamedObject</a><a href="#constant-find-named-object">FindNamedObject</a><a href="#constant-free-named-object">FreeNamedObject</a><a href="#constant-named-object-name">NamedObjectName</a><a href="#constant-release-named-object">ReleaseNamedObject</a><a href="#constant-rem-named-object">RemNamedObject</a><a href="#constant-get-unique-id">GetUniqueID</a></aside><div><section class="reference-member-section"><h2>constant declarations</h2><article class="reference-member" id="constant-find-tag-item"><header><span class="reference-kind">constant</span><a href="#constant-find-tag-item" aria-label="Link to FindTagItem">#</a></header><h3>FindTagItem</h3><pre><code>public const short FindTagItem = -30</code></pre></article><article class="reference-member" id="constant-get-tag-data"><header><span class="reference-kind">constant</span><a href="#constant-get-tag-data" aria-label="Link to GetTagData">#</a></header><h3>GetTagData</h3><pre><code>public const short GetTagData = -36</code></pre></article><article class="reference-member" id="constant-pack-bool-tags"><header><span class="reference-kind">constant</span><a href="#constant-pack-bool-tags" aria-label="Link to PackBoolTags">#</a></header><h3>PackBoolTags</h3><pre><code>public const short PackBoolTags = -42</code></pre></article><article class="reference-member" id="constant-next-tag-item"><header><span class="reference-kind">constant</span><a href="#constant-next-tag-item" aria-label="Link to NextTagItem">#</a></header><h3>NextTagItem</h3><pre><code>public const short NextTagItem = -48</code></pre></article><article class="reference-member" id="constant-filter-tag-changes"><header><span class="reference-kind">constant</span><a href="#constant-filter-tag-changes" aria-label="Link to FilterTagChanges">#</a></header><h3>FilterTagChanges</h3><pre><code>public const short FilterTagChanges = -54</code></pre></article><article class="reference-member" id="constant-map-tags"><header><span class="reference-kind">constant</span><a href="#constant-map-tags" aria-label="Link to MapTags">#</a></header><h3>MapTags</h3><pre><code>public const short MapTags = -60</code></pre></article><article class="reference-member" id="constant-allocate-tag-items"><header><span class="reference-kind">constant</span><a href="#constant-allocate-tag-items" aria-label="Link to AllocateTagItems">#</a></header><h3>AllocateTagItems</h3><pre><code>public const short AllocateTagItems = -66</code></pre></article><article class="reference-member" id="constant-clone-tag-items"><header><span class="reference-kind">constant</span><a href="#constant-clone-tag-items" aria-label="Link to CloneTagItems">#</a></header><h3>CloneTagItems</h3><pre><code>public const short CloneTagItems = -72</code></pre></article><article class="reference-member" id="constant-free-tag-items"><header><span class="reference-kind">constant</span><a href="#constant-free-tag-items" aria-label="Link to FreeTagItems">#</a></header><h3>FreeTagItems</h3><pre><code>public const short FreeTagItems = -78</code></pre></article><article class="reference-member" id="constant-refresh-tag-item-clones"><header><span class="reference-kind">constant</span><a href="#constant-refresh-tag-item-clones" aria-label="Link to RefreshTagItemClones">#</a></header><h3>RefreshTagItemClones</h3><pre><code>public const short RefreshTagItemClones = -84</code></pre></article><article class="reference-member" id="constant-tag-in-array"><header><span class="reference-kind">constant</span><a href="#constant-tag-in-array" aria-label="Link to TagInArray">#</a></header><h3>TagInArray</h3><pre><code>public const short TagInArray = -90</code></pre></article><article class="reference-member" id="constant-filter-tag-items"><header><span class="reference-kind">constant</span><a href="#constant-filter-tag-items" aria-label="Link to FilterTagItems">#</a></header><h3>FilterTagItems</h3><pre><code>public const short FilterTagItems = -96</code></pre></article><article class="reference-member" id="constant-call-hook-pkt"><header><span class="reference-kind">constant</span><a href="#constant-call-hook-pkt" aria-label="Link to CallHookPkt">#</a></header><h3>CallHookPkt</h3><pre><code>public const short CallHookPkt = -102</code></pre></article><article class="reference-member" id="constant-amiga2-date"><header><span class="reference-kind">constant</span><a href="#constant-amiga2-date" aria-label="Link to Amiga2Date">#</a></header><h3>Amiga2Date</h3><pre><code>public const short Amiga2Date = -120</code></pre></article><article class="reference-member" id="constant-date2-amiga"><header><span class="reference-kind">constant</span><a href="#constant-date2-amiga" aria-label="Link to Date2Amiga">#</a></header><h3>Date2Amiga</h3><pre><code>public const short Date2Amiga = -126</code></pre></article><article class="reference-member" id="constant-check-date"><header><span class="reference-kind">constant</span><a href="#constant-check-date" aria-label="Link to CheckDate">#</a></header><h3>CheckDate</h3><pre><code>public const short CheckDate = -132</code></pre></article><article class="reference-member" id="constant-smult32"><header><span class="reference-kind">constant</span><a href="#constant-smult32" aria-label="Link to SMult32">#</a></header><h3>SMult32</h3><pre><code>public const short SMult32 = -138</code></pre></article><article class="reference-member" id="constant-umult32"><header><span class="reference-kind">constant</span><a href="#constant-umult32" aria-label="Link to UMult32">#</a></header><h3>UMult32</h3><pre><code>public const short UMult32 = -144</code></pre></article><article class="reference-member" id="constant-sdiv-mod32"><header><span class="reference-kind">constant</span><a href="#constant-sdiv-mod32" aria-label="Link to SDivMod32">#</a></header><h3>SDivMod32</h3><pre><code>public const short SDivMod32 = -150</code></pre></article><article class="reference-member" id="constant-udiv-mod32"><header><span class="reference-kind">constant</span><a href="#constant-udiv-mod32" aria-label="Link to UDivMod32">#</a></header><h3>UDivMod32</h3><pre><code>public const short UDivMod32 = -156</code></pre></article><article class="reference-member" id="constant-stricmp"><header><span class="reference-kind">constant</span><a href="#constant-stricmp" aria-label="Link to Stricmp">#</a></header><h3>Stricmp</h3><pre><code>public const short Stricmp = -162</code></pre></article><article class="reference-member" id="constant-strnicmp"><header><span class="reference-kind">constant</span><a href="#constant-strnicmp" aria-label="Link to Strnicmp">#</a></header><h3>Strnicmp</h3><pre><code>public const short Strnicmp = -168</code></pre></article><article class="reference-member" id="constant-to-upper"><header><span class="reference-kind">constant</span><a href="#constant-to-upper" aria-label="Link to ToUpper">#</a></header><h3>ToUpper</h3><pre><code>public const short ToUpper = -174</code></pre></article><article class="reference-member" id="constant-to-lower"><header><span class="reference-kind">constant</span><a href="#constant-to-lower" aria-label="Link to ToLower">#</a></header><h3>ToLower</h3><pre><code>public const short ToLower = -180</code></pre></article><article class="reference-member" id="constant-apply-tag-changes"><header><span class="reference-kind">constant</span><a href="#constant-apply-tag-changes" aria-label="Link to ApplyTagChanges">#</a></header><h3>ApplyTagChanges</h3><pre><code>public const short ApplyTagChanges = -186</code></pre></article><article class="reference-member" id="constant-smult64"><header><span class="reference-kind">constant</span><a href="#constant-smult64" aria-label="Link to SMult64">#</a></header><h3>SMult64</h3><pre><code>public const short SMult64 = -198</code></pre></article><article class="reference-member" id="constant-umult64"><header><span class="reference-kind">constant</span><a href="#constant-umult64" aria-label="Link to UMult64">#</a></header><h3>UMult64</h3><pre><code>public const short UMult64 = -204</code></pre></article><article class="reference-member" id="constant-pack-structure-tags"><header><span class="reference-kind">constant</span><a href="#constant-pack-structure-tags" aria-label="Link to PackStructureTags">#</a></header><h3>PackStructureTags</h3><pre><code>public const short PackStructureTags = -210</code></pre></article><article class="reference-member" id="constant-unpack-structure-tags"><header><span class="reference-kind">constant</span><a href="#constant-unpack-structure-tags" aria-label="Link to UnpackStructureTags">#</a></header><h3>UnpackStructureTags</h3><pre><code>public const short UnpackStructureTags = -216</code></pre></article><article class="reference-member" id="constant-add-named-object"><header><span class="reference-kind">constant</span><a href="#constant-add-named-object" aria-label="Link to AddNamedObject">#</a></header><h3>AddNamedObject</h3><pre><code>public const short AddNamedObject = -222</code></pre></article><article class="reference-member" id="constant-alloc-named-object-a"><header><span class="reference-kind">constant</span><a href="#constant-alloc-named-object-a" aria-label="Link to AllocNamedObjectA">#</a></header><h3>AllocNamedObjectA</h3><pre><code>public const short AllocNamedObjectA = -228</code></pre></article><article class="reference-member" id="constant-attempt-rem-named-object"><header><span class="reference-kind">constant</span><a href="#constant-attempt-rem-named-object" aria-label="Link to AttemptRemNamedObject">#</a></header><h3>AttemptRemNamedObject</h3><pre><code>public const short AttemptRemNamedObject = -234</code></pre></article><article class="reference-member" id="constant-find-named-object"><header><span class="reference-kind">constant</span><a href="#constant-find-named-object" aria-label="Link to FindNamedObject">#</a></header><h3>FindNamedObject</h3><pre><code>public const short FindNamedObject = -240</code></pre></article><article class="reference-member" id="constant-free-named-object"><header><span class="reference-kind">constant</span><a href="#constant-free-named-object" aria-label="Link to FreeNamedObject">#</a></header><h3>FreeNamedObject</h3><pre><code>public const short FreeNamedObject = -246</code></pre></article><article class="reference-member" id="constant-named-object-name"><header><span class="reference-kind">constant</span><a href="#constant-named-object-name" aria-label="Link to NamedObjectName">#</a></header><h3>NamedObjectName</h3><pre><code>public const short NamedObjectName = -252</code></pre></article><article class="reference-member" id="constant-release-named-object"><header><span class="reference-kind">constant</span><a href="#constant-release-named-object" aria-label="Link to ReleaseNamedObject">#</a></header><h3>ReleaseNamedObject</h3><pre><code>public const short ReleaseNamedObject = -258</code></pre></article><article class="reference-member" id="constant-rem-named-object"><header><span class="reference-kind">constant</span><a href="#constant-rem-named-object" aria-label="Link to RemNamedObject">#</a></header><h3>RemNamedObject</h3><pre><code>public const short RemNamedObject = -264</code></pre></article><article class="reference-member" id="constant-get-unique-id"><header><span class="reference-kind">constant</span><a href="#constant-get-unique-id" aria-label="Link to GetUniqueID">#</a></header><h3>GetUniqueID</h3><pre><code>public const short GetUniqueID = -270</code></pre></article></section></div></div></article>
+<footer><a class="brand footer-brand" href="/CopperSharp68k/"><img src="/CopperSharp68k/coppersharp-emblem.png" alt="" width="34" height="34"/><span>Copper<span>Sharp</span></span></a><p>Generated from the public CopperSharp.Sdk.Amiga assembly.</p><div><a href="/CopperSharp68k/reference">SDK reference</a><a href="https://github.com/ilehtoranta/CopperSharp68k">GitHub ↗</a></div></footer>
+
+</main></body></html>

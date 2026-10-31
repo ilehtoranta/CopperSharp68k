@@ -1,0 +1,14 @@
+{
+  "sourceRevision": "74274cd53419cb918b84e0946332191c4f8fadfe",
+  "reviewedOn": "2026-10-31",
+  "scope": "main-source",
+  "manifest": "Compiler/Framework/net10.0-10.0.9.json",
+  "targetFramework": "net10.0",
+  "referencePackVersion": "10.0.9",
+  "bindings": 305,
+  "implemented": 158,
+  "intrinsics": 90,
+  "platform": 57,
+  "typePatterns": 47,
+  "featureGroups": 23
+}
