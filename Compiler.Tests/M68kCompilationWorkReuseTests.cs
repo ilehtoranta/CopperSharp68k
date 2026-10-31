@@ -5,6 +5,24 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kCompilationWorkReuseTests
 {
+	[Fact]
+	public void ReturnLookingOperandIsNotAnInstructionTarget()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitBranch(M68kCondition.True, "operand");
+		assembler.EmitWord(0x203C); // MOVE.L #$4E754E75,D0
+		assembler.EmitLong(0x4E754E75);
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("method:test:end");
+		var buffer = Buffer(assembler);
+		buffer.Labels.Add("operand", 6);
+		var before = buffer.Bytes.ToArray();
+		var pass = new M68kPeepholeOptimizer(assembler, buffer, M68kCpuTarget.M68000, M68kClrPolicy.Auto, []);
+		pass.RunLayoutCleanup();
+		Assert.False(pass.Changed);
+		Assert.Equal(before, buffer.Bytes);
+	}
+
 	[Theory]
 	[InlineData(0)]
 	[InlineData(1)]

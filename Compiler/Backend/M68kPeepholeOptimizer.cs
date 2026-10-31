@@ -33,8 +33,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private HashSet<int>? _referencedLabelOffsets;
 	private HashSet<int>? _unrelocatableLabelOffsets;
 	private HashSet<int>? _labelOffsets;
-	private IReadOnlyList<M68kEmittedInstruction>? _indexedInstructions;
-	private Dictionary<int, M68kEmittedInstruction>? _instructionIndexStorage;
 	private IReadOnlySet<int>? _addressFixupOffsets;
 	private AddressEntryBoundaryIndex? _addressEntryBoundaryIndex;
 	private int[]? _foldBoundaryLabelOffsets;
@@ -106,12 +104,11 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		Changed = false;
 		RewriteCount = 0;
 		var rewrites = 0;
-		// Reuse within this invocation, without retaining a whole-image table
+		// Reuse within this invocation, without retaining whole-image storage
 		// across the smaller method scopes handled by the same pass instance.
 		var referencedOffsetStorage = new HashSet<int>();
 		var unrelocatableOffsetStorage = new HashSet<int>();
 		var labelOffsetStorage = new HashSet<int>();
-		_instructionIndexStorage = null;
 		bool changed;
 		do
 		{
@@ -125,7 +122,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_controlFlowMethodEnds = null;
 				_generatedSizeIntervals = null;
 				_roundBranches = null;
-				_indexedInstructions = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets(storage: referencedOffsetStorage);
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true, storage: unrelocatableOffsetStorage);
@@ -302,7 +298,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
 				_roundBranches = null;
-				_indexedInstructions = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -483,7 +478,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		var referencedOffsetStorage = new HashSet<int>();
 		var unrelocatableOffsetStorage = new HashSet<int>();
 		var labelOffsetStorage = new HashSet<int>();
-		_instructionIndexStorage = null;
 		bool changed;
 		do
 		{
@@ -494,7 +488,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
 				_roundBranches = null;
-				_indexedInstructions = null;
 				_referencedLabelOffsets = ReferencedLabelOffsets(storage: referencedOffsetStorage);
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
 					includeExternalAddresses: true, storage: unrelocatableOffsetStorage);
@@ -516,7 +509,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
 				_roundBranches = null;
-				_indexedInstructions = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;

@@ -84,13 +84,11 @@ avoiding repeated whole-graph scans and sorts. The
 Block liveness exchanges scratch sets with changed results and rebuilds edge
 facts on every visit, retaining the same sweep, phi-edge rules and convergence.
 
-`peephole.instruction-index` measures offset lookup construction shared by
-control-flow rewrites in an immutable analysis round. Build/reuse counters are
-`peephole.instruction-index-builds` and `peephole.instruction-index-reuses`.
-Changing the instruction snapshot or range rebuilds membership; a successful
-edit or exception discards the active index. Label-offset sets are also rebuilt
-each round. Backing storage is reused within one pass invocation, so a large
-whole-image table does not carry into later method scopes. Rewrite order and
+Control-flow peephole passes binary-search the sorted instruction snapshot,
+requiring an exact offset match. This avoids constructing whole-stream lookup
+dictionaries and still rejects targets inside operands. Label-offset sets are
+rebuilt each round, reusing backing storage within one pass invocation so large
+whole-image storage does not carry into later method scopes. Rewrite order and
 budgets are unchanged.
 Return-chain queries use binary search over the same sorted method boundaries
 and reuse a cycle-detection set between queries. Each query clears that set;
