@@ -19,7 +19,11 @@ Each binding declares:
 - output-profile restrictions; and
 - any required runtime helpers or metadata.
 
-The compiler validates agreement between the contract manifest and executable binding registry. Missing, duplicate, or conflicting entries are build errors.
+The compiler validates the contract manifest's entries against the executable
+binding registry. Audited CoreLib rules add input- and call-site-specific
+declarations; the JSON inventory is not the whole registry's public/private
+admission surface. Missing required declarations, duplicates and conflicts are
+build errors.
 
 ## Binding kinds
 
@@ -43,7 +47,10 @@ The public member binds to a PAL operation with an explicit output-profile imple
 
 ### Unsupported
 
-Unsupported entries provide a stable diagnostic reason. Any unlisted reachable identity is also unsupported. Rejection occurs before backend lowering.
+Unsupported entries provide a stable diagnostic reason. A reachable identity
+without an exact binding or applicable audited admission rule is unsupported.
+Absence from the JSON inventory alone does not exclude the verified-input
+StringBuilder surface described below. Rejection occurs before backend lowering.
 
 ## Official implementation packs
 
@@ -64,8 +71,8 @@ This makes managed implementation reuse reproducible and auditable. A servicing 
 Binding selection follows these rules:
 
 1. Resolve the reachable member to an exact official contract identity.
-2. Find exactly one binding for the active profile coordinate.
-3. Validate output-profile and CPU restrictions.
+2. Resolve one unambiguous exact binding or audited admission rule for the active profile coordinate.
+3. Validate output-profile/CPU restrictions and any required input, caller and layout gates.
 4. Resolve and verify the selected implementation target.
 5. Add its declared helpers, metadata, and platform requirements to reachability.
 6. Compile or lower it according to its binding kind.
@@ -80,13 +87,31 @@ A binding does not create a second public type system. Virtual slots, interface 
 
 Implementation bodies and their dependencies join the same closed-world graph as application methods. Unused shadows, PAL groups, descriptors, literal data, and helpers must not be emitted. Feature-map output records which binding groups contributed code, data, allocations, and estimated cycles.
 
+### Compiler-provided numeric helpers
+
+Supported CIL numeric operations can also introduce compiler-owned runtime
+helpers. Full-width 64-bit division/remainder use `Integer64Arithmetic`.
+SoftFloat binary arithmetic uses `FloatingPointArithmetic`; admitted floating
+comparisons, negation and conversions use shared integer-runtime helpers in
+both software and native modes. Native arithmetic remains separately selected
+by the requested CPU/FPU mode, and native floating remainder is not admitted.
+
+[`CompilationModule.Numeric.cs`](../Metadata/CompilationModule.Numeric.cs)
+registers each synthetic helper call by its actual caller and original IL
+offset; token zero is reserved for those registrations. Arbitrary metadata
+tokens or a matching method name cannot select such a helper. The helper joins
+normal reachability and uses the existing private register/stack ABI. This
+lowering does not authorize arbitrary runtime bodies or expand the JSON
+framework-binding counts. See [numeric support](Net10Profile.md#numeric-support)
+for the supported operations and opcode-specific limits.
+
 ## Failure modes
 
 Compilation fails when:
 
 - the reference-pack identity differs from the contract coordinate;
 - an implementation-pack hash or assembly identity differs;
-- a public identity has no exact binding or has multiple bindings;
+- a public identity has no applicable exact/audited rule or has conflicting bindings;
 - the selected body contains unsupported reachable CIL or framework calls;
 - an implementation leaks a private type across the public boundary;
 - an output profile lacks a required PAL implementation; or

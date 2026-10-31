@@ -19,8 +19,24 @@ Related runtime specifications remain separate because they are useful beyond th
 - [Runtime memory model](../RuntimeMemory.md)
 - [Exception runtime](../ExceptionRuntime.md)
 
+## Current source scope
+
+These pages describe the current `main` source build, reviewed on 31 October
+2026. Published preview packages can expose an earlier subset. The
+[profile's manifest inventory](Net10Profile.md#manifest-inventory) records the
+current counts, and [numeric support](Net10Profile.md#numeric-support) describes
+admitted 64-bit operations, opt-in SoftFloat/native modes and their boundaries.
+Listed Stopwatch elapsed and TimeSpan operations are documented in the
+[Amiga PAL](AmigaPal.md#clock-and-stopwatch).
+
 ## Sources of truth
 
-The exact supported member set is machine-readable in [`net10.0-10.0.9.json`](net10.0-10.0.9.json). Documentation describes the policy and architecture; the manifest, implementation-pack manifest, compiler validation, and tests decide whether a particular member is accepted.
+The base exact-binding inventory is machine-readable in
+[`net10.0-10.0.9.json`](net10.0-10.0.9.json). It is not a complete count of every
+API admitted through audited, verified-input CoreLib rules. The
+[binding specification](FrameworkBinding.md) describes those additional rules,
+including stable StringBuilder admission. The manifest, implementation-pack
+identity/hash, executable registry, caller/layout restrictions, compiler
+validation and tests decide whether a particular reachable member is accepted.
 
 Compatibility corpus expectations live in [`net10.0-compatibility-ledger.json`](../../Compiler.Tests/Baselines/net10.0-compatibility-ledger.json).

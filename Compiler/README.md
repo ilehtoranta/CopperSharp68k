@@ -7,22 +7,38 @@ images, plus portable assembler text, for MC68000, MC68020, MC68040, and MC68060
 The compiler package is deliberately separate from the `Copper68k` emulator.
 Installing or using the emulator does not pull in the compiler.
 
+This README describes the current `main` source build, reviewed on 31 October
+2026. Published preview packages may expose an earlier subset; use the restored
+package versions and the compatibility/provenance report from your own build.
+
 ## Floating point
 
 Floating point is opt-in through `M68kCompilationRequest.FloatingPoint`; the
 default `Disabled` mode preserves the integer-only behavior. `M68040` targets
 the integrated FPU on 68040/68060, while `M68882` targets an external
-coprocessor with a 68020 host. The native backend supports exact IEEE
-single/double constants plus add, subtract, multiply, divide, and negation.
+coprocessor with a 68020 host. The native backend supports IEEE single/double
+constants and native add, subtract, multiply and divide. Admitted comparisons,
+negation and numeric conversions use shared integer-runtime lowering in these
+modes. Native floating-point remainder remains unsupported.
 For MC68040, double-precision operations reuse one 8-byte `(a7)` scratch slot
 for both operands and the result, avoiding repeated stack writeback chains.
 For MC68060, double-precision operations use one shared stack scratch window so
 operand loads and result stores do not repeatedly adjust A7; single-precision
 operations remain direct D-register-to-FPU transfers.
 
-`SoftFloat` reserves the raw-bit software ABI. Operations requiring the bundled
-CopperFloat target runtime currently produce an explicit unsupported-operation
-diagnostic rather than emitting native FPU instructions.
+`SoftFloat` implements single/double add, subtract, multiply, divide, remainder,
+negation, IEEE comparisons, and admitted conversions between integer and
+floating-point representations through the bundled integer-only runtime. It
+requires no FPU. Both software and native modes transport IEEE bits through the
+private D-register/stack ABI: one longword for `float`, a high:low pair for
+`double`. Helpers are linked only when reachable. Selecting a floating-point
+mode does not admit every floating framework member or checked conversion.
+
+The implementation boundary is recorded in
+[`CompilationModule.Numeric.cs`](Metadata/CompilationModule.Numeric.cs), with
+arithmetic and conversion kernels in
+[`FloatingPointArithmetic.cs`](../Runtime.Managed/FloatingPointArithmetic.cs)
+and [`FloatingPointConversions.cs`](../Runtime.Managed/FloatingPointConversions.cs).
 
 ## Library API
 
@@ -138,7 +154,9 @@ on `PATH`; under `CopperSharp.Sdk` those properties are deprecated aliases.
 
 Compiled methods use a hybrid private ABI. 32-bit scalar arguments use D0/D1,
 address-class arguments (including `this`) use A0/A1, and only excess
-arguments use a compact caller-owned stack block. Scalar results return in D0,
+arguments use a compact caller-owned stack block. A 64-bit scalar argument uses
+D0:D1 when both data registers are free; otherwise the whole value goes on the
+stack, high longword first. Scalar results return in D0,
 reference and pointer results in A0, and 64-bit results in D0:D1. D0/D1/A0/A1
 are volatile; D2-D7/A2-A6 are callee-saved. See
 [InternalAbi.md](InternalAbi.md) for the complete classification, overflow,
@@ -168,14 +186,20 @@ and `CopperSharp.Sdk.Amiga` packages.
 This overview covers the compiler's broader CIL and output capabilities. The
 exact admitted .NET 10 framework surface and its limitations are defined by the
 [compatibility profile](Framework/Net10Profile.md) and its machine-readable
-manifest.
+manifest. The current JSON manifest declares 305 exact bindings: 158
+`Implemented`, 90 `Intrinsic`, and 57 `Platform`, spanning 47 declaring-type
+patterns and 23 feature groups. These are manifest-entry counts, not the entire
+admitted CoreLib surface; see the
+[inventory and admission boundary](Framework/Net10Profile.md#manifest-inventory).
 
 - Signed and unsigned 32-bit integer arithmetic, comparisons, conversions,
   branches, calls, locals, and arguments.
-- 64-bit integer constants, locals, returns, 32-bit `conv.i8`/`conv.u8`
-  widening, register-pair managed/import/platform call parameters/results, and
-  exact parameterless `Int64`/`UInt64` decimal formatting. General 64-bit
-  arithmetic and comparisons are still rejected.
+- `Int64`/`UInt64` constants, locals, arguments and returns; register-pair
+  managed/import/platform ABIs; widening conversions; unchecked add, subtract
+  and multiply; full-width signed/unsigned division and remainder; bitwise
+  operations, masked shifts and comparisons; and admitted formatting. Checked
+  forms and other conversions remain opcode-specific. See
+  [numeric support](Framework/Net10Profile.md#numeric-support).
 - Exact .NET 10 `Console.Write`/`WriteLine` bindings for strings, 32/64-bit
   integers, booleans, and characters, plus direct `Console.Read`/`ReadLine` on
   the Amiga application PAL. Input/output use an explicit Latin-1 policy and
@@ -200,16 +224,21 @@ manifest.
 - Exact .NET 10 `Stopwatch.GetTimestamp`, `Stopwatch.Frequency`, and
   `Stopwatch.IsHighResolution` bindings backed by the raw Amiga
   `timer.device` E-clock, plus the instance constructor, `Start`, `Stop`,
-  `Reset`, `Restart`, `StartNew`, `IsRunning`, and `ElapsedTicks`. The counter
-  and device-reported frequency remain coherent without timestamp scaling;
-  `Elapsed`, `ElapsedMilliseconds`, `GetElapsedTime`, and adjacent `TimeSpan`
-  APIs remain unsupported.
+  `Reset`, `Restart`, `StartNew`, `IsRunning`, `ElapsedTicks`,
+  `ElapsedMilliseconds`, `Elapsed`, and the one-/two-timestamp `GetElapsedTime`
+  overloads. `ElapsedTicks` retains raw E-clock ticks; elapsed millisecond and
+  `TimeSpan` results use explicit target-side scaling. Listed `TimeSpan(long)`,
+  `FromTicks`, tick/component/total properties and comparison operators are
+  admitted. A verified implementation pack selects pinned CoreLib Stopwatch
+  bodies, with `ShadowStopwatch` retained as a fallback. This is not the full
+  `TimeSpan` or date/time framework surface.
 - `Nullable<T>` locals for 32-bit scalar values and transparent 32-bit structs,
   including null initialization, construction, `HasValue`, `Value`, and
   `GetValueOrDefault`.
-- Static and instance 32-bit fields, object construction with hybrid
-  register/stack arguments, UTF-16 string literals, and
-  one-, two-, and four-byte scalar arrays plus reference arrays.
+- Fields, one-dimensional arrays and object construction for admitted scalar,
+  reference and value layouts, including the managed-reference maps required
+  by those layouts; hybrid register/stack arguments and UTF-16 string literals.
+  Multidimensional arrays and incompatible layouts remain unsupported.
 - Classes with single inheritance, statically direct instance calls, and
   vtable-based class virtual dispatch. Base-class instance fields retain their
   inherited offsets, inherited reference fields remain in GC descriptor
@@ -219,10 +248,17 @@ manifest.
   interface inheritance, implementations inherited from base classes, multiple
   interfaces, and explicit interface implementations. Interface calls use the
   same hybrid ABI as direct calls.
-- Shared generic method bodies when every generic value uses the same
-  four-byte scalar/reference representation.
-- MC68000-compatible software long multiply/divide, with MC68020/MC68040/MC68060 long
-  arithmetic instructions selected for those targets.
+- Closed generic specialization and representation-compatible sharing where
+  calling convention, GC shape and observable type identity remain compatible;
+  see the [managed runtime](Framework/ManagedRuntime.md#generics).
+- MC68000-compatible integer arithmetic helpers, with CPU-specific long
+  instructions selected where supported and profitable. Full-width 64-bit
+  division/remainder use the bundled integer runtime.
+- The audited 103-signature public `StringBuilder` surface for the verified
+  Microsoft CoreLib 10.0.9 input, including admitted editing, copying/chunks,
+  joins, formatting and handler paths. Exact dependency, caller, callback and
+  layout rules apply; general CoreLib ingestion and Decimal arithmetic are not
+  implied. See [StringBuilder admission](Framework/FrameworkBinding.md#stringbuilder-implementation-and-admission).
 - Table-driven managed exceptions with catch, finally, rethrow, leave, and
   callee-saved restoration during unwind; see
   [ExceptionRuntime.md](ExceptionRuntime.md).
@@ -231,8 +267,9 @@ manifest.
   two-hunk image is strictly smaller; and 256/512 KiB Kickstart ROM output
   with reset vectors and checksum.
 
-Unlisted framework identities, general 64-bit arithmetic, reflection, arbitrary
-P/Invoke, and unsupported CIL opcodes remain fail-closed. Floating point,
+Framework identities without an exact binding or applicable audited CoreLib
+admission rule, general reflection, arbitrary P/Invoke, and unsupported CIL
+opcodes remain fail-closed. Floating point,
 boxing, and delegates are available only through their explicitly admitted
 compiler/runtime profiles; they are not general CoreCLR-compatible services. Allocation
 is supplied by the `__c68k_alloc` import. Optional explicit release can be
@@ -253,7 +290,8 @@ stale-pressure telemetry. Compiler-emitted allocation-site collection marks the
 current frame and typed managed-reference evaluation-stack slots before
 sweeping.
 `M68kGcTelemetryOptions` carries the
-thresholds for that telemetry mode. Default interface methods, generic
-interfaces, cross-module interface maps, type initializers, and full generic
-dictionaries are not part of this first package version. Unsupported interface
-forms are reported with `C68K0011`.
+thresholds for that telemetry mode. Once-only type initialization includes
+failure caching. Interface dispatch and constructed generic layouts must match
+the closed-world contracts in the [managed runtime](Framework/ManagedRuntime.md);
+arbitrary runtime generic construction and full runtime generic dictionaries
+are not implied. Unsupported interface forms are reported with `C68K0011`.

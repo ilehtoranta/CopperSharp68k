@@ -56,11 +56,28 @@ They require no Amiga library and must not be folded from the build host's envir
 
 ## Clock and `Stopwatch`
 
-The monotonic clock uses `timer.device` `ReadEClock`. The PAL returns the raw high/low counter value and the device-reported frequency. `Stopwatch.GetTimestamp`, `Frequency`, `IsHighResolution`, and the admitted instance state machine are built on that pair without host-time substitution.
+The monotonic clock uses `timer.device` `ReadEClock`. The PAL returns the raw
+high/low counter value and the device-reported frequency. `Stopwatch.GetTimestamp`,
+`Frequency`, `IsHighResolution`, and the admitted instance state machine are
+built on that pair without host-time substitution. `ElapsedTicks` remains in
+raw E-clock ticks; `ElapsedMilliseconds`, `Elapsed`, and the one-/two-timestamp
+`GetElapsedTime` overloads perform explicit target-side scaling.
+
+With a verified implementation pack, admitted Stopwatch methods select pinned
+CoreLib bodies; `ShadowStopwatch` remains the explicit fallback. Both paths
+obtain their clock values from the Amiga PAL. The retained implementation
+comparison is documented in
+[compatibility testing](CompatibilityTesting.md#pinned-stopwatch-implementation-comparison).
 
 Application output lazily creates a message port and I/O request, opens the device once, and closes it during PAL shutdown. Freestanding profiles use scoped or caller-provided storage. Partially initialized resources are unwound in reverse order on failure.
 
-Members that convert elapsed ticks to a complete `TimeSpan` surface are not admitted until their scaling, overflow, and type dependencies are implemented explicitly.
+The exact manifest also admits `TimeSpan(long)`, `FromTicks`, `Ticks`, day
+through millisecond component/total properties and the listed comparison
+operators. These preserve the full signed 64-bit tick representation; floating
+totals require an admitted floating-point mode. They do not admit every
+TimeSpan constructor, factory, operator or formatting overload. Consult the
+[manifest](net10.0-10.0.9.json) and
+[profile boundary](Net10Profile.md#clock-and-timespan-boundary) for exact forms.
 
 ## Feature groups
 

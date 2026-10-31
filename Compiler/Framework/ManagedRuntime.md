@@ -6,6 +6,29 @@ This document defines the runtime conventions required by the admitted .NET 10 p
 
 The runtime is closed-world and non-reflective. The compiler knows every reachable managed type, method, static field, generic instantiation, delegate shape, and platform operation before code generation.
 
+## Numeric values and helpers
+
+Admitted `Int64`/`UInt64` and `double` values use high:low longword pairs;
+`float` uses one longword containing its IEEE bits. Calls and results follow
+the [internal ABI](../InternalAbi.md), including whole-value stack overflow
+when a register pair is unavailable. Managed storage retains the corresponding
+target-endian value layout.
+
+Unchecked 64-bit add/subtract/multiply, bitwise operations, masked shifts and
+signed/unsigned comparisons are implemented. Full-width division/remainder use
+the bundled `Integer64Arithmetic` helpers, with canonical divide-by-zero and
+signed-division overflow behavior. Admitted widening and other conversion
+shapes are explicit; this does not imply every checked arithmetic/conversion
+opcode.
+
+`SoftFloat` lowers single/double arithmetic, remainder, negation, comparisons
+and admitted conversions to integer-only helpers. Native FPU modes retain the
+same value transport and use shared runtime lowering for comparisons, negation
+and conversions; native floating remainder remains unsupported. `Disabled`
+rejects floating values. Numeric helpers are linked only when reachable and do
+not create a general framework or runtime-discovery fallback. See
+[numeric support](Net10Profile.md#numeric-support) for mode and framework limits.
+
 ## Object and descriptor layout
 
 All managed references are 32-bit target addresses. The common object prefix is:
@@ -33,9 +56,28 @@ Each type with runtime initialization has a compact state cell representing unin
 
 Checks are inserted only at reachable operations that require the type to be initialized. Types and state cells that are never reached are omitted.
 
-The experimental CoreLib numeric formatting path stores `CultureInfo.CurrentCulture` and `DefaultThreadCurrentCulture` in target-owned image statics. An explicitly assigned current culture takes precedence over the default, and an unset pair selects the shared invariant culture. These references participate in ordinary static GC rooting. This storage supports a single execution context; thread/async culture flow and isolation between concurrent resident invocations are not implemented. Named cultures also remain unsupported pending target locale data.
+Audited CoreLib numeric formatting paths, including stable pinned-input
+StringBuilder formatting, store `CultureInfo.CurrentCulture` and
+`DefaultThreadCurrentCulture` in target-owned image statics. An explicitly
+assigned current culture takes precedence over the default, and an unset pair
+selects the shared invariant culture. These references participate in ordinary
+static GC rooting. This storage supports a single execution context;
+thread/async culture flow and isolation between concurrent resident invocations
+are not implemented. Named cultures remain unsupported pending target locale
+data. Admission still requires the exact input/caller/layout rules in the
+[binding specification](FrameworkBinding.md#stringbuilder-implementation-and-admission).
 
-Experimental Decimal formatting admits only the verified CoreLib sixteen-byte value layout: `_flags` at offset 0, `_hi32` at offset 4 and `_lo64` at offset 8, with no managed references. The 64-bit field uses target byte order. Logical `Decimal.GetBits` accessors extract the significand into three words; the formatting adapter divides these words by ten to construct a Decimal-kind NumberBuffer with the original sign and scale. It does not reinterpret the host-endian DecCalc union. Standard and custom UTF-16 rendering executes the pinned CoreLib format parser and numeric renderers using the verified span-owner layouts. This formatting boundary does not admit Decimal arithmetic, parsing or its internal union as general target operations.
+Audited Decimal formatting admits only the verified CoreLib sixteen-byte value
+layout: `_flags` at offset 0, `_hi32` at offset 4 and `_lo64` at offset 8, with
+no managed references. The 64-bit field uses target byte order. Logical
+`Decimal.GetBits` accessors extract the significand into three words; the
+formatting adapter divides these words by ten to construct a Decimal-kind
+NumberBuffer with the original sign and scale. It does not reinterpret the
+host-endian DecCalc union. Standard and custom UTF-16 rendering executes the
+pinned CoreLib format parser and numeric renderers using verified span-owner
+layouts. This includes admitted stable StringBuilder formatting; it does not
+admit Decimal arithmetic, parsing or its internal union as general target
+operations.
 
 ## Type tests, casts, and array stores
 
