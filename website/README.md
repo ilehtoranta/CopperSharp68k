@@ -36,6 +36,9 @@ it with these sources rather than overwriting either copy.
   and the distinction between copied and reconstructed material.
 - `recovery/publication-manifest.json`: the original build manifest, retained
   for provenance rather than served to visitors.
+- `recovery/originals/`: unchanged copies of recovered editorial files that
+  have since been updated. Their original checksums remain in `recovery.json`;
+  the `editedFiles` list connects each current source file to its original copy.
 
 The recovery copied from Git objects; it did not modify `gh-pages`, the recovery
 branch, or any recovery backups. The old generated SDK HTML remains on
@@ -92,21 +95,42 @@ An unresolved exported source type or conflicting type route fails the build.
 All output is deterministic for the same source revision and build options.
 The search index, module/type pages, coverage counts and sitemap are regenerated
 together. `build-info.json` records the source revision used for links.
+Legacy published type URLs remain available; ambiguous shortened type names
+redirect into current reference search instead of displaying outdated API data.
 
 `test/build.test.mjs` validates recovery checksums, current SDK declarations and
 ABI details, every local navigation/asset/search target and anchor, sitemap
-targets, repeatable output, and root/custom project paths. CI performs these
+targets, current manifest counts, published type URLs, repeatable output, and root/custom project paths. CI performs these
 checks and retains a preview artifact with read-only repository permissions.
 
 ## Content and publishing
 
-The recovered editorial pages retain their September 2026 publication content.
-In particular, the compatibility matrix's SoftFloat and 64-bit claims and its
-framework counts predate current compiler capabilities. Review that page against
-[`Compiler/Framework/README.md`](../Compiler/Framework/README.md) and the current
-profile manifest before publishing it as a current compatibility statement.
+The compatibility matrix was reviewed against `main` on 31 October 2026. It
+describes current software/native floating point, 64-bit arithmetic and ABI,
+managed runtime, Amiga PAL, exact framework bindings, and separately audited
+CoreLib StringBuilder admission. It distinguishes the current source build from
+published preview packages. Editorial capability claims should be reviewed
+against code and execution contracts when those capabilities change.
 
-This recovery intentionally adds **no automatic deployment**. Build, review the
-preview and content, and explicitly publish the contents of `dist/` only when a
-website update is requested. Keep `main`'s authoring files separate from the
-`gh-pages` publication history.
+`content.mjs` reads the exact profile manifest at build time for binding/status,
+type-pattern and feature-group counts. The homepage's SDK module count follows
+the regenerated reference. `compatibility-profile.json` records the source
+revision, last editorial review date and machine-readable profile summary.
+
+There is no automatic deployment. To publish an explicitly requested website
+update, commit the sources to `main`, build and validate the default GitHub Pages
+site, then run:
+
+```powershell
+node website/publish.mjs --dry-run --expected-gh-pages <reviewed-remote-tip>
+node website/publish.mjs --expected-gh-pages <reviewed-remote-tip>
+```
+
+The publisher requires a clean `main` checkout and a build from that exact
+commit. It stages only `dist/` through a temporary isolated index, creates a
+publication commit whose parent is the existing remote `gh-pages` tip, and
+atomically pushes `main` and `gh-pages` as fast-forwards. It does not create or
+switch worktrees, force-push, push tags, or modify recovery branches/backups.
+The dry run records a reviewable publication tree and summary in
+`website/.build/publication-plan.json`. Keep `main`'s authoring files separate
+from the `gh-pages` publication history.

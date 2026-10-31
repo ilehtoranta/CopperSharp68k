@@ -227,7 +227,7 @@
     },
     {
       "source": "compatibility/index.html",
-      "target": "src/pages/compatibility/index.html",
+      "target": "recovery/originals/compatibility/index.html",
       "sha256": "1a910ef83ba5324c2eaa3636027605a606e577e1e80e05482662800d3685fb3b"
     },
     {
@@ -247,7 +247,7 @@
     },
     {
       "source": "getting-started/index.html",
-      "target": "src/pages/getting-started/index.html",
+      "target": "recovery/originals/getting-started/index.html",
       "sha256": "d5f9b09c6b3cba433f3e4a6239bdaa47f98cd6d4571a8b9437864a833bf033d6"
     },
     {
@@ -262,12 +262,12 @@
     },
     {
       "source": "index.html",
-      "target": "src/pages/index.html",
+      "target": "recovery/originals/index.html",
       "sha256": "889b56d9398f3a37ba5e2c39dd37639ef7ac94d8ebe58d145b4f9b00045f396d"
     },
     {
       "source": "llms.txt",
-      "target": "public/llms.txt",
+      "target": "recovery/originals/llms.txt",
       "sha256": "7bccbaf47eaeab3ae3d70dbfb23febd288e4ec49cfc3c768079db40017437860"
     },
     {
@@ -294,6 +294,28 @@
       "source": ".vite/manifest.json",
       "target": "recovery/publication-manifest.json",
       "sha256": "595e13b0743169ff6a51f6020c90301922ef21c806e864fbe423f9ccff158374"
+    }
+  ],
+  "editedFiles": [
+    {
+      "target": "src/pages/compatibility/index.html",
+      "original": "recovery/originals/compatibility/index.html",
+      "reason": "Update published compatibility and source-build scope against current main on 2026-10-31."
+    },
+    {
+      "target": "src/pages/index.html",
+      "original": "recovery/originals/index.html",
+      "reason": "Update published compatibility and source-build scope against current main on 2026-10-31."
+    },
+    {
+      "target": "src/pages/getting-started/index.html",
+      "original": "recovery/originals/getting-started/index.html",
+      "reason": "Update published compatibility and source-build scope against current main on 2026-10-31."
+    },
+    {
+      "target": "public/llms.txt",
+      "original": "recovery/originals/llms.txt",
+      "reason": "Update published compatibility and source-build scope against current main on 2026-10-31."
     }
   ]
 }

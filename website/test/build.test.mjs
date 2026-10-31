@@ -18,10 +18,48 @@ before(() => { build(); entries = JSON.parse(read('reference-index.json')); });
 // Leave the usual GitHub Pages build available for preview after testing other bases.
 after(() => { if (JSON.parse(read('build-info.json')).basePath !== '/CopperSharp68k') build(); });
 
-test('recovered publication files retain their original bytes', () => {
+test('original recovered files retain their publication bytes, including archived edited pages', () => {
   const recovery = JSON.parse(fs.readFileSync(path.join(website, 'recovery.json'), 'utf8'));
   for (const file of recovery.files)
     assert.equal(hash(path.join(website, file.target)), file.sha256, file.source);
+});
+
+test('compatibility counts follow the current manifest and identify source-build scope', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(website, '../Compiler/Framework/net10.0-10.0.9.json'), 'utf8'));
+  const summary = JSON.parse(read('compatibility-profile.json'));
+  assert.equal(summary.bindings, manifest.bindings.length);
+  assert.equal(summary.implemented, manifest.bindings.filter(b => b.status === 'Implemented').length);
+  assert.equal(summary.intrinsics, manifest.bindings.filter(b => b.status === 'Intrinsic').length);
+  assert.equal(summary.platform, manifest.bindings.filter(b => b.status === 'Platform').length);
+  assert.equal(summary.typePatterns, new Set(manifest.bindings.map(b => b.type)).size);
+  assert.equal(summary.featureGroups, new Set(manifest.bindings.flatMap(b => b.features)).size);
+  const page = read('compatibility/index.html');
+  for (const [label, value] of Object.entries({ 'Manifest bindings': summary.bindings, Implemented: summary.implemented,
+    Intrinsics: summary.intrinsics, Platform: summary.platform, 'Type patterns': summary.typePatterns }))
+    assert.ok(page.includes(`<dt>${label}</dt><dd>${value}</dd>`), label);
+  assert.ok(page.includes('main @ ' + summary.sourceRevision.slice(0, 7)));
+  assert.ok(page.includes('Published preview packages may expose an earlier subset'));
+  assert.ok(!page.includes('{{'), 'all editorial tokens are rendered');
+  assert.ok(!page.includes('General arithmetic and comparisons remain outside'));
+  const softFloat = page.match(/<tr><th scope="row">SoftFloat<\/th>([\s\S]*?)<\/tr>/)?.[1];
+  assert.ok(softFloat?.includes('SUPPORTED SUBSET'));
+  assert.ok(softFloat.includes('integer-only'));
+  assert.ok(page.includes('verified Microsoft.NETCore.App.Runtime.win-x64 10.0.9'));
+  const modules = entries.filter(e => e.kind === 'module').length;
+  assert.ok(read('index.html').includes(`${modules} MODULES`));
+  assert.ok(read('reference/index.html').includes('published preview package APIs may differ'));
+});
+
+test('every published type URL still resolves to a current page or a reference redirect', () => {
+  const routes = JSON.parse(fs.readFileSync(path.join(website, 'src/published-routes.json'), 'utf8'));
+  for (const route of routes.filter(r => r.type)) {
+    const file = path.join(dist, route.href, 'index.html');
+    assert.ok(fs.existsSync(file), `published reference URL missing: ${route.href}`);
+  }
+  const legacy = read('reference/muimaster/value-2/index.html');
+  assert.ok(legacy.includes('content="noindex, follow"'));
+  assert.ok(legacy.includes('q=Value%20MUIMaster'));
+  assert.ok(!read('sitemap.xml').includes('/reference/muimaster/value-2<'));
 });
 
 test('current SDK API, nested enums, XML summaries and fixed buffers are documented', () => {
@@ -55,19 +93,30 @@ function checkLinks(base) {
     assert.equal(new Set(values).size, values.length, `duplicate id: ${file}`);
     return [file, new Set(values)];
   }));
+  const resolvedFiles = new Map();
+  const checkedTargets = new Set();
   const resolve = (href, from) => {
     const url = new URL(href.replaceAll('&amp;', '&'), 'https://preview.invalid' + base + '/' +
       path.relative(dist, from).replaceAll('\\', '/'));
     if (url.origin !== 'https://preview.invalid') return;
+    if (checkedTargets.has(url.href)) return;
     assert.ok(!base || url.pathname === base || url.pathname.startsWith(base + '/'), `base mismatch: ${href}`);
-    let file = path.join(dist, decodeURIComponent(url.pathname.slice(base.length)));
-    if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
-    assert.ok(fs.existsSync(file), `missing ${href} in ${path.relative(dist, from)}`);
+    let file = resolvedFiles.get(url.pathname);
+    if (!file) {
+      file = path.join(dist, decodeURIComponent(url.pathname.slice(base.length)));
+      if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
+      assert.ok(fs.existsSync(file), `missing ${href} in ${path.relative(dist, from)}`);
+      resolvedFiles.set(url.pathname, file);
+    }
     if (url.hash && ids.has(file))
       assert.ok(ids.get(file).has(decodeURIComponent(url.hash.slice(1))), `missing anchor ${href}`);
+    checkedTargets.add(url.href);
   };
   for (const [file, text] of documents)
     for (const match of text.matchAll(/\b(?:href|src)="([^"]+)"/g)) resolve(match[1], file);
+  for (const file of walk(dist).filter(f => f.endsWith('.css') || f.endsWith('.html')))
+    for (const match of fs.readFileSync(file, 'utf8').matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^\s"')]+))\)/g))
+      resolve(match[1] ?? match[2] ?? match[3], file);
   const hrefs = new Set();
   for (const entry of JSON.parse(read('reference-index.json'))) {
     assert.ok(!hrefs.has(entry.href), `duplicate search target ${entry.href}`);
@@ -95,7 +144,8 @@ test('root and custom project paths build with working links', () => {
     build('--base', base);
     checkLinks(base);
     assert.equal(JSON.parse(read('build-info.json')).basePath, base);
-    assert.ok(!read('reference/index.html').includes('/CopperSharp68k/'));
+    assert.ok(!/(?:href|src)="\/CopperSharp68k(?:\/|")/.test(read('reference/index.html')),
+      'local reference URLs use the selected base; external repository URLs are preserved');
     for (const file of ['index.html', 'reference/index.html'])
       assert.ok(read(file).includes('href="https://github.com/ilehtoranta/CopperSharp68k"'), 'repository links keep their original URL');
     const search = read('reference-search.js');

@@ -94,11 +94,30 @@ foreach (var type in types)
     Write(type.Href, type.Symbol.Name, summary.Length > 0 ? summary : fullName + " API reference.", content.ToString());
 }
 
+// Retain published URLs for types whose old, shortened names were ambiguous.
+// These pages point into the current reference rather than serving stale API data.
+using (var published = JsonDocument.Parse(File.ReadAllText(Path.Combine(repository, "website/src/published-routes.json"))))
+{
+    foreach (var route in published.RootElement.EnumerateArray().Where(e => e.TryGetProperty("type", out _)))
+    {
+        var href = route.GetProperty("href").GetString()!;
+        if (paths.Contains(href, StringComparer.Ordinal)) continue;
+        var name = route.GetProperty("name").GetString()!;
+        var module = route.GetProperty("module").GetString()!;
+        var candidates = types.Where(t => t.Symbol.Name == name && t.Source.Module == module).ToArray();
+        var target = candidates.Length == 1 ? candidates[0].Href : "/reference?q=" + Uri.EscapeDataString(name + " " + module) + "&kind=type";
+        var content = $"<article class=\"reference-document\"><h1>{H(name)}</h1>" +
+            "<p>This URL belongs to an earlier SDK reference. Continue to the current declarations.</p>" +
+            $"<p><a href=\"{Url(target)}\">Find the current {H(module)} declaration →</a></p></article>";
+        Write(href, name, "Find this declaration in the current SDK reference.", content, redirectTarget: target);
+    }
+}
+
 var home = new StringBuilder("<section class=\"reference-intro\" aria-labelledby=\"reference-title\">" +
     "<p class=\"section-kicker\">COPPERSHARP.SDK.AMIGA</p><div class=\"reference-title-row\"><div>" +
     "<h1 id=\"reference-title\">SDK<br/><em>reference.</em></h1>" +
     $"<p class=\"reference-lede\">Public types and members generated from CopperSharp.Sdk.Amiga {H(version)}. " +
-    "Descriptions come from the package XML documentation.</p></div>" +
+    $"Descriptions come from the SDK XML documentation. Source build <a href=\"https://github.com/ilehtoranta/CopperSharp68k/commit/{H(sourceRevision)}\">{H(sourceRevision[..7])}</a>; published preview package APIs may differ.</p></div>" +
     $"<dl class=\"reference-stats\" aria-label=\"Reference coverage\"><div><dt>Modules</dt><dd>{modules.Length}</dd></div>" +
     $"<div><dt>Types</dt><dd>{types.Count}</dd></div><div><dt>Members</dt><dd>{types.Sum(t => t.Members.Count)}</dd></div></dl></div>" +
     "<form class=\"reference-search\" role=\"search\" onsubmit=\"return false\"><label for=\"sdk-search\">Search the SDK</label>" +
@@ -155,18 +174,21 @@ static string Documentation(System.Xml.Linq.XElement documentation)
     return result.ToString();
 }
 
-void Write(string route, string title, string description, string content, bool search = false)
+void Write(string route, string title, string description, string content, bool search = false, string? redirectTarget = null)
 {
-    var html = shell.Replace("{{TITLE}}", H(title), StringComparison.Ordinal)
+    var html = shell.Replace("https://coppersharp.dev", origin + basePath, StringComparison.Ordinal)
+        .Replace("{{TITLE}}", H(title), StringComparison.Ordinal)
         .Replace("{{DESCRIPTION}}", H(description), StringComparison.Ordinal)
-        .Replace("{{CANONICAL}}", H(origin + basePath + route), StringComparison.Ordinal)
+        .Replace("{{CANONICAL}}", H(origin + basePath + (redirectTarget ?? route)), StringComparison.Ordinal)
         .Replace("{{BASE}}", H(basePath), StringComparison.Ordinal)
         .Replace("{{CONTENT}}", content, StringComparison.Ordinal)
         .Replace("{{SCRIPT}}", search ? $"<script src=\"{Url("/reference-search.js")}\" defer></script>" : "", StringComparison.Ordinal);
+    if (redirectTarget is not null)
+        html = html.Replace("</head>", $"<meta name=\"robots\" content=\"noindex, follow\"/><meta http-equiv=\"refresh\" content=\"0; url={Url(redirectTarget)}\"/></head>", StringComparison.Ordinal);
     var directory = Path.Combine(output, route.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
     Directory.CreateDirectory(directory);
     File.WriteAllText(Path.Combine(directory, "index.html"), html, new UTF8Encoding(false));
-    paths.Add(route);
+    if (redirectTarget is null) paths.Add(route);
 }
 
 internal sealed record SearchEntry(string Name, string Kind, string Module, string? Type,

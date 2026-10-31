@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
+import { renderEditorialPages } from './content.mjs';
 
 const website = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.dirname(website);
@@ -59,6 +60,7 @@ try {
     path.join(website, 'ReferenceGenerator/ReferenceGenerator.csproj'), '--configuration', 'Release',
     '--no-launch-profile', '--', repository, stage, base, origin.origin, revision],
   { cwd: repository, stdio: 'inherit' });
+  renderEditorialPages(website, stage, revision);
 
   const referencePaths = JSON.parse(fs.readFileSync(path.join(stage, 'reference-paths.json'), 'utf8'));
   fs.unlinkSync(path.join(stage, 'reference-paths.json'));
