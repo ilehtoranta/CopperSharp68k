@@ -27,6 +27,10 @@ dotnet build CopperSharp68k.slnx
 dotnet test CopperSharp68k.slnx
 ```
 
+Main CI runs the fast suite and every compiler execution case. See
+[CI execution-test scheduling](scripts/ci/README.md) for isolated workers,
+duration-based balancing, coverage checks, and timing-profile updates.
+
 ## .NET 10 compatibility profile
 
 CopperSharp compiles an explicitly bounded subset of ordinary `net10.0`

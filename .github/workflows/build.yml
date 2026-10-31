@@ -29,6 +29,10 @@ jobs:
         with:
           dotnet-version: 10.0.301
 
+      - name: Check execution-test planning and coverage guards
+        shell: pwsh
+        run: ./scripts/test-test-sharding.ps1
+
       - name: Restore dependencies
         run: dotnet restore CopperSharp68k.slnx
 
@@ -53,6 +57,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Retain sharding-check diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-sharding-validation
+          path: artifacts/shard-planner-tests/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+
   execution-tests:
     name: Compiler execution tests (${{ matrix.shard }}/16)
     runs-on: ubuntu-latest
@@ -60,7 +73,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 16
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
@@ -85,6 +98,7 @@ jobs:
           ./scripts/run-test-shard.ps1
           -ShardNumber ${{ matrix.shard }}
           -ShardCount 16
+          -Workers 2
           -Configuration Release
           -ResultsDirectory TestResults
 
@@ -93,6 +107,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: execution-test-results-${{ matrix.shard }}
-          path: TestResults/**/*.trx
+          path: |
+            TestResults/**/*.trx
+            TestResults/**/shard-plan.json
+            TestResults/**/worker-summary.json
+            TestResults/**/worker-*.log
           if-no-files-found: ignore
           retention-days: 14

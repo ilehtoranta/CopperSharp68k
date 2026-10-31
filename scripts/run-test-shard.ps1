@@ -1,134 +1,118 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidateRange(1, 64)]
-    [int]$ShardNumber,
-
-    [Parameter(Mandatory = $true)]
-    [ValidateRange(1, 64)]
-    [int]$ShardCount,
-
-    [string]$Configuration = "Debug",
-    [string]$ResultsDirectory = "TestResults",
+    [Parameter(Mandatory = $true)][ValidateRange(1, 64)][int]$ShardNumber,
+    [Parameter(Mandatory = $true)][ValidateRange(1, 64)][int]$ShardCount,
+    [ValidateRange(1, 8)][int]$Workers = 1,
+    [string]$Configuration = 'Debug',
+    [string]$ResultsDirectory = 'TestResults',
+    [string]$TimingFile = (Join-Path $PSScriptRoot 'ci/execution-test-durations.json'),
+    [string]$DiscoveryFile,
     [switch]$ListOnly
 )
-
-$ErrorActionPreference = "Stop"
-
-if ($ShardNumber -gt $ShardCount) {
-    throw "ShardNumber $ShardNumber must not be greater than ShardCount $ShardCount."
+$ErrorActionPreference = 'Stop'
+if ($ShardNumber -gt $ShardCount) { throw 'ShardNumber must not be greater than ShardCount.' }
+if ($DiscoveryFile -and -not $ListOnly) { throw 'Offline discovery is supported only with -ListOnly.' }
+Import-Module (Join-Path $PSScriptRoot 'TestSharding.psm1') -Force -DisableNameChecking
+$repository = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$project = Join-Path $repository 'Compiler.Tests/CopperSharp.Compiler.Tests.csproj'
+$dotnet = if ($env:DOTNET) { $env:DOTNET } else { 'dotnet' }
+if ($DiscoveryFile) { $listedTests = Get-Content -LiteralPath $DiscoveryFile }
+else {
+    $arguments = @('test', $project, '--configuration', $Configuration, '--no-build', '--no-restore',
+        '--list-tests', '--filter', 'FullyQualifiedName~CopperSharp.Compiler.Tests.CompilerExecutionTests')
+    $listedTests = & $dotnet @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Test discovery failed: $($listedTests -join [Environment]::NewLine)" }
 }
-
-$shardIndex = $ShardNumber - 1
-
-$project = Join-Path $PSScriptRoot "..\Compiler.Tests\CopperSharp.Compiler.Tests.csproj"
-$className = "CopperSharp.Compiler.Tests.CompilerExecutionTests"
-$listArguments = @(
-    "test", $project,
-    "--configuration", $Configuration,
-    "--no-build",
-    "--no-restore",
-    "--list-tests",
-    "--filter", "FullyQualifiedName~$className"
-)
-$listedTests = & dotnet @listArguments 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "Test discovery failed with exit code $LASTEXITCODE.`n$($listedTests -join [Environment]::NewLine)"
-}
-
-$methodPattern = "^($([regex]::Escape($className))\.[^(]+)"
-$cases = @($listedTests |
-    ForEach-Object {
-        $line = $_.ToString().Trim()
-        if ($line -match $methodPattern) {
-            $method = $Matches[1]
-            $cpu = $null
-            if ($line -match '(?:\(|, )(?<parameter>target|cpu|cpuTarget): (?<cpu>M68000|M68020|M68040|M68060)(?=,|\))') {
-                $cpu = "$($Matches.parameter): $($Matches.cpu)"
-            }
-            [pscustomobject]@{ Method = $method; Cpu = $cpu }
-        }
-    })
-
-# Keep a theory's CPU rows together, but distribute its targets independently.
-# Large formatting theories otherwise occupy most of one runner's entire budget.
-$groups = @(foreach ($method in ($cases | Group-Object Method)) {
-    if (@($method.Group | Where-Object { -not $_.Cpu }).Count -eq 0) {
-        foreach ($cpu in ($method.Group | Group-Object Cpu)) {
-            [pscustomobject]@{
-                Name = "(FullyQualifiedName=$($method.Name)&DisplayName~$($cpu.Name))"
-                Count = $cpu.Count
-            }
-        }
-    }
-    else {
-        [pscustomobject]@{ Name = "FullyQualifiedName=$($method.Name)"; Count = $method.Count }
-    }
-}) | Sort-Object @{ Expression = "Count"; Descending = $true }, Name
-
-if ($groups.Count -eq 0) {
-    throw "No $className tests were discovered."
-}
-
-$assignments = @()
-$loads = [long[]]::new($ShardCount)
-for ($index = 0; $index -lt $ShardCount; $index++) {
-    $assignments += ,([System.Collections.Generic.List[string]]::new())
-}
-
-foreach ($method in $groups) {
-    $targetShard = 0
-    for ($index = 1; $index -lt $ShardCount; $index++) {
-        if ($loads[$index] -lt $loads[$targetShard]) {
-            $targetShard = $index
-        }
-    }
-
-    $assignments[$targetShard].Add($method.Name)
-    $loads[$targetShard] += $method.Count
-}
-
-$selectedMethods = $assignments[$shardIndex]
-if ($selectedMethods.Count -eq 0) {
-    throw "Execution-test shard $ShardNumber of $ShardCount is empty."
-}
-
-# Bound each native command line on Windows as well as hosted Linux runners.
-$filters = [System.Collections.Generic.List[string]]::new()
-$batch = ""
-foreach ($selection in ($selectedMethods | Sort-Object)) {
-    if ($batch.Length -ne 0 -and $batch.Length + 1 + $selection.Length -gt 20000) {
-        $filters.Add($batch)
-        $batch = ""
-    }
-    $batch = if ($batch.Length -eq 0) { $selection } else { "$batch|$selection" }
-}
-if ($batch.Length -ne 0) { $filters.Add($batch) }
-$caseCount = $loads[$shardIndex]
-Write-Host "Running execution-test shard ${ShardNumber}/${ShardCount}: $($selectedMethods.Count) groups, $caseCount discovered cases, $($filters.Count) batches."
+$cases = @(Get-ExecutionTestCases -Lines @($listedTests | ForEach-Object { $_.ToString() }))
+$timings = Get-Content -LiteralPath $TimingFile -Raw | ConvertFrom-Json -AsHashtable
+$plan = @(New-ExecutionTestPlan -Cases $cases -ShardCount $ShardCount -Workers $Workers -TimingProfile $timings)
+$selected = @($plan | Where-Object { $_.Shard -eq $ShardNumber -and $_.CaseCount -gt 0 })
+if ($selected.Count -eq 0) { throw "Execution-test shard $ShardNumber of $ShardCount is empty." }
+$caseCount = ($selected | Measure-Object CaseCount -Sum).Sum
+Write-Host "Execution-test shard $ShardNumber/$ShardCount : $caseCount of $($cases.Count) cases, $($selected.Count) isolated workers."
 if ($ListOnly) {
     [pscustomobject]@{
-        Shard = $ShardNumber
-        Cases = $caseCount
-        TotalCases = $cases.Count
-        Filters = $filters.ToArray()
-    } | ConvertTo-Json -Compress
+        Shard = $ShardNumber; Cases = $caseCount; TotalCases = $cases.Count
+        Workers = @($selected | ForEach-Object {
+            [pscustomobject]@{ Worker = $_.Worker; Cases = $_.CaseCount
+                EstimatedSeconds = $_.EstimatedSeconds; Filters = @(Get-ExecutionTestFilters -Groups $_.Groups.ToArray()) }
+        })
+    } | ConvertTo-Json -Depth 5 -Compress
     exit 0
 }
-
-$shardExitCode = 0
-for ($batchIndex = 0; $batchIndex -lt $filters.Count; $batchIndex++) {
-    $logName = if ($filters.Count -eq 1) { "tests.trx" } else { "tests-$($batchIndex + 1).trx" }
-    $testArguments = @(
-        "test", $project,
-        "--configuration", $Configuration,
-        "--no-build",
-        "--no-restore",
-        "--filter", $filters[$batchIndex],
-        "--logger", "trx;LogFileName=$logName",
-        "--logger", "console;verbosity=normal",
-        "--results-directory", $ResultsDirectory
-    )
-    & dotnet @testArguments
-    if ($LASTEXITCODE -ne 0) { $shardExitCode = $LASTEXITCODE }
+# Unique run directories retain old evidence and exclude stale TRX files.
+$run = Join-Path ([System.IO.Path]::GetFullPath($ResultsDirectory)) "shard-$ShardNumber-$([guid]::NewGuid().ToString('N'))"
+[System.IO.Directory]::CreateDirectory($run) | Out-Null
+$records = @()
+$processes = @()
+$exitCode = 0
+function Receive-WorkerOutput($Child, [bool]$IsError) {
+    $property = if ($IsError) { 'ErrorTask' } else { 'OutputTask' }
+    $reader = if ($IsError) { $Child.Process.StandardError } else { $Child.Process.StandardOutput }
+    $log = if ($IsError) { $Child.ErrorLog } else { $Child.OutputLog }
+    while ($null -ne $Child.$property -and $Child.$property.IsCompleted) {
+        $line = $Child.$property.GetAwaiter().GetResult()
+        if ($null -eq $line) { $Child.$property = $null; break }
+        Write-Host "[worker $($Child.Worker)] $line"
+        $log.WriteLine($line)
+        $Child.$property = $reader.ReadLineAsync()
+    }
 }
-exit $shardExitCode
+try {
+    foreach ($worker in $selected) {
+        $directory = Join-Path $run "worker-$($worker.Worker)"
+        $record = [pscustomobject]@{
+            Shard = $ShardNumber; Worker = $worker.Worker; DotNet = $dotnet
+            Project = $project; Configuration = $Configuration
+            EstimatedSeconds = $worker.EstimatedSeconds
+            Filters = @(Get-ExecutionTestFilters -Groups $worker.Groups.ToArray())
+            ExpectedCases = @($worker.Groups | ForEach-Object { $_.Cases } | ForEach-Object DisplayName)
+            ResultsDirectory = $directory; TempDirectory = (Join-Path $directory 'temporary')
+            ProbeDirectory = (Join-Path $directory 'probes')
+        }
+        $records += $record
+        $workerPlan = Join-Path $run "worker-plan-$($worker.Worker).json"
+        $record | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $workerPlan
+        $start = [System.Diagnostics.ProcessStartInfo]::new()
+        $start.FileName = (Get-Process -Id $PID).Path
+        $start.WorkingDirectory = $repository
+        $start.UseShellExecute = $false
+        $start.CreateNoWindow = $true
+        $start.RedirectStandardOutput = $true
+        $start.RedirectStandardError = $true
+        foreach ($argument in @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'run-test-worker.ps1'), '-Plan', $workerPlan)) {
+            $start.ArgumentList.Add($argument)
+        }
+        $process = [System.Diagnostics.Process]::Start($start)
+        $stdout = [System.IO.StreamWriter]::new((Join-Path $run "worker-$($worker.Worker).stdout.log"))
+        $stderr = [System.IO.StreamWriter]::new((Join-Path $run "worker-$($worker.Worker).stderr.log"))
+        $stdout.AutoFlush = $stderr.AutoFlush = $true
+        $processes += [pscustomobject]@{ Process = $process; Worker = $worker.Worker
+            OutputTask = $process.StandardOutput.ReadLineAsync(); ErrorTask = $process.StandardError.ReadLineAsync()
+            OutputLog = $stdout; ErrorLog = $stderr }
+    }
+    do {
+        $pending = $false
+        foreach ($child in $processes) {
+            Receive-WorkerOutput $child $false
+            Receive-WorkerOutput $child $true
+            if (-not $child.Process.HasExited -or $null -ne $child.OutputTask -or $null -ne $child.ErrorTask) { $pending = $true }
+        }
+        if ($pending) { Start-Sleep -Milliseconds 100 }
+    } while ($pending)
+    foreach ($child in $processes) {
+        $child.Process.WaitForExit()
+        if ($child.Process.ExitCode -ne 0) { $exitCode = $child.Process.ExitCode }
+    }
+}
+catch { $exitCode = 1; throw }
+finally {
+    foreach ($child in $processes) {
+        if (-not $child.Process.HasExited) { $child.Process.Kill($true); $child.Process.WaitForExit() }
+        $child.OutputLog.Dispose(); $child.ErrorLog.Dispose(); $child.Process.Dispose()
+    }
+    [pscustomobject]@{
+        SchemaVersion = 1; Shard = $ShardNumber; Shards = $ShardCount; TotalCases = $cases.Count
+        Cases = $caseCount; Workers = $records; ExitCode = $exitCode
+    } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $run 'shard-plan.json')
+}
+exit $exitCode
