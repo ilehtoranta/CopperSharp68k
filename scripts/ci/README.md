@@ -57,8 +57,10 @@ from a successful Build run into an empty directory and run:
 Review and commit the profile with its source/run provenance. Use one run's
 reports, not combined reruns or duplicate downloads. Benchmark changes with the
 whole Build workflow and compare the exact test-name multiplicities and outcomes
-against the baseline, in addition to wall-clock and runner time. The initial
-profile records all 4,373 passing execution cases from main `35a29a0a`.
+against the baseline, in addition to wall-clock and runner time. The current
+profile records all 4,376 passing execution cases from main `72aa1354`, including
+the three execution-harness regressions. It uses timings collected with the
+counted execution loop and default host tiered compilation.
 
 The website publication still waits for the complete Build workflow to pass.
 These scripts do not change publication history, recovery refs, or backups.
