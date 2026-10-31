@@ -2,21 +2,30 @@
 
 The Build workflow runs the existing fast-test filter and all discovered
 `CompilerExecutionTests` cases. The 16 execution shards may run concurrently;
-each runner starts two independent PowerShell/.NET test processes. Production
+each runner starts four independent PowerShell/.NET test processes. Production
 compiler code, assertions, CPU targets, and theory data are unchanged.
 
-`TestSharding.psm1` keeps the existing method/CPU selection groups intact and
-assigns the longest estimated groups first to the least-loaded worker. The
+`TestSharding.psm1` schedules independently named theory rows separately and
+assigns the longest estimated groups first to the least-loaded worker. Exact
+display-name filters escape VSTest operators. Names that VSTest cannot distinguish
+(case-insensitive matches or abbreviated duplicate names) remain together, with
+their complete multiplicities. The
 versioned `execution-test-durations.json` comes from passing TRX reports. Each
 entry is `[baseline case count, elapsed seconds]`, keyed by method and optional
-CPU display-name parameter. Changed theory sizes scale the recorded estimate;
+CPU display-name parameter and, for split theories, a SHA-256 display-name identity.
+Schema 2 records per-selection timings; schema 1 profiles remain supported by
+scaling the old method/CPU estimate across its rows. Changed theory sizes scale the recorded estimate;
 new groups use the baseline mean per-case duration and remain fully included.
 The profile affects scheduling only; discovery determines what runs.
 
-`run-test-shard.ps1` starts workers together, streams their console output, and
+`run-test-shard.ps1` resolves the built test assembly once and runs it directly
+through `dotnet test`, avoiding repeated project evaluation and preserving literal
+quotes in display-name filters. It starts workers together, streams their console output, and
 retains separate logs and TRX reports. Every invocation gets a fresh result
-directory. Workers have separate temporary and generated-probe directories, so
-test fixtures remain isolated and previous results are preserved. Native
+directory. Workers receive private copies of the complete built test output, as
+well as separate temporary and generated-probe directories. Diagnostic writes
+beside an assembly cannot race, and the original build output and previous
+results are preserved. Native
 filters stay below the existing 20,000-character limit.
 
 Each worker compares its complete discovery list with its TRX results, including
@@ -30,8 +39,8 @@ limits, coverage errors, process isolation, console output, and failure propagat
 Build the solution with the pinned SDK before running a shard locally:
 
 ```powershell
-./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 16 -Workers 2 -Configuration Release
-./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 16 -Workers 2 -Configuration Release -ListOnly
+./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 16 -Workers 4 -Configuration Release
+./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 16 -Workers 4 -Configuration Release -ListOnly
 ```
 
 `Workers` defaults to 1 for local use. Set `DOTNET` to the pinned SDK executable
@@ -49,7 +58,7 @@ Review and commit the profile with its source/run provenance. Use one run's
 reports, not combined reruns or duplicate downloads. Benchmark changes with the
 whole Build workflow and compare the exact test-name multiplicities and outcomes
 against the baseline, in addition to wall-clock and runner time. The initial
-profile records all 4,373 passing execution cases from main `fa32cd8`.
+profile records all 4,373 passing execution cases from main `35a29a0a`.
 
 The website publication still waits for the complete Build workflow to pass.
 These scripts do not change publication history, recovery refs, or backups.

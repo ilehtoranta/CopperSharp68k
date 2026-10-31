@@ -16,24 +16,48 @@ function Get-ExecutionTestCases {
     }
 }
 
+function ConvertTo-ExecutionFilterValue {
+    param([string]$Value)
+    # VSTest FilterHelper.Escape: escape operators, grouping and backslashes.
+    [regex]::Replace($Value, '[\\()&|=!~]', '\$0')
+}
+
 function Get-ExecutionTestGroups {
     param([object[]]$Cases)
     foreach ($method in ($Cases | Group-Object Method)) {
         $shortName = $method.Name.Substring('CopperSharp.Compiler.Tests.CompilerExecutionTests.'.Length)
-        if (@($method.Group | Where-Object { -not $_.Cpu }).Count -eq 0) {
-            foreach ($cpu in ($method.Group | Group-Object Cpu)) {
-                [pscustomobject]@{
-                    Key = "$shortName|$($cpu.Name)"
-                    Filter = "(FullyQualifiedName=$($method.Name)&DisplayName~$($cpu.Name))"
-                    Cases = @($cpu.Group | Sort-Object DisplayName -Culture en-US)
-                }
+        $buckets = if (@($method.Group | Where-Object { -not $_.Cpu }).Count -eq 0) {
+            @($method.Group | Group-Object Cpu)
+        } else { @([pscustomobject]@{ Name = ''; Group = $method.Group }) }
+        foreach ($bucket in $buckets) {
+            $baseKey = if ($bucket.Name) { "$shortName|$($bucket.Name)" } else { $shortName }
+            if ($bucket.Group.Count -eq 1) {
+                $filter = if ($bucket.Name) { "(FullyQualifiedName=$($method.Name)&DisplayName~$($bucket.Name))" }
+                    else { "FullyQualifiedName=$($method.Name)" }
+                [pscustomobject]@{ Key = $baseKey; TimingFallbackKey = $baseKey; Filter = $filter
+                    Cases = @($bucket.Group) }
+                continue
             }
-        }
-        else {
-            [pscustomobject]@{
-                Key = $shortName
-                Filter = "FullyQualifiedName=$($method.Name)"
-                Cases = @($method.Group | Sort-Object DisplayName -Culture en-US)
+            # VSTest compares names with OrdinalIgnoreCase. Keep indistinguishable
+            # names together (including abbreviated theory arguments), otherwise
+            # an equality filter would select the same rows on multiple workers.
+            $byName = [System.Collections.Generic.Dictionary[string, object]]::new([StringComparer]::OrdinalIgnoreCase)
+            foreach ($case in $bucket.Group) {
+                if (-not $byName.ContainsKey($case.DisplayName)) {
+                    $byName[$case.DisplayName] = [System.Collections.Generic.List[object]]::new()
+                }
+                $byName[$case.DisplayName].Add($case)
+            }
+            foreach ($rows in $byName.Values) {
+                $ordered = @($rows | Sort-Object DisplayName -Culture en-US -CaseSensitive)
+                $name = $ordered[0].DisplayName
+                $bytes = [Text.Encoding]::UTF8.GetBytes($name.ToUpperInvariant())
+                $id = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+                [pscustomobject]@{
+                    Key = "$baseKey|case:$id"; TimingFallbackKey = $baseKey
+                    Filter = "(FullyQualifiedName=$($method.Name)&DisplayName=$(ConvertTo-ExecutionFilterValue $name))"
+                    Cases = $ordered
+                }
             }
         }
     }
@@ -49,14 +73,16 @@ function New-ExecutionTestPlan {
     if ($Cases.Count -eq 0) { throw 'No compiler execution tests were discovered.' }
     $fallback = 1.0
     if ($TimingProfile) {
-        if ($TimingProfile.schemaVersion -ne 1) { throw 'Unsupported execution timing profile schema.' }
+        if ($TimingProfile.schemaVersion -notin @(1, 2)) { throw 'Unsupported execution timing profile schema.' }
         $fallback = [double]$TimingProfile.fallbackSecondsPerCase
         if (-not [double]::IsFinite($fallback) -or $fallback -le 0) { throw 'Invalid fallback timing.' }
     }
     $groups = @(foreach ($group in (Get-ExecutionTestGroups $Cases)) {
         $seconds = $fallback * $group.Cases.Count
-        if ($TimingProfile -and $TimingProfile.groups.Contains($group.Key)) {
-            $timing = $TimingProfile.groups[$group.Key]
+        $timingKey = $group.Key
+        if ($TimingProfile -and -not $TimingProfile.groups.Contains($timingKey)) { $timingKey = $group.TimingFallbackKey }
+        if ($TimingProfile -and $TimingProfile.groups.Contains($timingKey)) {
+            $timing = $TimingProfile.groups[$timingKey]
             if ($timing.Count -ne 2 -or $timing[0] -le 0 -or
                 -not [double]::IsFinite([double]$timing[1]) -or $timing[1] -le 0) {
                 throw "Invalid timing for $($group.Key)."
@@ -71,8 +97,7 @@ function New-ExecutionTestPlan {
                 Groups = [System.Collections.Generic.List[object]]::new() }
         }
     })
-    # Longest-processing-time first avoids a tail from expensive CoreLib theories.
-    # Keep the existing method/CPU filter groups intact.
+    # Longest-processing-time first distributes expensive theory rows separately.
     foreach ($group in ($groups | Sort-Object @{ Expression = 'Seconds'; Descending = $true }, Key -Culture en-US)) {
         $target = 0
         for ($index = 1; $index -lt $bins.Count; $index++) {
@@ -123,4 +148,4 @@ function Assert-ExecutionTestCoverage {
     if ($Results.Count -ne $Expected.Count) { throw 'Execution result count does not match discovery.' }
 }
 
-Export-ModuleMember -Function Get-ExecutionTestCases, Get-ExecutionTestGroups, New-ExecutionTestPlan, Get-ExecutionTestFilters, Assert-ExecutionTestCoverage
+Export-ModuleMember -Function Get-ExecutionTestCases, Get-ExecutionTestGroups, New-ExecutionTestPlan, Get-ExecutionTestFilters, Assert-ExecutionTestCoverage, ConvertTo-ExecutionFilterValue

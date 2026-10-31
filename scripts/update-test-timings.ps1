@@ -20,7 +20,7 @@ $cases = @(foreach ($report in (Get-ChildItem -LiteralPath $ResultsDirectory -Re
 if ($cases.Count -eq 0) { throw 'No compiler execution results were found.' }
 $groups = @(Get-ExecutionTestGroups -Cases $cases | Sort-Object Key -Culture en-US)
 $header = [ordered]@{
-    schemaVersion = 1; sourceRevision = $SourceRevision; baselineRun = $BaselineRun
+    schemaVersion = 2; sourceRevision = $SourceRevision; baselineRun = $BaselineRun
     cases = $cases.Count
     fallbackSecondsPerCase = [math]::Round(($cases | Measure-Object Seconds -Average).Average, 6)
 } | ConvertTo-Json
@@ -33,4 +33,4 @@ $rows = @(foreach ($group in $groups) {
 $text = $header + ",`n  `"groups`": {`n" + ($rows -join ",`n") + "`n  }`n}`n"
 [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($Output))) | Out-Null
 [System.IO.File]::WriteAllText([System.IO.Path]::GetFullPath($Output), $text)
-Write-Host "Recorded $($cases.Count) cases in $($groups.Count) method/CPU groups: $Output"
+Write-Host "Recorded $($cases.Count) cases in $($groups.Count) independently selectable groups: $Output"

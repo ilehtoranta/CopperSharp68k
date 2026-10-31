@@ -12,7 +12,7 @@ $env:COPPERSHARP_TEST_PROBE_ROOT = $worker.ProbeDirectory
 $exitCode = 0
 for ($batch = 0; $batch -lt $worker.Filters.Count; $batch++) {
     Write-Host "Worker $($worker.Worker): batch $($batch + 1)/$($worker.Filters.Count)."
-    & $worker.DotNet test $worker.Project --configuration $worker.Configuration --no-build --no-restore `
+    & $worker.DotNet test $worker.Assembly `
         --filter $worker.Filters[$batch] --logger "trx;LogFileName=tests-$($batch + 1).trx" `
         --logger 'console;verbosity=normal' --results-directory $worker.ResultsDirectory
     if ($LASTEXITCODE -ne 0) { $exitCode = $LASTEXITCODE }

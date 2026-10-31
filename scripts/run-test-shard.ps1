@@ -15,9 +15,14 @@ Import-Module (Join-Path $PSScriptRoot 'TestSharding.psm1') -Force -DisableNameC
 $repository = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $project = Join-Path $repository 'Compiler.Tests/CopperSharp.Compiler.Tests.csproj'
 $dotnet = if ($env:DOTNET) { $env:DOTNET } else { 'dotnet' }
+$assembly = $null
 if ($DiscoveryFile) { $listedTests = Get-Content -LiteralPath $DiscoveryFile }
 else {
-    $arguments = @('test', $project, '--configuration', $Configuration, '--no-build', '--no-restore',
+    $targetPath = & $dotnet msbuild $project -nologo "-property:Configuration=$Configuration" -getProperty:TargetPath 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Could not resolve the built test assembly: $($targetPath -join [Environment]::NewLine)" }
+    $assembly = ($targetPath -join [Environment]::NewLine).Trim()
+    if (-not (Test-Path -LiteralPath $assembly -PathType Leaf)) { throw "Build the test project first: $assembly" }
+    $arguments = @('test', $assembly,
         '--list-tests', '--filter', 'FullyQualifiedName~CopperSharp.Compiler.Tests.CompilerExecutionTests')
     $listedTests = & $dotnet @arguments 2>&1
     if ($LASTEXITCODE -ne 0) { throw "Test discovery failed: $($listedTests -join [Environment]::NewLine)" }
@@ -41,6 +46,11 @@ if ($ListOnly) {
 }
 # Unique run directories retain old evidence and exclude stale TRX files.
 $run = Join-Path ([System.IO.Path]::GetFullPath($ResultsDirectory)) "shard-$ShardNumber-$([guid]::NewGuid().ToString('N'))"
+$sourceDirectory = [System.IO.Path]::GetDirectoryName($assembly)
+$comparison = if ($IsWindows) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
+if ($run.StartsWith($sourceDirectory.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar, $comparison)) {
+    throw 'ResultsDirectory must be outside the built test output to avoid recursive copies.'
+}
 [System.IO.Directory]::CreateDirectory($run) | Out-Null
 $records = @()
 $processes = @()
@@ -60,9 +70,17 @@ function Receive-WorkerOutput($Child, [bool]$IsError) {
 try {
     foreach ($worker in $selected) {
         $directory = Join-Path $run "worker-$($worker.Worker)"
+        # Some theories write diagnostics beside their assembly. Give each
+        # worker its own complete output tree, leaving the built inputs intact.
+        $assemblyDirectory = Join-Path $directory 'assembly'
+        [System.IO.Directory]::CreateDirectory($assemblyDirectory) | Out-Null
+        foreach ($item in (Get-ChildItem -LiteralPath $sourceDirectory -Force)) {
+            Copy-Item -LiteralPath $item.FullName -Destination $assemblyDirectory -Recurse
+        }
+        $workerAssembly = Join-Path $assemblyDirectory ([System.IO.Path]::GetFileName($assembly))
         $record = [pscustomobject]@{
             Shard = $ShardNumber; Worker = $worker.Worker; DotNet = $dotnet
-            Project = $project; Configuration = $Configuration
+            Project = $project; SourceAssembly = $assembly; Assembly = $workerAssembly; Configuration = $Configuration
             EstimatedSeconds = $worker.EstimatedSeconds
             Filters = @(Get-ExecutionTestFilters -Groups $worker.Groups.ToArray())
             ExpectedCases = @($worker.Groups | ForEach-Object { $_.Cases } | ForEach-Object DisplayName)

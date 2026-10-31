@@ -98,7 +98,7 @@ jobs:
           ./scripts/run-test-shard.ps1
           -ShardNumber ${{ matrix.shard }}
           -ShardCount 16
-          -Workers 2
+          -Workers 4
           -Configuration Release
           -ResultsDirectory TestResults
 

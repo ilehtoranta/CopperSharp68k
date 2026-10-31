@@ -12,8 +12,8 @@ $lines = @('Test discovery heading', "    $($prefix)Heavy(target: M68000)",
 $cases = @(Get-ExecutionTestCases -Lines $lines)
 Assert-True ($cases.Count -eq 5) 'Discovery lost a case or included a heading.'
 $groups = @(Get-ExecutionTestGroups -Cases $cases)
-Assert-True ($groups.Count -eq 4) 'Mixed CPU/non-CPU theories must remain a single group.'
-Assert-True (@($groups | Where-Object Key -eq Mixed)[0].Cases.Count -eq 2) 'Mixed theory lost rows.'
+Assert-True ($groups.Count -eq 5) 'Independently named theory rows were not split.'
+Assert-True (@($groups | Where-Object TimingFallbackKey -eq Mixed).Count -eq 2) 'Mixed theory lost rows.'
 $profile = @{ schemaVersion = 1; fallbackSecondsPerCase = 2.0
     groups = @{ 'Heavy|target: M68000' = @(1, 100.0); 'Heavy|target: M68020' = @(1, 90.0) } }
 $plan = @(New-ExecutionTestPlan -Cases $cases -ShardCount 2 -Workers 2 -TimingProfile $profile)
@@ -25,12 +25,22 @@ Assert-True ($plan[1].Groups[0].Key -eq 'Heavy|target: M68020') 'Heavy groups we
 $reversed = @($cases); [array]::Reverse($reversed)
 $again = @(New-ExecutionTestPlan -Cases $reversed -ShardCount 2 -Workers 2 -TimingProfile $profile)
 Assert-True (($plan | ConvertTo-Json -Depth 8 -Compress) -eq ($again | ConvertTo-Json -Depth 8 -Compress)) 'Planning depends on discovery order.'
-$batches = @(Get-ExecutionTestFilters -Groups $groups -MaximumLength 180)
-Assert-True (@($batches | Where-Object Length -gt 180).Count -eq 0) 'A filter exceeds the native command length limit.'
+$batches = @(Get-ExecutionTestFilters -Groups $groups -MaximumLength 300)
+Assert-True (@($batches | Where-Object Length -gt 300).Count -eq 0) 'A filter exceeds the native command length limit.'
 Assert-True (($batches -join '|') -eq (($groups | Sort-Object Key -Culture en-US | ForEach-Object Filter) -join '|')) 'Filter batching lost a group.'
 Assert-Throws { Get-ExecutionTestFilters -Groups $groups -MaximumLength 5 } 'length limit'
 Assert-Throws { New-ExecutionTestPlan -Cases @() -ShardCount 1 } 'No compiler execution'
 Assert-Throws { New-ExecutionTestPlan -Cases $cases -ShardCount 1 -TimingProfile @{ schemaVersion = 99 } } 'schema'
+$special = 'Name(value: "a&b|c=d!~(x)\path")'
+Assert-True ((ConvertTo-ExecutionFilterValue $special) -eq 'Name\(value: "a\&b\|c\=d\!\~\(x\)\\path"\)') 'Filter operators were not escaped correctly.'
+$collisionCases = @(Get-ExecutionTestCases -Lines @("$($prefix)Repeated(value: ABC)", "$($prefix)Repeated(value: abc)", "$($prefix)Repeated(value: ABC)"))
+$collisionGroups = @(Get-ExecutionTestGroups -Cases $collisionCases)
+Assert-True ($collisionGroups.Count -eq 1 -and $collisionGroups[0].Cases.Count -eq 3) 'Case-insensitive or abbreviated display names overlap between workers.'
+Assert-True ($collisionGroups[0].Filter -match '&DisplayName=') 'A split theory does not use an equality filter.'
+$legacyRows = @(Get-ExecutionTestCases -Lines @("$($prefix)Rows(target: M68000, entry: A)", "$($prefix)Rows(target: M68000, entry: B)"))
+$legacyProfile = @{ schemaVersion = 1; fallbackSecondsPerCase = 1; groups = @{ 'Rows|target: M68000' = @(2, 100) } }
+$legacyPlan = @(New-ExecutionTestPlan -Cases $legacyRows -ShardCount 1 -Workers 2 -TimingProfile $legacyProfile)
+Assert-True (@($legacyPlan | Where-Object EstimatedSeconds -ne 50).Count -eq 0) 'Legacy CPU-group timing was not scaled across split rows.'
 $expected = @('same', 'same', 'other')
 $valid = @([pscustomobject]@{ Name = 'same'; Outcome = 'Passed' },
     [pscustomobject]@{ Name = 'same'; Outcome = 'Failed' }, [pscustomobject]@{ Name = 'other'; Outcome = 'Passed' })
@@ -51,9 +61,20 @@ $fake = Join-Path $root 'dotnet.ps1'
 @'
 $arguments = @($args)
 $prefix = 'CopperSharp.Compiler.Tests.CompilerExecutionTests.'
-if ($arguments -contains '--list-tests') { "$($prefix)Alpha"; "$($prefix)Beta"; exit 0 }
+if ($arguments[0] -eq 'msbuild') {
+    $built = Join-Path $PSScriptRoot 'built'
+    [IO.Directory]::CreateDirectory($built) | Out-Null
+    $assembly = Join-Path $built 'fixture.dll'
+    if (-not (Test-Path $assembly)) { [IO.File]::WriteAllBytes($assembly, [byte[]]@()) }
+    $assembly
+    exit 0
+}
+if ($arguments -contains '--list-tests') { foreach ($name in @('Alpha','Beta','Gamma','Delta')) { "$prefix$name" }; exit 0 }
+if (-not $arguments[1].EndsWith('.dll')) { throw 'The worker must run the already-built assembly.' }
+[IO.File]::WriteAllText((Join-Path ([IO.Path]::GetDirectoryName($arguments[1])) 'diagnostic.txt'), 'worker-owned')
 $filter = $arguments[[array]::IndexOf($arguments, '--filter') + 1]
-$name = if ($filter -match 'Alpha') { "$($prefix)Alpha" } else { "$($prefix)Beta" }
+if ($filter -notmatch '\.(Alpha|Beta|Gamma|Delta)') { throw "Unexpected filter: $filter" }
+$name = "$prefix$($Matches[1])"
 $directory = $arguments[[array]::IndexOf($arguments, '--results-directory') + 1]
 $log = @($arguments | Where-Object { $_ -like 'trx;LogFileName=*' })[0].Split('=')[1]
 [System.IO.Directory]::CreateDirectory($directory) | Out-Null
@@ -62,7 +83,7 @@ $outcome = if ($mode -in @('failed', 'failed-report')) { 'Failed' } else { 'Pass
 $row = "<UnitTestResult testName='$name' outcome='$outcome'/>"
 if ($mode -eq 'duplicate') { $row += $row }
 if ($mode -eq 'missing') { $row = '' }
-@{ Temporary = $env:TEMP; Tmp = $env:TMP; TmpDir = $env:TMPDIR; Probes = $env:COPPERSHARP_TEST_PROBE_ROOT } |
+@{ Temporary = $env:TEMP; Tmp = $env:TMP; TmpDir = $env:TMPDIR; Probes = $env:COPPERSHARP_TEST_PROBE_ROOT; Assembly = $arguments[1] } |
     ConvertTo-Json | Set-Content (Join-Path $directory 'environment.json')
 Start-Sleep -Milliseconds 100
 "<TestRun><Results>$row</Results></TestRun>" | Set-Content (Join-Path $directory $log)
@@ -75,19 +96,22 @@ $originalDotNet = $env:DOTNET
 $originalMode = $env:COPPERSHARP_SHARD_TEST_MODE
 try {
     $env:DOTNET = $fake
+    Assert-Throws { & (Join-Path $PSScriptRoot 'run-test-shard.ps1') -ShardNumber 1 -ShardCount 1 -Workers 4 -ResultsDirectory (Join-Path $root 'built/results') -TimingFile $emptyProfile } 'outside the built test output'
     foreach ($mode in @('passed', 'failed', 'failed-report', 'duplicate', 'missing')) {
         $env:COPPERSHARP_SHARD_TEST_MODE = $mode
         $destination = Join-Path $root $mode
-        & (Join-Path $PSScriptRoot 'run-test-shard.ps1') -ShardNumber 1 -ShardCount 1 -Workers 2 -ResultsDirectory $destination -TimingFile $emptyProfile *> (Join-Path $root "$mode.log")
+        & (Join-Path $PSScriptRoot 'run-test-shard.ps1') -ShardNumber 1 -ShardCount 1 -Workers 4 -ResultsDirectory $destination -TimingFile $emptyProfile *> (Join-Path $root "$mode.log")
         $code = $LASTEXITCODE
         Assert-True (($mode -eq 'passed' -and $code -eq 0) -or ($mode -ne 'passed' -and $code -ne 0)) "Incorrect exit code for $mode : $code"
         Assert-True ((Get-Content (Join-Path $root "$mode.log") -Raw) -match '\[worker [12]\] Worker') 'Worker console output was lost.'
         $summaries = @(Get-ChildItem $destination -Recurse -Filter worker-summary.json)
-        Assert-True ($summaries.Count -eq 2) 'One failed worker prevented another from completing.'
+        Assert-True ($summaries.Count -eq 4) 'One failed worker prevented another from completing.'
         $environments = @(Get-ChildItem $destination -Recurse -Filter environment.json | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
-        Assert-True ($environments.Count -eq 2) 'Both workers did not execute.'
-        Assert-True ($environments[0].Temporary -ne $environments[1].Temporary) 'Workers share temporary files.'
-        Assert-True ($environments[0].Probes -ne $environments[1].Probes) 'Workers share generated probes.'
+        Assert-True ($environments.Count -eq 4) 'All four workers did not execute.'
+        Assert-True (@($environments.Temporary | Sort-Object -Unique).Count -eq 4) 'Workers share temporary files.'
+        Assert-True (@($environments.Probes | Sort-Object -Unique).Count -eq 4) 'Workers share generated probes.'
+        Assert-True (@($environments.Assembly | Sort-Object -Unique).Count -eq 4) 'Workers share their assembly output directory.'
+        Assert-True (-not (Test-Path (Join-Path $root 'built/diagnostic.txt'))) 'A worker changed the original build output.'
         foreach ($environment in $environments) {
             Assert-True ($environment.Temporary -eq $environment.Tmp -and $environment.Tmp -eq $environment.TmpDir) 'Temporary-directory environment is inconsistent.'
         }
