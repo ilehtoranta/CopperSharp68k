@@ -390,6 +390,11 @@ internal static class M68kLivenessAnalysis
 		}
 
 		var blocks = function.Blocks.ToDictionary(static block => block.Id);
+		// Scratch sets never alias retained results. Exchange storage only when
+		// a block changes; keep the original sweep and fixed-point equations.
+		var liveOut = new HashSet<int>();
+		var liveIn = new HashSet<int>();
+		var edgeLive = new HashSet<int>();
 		var changed = true;
 		while (changed)
 		{
@@ -399,35 +404,43 @@ internal static class M68kLivenessAnalysis
 			{
 				var block = function.Blocks[index];
 				M68kOptimizationProfiler.Count("allocation.liveness-block-visits");
-				var liveOut = new HashSet<int>();
+				liveOut.Clear();
 				foreach (var edge in block.SuccessorEdges)
 				{
 					var successorId = edge.TargetBlockId;
 					var successor = blocks[successorId];
-					var edgeLive = new HashSet<int>(result.LiveIn[successorId]);
-					edgeLive.ExceptWith(successor.Phis.Select(static phi => phi.Definition));
-					foreach (var phi in successor.Phis.Where(_ =>
-						edge.Kind == M68kMachineEdgeKind.Normal))
+					edgeLive.Clear();
+					edgeLive.UnionWith(result.LiveIn[successorId]);
+					foreach (var phi in successor.Phis) edgeLive.Remove(phi.Definition);
+					if (edge.Kind == M68kMachineEdgeKind.Normal)
 					{
-						if (phi.Inputs.TryGetValue(block.Id, out var input))
+						foreach (var phi in successor.Phis)
 						{
-							edgeLive.Add(input);
+							if (phi.Inputs.TryGetValue(block.Id, out var input))
+							{
+								edgeLive.Add(input);
+							}
 						}
 					}
 					liveOut.UnionWith(edgeLive);
 				}
 
-				var liveIn = new HashSet<int>(liveOut);
+				liveIn.Clear();
+				liveIn.UnionWith(liveOut);
 				liveIn.ExceptWith(result.Def[block.Id]);
 				liveIn.UnionWith(result.Use[block.Id]);
 				if (!liveOut.SetEquals(result.LiveOut[block.Id]))
 				{
+					var previous = result.LiveOut[block.Id];
 					result.LiveOut[block.Id] = liveOut;
+					liveOut = previous;
 					changed = true;
 				}
 				if (!liveIn.SetEquals(result.LiveIn[block.Id]))
 				{
+					var previous = result.LiveIn[block.Id];
 					result.LiveIn[block.Id] = liveIn;
+					liveIn = previous;
 					changed = true;
 				}
 			}
@@ -1146,6 +1159,7 @@ internal static class M68kGraphColoringAllocator
 		var groupForValue = groups.Values
 			.SelectMany(group => group.Members.Select(value => (value, group.Id)))
 			.ToDictionary(static item => item.value, static item => item.Id);
+		var copyPreferences = new CopyPreferenceIndex(graph, groupForValue);
 		var groupNeighbors = groups.Keys.ToDictionary(
 			static group => group,
 			static _ => new HashSet<int>());
@@ -1239,8 +1253,8 @@ internal static class M68kGraphColoringAllocator
 				}
 			}
 
-			var preferredCopyRegisters = AllocatedCopyRegisters(
-				graph, groupForValue, allocatedGroups, groupId,
+			var preferredCopyRegisters = copyPreferences.AllocatedRegisters(
+				allocatedGroups, groupId,
 				function.OptimizeRegisterCopies);
 			var selected = preferredCopyRegisters
 				.Concat(CandidateRegisters(group))
@@ -1254,7 +1268,7 @@ internal static class M68kGraphColoringAllocator
 					pairAliases.Values.All(static aliases => aliases.Count == 0) &&
 					TryReassignScalarNeighbor(
 					function, group, groups, groupNeighbors, allocatedGroups,
-					stack, graph, groupForValue, out selected))
+					stack, copyPreferences, out selected))
 				{
 					allocatedGroups.Add(groupId, new M68kAllocatedLocation(selected, false));
 					continue;
@@ -1341,25 +1355,47 @@ internal static class M68kGraphColoringAllocator
 		return new M68kAllocationResult(allocated, spilled);
 	}
 
-	private static IEnumerable<M68kRegister> AllocatedCopyRegisters(
-		M68kInterferenceGraph graph,
-		IReadOnlyDictionary<int, int> groupForValue,
-		IReadOnlyDictionary<int, M68kAllocatedLocation> allocated,
-		int groupId,
-		bool optimizeRegisterCopies = false)
+	private sealed class CopyPreferenceIndex(
+		M68kInterferenceGraph graph, IReadOnlyDictionary<int, int> groupForValue)
 	{
-		IEnumerable<(int Left, int Right)> preferences = optimizeRegisterCopies
-			? graph.CopyPreferences.OrderByDescending(pair =>
-				graph.CopyPreferenceWeight(pair.Left, pair.Right))
-			: graph.CopyPreferences;
-		foreach (var (left, right) in preferences)
+		private Dictionary<int, List<int>>? _original;
+		private Dictionary<int, List<int>>? _weighted;
+
+		internal IEnumerable<M68kRegister> AllocatedRegisters(
+			IReadOnlyDictionary<int, M68kAllocatedLocation> allocated, int groupId,
+			bool optimizeRegisterCopies = false)
 		{
-			var leftGroup = groupForValue[left];
-			var rightGroup = groupForValue[right];
-			if (leftGroup == groupId && allocated.TryGetValue(rightGroup, out var rightLocation))
-				yield return rightLocation.Register;
-			if (rightGroup == groupId && allocated.TryGetValue(leftGroup, out var leftLocation))
-				yield return leftLocation.Register;
+			var index = optimizeRegisterCopies ? _weighted ??= Build(true) : _original ??= Build(false);
+			if (!index.TryGetValue(groupId, out var neighbors)) yield break;
+			foreach (var neighbor in neighbors)
+				if (allocated.TryGetValue(neighbor, out var location)) yield return location.Register;
+		}
+
+		private static void Add(Dictionary<int, List<int>> index, int group, int other)
+		{
+			if (!index.TryGetValue(group, out var neighbors)) index.Add(group, neighbors = new());
+			neighbors.Add(other);
+		}
+
+		private Dictionary<int, List<int>> Build(bool weighted)
+		{
+			using var profile = M68kOptimizationProfiler.Measure("allocation.copy-preferences");
+			M68kOptimizationProfiler.Count("allocation.copy-preference-index-builds");
+			IEnumerable<(int Left, int Right)> preferences = weighted
+				? graph.CopyPreferences.OrderByDescending(pair => graph.CopyPreferenceWeight(pair.Left, pair.Right))
+				: graph.CopyPreferences;
+			var index = new Dictionary<int, List<int>>();
+			// Preserve edge order, stable weight ties and duplicate preferences.
+			// Only membership/order is indexed; colors are read at each query.
+			foreach (var (left, right) in preferences)
+			{
+				var leftGroup = groupForValue[left];
+				var rightGroup = groupForValue[right];
+				if (leftGroup == rightGroup) continue; // Queried groups are not colored yet.
+				Add(index, leftGroup, rightGroup);
+				Add(index, rightGroup, leftGroup);
+			}
+			return index;
 		}
 	}
 
@@ -1594,8 +1630,7 @@ internal static class M68kGraphColoringAllocator
 		IReadOnlyDictionary<int, HashSet<int>> neighbors,
 		Dictionary<int, M68kAllocatedLocation> allocated,
 		IEnumerable<int> pendingGroups,
-		M68kInterferenceGraph graph,
-		IReadOnlyDictionary<int, int> groupForValue,
+		CopyPreferenceIndex copyPreferences,
 		out M68kRegister selected)
 	{
 		selected = default;
@@ -1661,7 +1696,7 @@ internal static class M68kGraphColoringAllocator
 				// different legal An is equally good for this scalar. Domain size
 				// alone misses long values with an already colored phi/copy source.
 				var addressDemand = PendingAddressDemand(alternative, blocker.Id,
-					groups, neighbors, allocated, pending, graph, groupForValue);
+					groups, neighbors, allocated, pending, copyPreferences);
 				if (bestBlocker is null || blocker.SpillWeight < bestBlocker.SpillWeight ||
 					(blocker.SpillWeight == bestBlocker.SpillWeight && addressDemand < bestAddressDemand))
 				{
@@ -1687,8 +1722,7 @@ internal static class M68kGraphColoringAllocator
 		IReadOnlyDictionary<int, HashSet<int>> neighbors,
 		IReadOnlyDictionary<int, M68kAllocatedLocation> allocated,
 		IReadOnlySet<int> pending,
-		M68kInterferenceGraph graph,
-		IReadOnlyDictionary<int, int> groupForValue)
+		CopyPreferenceIndex copyPreferences)
 	{
 		var demand = 0L;
 		foreach (var neighbor in neighbors[blocker].Where(pending.Contains))
@@ -1703,7 +1737,7 @@ internal static class M68kGraphColoringAllocator
 						forbidden.Bits | location.OccupiedRegisters.Bits));
 				}
 			}
-			var preferred = AllocatedCopyRegisters(graph, groupForValue, allocated, future.Id)
+			var preferred = copyPreferences.AllocatedRegisters(allocated, future.Id)
 				.Concat(CandidateRegisters(future)).Distinct().FirstOrDefault(register =>
 					CandidateIsAvailable(future, register, forbidden));
 			if (preferred == candidate && CandidateIsAvailable(future, preferred, forbidden))

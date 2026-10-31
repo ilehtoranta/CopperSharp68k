@@ -33,6 +33,8 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private HashSet<int>? _referencedLabelOffsets;
 	private HashSet<int>? _unrelocatableLabelOffsets;
 	private HashSet<int>? _labelOffsets;
+	private IReadOnlyList<M68kEmittedInstruction>? _indexedInstructions;
+	private Dictionary<int, M68kEmittedInstruction>? _instructionIndexStorage;
 	private IReadOnlySet<int>? _addressFixupOffsets;
 	private AddressEntryBoundaryIndex? _addressEntryBoundaryIndex;
 	private int[]? _foldBoundaryLabelOffsets;
@@ -104,6 +106,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		Changed = false;
 		RewriteCount = 0;
 		var rewrites = 0;
+		// Reuse within this invocation, without retaining a whole-image table
+		// across the smaller method scopes handled by the same pass instance.
+		var referencedOffsetStorage = new HashSet<int>();
+		var unrelocatableOffsetStorage = new HashSet<int>();
+		var labelOffsetStorage = new HashSet<int>();
+		_instructionIndexStorage = null;
 		bool changed;
 		do
 		{
@@ -117,10 +125,11 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_controlFlowMethodEnds = null;
 				_generatedSizeIntervals = null;
 				_roundBranches = null;
-				_referencedLabelOffsets = ReferencedLabelOffsets();
+				_indexedInstructions = null;
+				_referencedLabelOffsets = ReferencedLabelOffsets(storage: referencedOffsetStorage);
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
-					includeExternalAddresses: true);
-				_labelOffsets = CurrentLabelOffsets();
+					includeExternalAddresses: true, storage: unrelocatableOffsetStorage);
+				_labelOffsets = CurrentLabelOffsets(labelOffsetStorage);
 				_addressFixupOffsets = _assembler.AddressFixupOffsets;
 				var dataflow = initialAnalysis ??
 					M68kInstructionDataflow.Analyze(_assembler, _addressFixupOffsets, "dataflow.caller.peephole");
@@ -293,6 +302,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
 				_roundBranches = null;
+				_indexedInstructions = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -470,6 +480,10 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		using var profile = M68kOptimizationProfiler.Measure("post-emission.layout-cleanup");
 		Changed = false;
 		RewriteCount = 0;
+		var referencedOffsetStorage = new HashSet<int>();
+		var unrelocatableOffsetStorage = new HashSet<int>();
+		var labelOffsetStorage = new HashSet<int>();
+		_instructionIndexStorage = null;
 		bool changed;
 		do
 		{
@@ -480,10 +494,11 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
 				_roundBranches = null;
-				_referencedLabelOffsets = ReferencedLabelOffsets();
+				_indexedInstructions = null;
+				_referencedLabelOffsets = ReferencedLabelOffsets(storage: referencedOffsetStorage);
 				_unrelocatableLabelOffsets = ReferencedLabelOffsets(
-					includeExternalAddresses: true);
-				_labelOffsets = CurrentLabelOffsets();
+					includeExternalAddresses: true, storage: unrelocatableOffsetStorage);
+				_labelOffsets = CurrentLabelOffsets(labelOffsetStorage);
 				_addressFixupOffsets = _assembler.AddressFixupOffsets;
 				changed = TryInlineBareReturnBranches() ||
 					TryBypassEmptySwitchEdges() ||
@@ -501,6 +516,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				_foldBoundaryLabelOffsets = null;
 				_controlFlowMethodEnds = null;
 				_roundBranches = null;
+				_indexedInstructions = null;
 				_assembler.EndInstructionAnalysisRound();
 			}
 			Changed |= changed;
@@ -2377,7 +2393,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
-		var referencedLabelOffsets = ReferencedLabelOffsets();
+		var referencedLabelOffsets = _referencedLabelOffsets ?? ReferencedLabelOffsets();
 		var addressFixupOffsets = CurrentAddressFixupOffsets();
 		var rewrites = new List<(M68kEmittedInstruction Store, int Register)>();
 		var selectedOffsets = new HashSet<int>();
@@ -8265,14 +8281,16 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 	private bool HasLabelAt(int offset) =>
 		_labelOffsets?.Contains(offset) ?? _buffer.HasLabelAt(offset);
 
-	private HashSet<int> CurrentLabelOffsets()
+	private HashSet<int> CurrentLabelOffsets(HashSet<int>? storage = null)
 	{
+		var result = storage ?? new HashSet<int>();
+		result.Clear();
 		if (_assembler.AnalysisLabelNames is not { } labelNames)
 		{
-			return _buffer.Labels.Values.ToHashSet();
+			result.UnionWith(_buffer.Labels.Values);
+			return result;
 		}
 
-		var result = new HashSet<int>();
 		foreach (var labelName in labelNames)
 		{
 			if (_buffer.Labels.TryGetValue(labelName, out var offset))
@@ -8303,9 +8321,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 	}
 
 	private HashSet<int> ReferencedLabelOffsets(
-		bool includeExternalAddresses = false)
+		bool includeExternalAddresses = false, HashSet<int>? storage = null)
 	{
-		var result = new HashSet<int>();
+		// Retain capacity only. Every round rebuilds membership from current
+		// offsets; the active snapshots are discarded as soon as an edit commits.
+		var result = storage ?? new HashSet<int>();
+		result.Clear();
 		var referencedNames = includeExternalAddresses
 			? _unrelocatableLabelNames
 			: _referencedLabelNames;

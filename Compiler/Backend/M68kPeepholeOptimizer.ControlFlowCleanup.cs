@@ -7,6 +7,28 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kPeepholeOptimizer
 {
+	private IReadOnlyDictionary<int, M68kEmittedInstruction> InstructionLookup(
+		IReadOnlyList<M68kEmittedInstruction> instructions)
+	{
+		// These callers finish all queries before editing. A successful rewrite
+		// ends the round; different ranges/snapshots rebuild the index as well.
+		if (_addressFixupOffsets is null)
+			return instructions.ToDictionary(static instruction => instruction.Offset);
+		if (ReferenceEquals(_indexedInstructions, instructions))
+		{
+			M68kOptimizationProfiler.Count("peephole.instruction-index-reuses");
+			return _instructionIndexStorage!;
+		}
+		using var profile = M68kOptimizationProfiler.Measure("peephole.instruction-index");
+		M68kOptimizationProfiler.Count("peephole.instruction-index-builds");
+		var result = _instructionIndexStorage ??= new();
+		result.Clear();
+		result.EnsureCapacity(instructions.Count);
+		foreach (var instruction in instructions) result.Add(instruction.Offset, instruction);
+		_indexedInstructions = instructions;
+		return result;
+	}
+
 	private IReadOnlyList<M68kEmittedInstruction> ExecutableCandidates(M68kInstructionDataflow dataflow)
 	{
 		var instructions = dataflow.Instructions;
@@ -242,16 +264,16 @@ internal sealed partial class M68kPeepholeOptimizer
 
 	private bool TryInlineBareReturnBranches()
 	{
-		var instructions = _assembler.GetExecutableInstructionStream()
-			.ToDictionary(static instruction => instruction.Offset);
+		var instructions = InstructionLookup(_assembler.GetExecutableInstructionStream());
 		var methodEnds = ControlFlowMethodEnds();
 		var replacements = new List<M68kEmittedInstruction>();
+		var seen = new HashSet<int>();
 		foreach (var fixup in _buffer.Branches)
 		{
 			if (!instructions.TryGetValue(fixup.OpcodeOffset, out var branch) ||
 				(branch.Opcode & 0xFF00) != 0x6000 ||
 				HasInternalLabel(branch) ||
-				!TryFollowPlainBranches(branch, instructions, methodEnds, out var terminal) ||
+				!TryFollowPlainBranches(branch, instructions, methodEnds, seen, out var terminal) ||
 				terminal.Opcode != 0x4E75) continue;
 			replacements.Add(branch);
 		}
@@ -272,13 +294,13 @@ internal sealed partial class M68kPeepholeOptimizer
 	private bool TryBypassEmptySwitchEdges()
 	{
 		var instructions = _assembler.GetExecutableInstructionStream();
-		var byOffset = instructions.ToDictionary(static instruction => instruction.Offset);
 		var switchOffsets = _buffer.Labels
 			.Where(static label => label.Key.StartsWith(
 				"generated:allocated-switch-edge:", StringComparison.Ordinal))
 			.Select(static label => label.Value).ToHashSet();
 		if (!instructions.Any(instruction => (instruction.Opcode & 0xFF00) == 0x6000 &&
 			switchOffsets.Contains(instruction.Offset))) return false;
+		var byOffset = InstructionLookup(instructions);
 		// Only switch entries need groups, but retain every alias at each entry
 		// in dictionary order: a public alias can forbid redirecting the block.
 		var labelsByOffset = _buffer.Labels.Where(label => switchOffsets.Contains(label.Value))
@@ -288,6 +310,7 @@ internal sealed partial class M68kPeepholeOptimizer
 		var methodEnds = ControlFlowMethodEnds();
 		var removals = new List<(int Offset, int Count)>();
 		var redirects = new List<(string Label, int Offset)>();
+		var seen = new HashSet<int>();
 		for (var index = 1; index < instructions.Count; index++)
 		{
 			var edge = instructions[index];
@@ -301,7 +324,7 @@ internal sealed partial class M68kPeepholeOptimizer
 				previous.Kind is not (M68kInstructionKind.UnconditionalBranch or
 					M68kInstructionKind.Return) && !previous.IsNonReturning ||
 				HasInternalLabel(edge) ||
-				!TryFollowPlainBranches(edge, byOffset, methodEnds, out var target) ||
+				!TryFollowPlainBranches(edge, byOffset, methodEnds, seen, out var target) ||
 				!CanRedirectControlFlowLabels(labels, target.Offset)) continue;
 
 			// Keep the label names (and thus table relocations), but make them
@@ -344,7 +367,7 @@ internal sealed partial class M68kPeepholeOptimizer
 	private bool TryThreadConstantBooleanEdge(M68kInstructionDataflow dataflow)
 	{
 		var instructions = ExecutableCandidates(dataflow);
-		var byOffset = instructions.ToDictionary(static instruction => instruction.Offset);
+		var byOffset = InstructionLookup(instructions);
 		for (var index = 0; index + 1 < instructions.Count; index++)
 		{
 			var constant = instructions[index];
@@ -497,12 +520,18 @@ internal sealed partial class M68kPeepholeOptimizer
 		M68kEmittedInstruction branch,
 		IReadOnlyDictionary<int, M68kEmittedInstruction> instructions,
 		int[] methodEnds,
+		HashSet<int> seen,
 		out M68kEmittedInstruction terminal)
 	{
 		terminal = default;
-		var end = NextOffsetAfter(methodEnds, branch.Offset, int.MaxValue);
-		var start = methodEnds.LastOrDefault(offset => offset <= branch.Offset);
-		var seen = new HashSet<int> { branch.Offset };
+		// Method ends are sorted and distinct. Keep the inclusive start and
+		// exclusive end bounds without scanning all methods for every branch.
+		var nextEnd = Array.BinarySearch(methodEnds, branch.Offset);
+		nextEnd = nextEnd < 0 ? ~nextEnd : nextEnd + 1;
+		var end = nextEnd < methodEnds.Length ? methodEnds[nextEnd] : int.MaxValue;
+		var start = nextEnd == 0 ? 0 : methodEnds[nextEnd - 1];
+		seen.Clear();
+		seen.Add(branch.Offset);
 		while ((branch.Opcode & 0xFF00) == 0x6000 &&
 			branch.Kind == M68kInstructionKind.UnconditionalBranch &&
 			branch.TargetOffset is { } target && target >= start && target < end &&

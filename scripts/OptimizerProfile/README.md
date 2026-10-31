@@ -75,6 +75,28 @@ visits and interference instructions. Coalescing uses two run-local scratch sets
 cleared and recomputed for each candidate/neighbor; it does not cache group
 membership or degrees across merges.
 
+`allocation.copy-preferences` measures the allocation-local indexes of copy
+neighbors. Original edge order and stable descending-weight order have separate
+lazy indexes; colors are still read at each query. This preserves legacy repair
+preferences, weighted coloring, duplicate edges and equal-weight ties while
+avoiding repeated whole-graph scans and sorts. The
+`allocation.copy-preference-index-builds` counter counts actual index builds.
+Block liveness exchanges scratch sets with changed results and rebuilds edge
+facts on every visit, retaining the same sweep, phi-edge rules and convergence.
+
+`peephole.instruction-index` measures offset lookup construction shared by
+control-flow rewrites in an immutable analysis round. Build/reuse counters are
+`peephole.instruction-index-builds` and `peephole.instruction-index-reuses`.
+Changing the instruction snapshot or range rebuilds membership; a successful
+edit or exception discards the active index. Label-offset sets are also rebuilt
+each round. Backing storage is reused within one pass invocation, so a large
+whole-image table does not carry into later method scopes. Rewrite order and
+budgets are unchanged.
+Return-chain queries use binary search over the same sorted method boundaries
+and reuse a cycle-detection set between queries. Each query clears that set;
+the inclusive start, exclusive end, cycle rejection and rewrite batch are
+unchanged.
+
 Compile metrics exclude pack construction, inventory hashing, artifact writing
 and target execution. Instrumented profiles locate costs; qualify performance
 with profiling disabled and matched inputs that differ only in the compiler.
