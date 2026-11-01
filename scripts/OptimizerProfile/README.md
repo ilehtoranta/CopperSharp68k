@@ -10,7 +10,7 @@ dotnet build Compiler.Tests/CopperSharp.Compiler.Tests.csproj -c Release --artif
 
 The driver verifies the pinned runtime 10.0.9 CoreLib hash and constructs the
 same fingerprinted implementation pack used by the fixture tests. It supports
-ten StringBuilder and generic-join workloads; run the driver with `--list` to
+twelve StringBuilder and generic-join workloads; run the driver with `--list` to
 inspect them. Each sample is a fresh process with tiered compilation disabled.
 Keep other test and profiling workloads stopped when interpreting timings.
 The script requires a fresh results directory and restores its environment
@@ -101,3 +101,13 @@ with profiling disabled and matched inputs that differ only in the compiler.
 Use reversed variant order for repeated comparisons, retain all samples, and
 compare generated image, map and framework-analysis hashes. A small number of
 local samples does not establish statistical significance or a universal speedup.
+
+The `composite-providers` and `nullable-double` profiles cover the remaining
+large provider and nullable-join compilation workloads. `emission.non-null-facts`
+measures the non-null fixed-point solver, including dense fact storage and final
+materialization. Static instruction and branch fact generation precedes this
+scope. The solver retains the original block sweep, phi rules and ordered
+transfers; each returned block owns an independent mutable set. Its bit storage
+and dense value index belong to one function invocation. Primitive framework
+identities and the first sixteen type/method parameter identities are immutable
+and shared; unknown names and larger parameter indices are not retained.

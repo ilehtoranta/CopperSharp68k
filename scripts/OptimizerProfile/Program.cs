@@ -13,6 +13,8 @@ const string pinnedHash = "DC1945DE746F94987EC705A1F27D512ABF72A41A1DA37E414D195
 const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
 var profiles = new Dictionary<string, Profile>(StringComparer.Ordinal)
 {
+    ["composite-providers"] = new("CoreLibParsedCompositeFormatProviderContractsEntry", "Disabled", false, false),
+    ["nullable-double"] = new("CoreLibGenericDoubleNullableJoinsEntry", "SoftFloat", false, false),
     ["inherited-list"] = new("StringBuilderInheritedGenericListDispatchEntry", "SoftFloat", false, false),
     ["integral-joins"] = new("CoreLibStringBuilderGenericIntegralJoinsEntry", "Disabled", false, false),
     ["enum-joins"] = new("CoreLibStringBuilderGenericEnumJoinsEntry", "Disabled", false, false),
