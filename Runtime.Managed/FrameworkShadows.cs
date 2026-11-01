@@ -375,6 +375,21 @@ public ref struct ShadowValueListBuilder<T>
 		var capacity = Math.Max(_span.Length == 0 ? 4 : _span.Length * 2, _span.Length + additionalCapacity);
 		if ((uint)capacity > 0x7FFFFFC7u)
 			capacity = Math.Max(Math.Max(_span.Length + 1, 0x7FFFFFC7), _span.Length);
+		if (_pos > 8)
+		{
+			GrowLarge(capacity);
+			return;
+		}
+		var array = new T[capacity];
+		for (var index = 0; index < _pos; index++) array[index] = _span[index];
+		_arrayFromPool = array;
+		_span = array;
+	}
+
+	// Keep bulk-copy temporaries out of the short-growth frame scanned by the GC.
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void GrowLarge(int capacity)
+	{
 		var array = new T[capacity];
 		_span.Slice(0, _pos).CopyTo(array);
 		_arrayFromPool = array;
@@ -400,6 +415,20 @@ public ref struct ShadowValueStringBuilder
 		if (doubled > 0x7FFFFFC7u) doubled = 0x7FFFFFC7u;
 		var capacity = (int)(required > doubled ? required : doubled);
 		if (capacity < 0) throw new ArgumentOutOfRangeException("minimumLength");
+		if (_pos > 8)
+		{
+			GrowLarge(capacity);
+			return;
+		}
+		var array = new char[capacity];
+		for (var index = 0; index < _pos; index++) array[index] = _chars[index];
+		_arrayToReturnToPool = array;
+		_chars = array;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private void GrowLarge(int capacity)
+	{
 		var array = new char[capacity];
 		_chars.Slice(0, _pos).CopyTo(array);
 		_arrayToReturnToPool = array;
