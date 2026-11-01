@@ -4251,6 +4251,8 @@ internal static class CilMachineIrBuilder
 			fixedClobbers = fixedClobbers.Add(M68kRegister.D2).Add(M68kRegister.D3)
 				.Add(M68kRegister.D4).Add(M68kRegister.D5).Add(M68kRegister.D6);
 		if (isLongShift) fixedClobbers = fixedClobbers.Add(M68kRegister.D1).Add(M68kRegister.D2);
+		// Variable wide shifts retain the unshifted half in D3 for the cross-half bits.
+		if (isLongShift && !hasConstantShiftCount) fixedClobbers = fixedClobbers.Add(M68kRegister.D3);
 		block.Instructions.Add(function.CreateInstruction(
 			operation,
 			instruction.Offset,

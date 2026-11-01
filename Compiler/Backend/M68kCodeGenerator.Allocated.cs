@@ -2424,10 +2424,12 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Shift:
-				EmitShift(
-					instruction.SourceInstruction!.OpCode,
-					allocated.Function.Values[instruction.Definitions[0]].Kind,
-					instruction.Immediate);
+				if (allocated.Function.Values[instruction.Definitions[0]].Kind == CilStackValueKind.Int64)
+					M68kWideShiftEmitter.Emit(_assembler, instruction.SourceInstruction!.OpCode,
+						instruction.Immediate, UniqueLabel);
+				else
+					EmitShift(instruction.SourceInstruction!.OpCode,
+						allocated.Function.Values[instruction.Definitions[0]].Kind, instruction.Immediate);
 				EmitAllocatedDefinitionNormalization(
 					allocated,
 					instruction,
