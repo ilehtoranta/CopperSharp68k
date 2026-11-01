@@ -1132,7 +1132,10 @@ internal sealed class M68kInstructionDataflow
 				UseData((opcode >> 9) & 7);
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.ReadWrite);
 			}
-			WriteArithmeticConditions();
+			if ((opcode & 0xF000) is 0x8000 or 0xC000)
+				WriteMoveConditions(); // OR/AND preserve X, including memory destinations.
+			else
+				WriteArithmeticConditions();
 		}
 
 		private void ClassifyBitOperation(ushort opcode)

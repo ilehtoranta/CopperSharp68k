@@ -3,6 +3,8 @@
 - SPDX-License-Identifier: MIT
  */
 
+using System.Runtime.CompilerServices;
+
 namespace Amiga.Hardware;
 
 /// <summary>
@@ -25,15 +27,19 @@ public readonly struct CustomChip
 	private const int InterruptRequest = 0x09C;
 	private const int AudioDiskControl = 0x09E;
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static ushort Read(CustomReadRegister register) =>
 		APTR.ReadUInt16(APTR.FromPointer(BaseAddress), (int)register);
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void Write(CustomWriteRegister register, ushort value) =>
 		APTR.WriteUInt16(APTR.FromPointer(BaseAddress), (int)register, value);
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void WritePointer(CustomPointerRegister register, uint address) =>
 		APTR.WriteUInt32(APTR.FromPointer(BaseAddress), (int)register, address);
 
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static void Strobe(CustomStrobeRegister register) =>
 		APTR.WriteUInt16(APTR.FromPointer(BaseAddress), (int)register, 0);
 

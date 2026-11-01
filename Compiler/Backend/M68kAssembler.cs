@@ -2540,6 +2540,14 @@ internal sealed class M68kAssembler
 		}
 
 		var binary = opcode & 0xF1F8;
+		if ((opcode & 0x0138) == 0x0110 && (opcode & 0xC0) != 0xC0 &&
+			(opcode & 0xF000) is 0x8000 or 0xB000 or 0xC000)
+		{
+			var operation = (opcode & 0xF000) == 0x8000 ? "or" : (opcode & 0xF000) == 0xB000 ? "eor" : "and";
+			var width = (opcode & 0xC0) == 0 ? "b" : (opcode & 0xC0) == 0x40 ? "w" : "l";
+			instruction = new(context.RenderText ? $"{operation}.{width}\td{(opcode >> 9) & 7},(a{opcode & 7})" : string.Empty, 2);
+			return true;
+		}
 		if (binary is
 			0xD000 or 0xD040 or 0xD080 or
 			0x9000 or 0x9040 or 0x9080 or

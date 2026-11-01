@@ -572,6 +572,8 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
+	/// <summary>Fold adjacent load/logical/store updates to ordinary native RAM into memory-destination instructions. Enable only for images whose matching updates do not target MMIO or synchronized memory.</summary>
+	public bool FoldNativeRamUpdates { get; init; }
 	/// <summary>Replace private application unwind restore routines with a shared mask-driven helper when it reduces emitted code size.</summary>
 	public bool ShareApplicationUnwindHelper { get; init; } = true;
 	/// <summary>Use self-relative restore pointers in private application unwind descriptors while retaining the collector's field layout.</summary>

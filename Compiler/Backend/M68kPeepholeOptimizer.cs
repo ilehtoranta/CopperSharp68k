@@ -185,6 +185,10 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryUseRegisterCompareForSmallImmediate(dataflow) ||
 				TryDistributeMoveQuickAcrossConditionalBranch(dataflow) ||
 				TryReplaceAddressNullCheckWithTest(dataflow) ||
+				TryCarryNativeRowAddress(dataflow) ||
+				TryFoldWordCountdown(dataflow) ||
+				TryFoldNativeRamUpdates(dataflow) ||
+				TryRemoveQuickArithmeticTest(dataflow) ||
 				TryRemoveRedundantTest() ||
 				TryRemoveRedundantAndTest() ||
 				TryRemoveRedundantKnownMoveQuick(dataflow) ||

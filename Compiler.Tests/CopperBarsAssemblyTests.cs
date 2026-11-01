@@ -72,9 +72,10 @@ public sealed partial class CopperBarsAssemblyTests
 		Assert.True(Instruction().Matches(assembly).Count <= 447);
 		Assert.True(CallInstruction().Matches(assembly).Count <= 44);
 		Assert.Empty(LongMaskConstant().Matches(assembly).Cast<Match>());
-		// The five unsigned-word boundaries are the CopperWait ABI, its caller,
-		// custom-register addressing, pointer writing, and word multiplication.
-		Assert.Equal(5, WordZeroExtension().Matches(assembly).Count);
+		// Inlined hardware wrappers expose constant register offsets, eliminating
+		// the custom-address/pointer argument normalizations. Keep a ceiling so
+		// further removal of proven redundant extensions is also accepted.
+		Assert.True(WordZeroExtension().Matches(assembly).Count <= 3);
 	}
 
 	[Fact]

@@ -57,7 +57,7 @@
     <ProjectReference Include="..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj"
                       ReferenceOutputAssembly="false"
                       Condition="Exists('..\..\MedPlayer\CopperScreen.Headless.Cli\CopperScreen.Headless.Cli.csproj') and '$(SkipCopperScreenHeadlessProjectReference)' != 'true'" />
-    <PackageReference Include="Copper68k" Version="1.5.1" />
+    <PackageReference Include="Copper68k" Version="[1.5.4]" />
   </ItemGroup>
 
 </Project>
