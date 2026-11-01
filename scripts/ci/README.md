@@ -1,10 +1,15 @@
 # CI execution-test scheduling
 
 The Build workflow runs the existing fast-test filter and all discovered
-`CompilerExecutionTests` cases. The 19 execution shards may run concurrently;
+`CompilerExecutionTests` cases. The 17 execution shards may run concurrently;
 each runner starts four independent PowerShell/.NET test processes. Production
 compiler code, assertions, CPU targets, and theory data are unchanged.
-Together with the fast-test job, the matrix uses at most 20 concurrent jobs.
+Together with the fast-test job, the matrix uses at most 18 concurrent jobs.
+This leaves two slots within the shared 20-job limit: filling every slot caused
+execution shards to wait over seven minutes in two consecutive measured runs.
+The smaller matrix runs the same discovered cases across 68 workers instead of
+76; it changes scheduling, not test coverage. Other workflows can still affect
+queue time, and an otherwise idle account could finish a larger matrix sooner.
 An independent `execution-build` job builds the compiler execution-test project
 and its dependencies once with the pinned SDK. All execution shards download
 the same complete output, including runtime dependencies and pinned CoreLib,
@@ -52,15 +57,15 @@ limits, coverage errors, process isolation, console output, and failure propagat
 Build the solution with the pinned SDK before running a shard locally:
 
 ```powershell
-./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 19 -Workers 4 -Configuration Release
-./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 19 -Workers 4 -Configuration Release -ListOnly
+./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 17 -Workers 4 -Configuration Release
+./scripts/run-test-shard.ps1 -ShardNumber 1 -ShardCount 17 -Workers 4 -Configuration Release -ListOnly
 ```
 
 `Workers` defaults to 1 for local use. Set `DOTNET` to the pinned SDK executable
 when it is installed outside `PATH`. `-DiscoveryFile` permits an offline planning
 review with `-ListOnly`; actual execution always performs fresh discovery.
 
-To refresh the timing profile, download **all 19** execution-result artifacts
+To refresh the timing profile, download **all 17** execution-result artifacts
 from a successful Build run into an empty directory and run:
 
 ```powershell
