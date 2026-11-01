@@ -4414,18 +4414,33 @@ internal sealed partial class M68kCodeGenerator
 			.Where(static instruction => instruction is
 				{ Operation: M68kMachineOperation.Copy, Uses.Length: 1, Definitions.Length: 1 })
 			.ToDictionary(static instruction => instruction.Definitions[0], static instruction => instruction.Uses[0]);
+		// These generators depend on the allocated body and metadata, not on
+		// incoming facts. Resolve them once while retaining every ordered copy
+		// propagation, edge transfer and fixed-point visit below.
+		var generated = function.Blocks.SelectMany(static block => block.Instructions)
+			.ToDictionary(static instruction => instruction.Id,
+				instruction => GetAllocatedNonNullTransferValues(method, allocated, instruction).ToArray());
+		var edgeGenerated = new Dictionary<(int, int), int[]>();
+		var edgeValues = new HashSet<int>();
+		foreach (var block in function.Blocks)
+			foreach (var successor in block.Successors)
+			{
+				edgeValues.Clear();
+				AddAllocatedNonNullBranchEdgeFact(function, block, successor, edgeValues, copySources);
+				edgeGenerated.Add((block.Id, successor), edgeValues.ToArray());
+			}
 		return M68kNonNullFactsAnalysis.Compute(function,
 			(instruction, facts) =>
 			{
-				facts.UnionWith(GetAllocatedNonNullTransferValues(method, allocated, instruction));
+				facts.UnionWith(generated[instruction.Id]);
 				PropagateAllocatedNonNullCopy(instruction, facts);
 			},
-			(block, successor, facts) => AddAllocatedNonNullBranchEdgeFact(function, block, successor, facts, copySources));
+			(block, successor, facts) => facts.UnionWith(edgeGenerated[(block.Id, successor)]));
 	}
 
 	private static void PropagateAllocatedNonNullCopy(
 		M68kMachineInstruction instruction,
-		HashSet<int> facts)
+		ISet<int> facts)
 	{
 		if (instruction is
 			{
@@ -4641,7 +4656,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineFunction function,
 		M68kMachineBlock block,
 		int successor,
-		HashSet<int> facts,
+		ISet<int> facts,
 		IReadOnlyDictionary<int, int> copySources)
 	{
 		if (block.Instructions.LastOrDefault() is not
@@ -4736,7 +4751,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private static void AddAllocatedNonZeroFactWithCopySources(
 		int value,
-		HashSet<int> facts,
+		ISet<int> facts,
 		IReadOnlyDictionary<int, int> copySources)
 	{
 		do

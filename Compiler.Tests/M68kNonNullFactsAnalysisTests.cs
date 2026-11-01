@@ -42,13 +42,13 @@ public sealed class M68kNonNullFactsAnalysisTests
 			blocks[2].Phis.Add(phi);
 			var expectedTrace = new List<string>();
 			var actualTrace = new List<string>();
-			void Transfer(M68kMachineInstruction instruction, HashSet<int> facts, List<string> trace)
+			void Transfer(M68kMachineInstruction instruction, ISet<int> facts, List<string> trace)
 			{
 				trace.Add("instruction:" + instruction.Id);
 				facts.Add(generated[instruction.Id]);
 				if (facts.Contains(values[0].Id)) facts.Add(values[1].Id);
 			}
-			void Edge(M68kMachineBlock block, int successor, HashSet<int> facts, List<string> trace)
+			void Edge(M68kMachineBlock block, int successor, ISet<int> facts, List<string> trace)
 			{
 				trace.Add($"edge:{block.Id}:{successor}");
 				facts.Add(values[(block.Id + successor) % values.Length].Id);
@@ -79,6 +79,36 @@ public sealed class M68kNonNullFactsAnalysisTests
 		Assert.Contains(value.Id, entries[2]);
 	}
 
+	[Theory]
+	[InlineData(0)]
+	[InlineData(1)]
+	[InlineData(63)]
+	[InlineData(64)]
+	[InlineData(65)]
+	[InlineData(127)]
+	[InlineData(128)]
+	[InlineData(129)]
+	public void SparseValueIdsAndWordBoundariesRetainIndependentTopFacts(int count)
+	{
+		var function = new M68kMachineFunction("sparse-non-null-top", 13);
+		var all = Enumerable.Range(0, count * 3).Select(_ => function.CreateValue(
+			CilStackValueKind.Int32, M68kMachineValueWidth.Long, M68kRegisterSet.Data)).ToArray();
+		var values = all.Where((_, index) => index % 3 == 1).ToArray();
+		foreach (var value in all.Where((_, index) => index % 3 != 1)) function.Values.Remove(value.Id);
+		var blocks = Enumerable.Range(0, 3).Select(i => new M68kMachineBlock(13 + i * 7, i)).ToArray();
+		function.Blocks.AddRange(blocks.Reverse());
+		Connect(blocks[0], blocks[1]); Connect(blocks[1], blocks[2]);
+		blocks[0].Instructions.Add(function.CreateInstruction(M68kMachineOperation.Constant, 0));
+		var entries = M68kNonNullFactsAnalysis.Compute(function,
+			(_, facts) => { foreach (var value in values) facts.Add(value.Id); }, (_, _, _) => { });
+		Assert.Empty(entries[blocks[0].Id]);
+		Assert.True(entries[blocks[1].Id].SetEquals(values.Select(v => v.Id)));
+		Assert.True(entries[blocks[2].Id].SetEquals(values.Select(v => v.Id)));
+		Assert.Equal(3, entries.Values.Distinct(ReferenceEqualityComparer.Instance).Count());
+		entries[blocks[1].Id].Clear();
+		Assert.Equal(count, entries[blocks[2].Id].Count);
+	}
+
 	private static void Connect(M68kMachineBlock from, M68kMachineBlock to)
 	{
 		if (!from.Successors.Contains(to.Id)) from.Successors.Add(to.Id);
@@ -86,7 +116,7 @@ public sealed class M68kNonNullFactsAnalysisTests
 	}
 
 	private static IReadOnlyDictionary<int, ImmutableHashSet<int>> ImmutableOracle(M68kMachineFunction function,
-		Action<M68kMachineInstruction, HashSet<int>> transfer, Action<M68kMachineBlock, int, HashSet<int>> transferEdge)
+		Action<M68kMachineInstruction, ISet<int>> transfer, Action<M68kMachineBlock, int, ISet<int>> transferEdge)
 	{
 		var universe = function.Values.Keys.ToImmutableHashSet();
 		bool IsRoot(M68kMachineBlock b) => b.Id == function.EntryBlockId || b.IsExceptionEntry || b.Predecessors.Count == 0;

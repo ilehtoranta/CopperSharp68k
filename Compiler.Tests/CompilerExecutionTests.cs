@@ -3328,6 +3328,7 @@ public sealed partial class CompilerExecutionTests
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibFixedPointProviderContractsEntry",
+				IncludedExportNames = ["fixture.add"],
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
 				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
@@ -23363,12 +23364,14 @@ public sealed partial class CompilerExecutionTests
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::AddressReadConstantEntry",
+			IncludedExportNames = ["fixture.add"],
 			OutputFormat = M68kOutputFormat.Assembly
 		});
 		var write = M68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = FixtureAssembly,
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::AddressWriteConstantEntry",
+			IncludedExportNames = ["fixture.add"],
 			OutputFormat = M68kOutputFormat.Assembly
 		});
 
@@ -23425,6 +23428,7 @@ public sealed partial class CompilerExecutionTests
 			{
 				AssemblyPath = FixtureAssembly,
 				EntryPoint = $"CopperSharp.Compiler.Tests.CompilerFixtures::{method}",
+				IncludedExportNames = ["fixture.add"],
 				OutputFormat = M68kOutputFormat.Assembly
 			}).Text!;
 
@@ -23447,6 +23451,7 @@ public sealed partial class CompilerExecutionTests
 			AssemblyPath = FixtureAssembly,
 			ManagedAssemblyPaths = [typeof(global::Amiga.FileInfoBlock).Assembly.Location],
 			EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::FileInfoBlockFixedFieldsEntry",
+			IncludedExportNames = ["fixture.add"],
 			OutputFormat = M68kOutputFormat.Assembly
 		});
 		foreach (var offset in new[] { 4, 116, 124, 132, 136, 140 })
