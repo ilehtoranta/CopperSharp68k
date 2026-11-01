@@ -3291,7 +3291,7 @@ public sealed partial class CompilerExecutionTests
 				AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibScientificProviderContractsEntry",
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
 			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
@@ -3331,7 +3331,7 @@ public sealed partial class CompilerExecutionTests
 				IncludedExportNames = ["fixture.add"],
 				Cpu = target, OutputFormat = M68kOutputFormat.Hunk, ExceptionMode = M68kExceptionMode.Full, PeepholeOptimization = mode,
 				MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc, GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
-				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
+				Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
 			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 20_000_000));
