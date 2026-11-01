@@ -10644,6 +10644,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		_assembler.AlignWord();
 		_assembler.Mark(ExportLabel(export.Name));
+		if (TryEmitScalarExportAdapter(export, initializesPlatformBase)) return;
 		var residentAllocationFailed = UsesResidentHeapInvocationContext
 			? UniqueLabel("resident_context_allocation_failed")
 			: null;
