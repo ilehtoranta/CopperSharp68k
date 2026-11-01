@@ -4409,95 +4409,18 @@ internal sealed partial class M68kCodeGenerator
 		M68kAllocatedFunction allocated)
 	{
 		var function = allocated.Function;
-		var universe = function.Values.Keys.ToHashSet();
-		var entries = function.Blocks.ToDictionary(
-			static block => block.Id,
-			block => block.Id == function.EntryBlockId ||
-				block.IsExceptionEntry ||
-				block.Predecessors.Count == 0
-					? new HashSet<int>()
-					: new HashSet<int>(universe));
-		var edgeFacts = function.Blocks
-			.SelectMany(block => block.Successors.Select(successor => (block.Id, successor)))
-			.ToDictionary(static edge => edge, _ => new HashSet<int>(universe));
 		var copySources = function.Blocks
 			.SelectMany(static block => block.Instructions)
 			.Where(static instruction => instruction is
-				{
-					Operation: M68kMachineOperation.Copy,
-					Uses.Length: 1,
-					Definitions.Length: 1
-				})
-			.ToDictionary(
-				static instruction => instruction.Definitions[0],
-				static instruction => instruction.Uses[0]);
-
-		var changed = true;
-		while (changed)
-		{
-			changed = false;
-			foreach (var block in function.Blocks)
+				{ Operation: M68kMachineOperation.Copy, Uses.Length: 1, Definitions.Length: 1 })
+			.ToDictionary(static instruction => instruction.Definitions[0], static instruction => instruction.Uses[0]);
+		return M68kNonNullFactsAnalysis.Compute(function,
+			(instruction, facts) =>
 			{
-				HashSet<int> incoming;
-				if (block.Id == function.EntryBlockId ||
-					block.IsExceptionEntry ||
-					block.Predecessors.Count == 0)
-				{
-					incoming = [];
-				}
-				else
-				{
-					incoming = new HashSet<int>(universe);
-					foreach (var predecessor in block.Predecessors)
-					{
-						incoming.IntersectWith(edgeFacts[(predecessor, block.Id)]);
-					}
-					foreach (var phi in block.Phis)
-					{
-						if (block.Predecessors.All(predecessor =>
-							phi.Inputs.TryGetValue(predecessor, out var input) &&
-							edgeFacts[(predecessor, block.Id)].Contains(input)))
-						{
-							incoming.Add(phi.Definition);
-						}
-					}
-				}
-
-				if (!incoming.SetEquals(entries[block.Id]))
-				{
-					entries[block.Id] = incoming;
-					changed = true;
-				}
-
-				var outgoing = new HashSet<int>(incoming);
-				foreach (var instruction in block.Instructions)
-				{
-					outgoing.UnionWith(GetAllocatedNonNullTransferValues(
-						method,
-						allocated,
-						instruction));
-					PropagateAllocatedNonNullCopy(instruction, outgoing);
-				}
-
-				foreach (var successor in block.Successors)
-				{
-					var edge = new HashSet<int>(outgoing);
-					AddAllocatedNonNullBranchEdgeFact(
-						function,
-						block,
-						successor,
-						edge,
-						copySources);
-					if (!edge.SetEquals(edgeFacts[(block.Id, successor)]))
-					{
-						edgeFacts[(block.Id, successor)] = edge;
-						changed = true;
-					}
-				}
-			}
-		}
-
-		return entries;
+				facts.UnionWith(GetAllocatedNonNullTransferValues(method, allocated, instruction));
+				PropagateAllocatedNonNullCopy(instruction, facts);
+			},
+			(block, successor, facts) => AddAllocatedNonNullBranchEdgeFact(function, block, successor, facts, copySources));
 	}
 
 	private static void PropagateAllocatedNonNullCopy(

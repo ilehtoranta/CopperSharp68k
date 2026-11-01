@@ -36,6 +36,23 @@ internal readonly record struct FrameworkGenericContext(
 /// </summary>
 internal sealed class FrameworkTypeId : IEquatable<FrameworkTypeId>
 {
+	// These identities are immutable and independent of a metadata module.
+	// Keep only the finite CLR primitive set and common parameter indices;
+	// arbitrary names and large indices must not grow a process-wide cache.
+	private static readonly Dictionary<string, FrameworkTypeId> PrimitiveTypes = new[]
+	{
+		"System.Void", "System.Boolean", "System.Char", "System.SByte", "System.Byte",
+		"System.Int16", "System.UInt16", "System.Int32", "System.UInt32", "System.Int64",
+		"System.UInt64", "System.IntPtr", "System.UIntPtr", "System.Single", "System.Double",
+		"System.String", "System.Object", "System.TypedReference"
+	}.ToDictionary(static name => name,
+		static name => new FrameworkTypeId(FrameworkTypeKind.Primitive, metadataName: name), StringComparer.Ordinal);
+	private static readonly FrameworkTypeId[] TypeParameters = CreateParameters(FrameworkTypeKind.GenericTypeParameter);
+	private static readonly FrameworkTypeId[] MethodParameters = CreateParameters(FrameworkTypeKind.GenericMethodParameter);
+
+	private static FrameworkTypeId[] CreateParameters(FrameworkTypeKind kind) =>
+		Enumerable.Range(0, 16).Select(index => new FrameworkTypeId(kind, genericParameterIndex: index)).ToArray();
+
 	private FrameworkTypeId(
 		FrameworkTypeKind kind,
 		string? assemblyName = null,
@@ -110,7 +127,8 @@ internal sealed class FrameworkTypeId : IEquatable<FrameworkTypeId>
 	};
 
 	public static FrameworkTypeId Primitive(string metadataName) =>
-		new(FrameworkTypeKind.Primitive, metadataName: metadataName);
+		metadataName is not null && PrimitiveTypes.TryGetValue(metadataName, out var identity)
+			? identity : new(FrameworkTypeKind.Primitive, metadataName: metadataName);
 
 	public static FrameworkTypeId Named(
 		string assemblyName,
@@ -151,10 +169,12 @@ internal sealed class FrameworkTypeId : IEquatable<FrameworkTypeId>
 		new(FrameworkTypeKind.Pointer, elementType: elementType);
 
 	public static FrameworkTypeId GenericTypeParameter(int index) =>
-		new(FrameworkTypeKind.GenericTypeParameter, genericParameterIndex: index);
+		(uint)index < (uint)TypeParameters.Length ? TypeParameters[index]
+			: new(FrameworkTypeKind.GenericTypeParameter, genericParameterIndex: index);
 
 	public static FrameworkTypeId GenericMethodParameter(int index) =>
-		new(FrameworkTypeKind.GenericMethodParameter, genericParameterIndex: index);
+		(uint)index < (uint)MethodParameters.Length ? MethodParameters[index]
+			: new(FrameworkTypeKind.GenericMethodParameter, genericParameterIndex: index);
 
 	public static FrameworkTypeId FunctionPointer(FrameworkMethodSignatureId signature) =>
 		new(FrameworkTypeKind.FunctionPointer, functionPointerSignature: signature);
