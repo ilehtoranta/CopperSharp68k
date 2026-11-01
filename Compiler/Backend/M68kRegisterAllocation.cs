@@ -3,6 +3,8 @@
 - SPDX-License-Identifier: MIT
  */
 
+using System.Numerics;
+
 namespace CopperSharp.Compiler.Backend;
 
 internal static class M68kControlFlowAnalysis
@@ -10,6 +12,7 @@ internal static class M68kControlFlowAnalysis
 	public static IReadOnlyDictionary<int, HashSet<int>> ComputeDominators(
 		M68kMachineFunction function)
 	{
+		using var profile = M68kOptimizationProfiler.Measure("control-flow.dominators");
 		var blocks = function.Blocks.ToDictionary(static block => block.Id);
 		var roots = function.Blocks
 			.Where(block =>
@@ -38,50 +41,72 @@ internal static class M68kControlFlowAnalysis
 				$"unreachable blocks {string.Join(",", missing)}.");
 		}
 
-		var dominators = new Dictionary<int, HashSet<int>>();
-		foreach (var block in function.Blocks)
+		// Block IDs need not be dense or ordered. Compact indices keep the same
+		// fixed-point equations and sweep order without copying and intersecting
+		// a full hash set for every block. Only the final sets escape this call.
+		var count = function.Blocks.Count;
+		var wordCount = (count + 63) / 64;
+		var indices = function.Blocks.Select((block, index) => (block.Id, index))
+			.ToDictionary(static item => item.Id, static item => item.index);
+		var predecessors = new int[count][];
+		var rootBlocks = new bool[count];
+		var bits = new ulong[checked(count * wordCount)];
+		var intersection = new ulong[wordCount];
+		for (var index = 0; index < count; index++)
 		{
-			dominators.Add(
-				block.Id,
-				roots.Contains(block.Id)
-					? new HashSet<int> { block.Id }
-					: new HashSet<int>(reachable));
+			var block = function.Blocks[index];
+			predecessors[index] = block.ControlFlowPredecessors.Select(id => indices[id]).ToArray();
+			var row = bits.AsSpan(index * wordCount, wordCount);
+			if (rootBlocks[index] = roots.Contains(block.Id)) row[index / 64] = 1UL << (index & 63);
+			else
+			{
+				row.Fill(ulong.MaxValue);
+				row[^1] >>= wordCount * 64 - count;
+			}
 		}
-
-		// This scratch set is never retained in the result while it is mutated.
-		// On a change, exchange it with the block's former set so convergence
-		// does not allocate a new copy for every predecessor or unchanged pass.
-		var intersection = new HashSet<int>();
 		var changed = true;
 		while (changed)
 		{
 			changed = false;
-			foreach (var block in function.Blocks)
+			for (var index = 0; index < count; index++)
 			{
-				if (roots.Contains(block.Id))
-				{
-					continue;
-				}
-				intersection.Clear();
+				if (rootBlocks[index]) continue;
+				intersection.AsSpan().Clear();
 				var firstPredecessor = true;
-				foreach (var predecessor in block.ControlFlowPredecessors)
+				foreach (var predecessor in predecessors[index])
 				{
+					var input = bits.AsSpan(predecessor * wordCount, wordCount);
 					if (firstPredecessor)
 					{
-						intersection.UnionWith(dominators[predecessor]);
+						input.CopyTo(intersection);
 						firstPredecessor = false;
 					}
-					else intersection.IntersectWith(dominators[predecessor]);
+					else
+						for (var word = 0; word < wordCount; word++) intersection[word] &= input[word];
 				}
-				intersection.Add(block.Id);
-				if (!intersection.SetEquals(dominators[block.Id]))
+				intersection[index / 64] |= 1UL << (index & 63);
+				var row = bits.AsSpan(index * wordCount, wordCount);
+				if (!row.SequenceEqual(intersection))
 				{
-					var previous = dominators[block.Id];
-					dominators[block.Id] = intersection;
-					intersection = previous;
+					intersection.CopyTo(row);
 					changed = true;
 				}
 			}
+		}
+		var dominators = new Dictionary<int, HashSet<int>>(count);
+		for (var index = 0; index < count; index++)
+		{
+			var result = new HashSet<int>();
+			for (var word = 0; word < wordCount; word++)
+			{
+				var remaining = bits[index * wordCount + word];
+				while (remaining != 0)
+				{
+					result.Add(function.Blocks[word * 64 + BitOperations.TrailingZeroCount(remaining)].Id);
+					remaining &= remaining - 1;
+				}
+			}
+			dominators.Add(function.Blocks[index].Id, result);
 		}
 		return dominators;
 	}
@@ -1950,9 +1975,13 @@ internal static class M68kGraphColoringAllocator
 				foreach (var value in graph.Neighbors(member))
 				{
 					degreeNeighbors.Add(groupForValue[value]);
+					if (degreeNeighbors.Count >= allowed.Count) break;
 				}
+				if (degreeNeighbors.Count >= allowed.Count) break;
 			}
-			if (degreeNeighbors.Count >= allowed.Count) highDegree++;
+			// Only these thresholds affect the conservative coalescing decision.
+			// Further neighbors cannot lower either count or change rejection.
+			if (degreeNeighbors.Count >= allowed.Count && ++highDegree >= allowed.Count) return false;
 		}
 		return highDegree < allowed.Count;
 

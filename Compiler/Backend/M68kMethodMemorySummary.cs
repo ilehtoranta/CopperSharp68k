@@ -304,6 +304,7 @@ internal static class M68kMethodMemorySummaryAnalyzer
 		IReadOnlyDictionary<CilMethodIdentity, M68kMethodMemorySummary> summaries)
 	{
 		var result = new MutableSummary();
+		Dictionary<int, M68kMachineInstruction>? callbackDefinitions = null;
 		result.Merge(body, includeParameterEffects: true);
 		foreach (var call in function.Blocks
 			.SelectMany(static block => block.Instructions)
@@ -324,7 +325,7 @@ internal static class M68kMethodMemorySummaryAnalyzer
 				result.WritesUnknownHeap |= writes;
 				result.ReadsUnknownGlobals |= reads;
 				result.WritesUnknownGlobals |= writes;
-				var callback = HasCallbackArgument(function, call);
+				var callback = HasCallbackArgument(function, call, ref callbackDefinitions);
 				result.MayCallback |= callback;
 				result.MayReenter |= callback;
 				foreach (var argument in call.LogicalCall?.ArgumentValueIds ?? call.Uses)
@@ -531,9 +532,12 @@ internal static class M68kMethodMemorySummaryAnalyzer
 
 	private static bool HasCallbackArgument(
 		M68kMachineFunction function,
-		M68kMachineInstruction call)
+		M68kMachineInstruction call,
+		ref Dictionary<int, M68kMachineInstruction>? definitions)
 	{
-		var definitions = function.Blocks
+		// Applying summaries never mutates the body. Build this index only for
+		// an unknown call, then share it across that body's remaining calls.
+		definitions ??= function.Blocks
 			.SelectMany(static block => block.Instructions)
 			.SelectMany(static instruction => instruction.Definitions.Select(
 				definition => (definition, instruction)))

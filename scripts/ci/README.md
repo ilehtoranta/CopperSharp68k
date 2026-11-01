@@ -5,6 +5,13 @@ The Build workflow runs the existing fast-test filter and all discovered
 each runner starts four independent PowerShell/.NET test processes. Production
 compiler code, assertions, CPU targets, and theory data are unchanged.
 Together with the fast-test job, the matrix uses at most 20 concurrent jobs.
+An independent `execution-build` job builds the compiler execution-test project
+and its dependencies once with the pinned SDK. All execution shards download
+the same complete output, including runtime dependencies and pinned CoreLib,
+instead of restoring and rebuilding it on every runner. The fast-test job
+continues to build and test the complete solution independently. The shared
+build artifact is retained for 14 days; each worker still receives its own
+private copy before executing tests.
 
 `TestSharding.psm1` schedules independently named theory rows separately and
 assigns the longest estimated groups first to the least-loaded worker. Exact

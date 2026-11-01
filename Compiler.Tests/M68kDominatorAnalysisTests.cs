@@ -64,6 +64,45 @@ public sealed class M68kDominatorAnalysisTests
 		Assert.Contains("unreachable blocks 44", exception.Message);
 	}
 
+	[Theory]
+	[InlineData(63, false)]
+	[InlineData(64, true)]
+	[InlineData(65, false)]
+	[InlineData(127, true)]
+	[InlineData(128, false)]
+	[InlineData(129, true)]
+	public void DominatorsMatchRemovalReachabilityAcrossBitsetBoundaries(int count, bool reverseOrder)
+	{
+		var blocks = Enumerable.Range(0, count).Select(index => new M68kMachineBlock(1000 + index * 11, index)).ToArray();
+		var function = new M68kMachineFunction("multiword-dominator-oracle", blocks[0].Id);
+		function.Blocks.AddRange(reverseOrder ? blocks.Reverse() : blocks);
+		blocks[33].IsExceptionEntry = true;
+		for (var index = 1; index < count; index++) Connect(blocks[index - 1], blocks[index], M68kMachineEdgeKind.Normal);
+		for (var index = 0; index + 4 < count; index += 4) Connect(blocks[index], blocks[index + 4], M68kMachineEdgeKind.Normal);
+		Connect(blocks[^1], blocks[31], M68kMachineEdgeKind.Normal);
+		Connect(blocks[50], blocks[33], M68kMachineEdgeKind.ExceptionDispatch);
+		var roots = new[] { blocks[0].Id, blocks[33].Id };
+		var edges = blocks.ToDictionary(block => block.Id, block => block.ControlFlowSuccessors.ToArray());
+		var actual = M68kControlFlowAnalysis.ComputeDominators(function);
+		foreach (var target in blocks)
+		{
+			var expected = new HashSet<int>();
+			foreach (var removed in blocks)
+			{
+				var visited = new HashSet<int>();
+				var pending = new Stack<int>(roots.Where(root => root != removed.Id));
+				while (pending.TryPop(out var id))
+				{
+					if (id == removed.Id || !visited.Add(id)) continue;
+					foreach (var next in edges[id]) pending.Push(next);
+				}
+				if (!visited.Contains(target.Id)) expected.Add(removed.Id);
+			}
+			Assert.True(expected.SetEquals(actual[target.Id]), $"Count {count}, target {target.Id}, reverse {reverseOrder}.");
+		}
+		Assert.Equal(count, actual.Values.Distinct(ReferenceEqualityComparer.Instance).Count());
+	}
+
 	private static void Connect(M68kMachineBlock source, M68kMachineBlock target, M68kMachineEdgeKind kind)
 	{
 		if (kind == M68kMachineEdgeKind.Normal)
