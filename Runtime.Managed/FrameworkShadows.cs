@@ -376,7 +376,7 @@ public ref struct ShadowValueListBuilder<T>
 		if ((uint)capacity > 0x7FFFFFC7u)
 			capacity = Math.Max(Math.Max(_span.Length + 1, 0x7FFFFFC7), _span.Length);
 		var array = new T[capacity];
-		for (var index = 0; index < _pos; index++) array[index] = _span[index];
+		_span.Slice(0, _pos).CopyTo(array);
 		_arrayFromPool = array;
 		_span = array;
 	}
@@ -401,7 +401,7 @@ public ref struct ShadowValueStringBuilder
 		var capacity = (int)(required > doubled ? required : doubled);
 		if (capacity < 0) throw new ArgumentOutOfRangeException("minimumLength");
 		var array = new char[capacity];
-		for (var index = 0; index < _pos; index++) array[index] = _chars[index];
+		_chars.Slice(0, _pos).CopyTo(array);
 		_arrayToReturnToPool = array;
 		_chars = array;
 	}
