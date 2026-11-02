@@ -40,9 +40,6 @@ jobs:
         run: dotnet build CopperSharp68k.slnx --configuration Release --no-restore
 
       - name: Test
-        # Avoid cold tier-0 code in the host compiler's long first-use loops.
-        env:
-          DOTNET_TieredCompilation: '0'
         run: >-
           dotnet test CopperSharp68k.slnx
           --configuration Release
@@ -128,8 +125,6 @@ jobs:
           path: Compiler.Tests/bin/Release/net10.0/
 
       - name: Test shard
-        env:
-          DOTNET_TieredCompilation: '0'
         shell: pwsh
         run: >-
           ./scripts/run-test-shard.ps1

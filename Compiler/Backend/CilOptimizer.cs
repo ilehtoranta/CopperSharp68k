@@ -370,28 +370,6 @@ internal static class CilOptimizer
 			return false;
 		}
 
-		MethodReference target;
-		try
-		{
-			target = module.ResolveMethodToken(
-				(int)predicate.Operand!,
-				method,
-				predicate.Offset);
-		}
-		catch (M68kCompilationException exception) when (
-			exception.DiagnosticId == M68kDiagnosticIds.UnsupportedSignature)
-		{
-			// Predicate recognition is speculative. A later lowering may erase
-			// unsupported generic scaffolding (for example an immediate params
-			// inline array), while a surviving call will still report the same
-			// diagnostic from its authoritative lowering path.
-			return false;
-		}
-		if (!IsConditionCodePredicate(target.ImportName))
-		{
-			return false;
-		}
-
 		var branchIndex = startIndex + 1;
 		var inverted = false;
 		if (branchIndex + 1 < instructions.Count &&
@@ -439,6 +417,23 @@ internal static class CilOptimizer
 		{
 			return false;
 		}
+
+		// Resolve only calls whose result actually reaches a combinable branch.
+		// Resolving every call here can materialize entire framework bodies.
+		MethodReference target;
+		try
+		{
+			target = module.ResolveMethodToken(
+				(int)predicate.Operand!, method, predicate.Offset);
+		}
+		catch (M68kCompilationException exception) when (
+			exception.DiagnosticId == M68kDiagnosticIds.UnsupportedSignature)
+		{
+			// Recognition is speculative; surviving unsupported calls still
+			// report their diagnostic from the authoritative lowering path.
+			return false;
+		}
+		if (!IsConditionCodePredicate(target.ImportName)) return false;
 
 		optimization = new CilOptimization(
 			CilOptimizationKind.PredicateBranch,

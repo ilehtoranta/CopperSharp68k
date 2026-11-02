@@ -98,6 +98,19 @@ internal static class NumericConversionFixtureBuilder
 			helper.SetImplementationFlags(MethodImplAttributes.NoInlining);
 			var body = helper.GetILGenerator();
 			body.Emit(OpCodes.Ldarg_0); body.Emit(OpCodes.Neg); body.Emit(OpCodes.Ret);
+			// Keep raw NaN construction across a call boundary as well as negation:
+			// an optimizing host JIT can quiet a constant signalling NaN when it
+			// folds the integer-to-float bit cast at the call site.
+			var fromBits = type.DefineMethod(precision == typeof(float) ? "SingleFromBits" : "DoubleFromBits",
+				MethodAttributes.Public | MethodAttributes.Static, precision,
+				[precision == typeof(float) ? typeof(uint) : typeof(ulong)]);
+			fromBits.SetImplementationFlags(MethodImplAttributes.NoInlining);
+			var fromBitsBody = fromBits.GetILGenerator();
+			fromBitsBody.Emit(OpCodes.Ldarg_0);
+			fromBitsBody.Emit(OpCodes.Call, precision == typeof(float)
+				? typeof(M68kRuntime).GetMethod(nameof(M68kRuntime.UInt32BitsToSingle))!
+				: typeof(ShadowFloatingPointBits).GetMethod(nameof(ShadowFloatingPointBits.UInt64ToDouble))!);
+			fromBitsBody.Emit(OpCodes.Ret);
 			foreach (var value in Cases(precision))
 			{
 				// Construct the input through integer bits: host ldc.r4 handling can
@@ -105,12 +118,12 @@ internal static class NumericConversionFixtureBuilder
 				if (precision == typeof(float))
 				{
 					EmitLiteral(il, BitConverter.SingleToUInt32Bits((float)value));
-					il.Emit(OpCodes.Call, typeof(M68kRuntime).GetMethod(nameof(M68kRuntime.UInt32BitsToSingle))!);
+					il.Emit(OpCodes.Call, fromBits);
 				}
 				else
 				{
 					EmitLiteral(il, BitConverter.DoubleToUInt64Bits((double)value));
-					il.Emit(OpCodes.Call, typeof(ShadowFloatingPointBits).GetMethod(nameof(ShadowFloatingPointBits.UInt64ToDouble))!);
+					il.Emit(OpCodes.Call, fromBits);
 				}
 				il.Emit(OpCodes.Call, helper);
 				if (precision == typeof(float))

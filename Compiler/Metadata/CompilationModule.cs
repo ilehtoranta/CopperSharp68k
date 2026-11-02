@@ -43,6 +43,9 @@ internal sealed partial class CompilationModule : IDisposable
 		_interfaceCache = new();
 	private readonly Dictionary<CilInterfaceImplementationIdentity, CilInterfaceImplementation?> _interfaceImplementationCache = new();
 	private readonly Dictionary<string, bool> _transparentScalarTypeCache = new(StringComparer.Ordinal);
+	private ILookup<string, TypeDefinitionHandle>? _pinnedTypeDefinitionIndex;
+	private readonly Dictionary<CilMethodIdentity, FrameworkMemberId> _implementationCallerCache = new();
+	private readonly Dictionary<MethodDefinitionHandle, FrameworkMemberId> _frameworkDefinitionCache = new();
 	private readonly Dictionary<string, bool> _uninitializedStorageTypeCache = new(StringComparer.Ordinal);
 	private readonly Dictionary<string, bool> _longAlignedStackTypeCache = new(StringComparer.Ordinal);
 	private readonly Dictionary<(string DisplayName, string AttributeName), bool>
@@ -5754,6 +5757,17 @@ internal sealed partial class CompilationModule : IDisposable
 		MethodDefinitionHandle handle,
 		IReadOnlyList<FrameworkTypeId> methodTypeArguments)
 	{
+		if (methodTypeArguments.Count != 0) return DescribeFrameworkMethodDefinitionCore(handle, methodTypeArguments);
+		if (_frameworkDefinitionCache.TryGetValue(handle, out var cached)) return cached;
+		var description = DescribeFrameworkMethodDefinitionCore(handle, methodTypeArguments);
+		_frameworkDefinitionCache.Add(handle, description);
+		return description;
+	}
+
+	private FrameworkMemberId DescribeFrameworkMethodDefinitionCore(
+		MethodDefinitionHandle handle,
+		IReadOnlyList<FrameworkTypeId> methodTypeArguments)
+	{
 		var provider = new FrameworkSignatureTypeProvider(this);
 		var definition = Reader.GetMethodDefinition(handle);
 		var declaringType = provider.GetTypeFromDefinition(
@@ -8113,6 +8127,14 @@ internal sealed partial class CompilationModule : IDisposable
 
 	private FrameworkMemberId DescribeImplementationCaller(CilMethod caller)
 	{
+		if (_implementationCallerCache.TryGetValue(caller.Identity, out var cached)) return cached;
+		var description = DescribeImplementationCallerCore(caller);
+		_implementationCallerCache.Add(caller.Identity, description);
+		return description;
+	}
+
+	private FrameworkMemberId DescribeImplementationCallerCore(CilMethod caller)
+	{
 		var definition = GetModule(caller.ModuleName).DescribeFrameworkMethodDefinition(caller.Handle, []);
 		if (caller.ModuleName == "System.Private.CoreLib" && caller.ConstructedDeclaringType is { GenericArguments: [var element] } owner)
 		{
@@ -9339,16 +9361,9 @@ internal sealed partial class CompilationModule : IDisposable
 
 		var methodArguments = methodTypeArguments?.ToImmutableArray() ??
 			ImmutableArray<CilType>.Empty;
-		foreach (var typeHandle in module.Reader.TypeDefinitions)
+		foreach (var typeHandle in module.FindImplementationTypes(typeName))
 		{
 			var type = module.Reader.GetTypeDefinition(typeHandle);
-			if (!string.Equals(
-					module.GetTypeName(typeHandle).Replace('/', '+'),
-					typeName.Replace('/', '+'),
-					StringComparison.Ordinal))
-			{
-				continue;
-			}
 
 			foreach (var methodHandle in type.GetMethods())
 			{
@@ -9427,16 +9442,9 @@ internal sealed partial class CompilationModule : IDisposable
 		var methodArguments = methodTypeArguments?.ToImmutableArray() ??
 			ImmutableArray<CilType>.Empty;
 		CilMethod? match = null;
-		foreach (var typeHandle in module.Reader.TypeDefinitions)
+		foreach (var typeHandle in module.FindImplementationTypes(typeName))
 		{
 			var type = module.Reader.GetTypeDefinition(typeHandle);
-			if (!string.Equals(
-					module.GetTypeName(typeHandle).Replace('/', '+'),
-					typeName.Replace('/', '+'),
-					StringComparison.Ordinal))
-			{
-				continue;
-			}
 			var genericTypeParameterCount = type.GetGenericParameters().Count;
 			if (genericTypeParameterCount !=
 					(constructedDeclaringType?.GenericArguments.Length ?? 0))
@@ -9498,6 +9506,15 @@ internal sealed partial class CompilationModule : IDisposable
 			}
 		}
 		return match;
+	}
+
+	private IEnumerable<TypeDefinitionHandle> FindImplementationTypes(string typeName)
+	{
+		// Metadata is immutable. Preserve every handle and its order, including
+		// duplicates, so pinned-member ambiguity validation remains unchanged.
+		_pinnedTypeDefinitionIndex ??= Reader.TypeDefinitions.ToLookup(
+			handle => GetTypeName(handle).Replace('/', '+'), StringComparer.Ordinal);
+		return _pinnedTypeDefinitionIndex[typeName.Replace('/', '+')];
 	}
 
 	private static void ValidatePinnedTypeLayout(

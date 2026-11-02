@@ -4,6 +4,7 @@
  */
 
 using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
 
 namespace CopperSharp.Compiler.Framework;
 
@@ -14,6 +15,9 @@ namespace CopperSharp.Compiler.Framework;
 internal static class FrameworkImplementationProfile
 {
 	private const string ContractAssembly = "System.Runtime";
+	// Identities are immutable. Repeated admission checks can share their
+	// canonical form without retaining identities from completed compilations.
+	private static readonly ConditionalWeakTable<FrameworkMemberId, FrameworkMemberId> CanonicalMembers = new();
 	private const string ImplementationAssembly = "System.Private.CoreLib";
 	private const string StopwatchType = "System.Diagnostics.Stopwatch";
 	private const string TimeSpanType = "System.TimeSpan";
@@ -96,7 +100,7 @@ internal static class FrameworkImplementationProfile
 		{
 			return member;
 		}
-		return new FrameworkMemberId(
+		return CanonicalMembers.GetValue(member, static member => new FrameworkMemberId(
 			CanonicalizeType(member.DeclaringType),
 			member.Name,
 			new FrameworkMethodSignatureId(
@@ -105,7 +109,7 @@ internal static class FrameworkImplementationProfile
 				member.Signature.RequiredParameterCount,
 				CanonicalizeType(member.Signature.ReturnType),
 				member.Signature.ParameterTypes.Select(CanonicalizeType).ToArray()),
-			member.MethodTypeArguments.Select(CanonicalizeType).ToArray());
+			member.MethodTypeArguments.Select(CanonicalizeType).ToArray()));
 	}
 
 	public static bool TryCreatePinnedStringBuilderBinding(

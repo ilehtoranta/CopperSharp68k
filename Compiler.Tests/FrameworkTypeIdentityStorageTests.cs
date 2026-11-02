@@ -10,6 +10,26 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class FrameworkTypeIdentityStorageTests
 {
 	[Fact]
+	public void ConcurrentCanonicalizationPreservesClosedSignaturesAndAssemblyScopes()
+	{
+		FrameworkMemberId Create(string assembly, FrameworkTypeId argument) => new(
+			FrameworkTypeId.Named(assembly, "Caller.Owner"), "Method",
+			new FrameworkMethodSignatureId(0x10, 1, 1, FrameworkTypeId.ByReference(argument),
+				[FrameworkTypeId.SzArray(argument)]), [argument]);
+		var implementation = Create("System.Private.CoreLib", FrameworkTypeId.Named("System.Private.CoreLib", "Caller.Argument"));
+		var expected = Create("System.Runtime", FrameworkTypeId.Named("System.Runtime", "Caller.Argument"));
+		Parallel.For(0, 64, _ =>
+		{
+			var canonical = FrameworkImplementationProfile.Canonicalize(implementation);
+			Assert.Equal(expected, canonical);
+			Assert.Equal(canonical.GetHashCode(), expected.GetHashCode());
+			Assert.NotEqual(Create("System.Runtime", FrameworkTypeId.Named("Application", "Caller.Argument")), canonical);
+			Assert.Same(canonical, FrameworkImplementationProfile.Canonicalize(implementation));
+			Assert.Same(expected, FrameworkImplementationProfile.Canonicalize(expected));
+		});
+	}
+
+	[Fact]
 	public void PrimitiveReuseRetainsStructuralAndCaseDistinctions()
 	{
 		foreach (var name in new[] { "System.Void", "System.Boolean", "System.Char", "System.SByte", "System.Byte",

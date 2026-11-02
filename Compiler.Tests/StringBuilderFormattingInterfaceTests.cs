@@ -63,6 +63,7 @@ public sealed class StringBuilderFormattingInterfaceTests
 public static partial class CompilerFixtures
 {
 	private static IFormatProvider StableFormattingCastProvider(object value) => (IFormatProvider)value;
+	[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
 	private static ICustomFormatter StableFormattingCastCustom(object value) => (ICustomFormatter)value;
 	private static IFormattable StableFormattingCastText(object value) => (IFormattable)value;
 	private static ISpanFormattable StableFormattingCastSpan(object value) => (ISpanFormattable)value;
