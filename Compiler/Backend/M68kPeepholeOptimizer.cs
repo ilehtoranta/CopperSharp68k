@@ -188,6 +188,8 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryCarryNativeRowAddress(dataflow) ||
 				TryFoldWordCountdown(dataflow) ||
 				TryFoldNativeRamUpdates(dataflow) ||
+				TryFoldNativeRamStoreRun(dataflow) ||
+				TryFoldNativeRamStoreIncrement(dataflow) ||
 				TryRemoveQuickArithmeticTest(dataflow) ||
 				TryRemoveRedundantTest() ||
 				TryRemoveRedundantAndTest() ||
@@ -9469,16 +9471,19 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				0x0240 | destination); // ANDI.W #mask,Dn
 			_buffer.WriteWord(instruction.Offset + 2, (ushort)mask);
 			var definition = instructions[definitionIndex];
+			// Adjacency only makes the definition's flags dead. Its data value
+			// may still feed a following comparison (e.g. DMA-enable masks).
+			// A nonadjacent definition can also have earlier consumers.
 			if (!IsReferencedLabelAt(definition.Offset) &&
+				!instructions.Skip(definitionIndex + 1).Take(index - definitionIndex - 1)
+					.Any(item => IsReferencedLabelAt(item.Offset) ||
+						!dataflow.TryGetFacts(item.Offset, out var facts) ||
+						(facts.Effects.UsesData & (1 << source)) != 0) &&
+				!IsDataRegisterReadBeforeOverwrite(instructions, index + 1, source, dataflow) &&
 				(definitionIndex == index - 1 ||
 				 dataflow.TryGetFacts(definition.Offset, out var definitionFacts) &&
 				 (definitionFacts.Effects.WritesConditions &
-				  definitionFacts.LiveConditionsAfter) == 0 &&
-				 !IsDataRegisterReadBeforeOverwrite(
-					 instructions,
-					 index + 1,
-					 source,
-					 dataflow)))
+				  definitionFacts.LiveConditionsAfter) == 0))
 			{
 				_buffer.RemoveBytes(definition.Offset, definition.Length);
 			}

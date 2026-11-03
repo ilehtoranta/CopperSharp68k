@@ -688,6 +688,33 @@ internal sealed class M68kAssembler
 	internal IReadOnlyDictionary<string, int> AnalysisAnchors =>
 		_buffer.AnalysisAnchors;
 
+	private readonly List<(string Anchor, M68kRegister Register, short Displacement)> _nativeCallSites = [];
+
+	internal void MarkNativeCallSite(M68kRegister register, short displacement)
+	{
+		string anchor = $"native-call:{_nativeCallSites.Count}";
+		MarkAnalysisAnchor(anchor);
+		_nativeCallSites.Add((anchor, register, displacement));
+	}
+
+	internal IReadOnlyList<M68kNativeCallSite> GetNativeCallSites(LinkedCode linked)
+	{
+		if (_nativeCallSites.Count == 0) return Array.Empty<M68kNativeCallSite>();
+		var result = new List<M68kNativeCallSite>(_nativeCallSites.Count);
+		foreach (var site in _nativeCallSites)
+		{
+			int offset = linked.AnalysisAnchors[site.Anchor];
+			int index = (int)site.Register - (int)M68kRegister.A0;
+			int opcode = offset + 4 <= linked.Bytes.Length
+				? BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes.AsSpan(offset)) : -1;
+			if (opcode != (0x4EA8 | index) && opcode != (0x4EE8 | index) ||
+				BinaryPrimitives.ReadInt16BigEndian(linked.Bytes.AsSpan(offset + 2)) != site.Displacement)
+				throw new InvalidOperationException("Native call-site anchor no longer describes its emitted call.");
+			result.Add(new(offset, site.Register, site.Displacement, (opcode & 0x40) != 0));
+		}
+		return result;
+	}
+
 	private string? _analysisStartLabel;
 	private string? _analysisEndLabel;
 	private IReadOnlyList<string>? _analysisLabelNames;
@@ -2619,6 +2646,17 @@ internal sealed class M68kAssembler
 	private bool TryRenderBitOperation(in InstructionRenderContext context, out RenderedInstruction instruction)
 	{
 		var opcode = context.Opcode;
+		var mode = opcode >> 3 & 7;
+		if ((opcode & 0xFFC0) == 0x0800 && mode >= 2 &&
+			(mode != 7 || (opcode & 7) <= 3) &&
+			TryReadWord(context.Offset + 2, out var memoryBit) &&
+			TryDecodeEffectiveAddress(context.Offset + 4, mode, opcode & 7, 1,
+				out var memory, context.RenderText))
+		{
+			instruction = new(context.RenderText ? $"btst\t#{memoryBit},{memory.Text}" : string.Empty,
+				4 + memory.ExtensionBytes);
+			return true;
+		}
 		var immediateOperation = opcode & 0xFFF8;
 		if ((immediateOperation is 0x0800 or 0x0840 or 0x0880 or 0x08C0) &&
 			TryReadWord(context.Offset + 2, out var bit))

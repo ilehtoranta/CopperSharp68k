@@ -5,6 +5,41 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kNativeRamUpdateTests
 {
+    [Theory]
+    [InlineData(1, 0x1000)]
+    [InlineData(2, 0x3000)]
+    [InlineData(4, 0x2000)]
+    public void NativeStoreIncrementRetainsMemoryRegistersAndEveryCcr(int width, int family)
+    {
+        byte[] BuildStore(bool enabled, int address = 0, bool interiorEntry = false, int increment = 0)
+        {
+            var a = new M68kAssembler {
+                GeneratedCodeSizeOptions = new() { FoldNativeRamUpdates = enabled },
+                GeneratedCodeSizeRanges = [("start", "end")]
+            };
+            a.Mark("start");
+            if (interiorEntry) a.EmitBranch(M68kCondition.Equal, "increment");
+            a.EmitWord((ushort)(family | (address << 9) | 0x81)); // D1,(An)
+            a.Mark("increment");
+            a.EmitWord((ushort)(0x5088 | ((increment == 0 ? width : increment) << 9) | address));
+            a.EmitWord(0x4E75);
+            a.SetInstructionEffects(a.Offset - 2, new(0xFF, 0, 0x7F, 0x80,
+                M68kConditionCodeSet.All, M68kConditionCodeSet.None,
+                M68kMemorySet.Stack, M68kMemorySet.None, 4, true, false));
+            a.Mark("end"); a.OptimizeForM68000();
+            return a.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+        }
+        var before = BuildStore(false); var after = BuildStore(true);
+        Assert.Equal(before.Length - 2, after.Length);
+        Assert.Equal(BuildStore(false, 7), BuildStore(true, 7));
+        Assert.Equal(BuildStore(false, interiorEntry: true), BuildStore(true, interiorEntry: true));
+        Assert.Equal(BuildStore(false, increment: 8), BuildStore(true, increment: 8));
+        foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020 })
+        foreach (uint value in new uint[] { 0, 1, 0x80, 0x8000, 0x80000000, uint.MaxValue })
+        foreach (ushort ccr in Enumerable.Range(0, 32).Select(x => (ushort)x))
+            Assert.Equal(Run(before, model, value, ccr), Run(after, model, value, ccr));
+    }
+
     [Fact]
     public void CarriesAddressButPublishesFinalDataPointer()
     {

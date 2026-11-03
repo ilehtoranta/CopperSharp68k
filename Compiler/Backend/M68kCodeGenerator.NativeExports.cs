@@ -4,13 +4,37 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
+    private readonly HashSet<string> _directScalarExports = new(StringComparer.Ordinal);
+
+    private bool CanUseScalarExportBody(CilExport export, bool initializesPlatformBase)
+        => !initializesPlatformBase && !UsesResidentInvocationContext && !_usesExceptionRuntime &&
+            _request.ExceptionMode == M68kExceptionMode.Yolo && _memoryManagement == M68kMemoryManagement.None &&
+            !export.Method.Signature.Header.IsInstance && !_rootOnlyMethods.Contains(export.Method.Identity) &&
+            !_foldedMethodAliases.ContainsKey(export.Method.Identity) &&
+            !Is64BitScalar(export.Method.Signature.ReturnType);
+
+    private void PlanDirectScalarExports(bool initializesPlatformBase)
+    {
+        foreach (var export in _exports)
+        {
+            if (!CanUseScalarExportBody(export, initializesPlatformBase)) continue;
+            var abi = GetInternalCallAbi(export.Method);
+            if (abi.ReturnBufferStackOffset is not null || abi.StackBytes != 0 ||
+                abi.Arguments.Length != export.ParameterRegisters.Count ||
+                abi.Arguments.Any(a => a.SlotLongs != 1 || a.LowRegister is not null ||
+                    a.Register != export.ParameterRegisters[a.Index])) continue;
+            var result = export.Method.Signature.ReturnType;
+            if (!result.IsVoid && export.ReturnRegister !=
+                (IsInternalAddressReturn(result) ? M68kRegister.A0 : M68kRegister.D0)) continue;
+            // The complete native ABI already matches. Publish the body itself;
+            // its ordinary callee-save frame also protects native callers.
+            _directScalarExports.Add(export.Name);
+        }
+    }
+
     private bool TryEmitScalarExportAdapter(CilExport export, bool initializesPlatformBase)
     {
-        if (initializesPlatformBase || UsesResidentInvocationContext || _usesExceptionRuntime ||
-            _request.ExceptionMode != M68kExceptionMode.Yolo || _memoryManagement != M68kMemoryManagement.None ||
-            export.Method.Signature.Header.IsInstance || _rootOnlyMethods.Contains(export.Method.Identity) ||
-            _foldedMethodAliases.ContainsKey(export.Method.Identity) ||
-            Is64BitScalar(export.Method.Signature.ReturnType)) return false;
+        if (!CanUseScalarExportBody(export, initializesPlatformBase)) return false;
         var abi = GetInternalCallAbi(export.Method);
         if (abi.ReturnBufferStackOffset is not null || abi.Arguments.Length != export.ParameterRegisters.Count ||
             abi.Arguments.Any(a => a.SlotLongs != 1 || a.LowRegister is not null ||
