@@ -411,7 +411,7 @@ public static class AmigaM68kCompiler
 		{
 			ExternalCallResolvers =
 			[
-				new AmigaExternalCallResolver(resolvedOptions)
+				new ExplicitResolverFallback(request.ExternalCallResolvers, resolvedOptions)
 			]
 		});
 	}
@@ -448,9 +448,29 @@ public static class AmigaM68kCompiler
 			Imports = imports,
 			ExternalCallResolvers =
 			[
-				new AmigaExternalCallResolver(resolvedOptions)
+				new ExplicitResolverFallback(request.ExternalCallResolvers, resolvedOptions)
 			]
 			});
+	}
+
+	// Explicit private bindings override the default platform ABI. Continue to
+	// reject ambiguous explicit bindings; only the platform resolver is fallback.
+	private sealed class ExplicitResolverFallback(IReadOnlyList<IM68kExternalCallResolver> explicitResolvers,
+		AmigaCompilationOptions options) : IM68kExternalCallResolver
+	{
+		private readonly AmigaExternalCallResolver fallback = new(options);
+		public bool TryResolve(M68kExternalMethod method, out M68kExternalCallConvention convention)
+		{
+			convention = null!;
+			bool found = false;
+			foreach (var resolver in explicitResolvers) {
+				if (!resolver.TryResolve(method, out var candidate)) continue;
+				if (found) throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata,
+					"Multiple explicit external-call resolvers claimed the same method.", method.DisplayName);
+				convention = candidate; found = true;
+			}
+			return found || fallback.TryResolve(method, out convention);
+		}
 	}
 
 	private static M68kCompilationRequest IncludeAmigaManagedBodies(

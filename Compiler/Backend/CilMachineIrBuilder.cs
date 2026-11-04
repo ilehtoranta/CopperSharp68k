@@ -7273,7 +7273,7 @@ internal static class CilMachineIrBuilder
 			{
 				var result = RegistersUsedByAbi(
 					externalCall.Abi,
-					target.Signature);
+					target.Signature, includeVoidReturn: false);
 				foreach (var register in externalCall.Convention.ClobberedRegisters ?? [])
 				{
 					result = result.Add(register);
@@ -7596,9 +7596,11 @@ internal static class CilMachineIrBuilder
 
 	private static M68kRegisterSet RegistersUsedByAbi(
 		CilRegisterAbi abi,
-		System.Reflection.Metadata.MethodSignature<CilType> signature)
+		System.Reflection.Metadata.MethodSignature<CilType> signature,
+		bool includeVoidReturn = true)
 	{
-		var result = M68kRegisterSet.From(abi.ReturnRegister);
+		var result = includeVoidReturn || !signature.ReturnType.IsVoid
+			? M68kRegisterSet.From(abi.ReturnRegister) : M68kRegisterSet.None;
 		for (var index = 0; index < abi.ParameterRegisters.Count; index++)
 		{
 			var register = abi.ParameterRegisters[index];

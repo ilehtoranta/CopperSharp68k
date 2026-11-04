@@ -216,7 +216,7 @@ public sealed record M68kExternalCallConvention(
 	/// <summary>
 	/// Additional D0-D7/A0-A6 registers that the target ABI allows the callee to
 	/// overwrite, including registers absent from its signature. Parameter,
-	/// return, base, cache, and exception-status effects remain implicit.
+	/// non-void return, base, cache, and exception-status effects remain implicit.
 	/// Null preserves the existing convention with no additional clobbers.
 	/// </summary>
 	public IReadOnlyList<M68kRegister>? ClobberedRegisters { get; init; }

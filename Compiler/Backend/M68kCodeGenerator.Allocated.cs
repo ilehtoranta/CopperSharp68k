@@ -6496,7 +6496,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			AddUse(cache);
 		}
-		AddDefinition(call.Abi.ReturnRegister);
+		if (!method.Signature.ReturnType.IsVoid) AddDefinition(call.Abi.ReturnRegister);
 		if (method.Signature.ReturnType.IsSupportedScalar &&
 			method.Signature.ReturnType.Size == 8)
 		{
