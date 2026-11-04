@@ -5138,6 +5138,14 @@ internal static class CilMachineIrBuilder
 			argumentConstraints[0] = CallArgumentConstraint.Fixed(M68kRegister.D0);
 		}
 		int? embeddedDisplacement = null;
+		if (target.ImportName == "intrinsic:aptr-bit-test-and-set8" &&
+			TryGetMachineIntegerConstant(block, sourceUses[1], out var constantBit))
+		{
+			embeddedDisplacement = constantBit & 7;
+			sourceUses.RemoveAt(1);
+			argumentConstraints.RemoveAt(1);
+		}
+
 		if (target.ImportName is
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
 				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
@@ -5315,7 +5323,7 @@ internal static class CilMachineIrBuilder
 		M68kMachineValue? fixedReturn = null;
 		if (!hasMultiwordReturn &&
 			definitions.Count == 1 &&
-			target.ImportName is not ("intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
+			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
 			!HasFlexibleScalarReturn(target.ImportName))
 		{
 			var result = function.Values[definitions[0]];
@@ -6474,6 +6482,11 @@ internal static class CilMachineIrBuilder
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
 				CallArgumentConstraint.Fixed(M68kRegister.D0)];
 		}
+		if (target.ImportName == "intrinsic:aptr-bit-test-and-set8")
+		{
+			return [CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
+				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Data)];
+		}
 		if (target.ImportName is "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:file-info-block-read-int32:",
@@ -7239,6 +7252,7 @@ internal static class CilMachineIrBuilder
 				return M68kRegisterSet.From(M68kRegister.D0, M68kRegister.D1, M68kRegister.D2, M68kRegister.A0, M68kRegister.A1, M68kRegister.A2);
 			if (target.Definition is null &&
 				target.ImportName is
+					"intrinsic:aptr-bit-test-and-set8" or
 					"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
 					"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" or
 					"intrinsic:aptr-raw" or
@@ -7273,7 +7287,7 @@ internal static class CilMachineIrBuilder
 			{
 				var result = RegistersUsedByAbi(
 					externalCall.Abi,
-					target.Signature);
+					target.Signature, includeVoidReturn: false);
 				foreach (var register in externalCall.Convention.ClobberedRegisters ?? [])
 				{
 					result = result.Add(register);
@@ -7596,9 +7610,11 @@ internal static class CilMachineIrBuilder
 
 	private static M68kRegisterSet RegistersUsedByAbi(
 		CilRegisterAbi abi,
-		System.Reflection.Metadata.MethodSignature<CilType> signature)
+		System.Reflection.Metadata.MethodSignature<CilType> signature,
+		bool includeVoidReturn = true)
 	{
-		var result = M68kRegisterSet.From(abi.ReturnRegister);
+		var result = includeVoidReturn || !signature.ReturnType.IsVoid
+			? M68kRegisterSet.From(abi.ReturnRegister) : M68kRegisterSet.None;
 		for (var index = 0; index < abi.ParameterRegisters.Count; index++)
 		{
 			var register = abi.ParameterRegisters[index];

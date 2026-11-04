@@ -6496,7 +6496,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			AddUse(cache);
 		}
-		AddDefinition(call.Abi.ReturnRegister);
+		if (!method.Signature.ReturnType.IsVoid) AddDefinition(call.Abi.ReturnRegister);
 		if (method.Signature.ReturnType.IsSupportedScalar &&
 			method.Signature.ReturnType.Size == 8)
 		{
@@ -9167,6 +9167,18 @@ internal sealed partial class M68kCodeGenerator
 			EmitAllocatedAddress(ExportLabel(exportName), Definition());
 			return;
 		}
+		if (name == "intrinsic:aptr-bit-test-and-set8")
+		{
+			var address = (int)Use(0) - (int)M68kRegister.A0;
+			if (instruction.Immediate is { } bit) {
+				_assembler.EmitWord((ushort)(0x08D0 | address)); // BSET #bit,(An)
+				_assembler.EmitWord((ushort)(bit & 7));
+			} else {
+				_assembler.EmitWord((ushort)(0x01D0 | ((int)Use(1) << 9) | address)); // BSET Dn,(An)
+			}
+			EmitAllocatedConditionResult(M68kCondition.NotEqual, Definition());
+			return;
+		}
 		if (name is "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32")
 		{
 			var baseRegister = Use(0);
@@ -11001,6 +11013,7 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:cstring-from-literal" or
 			"intrinsic:amiga-vararg-from-literal" or
 			"intrinsic:aptr-export-address" or
+			"intrinsic:aptr-bit-test-and-set8" or
 			"intrinsic:aptr-read-uint8" or
 			"intrinsic:aptr-read-uint16" or
 			"intrinsic:aptr-read-uint32" or

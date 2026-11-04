@@ -4042,6 +4042,16 @@ internal static class FrameworkBindingRegistry
 						FrameworkFeature.NativeMemory));
 			}
 
+			if (typeName == "Amiga.APTR" && name == "BitTestAndSet8" &&
+				signature.ParameterTypes.Length == 2 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int")
+			{
+				return Intrinsic(member, "intrinsic:aptr-bit-test-and-set8",
+					Effects(FrameworkEffects.ReadsNativeMemory | FrameworkEffects.WritesNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
 			if (typeName is "Amiga.APTR" or "CopperSharp.Compiler.M68kAddress" &&
 				name == "ReadUInt8" &&
 				signature.ParameterTypes.Length == 2 &&

@@ -2,6 +2,90 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kPeepholeOptimizer
 {
+    private bool TryFoldNativeRamStoreRun(M68kInstructionDataflow dataflow)
+    {
+        if (_assembler.GeneratedCodeSizeOptions?.FoldNativeRamUpdates != true) return false;
+        var instructions = ExecutableCandidates(dataflow);
+        for (int i = 0; i + 2 < instructions.Count; i++)
+        {
+            var first = instructions[i];
+            int family = first.Opcode & 0xF000, address = (first.Opcode >> 9) & 7;
+            int width = family == 0x1000 ? 1 : family == 0x3000 ? 2 : family == 0x2000 ? 4 : 0;
+            if (width == 0 || address == 7 || first.Length != 2 ||
+                (first.Opcode & 0x01F8) != 0x0080) continue;
+            int next = i + 1, bytes = width, end = first.Offset + first.Length;
+            while (next < instructions.Count && bytes <= short.MaxValue)
+            {
+                var store = instructions[next];
+                if (store.Offset != end || store.Length != 4 ||
+                    (store.Opcode & 0xFFF8) != (family | (address << 9) | 0x140) ||
+                    _buffer.ReadWord(store.Offset + 2) != bytes) break;
+                bytes += width; end += store.Length; next++;
+            }
+            if (next == i + 1 || next == instructions.Count) continue;
+            var update = instructions[next];
+            bool quick = bytes <= 8 && update.Length == 2 &&
+                update.Opcode == (0x5088 | ((bytes & 7) << 9) | address);
+            bool lea = bytes <= short.MaxValue && update.Length == 4 &&
+                update.Opcode == (0x41E8 | (address << 9) | address) &&
+                _buffer.ReadWord(update.Offset + 2) == bytes;
+            if (update.Offset != end || !(quick || lea) ||
+                !GeneratedSizeEligible(first.Offset, end + update.Length) ||
+                !CanFoldAcrossUnreferencedIlLabels(first.Offset, end + update.Length, true) ||
+                instructions.Skip(i).Take(next - i + 1).Any(x =>
+                    (x.Offset != first.Offset && IsReferencedLabelAt(x.Offset)) ||
+                    HasAddressFixup(x) || _buffer.PcRelative.Any(f =>
+                        f.DisplacementOffset >= x.Offset && f.DisplacementOffset < x.Offset + x.Length) ||
+                    _assembler.TryGetInstructionEffects(x.Offset, out _))) continue;
+
+            // The opted-in native RAM run writes the same widths, values and
+            // ascending addresses in the same order. Each MOVE retains its CCR;
+            // LEA/ADDQ to An never changes it. Only the final An is observable:
+            // no interior entry or explicit effect is allowed, and A7 is excluded.
+            int removed = update.Length + 2 * (next - i - 1);
+            RelocateLabels(update.Offset, first.Offset);
+            _buffer.RemoveBytes(update.Offset, update.Length);
+            for (int j = next - 1; j >= i; j--)
+            {
+                var store = instructions[j];
+                _buffer.WriteWord(store.Offset, family | (address << 9) | 0xC0 | (store.Opcode & 7));
+                if (store.Length == 4) _buffer.RemoveBytes(store.Offset + 2, 2);
+            }
+            _assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.FoldNativeRamUpdates), removed);
+            return true;
+        }
+        return false;
+    }
+
+    private bool TryFoldNativeRamStoreIncrement(M68kInstructionDataflow dataflow)
+    {
+        if (_assembler.GeneratedCodeSizeOptions?.FoldNativeRamUpdates != true) return false;
+        var instructions = ExecutableCandidates(dataflow);
+        for (int i = 0; i + 1 < instructions.Count; i++)
+        {
+            var store = instructions[i]; var add = instructions[i + 1];
+            int family = store.Opcode & 0xF000, address = (store.Opcode >> 9) & 7;
+            int size = family == 0x1000 ? 1 : family == 0x3000 ? 2 : family == 0x2000 ? 4 : 0;
+            if (size == 0 || address == 7 || store.Length != 2 ||
+                (store.Opcode & 0x01F8) != 0x0080 ||
+                add.Offset != store.Offset + 2 || add.Length != 2 ||
+                add.Opcode != (0x5088 | (size << 9) | address) ||
+                !GeneratedSizeEligible(store.Offset, add.Offset + 2) ||
+                !CanFoldAcrossUnreferencedIlLabels(store.Offset, add.Offset + 2, true) ||
+                IsReferencedLabelAt(add.Offset) ||
+                _assembler.TryGetInstructionEffects(store.Offset, out _) ||
+                _assembler.TryGetInstructionEffects(add.Offset, out _)) continue;
+            // MOVE Dn,(An)+ writes the same width/address/value and leaves the
+            // same An/CCR as MOVE Dn,(An); ADDQ.L #width,An. A7 is excluded.
+            _buffer.WriteWord(store.Offset, store.Opcode | 0x40);
+            RelocateLabels(add.Offset, store.Offset);
+            _buffer.RemoveBytes(add.Offset, 2);
+            _assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.FoldNativeRamUpdates), 2);
+            return true;
+        }
+        return false;
+    }
+
     private bool TryCarryNativeRowAddress(M68kInstructionDataflow dataflow)
     {
         if (_assembler.GeneratedCodeSizeOptions?.FoldNativeRamUpdates != true) return false;

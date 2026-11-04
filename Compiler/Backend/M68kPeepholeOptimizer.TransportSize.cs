@@ -10,6 +10,13 @@ internal sealed partial class M68kPeepholeOptimizer
 	{
 		if (!_assembler.GeneratedTransportRegistersOnly && TryCompactPrivateStackCopies(dataflow)) return true;
 		if (_assembler.GeneratedCodeSizeOptions?.RemoveRedundantTransport != true) return false;
+		if (TryFoldCopiedArgumentBitTest(dataflow)) return true;
+		if (TryFoldMaterializedConditionBranch(dataflow)) return true;
+		if (TryFoldLongConstantCompare(dataflow)) return true;
+		if (TryFoldByteLoadBitTest(dataflow)) return true;
+		if (TryFoldAbsolutePollingFence(dataflow)) return true;
+		if (TryBypassPollingAddressReload(dataflow)) return true;
+		if (TryRemoveRepeatedConstantAddress(dataflow)) return true;
 		if (_assembler.GeneratedTransportRegistersOnly && TryRemoveApplicationDeadRegisterMoves(dataflow)) return true;
 		if (TryForwardGeneratedRegisterCopies(dataflow) || TryRemoveGeneratedZeroOperandTransport(dataflow)) return true;
 		var instructions = dataflow.Instructions;
@@ -124,6 +131,120 @@ internal sealed partial class M68kPeepholeOptimizer
 	private void RecordGeneratedTransportRewrite(int bytes) => _assembler.RecordCodeSizeRewrite(
 		_assembler.GeneratedTransportRegistersOnly ? nameof(M68kCodeSizeOptions.RemoveApplicationRegisterMoves) :
 		nameof(M68kCodeSizeOptions.RemoveRedundantTransport), bytes);
+
+	private bool TryBypassPollingAddressReload(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (int i = 0; i + 2 < instructions.Count; i++)
+		{
+			var address = instructions[i]; var test = instructions[i + 1]; var branch = instructions[i + 2];
+			int register = address.Opcode >> 9 & 7;
+			if (!address.IsDecoded || !test.IsDecoded || !branch.IsDecoded ||
+				(address.Opcode & 0xF1FF) != 0x207C || address.Length != 6 || register == 7 ||
+				test.Opcode != (0x0810 | register) || test.Length != 4 || test.ExtensionWord >= 8 ||
+				(branch.Opcode & 0xFF00) != 0x6600 || branch.TargetOffset != address.Offset ||
+				test.Offset != address.Offset + 6 || branch.Offset != test.Offset + 4 ||
+				!GeneratedSizeEligible(address.Offset, branch.Offset + branch.Length) ||
+				HasAddressFixup(address) || HasAddressFixup(test) ||
+				HasInternalLabel(address) || HasInternalLabel(branch) ||
+				!CanFoldAcrossUnreferencedIlLabels(test.Offset, test.Offset + test.Length, allowUnreferencedMarkers: true) ||
+				_assembler.TryGetInstructionEffects(address.Offset, out _) ||
+				_assembler.TryGetInstructionEffects(test.Offset, out _) ||
+				_assembler.TryGetInstructionEffects(branch.Offset, out _) ||
+				!TryGetBranch(branch.Offset, out var fixup)) continue;
+			// BTST does not change An. Only this backedge skips the constant load;
+			// every existing external/forward entry still executes it. Keep each
+			// byte read, including MMIO, and every condition-code effect intact.
+			string target = $"generated:poll-address:{branch.Offset:X}";
+			int suffix = 0;
+			while (_buffer.Labels.ContainsKey(target)) target = $"generated:poll-address:{branch.Offset:X}:{++suffix}";
+			_buffer.Labels.Add(target, test.Offset);
+			int index = _buffer.Branches.IndexOf(fixup);
+			_buffer.Branches[index] = fixup with { Target = target };
+			_referencedLabelNames.Add(target);
+			_unrelocatableLabelNames.Add(target);
+			RecordGeneratedTransportRewrite(0);
+			return true;
+		}
+		return false;
+	}
+
+	private bool TryRemoveRepeatedConstantAddress(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (int i = 0; i < instructions.Count; i++)
+		{
+			var first = instructions[i];
+			if (!first.IsDecoded || (first.Opcode & 0xF1FF) != 0x207C || first.Length != 6 ||
+				(first.Opcode >> 9 & 7) == 7 || HasAddressFixup(first) || HasInternalLabel(first) ||
+				_assembler.TryGetInstructionEffects(first.Offset, out _)) continue;
+			int mask = 1 << (first.Opcode >> 9 & 7);
+			for (int j = i + 1; j < instructions.Count; j++)
+			{
+				var next = instructions[j];
+				bool conditionalExit = next.Kind == M68kInstructionKind.ConditionalBranch &&
+					(next.Opcode & 0xF000) == 0x6000 && (next.Opcode >> 8 & 15) >= 2;
+				if (!next.IsDecoded || (next.Kind != M68kInstructionKind.Normal && !conditionalExit) ||
+					IsReferencedLabelAt(next.Offset) || HasInternalLabel(next) ||
+					!CanFoldAcrossUnreferencedIlLabels(next.Offset - 1, next.Offset + next.Length, allowUnreferencedMarkers: true) ||
+					!GeneratedSizeEligible(first.Offset, next.Offset + next.Length) ||
+					_assembler.TryGetInstructionEffects(next.Offset, out _) ||
+					!dataflow.TryGetFacts(next.Offset, out var facts) || (facts.Effects.IsBarrier && !conditionalExit)) break;
+				// An outgoing Bcc preserves the register on its fall-through edge.
+				// Any incoming target before a later reload still stops the scan.
+				if (next.Opcode == first.Opcode && next.Length == 6 &&
+					next.ExtensionLong == first.ExtensionLong && !HasAddressFixup(next))
+				{
+					// MOVEA does not change CCR. Preserve every intervening memory
+					// access, including MMIO strobes; only its unchanged base reload dies.
+					_buffer.RemoveBytes(next.Offset, next.Length);
+					RecordGeneratedTransportRewrite(next.Length);
+					return true;
+				}
+				if ((facts.Effects.DefinesAddress & mask) != 0) break;
+			}
+		}
+		return false;
+	}
+
+	private bool TryFoldByteLoadBitTest(M68kInstructionDataflow dataflow)
+	{
+		var instructions = dataflow.Instructions;
+		for (int i = 0; i + 1 < instructions.Count; i++)
+		{
+			var read = instructions[i]; var test = instructions[i + 1];
+			int mode = read.Opcode >> 3 & 7, ea = read.Opcode & 63, register = read.Opcode >> 9 & 7;
+			if (!read.IsDecoded || !test.IsDecoded || (read.Opcode & 0xF1C0) != 0x1000 ||
+				!(mode is 2 or 5 || mode == 7 && (ea & 7) <= 1) ||
+				test.Opcode != (0x0800 | register) || test.Length != 4 || test.ExtensionWord >= 8 ||
+				test.Offset != read.Offset + read.Length || HasAddressFixup(read) || HasAddressFixup(test) ||
+				HasInternalLabel(read) || HasInternalLabel(test) || IsReferencedLabelAt(test.Offset) ||
+				!CanFoldAcrossUnreferencedIlLabels(test.Offset - 1, test.Offset + test.Length, allowUnreferencedMarkers: true) ||
+				!GeneratedSizeEligible(read.Offset, test.Offset + test.Length) ||
+				_assembler.TryGetInstructionEffects(read.Offset, out _) || _assembler.TryGetInstructionEffects(test.Offset, out _) ||
+				!dataflow.TryGetFacts(test.Offset, out var facts) || (facts.LiveDataAfter & (1 << register)) != 0 ||
+				(facts.LiveConditionsAfter & (M68kConditionCodeSet.Negative | M68kConditionCodeSet.Overflow | M68kConditionCodeSet.Carry)) != 0)
+				continue;
+			// BTST memory performs the same single byte read, including MMIO.
+			// Z comes from the tested bit; the removed MOVE's NVC must be dead.
+			var zero = i == 0 ? default : instructions[i - 1];
+			bool removeZero = i != 0 && zero.IsDecoded && zero.Opcode == (0x7000 | register << 9) && zero.Length == 2 &&
+				zero.Offset + 2 == read.Offset && !HasInternalLabel(zero) &&
+				!_assembler.TryGetInstructionEffects(zero.Offset, out _) &&
+				GeneratedSizeEligible(zero.Offset, test.Offset + test.Length);
+			var extensions = new ushort[(read.Length - 2) / 2];
+			for (int n = 0; n < extensions.Length; n++) extensions[n] = (ushort)_buffer.ReadWord(read.Offset + 2 + n * 2);
+			_buffer.WriteWord(read.Offset, (ushort)(0x0800 | ea));
+			_buffer.WriteWord(read.Offset + 2, test.ExtensionWord);
+			for (int n = 0; n < extensions.Length; n++) _buffer.WriteWord(read.Offset + 4 + n * 2, extensions[n]);
+			_buffer.RemoveBytes(read.Offset + read.Length + 2, 2);
+			// The byte load overwrote its flags and the tested temporary is dead.
+			if (removeZero) _buffer.RemoveBytes(zero.Offset, 2);
+			RecordGeneratedTransportRewrite(removeZero ? 4 : 2);
+			return true;
+		}
+		return false;
+	}
 
 	private bool TryCompactPrivateStackCopies(M68kInstructionDataflow dataflow)
 	{

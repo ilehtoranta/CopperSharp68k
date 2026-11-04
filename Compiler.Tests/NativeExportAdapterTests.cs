@@ -7,6 +7,56 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class NativeExportAdapterTests
 {
     [Theory]
+    [InlineData(M68kRuntimeProfile.Freestanding)]
+    [InlineData(M68kRuntimeProfile.Resident)]
+    public void MatchingScalarExportsPublishTheCallableBody(M68kRuntimeProfile profile)
+    {
+        var result = AmigaM68kCompiler.Compile(new() {
+            AssemblyPath = typeof(NativeExportFixtures).Assembly.Location,
+            EntryPoint = typeof(NativeExportFixtures).FullName + "::ReadFromManagedCaller",
+            ManagedAssemblyPaths = [typeof(APTR).Assembly.Location],
+            IncludedExportNames = ["native.test.byte", "native.test.address", "native.test.store"],
+            RuntimeProfile = profile, MemoryManagement = M68kMemoryManagement.None,
+            ExceptionMode = M68kExceptionMode.Yolo, OutputFormat = M68kOutputFormat.Hunk,
+            Hunk = new() { IncludeSymbols = false }
+        });
+        foreach (var (name, method) in new[] { ("byte", "ReadByte"), ("address", "Identity"), ("store", "Store") })
+        {
+            uint address = result.Symbols.Single(s => s.Name == "native.test." + name).Address;
+            Assert.Equal(result.Symbols.Single(s => s.Name == typeof(NativeExportFixtures).FullName + "::" + method).Address, address);
+            foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020 })
+            foreach (uint stack in new uint[] { 0x80000, 0x80002 })
+            {
+                var bus = new TestBus();
+                var code = ResidentCodeSizeExecutionTests.LoadImage(result.Image, 0x10000);
+                code.CopyTo(bus.Memory, 0x10000); bus.WriteLong(stack, 0x1000);
+                bus.Memory[0x3019] = 0xE7;
+                using var cpu = M68kCoreFactory.Default.Create(model, bus);
+                cpu.Reset(0x10000 + address, stack); cpu.State.StatusRegister = 0x2700;
+                for (int i = 0; i < 8; i++) cpu.State.D[i] = 0x12340000u + (uint)i;
+                for (int i = 0; i < 7; i++) cpu.State.A[i] = 0x23450000u + (uint)i;
+                cpu.State.A[0] = 0x3000; cpu.State.D[0] = 0xABCDEF81;
+                var d = cpu.State.D.ToArray(); var a = cpu.State.A.ToArray();
+                for (int n = 0; n < 1000 && cpu.State.ProgramCounter != 0x1000; n++) cpu.ExecuteInstruction();
+                Assert.Equal(0x1000u, cpu.State.ProgramCounter); Assert.Equal(stack + 4, cpu.State.A[7]);
+                Assert.Equal(d.Skip(2), cpu.State.D.Skip(2)); Assert.Equal(a.Skip(2).Take(5), cpu.State.A.Skip(2).Take(5));
+                if (name == "byte") Assert.Equal(0xE7u, cpu.State.D[0]);
+                else if (name == "address") Assert.Equal(0x3000u, cpu.State.A[0]);
+                else Assert.Equal(0x81, bus.Memory[0x3019]);
+                Assert.Equal(code, bus.Memory.AsSpan(0x10000, code.Length).ToArray());
+                if (name == "byte")
+                {
+                    cpu.Reset(0x10000 + result.EntryPoint, stack); cpu.State.StatusRegister = 0x2700;
+                    bus.WriteLong(stack, 0x1000);
+                    for (int n = 0; n < 1000 && cpu.State.ProgramCounter != 0x1000; n++) cpu.ExecuteInstruction();
+                    Assert.Equal(0x1000u, cpu.State.ProgramCounter); Assert.Equal(0xE7u, cpu.State.D[0]);
+                    Assert.Equal(stack + 4, cpu.State.A[7]);
+                }
+            }
+        }
+    }
+
+    [Theory]
     [InlineData(M68kRuntimeProfile.Freestanding, false)]
     [InlineData(M68kRuntimeProfile.Freestanding, true)]
     [InlineData(M68kRuntimeProfile.Resident, false)]
@@ -50,6 +100,16 @@ public sealed class NativeExportAdapterTests
 
 public static class NativeExportFixtures
 {
+    public static uint ReadFromManagedCaller() => ReadByte(0x3000u);
+    [M68kExport("native.test.byte")]
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    public static uint ReadByte([M68kRegister(M68kRegister.A0)] APTR address) => APTR.ReadUInt8(address, 25);
+    [M68kExport("native.test.address")]
+    [return: M68kRegister(M68kRegister.A0)]
+    public static APTR Identity([M68kRegister(M68kRegister.A0)] APTR address) => address;
+    [M68kExport("native.test.store")]
+    public static void Store([M68kRegister(M68kRegister.A0)] APTR address,
+        [M68kRegister(M68kRegister.D0)] uint value) => APTR.WriteUInt8(address, 25, (byte)value);
     public static void Empty() { }
     [M68kExport("native.test.entry")]
     [return: M68kRegister(M68kRegister.D0)]

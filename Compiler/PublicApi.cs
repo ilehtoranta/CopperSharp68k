@@ -216,7 +216,7 @@ public sealed record M68kExternalCallConvention(
 	/// <summary>
 	/// Additional D0-D7/A0-A6 registers that the target ABI allows the callee to
 	/// overwrite, including registers absent from its signature. Parameter,
-	/// return, base, cache, and exception-status effects remain implicit.
+	/// non-void return, base, cache, and exception-status effects remain implicit.
 	/// Null preserves the existing convention with no additional clobbers.
 	/// </summary>
 	public IReadOnlyList<M68kRegister>? ClobberedRegisters { get; init; }
@@ -572,7 +572,7 @@ public sealed record M68kRomSizeOptions
 /// <summary>Opt-in size policy for eligible MC68000 ROM, application, resident and freestanding HUNK images.</summary>
 public sealed record M68kCodeSizeOptions
 {
-	/// <summary>Fold adjacent load/logical/store updates to ordinary native RAM into memory-destination instructions. Enable only for images whose matching updates do not target MMIO or synchronized memory.</summary>
+	/// <summary>Fold ordinary native RAM updates into memory-destination instructions and adjacent stores/pointer increments into post-increment stores. Enable only for images whose matching accesses do not target MMIO or synchronized memory.</summary>
 	public bool FoldNativeRamUpdates { get; init; }
 	/// <summary>Replace private application unwind restore routines with a shared mask-driven helper when it reduces emitted code size.</summary>
 	public bool ShareApplicationUnwindHelper { get; init; } = true;
@@ -686,6 +686,8 @@ public sealed record M68kCodeSizeOptions
 /// <summary>Closed-world compilation request.</summary>
 public sealed record M68kCompilationRequest
 {
+	/// <summary>Retain final offsets of typed base-relative native calls for a build-time linker.</summary>
+	public bool CaptureNativeCallSites { get; init; }
 	// Allows the compiler's cycle tests to compare identical requests.
 	internal bool OptimizeWordBranchFallthrough { get; init; } = true;
 	/// <summary>
@@ -849,6 +851,9 @@ public sealed record M68kCompilationRequest
 /// <summary>A named range in the linked image.</summary>
 public readonly record struct M68kSymbol(string Name, uint Address, int Size);
 
+/// <summary>A native call's byte offset in Code, independent of the output container's load address.</summary>
+public readonly record struct M68kNativeCallSite(int Offset, M68kRegister BaseRegister, short Displacement, bool TailCall);
+
 /// <summary>An absolute 32-bit address patched by the linker.</summary>
 public readonly record struct M68kRelocation(int Offset, string Target);
 
@@ -938,6 +943,9 @@ public sealed class M68kCompilationResult
 	public IReadOnlyList<M68kSymbol> Symbols { get; }
 
 	public IReadOnlyList<M68kRelocation> Relocations { get; }
+
+	/// <summary>Explicit emitter metadata, captured only when requested; never inferred by scanning instructions.</summary>
+	public IReadOnlyList<M68kNativeCallSite> NativeCallSites { get; init; } = [];
 
 	public string Map { get; }
 

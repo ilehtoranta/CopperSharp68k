@@ -586,7 +586,7 @@ public static class M68kCompiler
 			loopFootprints,
 			frameworkFeatures,
 			nativeCompatibility,
-			frameworkAnalysis);
+			frameworkAnalysis) { NativeCallSites = program.Assembler.GetNativeCallSites(linked) };
 	}
 
 	private static M68kCompilationResult LinkHunk(
@@ -643,7 +643,7 @@ public static class M68kCompiler
 			loopFootprints,
 			frameworkFeatures,
 			nativeCompatibility,
-			frameworkAnalysis);
+			frameworkAnalysis) { NativeCallSites = program.Assembler.GetNativeCallSites(linked) };
 	}
 
 	private static M68kCompilationResult LinkRom(
@@ -695,7 +695,7 @@ public static class M68kCompiler
 			loopFootprints,
 			frameworkFeatures,
 			nativeCompatibility,
-			frameworkAnalysis);
+			frameworkAnalysis) { NativeCallSites = program.Assembler.GetNativeCallSites(linked) };
 	}
 
 	private static M68kNativeCompatibility CreateNativeCompatibility(

@@ -28,6 +28,16 @@ public readonly struct APTR
 		throw new System.NotSupportedException(
 			"APTR.ExportAddress is lowered by CopperSharp.");
 
+	/// <summary>
+	/// Atomically sets a bit in a native RAM byte and returns its previous value.
+	/// The bit index wraps modulo eight. The read/modify/write is one guest BSET
+	/// instruction, indivisible with respect to CPU interrupt/preemption boundaries.
+	/// This is not a host interlocked operation or a guarantee against DMA writes.
+	/// </summary>
+	public static bool BitTestAndSet8(APTR address, int bit) =>
+		throw new System.NotSupportedException(
+			"APTR.BitTestAndSet8 is lowered by CopperSharp.");
+
 	public static byte ReadUInt8(APTR address, int offset) =>
 		throw new System.NotSupportedException(
 			"APTR.ReadUInt8 is lowered by CopperSharp.");

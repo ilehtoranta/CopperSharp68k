@@ -403,6 +403,7 @@ internal sealed partial class M68kCodeGenerator
 		{
 			entryFunction.PreserveCalleeSavedRegisters = false;
 		}
+		PlanDirectScalarExports(initializesPlatformBase);
 		foreach (var method in methods)
 		{
 			if (_foldedMethodAliases.ContainsKey(method.Identity))
@@ -1836,6 +1837,8 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.Mark(runtimeAlias);
 		}
 		_assembler.Mark(MethodLabel(method));
+		foreach (var export in _exports.Where(e => e.Method.Identity == method.Identity && _directScalarExports.Contains(e.Name)))
+			_assembler.Mark(ExportLabel(export.Name));
 		try
 		{
 			allocatedFunction = EmitAllocatedMethod(
@@ -6822,6 +6825,15 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName == "intrinsic:aptr-bit-test-and-set8")
+			{
+				EmitPopRegister(M68kRegister.D0);
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0x01D0); // BSET D0,(A0)
+				EmitAllocatedConditionResult(M68kCondition.NotEqual, M68kRegister.D0);
+				if (pushResult) EmitPushRegister(M68kRegister.D0);
+				return;
+			}
 			if (target.ImportName == "intrinsic:aptr-read-uint32")
 			{
 				EmitAptrReadUInt32(pushResult);
@@ -10642,6 +10654,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitExportAdapter(CilExport export, bool initializesPlatformBase)
 	{
+		if (_directScalarExports.Contains(export.Name)) return;
 		_assembler.AlignWord();
 		_assembler.Mark(ExportLabel(export.Name));
 		if (TryEmitScalarExportAdapter(export, initializesPlatformBase)) return;
@@ -11485,6 +11498,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitBaseRelativeJsr(M68kRegister register, short displacement)
 	{
+		if (_request.CaptureNativeCallSites) _assembler.MarkNativeCallSite(register, displacement);
 		var index = (int)register - (int)M68kRegister.A0;
 		_assembler.EmitWord((ushort)(0x4EA8 | index));
 		_assembler.EmitWord(unchecked((ushort)displacement));
@@ -11492,6 +11506,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitBaseRelativeJmp(M68kRegister register, short displacement)
 	{
+		if (_request.CaptureNativeCallSites) _assembler.MarkNativeCallSite(register, displacement);
 		var index = (int)register - (int)M68kRegister.A0;
 		_assembler.EmitWord((ushort)(0x4EE8 | index));
 		_assembler.EmitWord(unchecked((ushort)displacement));
