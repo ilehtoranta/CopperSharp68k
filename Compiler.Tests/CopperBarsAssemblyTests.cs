@@ -71,7 +71,8 @@ public sealed partial class CopperBarsAssemblyTests
 
 		Assert.True(Instruction().Matches(assembly).Count <= 447);
 		Assert.True(CallInstruction().Matches(assembly).Count <= 44);
-		Assert.Empty(LongMaskConstant().Matches(assembly).Cast<Match>());
+		// The DMA-enable mask also feeds a later comparison and must stay live.
+		Assert.Equal("#$000007FF", Assert.Single(LongMaskConstant().Matches(assembly).Cast<Match>()).Value);
 		// Inlined hardware wrappers expose constant register offsets, eliminating
 		// the custom-address/pointer argument normalizations. Keep a ceiling so
 		// further removal of proven redundant extensions is also accepted.

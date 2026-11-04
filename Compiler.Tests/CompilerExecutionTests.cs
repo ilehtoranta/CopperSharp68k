@@ -9765,8 +9765,13 @@ public sealed partial class CompilerExecutionTests
 			"\tmovea.l\ta2,a0\r\n\tmove.l\td2,d0",
 			result.Text,
 			StringComparison.Ordinal);
-		Assert.DoesNotContain("\tmove.l\td0,-(a7)\r\n\tpea\t(a0)", result.Text, StringComparison.Ordinal);
-		Assert.DoesNotContain("\tmovea.l\t(a7)+,a0\r\n\tmove.l\t(a7)+,d0", result.Text, StringComparison.Ordinal);
+		// Only the startup stub must use the preserved startup registers.
+		// Native export adapters may legitimately save their incoming arguments.
+		var methodsStart = result.Text!.IndexOf("\r\nC68K_method_", StringComparison.Ordinal);
+		Assert.True(methodsStart > 0);
+		var startup = result.Text[..methodsStart];
+		Assert.DoesNotContain("\tmove.l\td0,-(a7)\r\n\tpea\t(a0)", startup, StringComparison.Ordinal);
+		Assert.DoesNotContain("\tmovea.l\t(a7)+,a0\r\n\tmove.l\t(a7)+,d0", startup, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -11264,9 +11269,9 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(
 			"Console input/output example\nType text: ",
 			System.Text.Encoding.Latin1.GetString(eofOutput));
-		// Call barriers invalidate stale condition aliases, and finally frames
-		// initialize their active-exception slot even on the normal path.
-		Assert.Equal((31_758L, 3_213L, 17_986L, 1_909L),
+		// Retain mask definitions whose values are still consumed after ANDI.
+		// The corrected code executes one additional constant load per iteration.
+		Assert.Equal((32_430L, 3_269L, 18_454L, 1_948L),
 			(input.Cycles, input.Instructions, eof.Cycles, eof.Instructions));
 	}
 
@@ -13238,6 +13243,7 @@ public sealed partial class CompilerExecutionTests
 				M68kCompiler.Compile(new M68kCompilationRequest
 				{
 					AssemblyPath = assemblyPath,
+					IncludedExportNames = ["fixture.add"],
 					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 					EntryPoint =
 						$"CopperSharp.Compiler.Tests.CompilerFixtures::{entry}",
@@ -13270,6 +13276,7 @@ public sealed partial class CompilerExecutionTests
 				M68kCompiler.Compile(new M68kCompilationRequest
 				{
 					AssemblyPath = assemblyPath,
+					IncludedExportNames = ["fixture.add"],
 					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 					EntryPoint =
 						"CopperSharp.Compiler.Tests.CompilerFixtures::ReadonlyByrefWriteTemplateEntry"
@@ -13295,6 +13302,7 @@ public sealed partial class CompilerExecutionTests
 				M68kCompiler.Compile(new M68kCompilationRequest
 				{
 					AssemblyPath = assemblyPath,
+					IncludedExportNames = ["fixture.add"],
 					ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 					EntryPoint =
 						"CopperSharp.Compiler.Tests.CompilerFixtures::IncompatibleByrefTypeTemplateEntry"
@@ -13346,6 +13354,7 @@ public sealed partial class CompilerExecutionTests
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = assemblyPath,
+				IncludedExportNames = ["fixture.add"],
 				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 				EntryPoint =
 					"CopperSharp.Compiler.Tests.CompilerFixtures::BoxInteriorByrefTemplateEntry",
@@ -17299,6 +17308,7 @@ public sealed partial class CompilerExecutionTests
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
 			{
 				AssemblyPath = assemblyPath,
+				IncludedExportNames = ["fixture.add"],
 				ManagedAssemblyPaths = [typeof(M68kRuntime).Assembly.Location, typeof(CopperSharp.Runtime.ShadowArray).Assembly.Location],
 				EntryPoint =
 					"CopperSharp.Compiler.Tests.CompilerFixtures::MultiwordIndirectCopyEntry",
