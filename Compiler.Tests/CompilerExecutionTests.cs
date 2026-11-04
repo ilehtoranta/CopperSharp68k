@@ -1136,8 +1136,8 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(1, probe.Opens);
 		Assert.Equal(1, probe.Reads);
 		Assert.Equal(1, probe.Closes);
-		Assert.Equal(2_360, cycles);
-		Assert.Equal(205, instructions);
+		Assert.Equal(2_352, cycles);
+		Assert.Equal(203, instructions);
 	}
 
 	[Fact]
@@ -1164,8 +1164,8 @@ public sealed partial class CompilerExecutionTests
 			afterReturn: state => cycles = state.Cycles);
 
 		Assert.Equal(0x003A_981Du, checksum);
-		Assert.Equal(458_884, cycles);
-		Assert.Equal(58_892, instructions);
+		Assert.Equal(442_500, cycles);
+		Assert.Equal(54_796, instructions);
 	}
 
 	[Fact]
@@ -11997,7 +11997,7 @@ public sealed partial class CompilerExecutionTests
 			printReportStatistics.CodeBytes < 252,
 			$"PrintReport is {printReportStatistics.CodeBytes} bytes.");
 		Assert.Equal(0, printReportStatistics.SpillFrameBytes);
-		Assert.Equal(4, printReportStatistics.CalleeSavedRegisters);
+		Assert.Equal(3, printReportStatistics.CalleeSavedRegisters);
 		var printReport = Regex.Match(
 			result.Text!,
 			@"C68K_method_003A06000003:\r?\n(?<body>.*?)C68K_method_003A06000003_003Aend:",

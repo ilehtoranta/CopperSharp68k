@@ -885,11 +885,10 @@ public sealed class M68kMachineOptimizerTests
 		var wrapperAssembly = assembly[
 			methodLabels[wrapperIndex].Index..wrapperEnd];
 
-		Assert.Equal(26, wrapper.Size);
-		Assert.Contains(
-			"\tmove.l\ta0,d3\r\n\tshi\td3",
-			wrapperAssembly,
-			StringComparison.Ordinal);
+		Assert.Equal(18, wrapper.Size);
+		// The Boolean temporary shares D2, requiring only one callee-save.
+		Assert.True(wrapperAssembly.Contains(
+			"\tmove.l\ta0,d2\r\n\tshi\td2", StringComparison.Ordinal), wrapperAssembly);
 		Assert.Contains("\text.l\td0", wrapperAssembly, StringComparison.Ordinal);
 		Assert.DoesNotContain(
 			"\tmove.l\td0,d4",
