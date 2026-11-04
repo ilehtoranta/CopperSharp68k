@@ -38,6 +38,18 @@ public readonly struct APTR
 		throw new System.NotSupportedException(
 			"APTR.BitTestAndSet8 is lowered by CopperSharp.");
 
+	/// <summary>Atomically increments a native RAM word modulo 65536 and returns
+	/// whether the result is zero. One guest ADDQ.W, indivisible at CPU interrupt
+	/// boundaries; not synchronization with DMA writes. The address must be even.</summary>
+	public static bool IncrementWordIsZero(APTR address, int offset) =>
+		throw new System.NotSupportedException("APTR.IncrementWordIsZero is lowered by CopperSharp.");
+
+	/// <summary>Atomically decrements a native RAM word modulo 65536 and returns
+	/// whether the wrapped result is negative as a signed word. One guest SUBQ.W;
+	/// the same RAM/alignment/interrupt-boundary contract as IncrementWordIsZero.</summary>
+	public static bool DecrementWordIsNegative(APTR address, int offset) =>
+		throw new System.NotSupportedException("APTR.DecrementWordIsNegative is lowered by CopperSharp.");
+
 	public static byte ReadUInt8(APTR address, int offset) =>
 		throw new System.NotSupportedException(
 			"APTR.ReadUInt8 is lowered by CopperSharp.");

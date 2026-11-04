@@ -6825,6 +6825,17 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
+			if (target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative")
+			{
+				EmitPopRegister(M68kRegister.D0);
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
+				bool increment = target.ImportName == "intrinsic:aptr-increment-word-zero";
+				_assembler.EmitWord(increment ? (ushort)0x5250 : (ushort)0x5350);
+				EmitAllocatedConditionResult(increment ? M68kCondition.Equal : M68kCondition.Minus, M68kRegister.D0);
+				if (pushResult) EmitPushRegister(M68kRegister.D0);
+				return;
+			}
 			if (target.ImportName == "intrinsic:aptr-bit-test-and-set8")
 			{
 				EmitPopRegister(M68kRegister.D0);

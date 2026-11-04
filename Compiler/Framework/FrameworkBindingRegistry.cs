@@ -4042,6 +4042,17 @@ internal static class FrameworkBindingRegistry
 						FrameworkFeature.NativeMemory));
 			}
 
+			if (typeName == "Amiga.APTR" && name is "IncrementWordIsZero" or "DecrementWordIsNegative" &&
+				signature.ParameterTypes.Length == 2 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int")
+			{
+				return Intrinsic(member, name == "IncrementWordIsZero" ?
+					"intrinsic:aptr-increment-word-zero" : "intrinsic:aptr-decrement-word-negative",
+					Effects(FrameworkEffects.ReadsNativeMemory | FrameworkEffects.WritesNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
 			if (typeName == "Amiga.APTR" && name == "BitTestAndSet8" &&
 				signature.ParameterTypes.Length == 2 &&
 				signature.ParameterTypes[0].DisplayName == typeName &&

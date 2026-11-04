@@ -5147,6 +5147,7 @@ internal static class CilMachineIrBuilder
 		}
 
 		if (target.ImportName is
+				"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
 				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			sourceUses.Count > 1 &&
@@ -5162,6 +5163,7 @@ internal static class CilMachineIrBuilder
 		}
 		if (embeddedDisplacement is null &&
 			target.ImportName is
+				"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
 				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			argumentConstraints.Count != 0)
@@ -5323,7 +5325,8 @@ internal static class CilMachineIrBuilder
 		M68kMachineValue? fixedReturn = null;
 		if (!hasMultiwordReturn &&
 			definitions.Count == 1 &&
-			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
+			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
 			!HasFlexibleScalarReturn(target.ImportName))
 		{
 			var result = function.Values[definitions[0]];
@@ -6487,7 +6490,8 @@ internal static class CilMachineIrBuilder
 			return [CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Data)];
 		}
-		if (target.ImportName is "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" ||
+		if (target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:file-info-block-read-int32:",
 				StringComparison.Ordinal) == true)
@@ -7255,7 +7259,8 @@ internal static class CilMachineIrBuilder
 			if (target.Definition is null &&
 				target.ImportName is
 					"intrinsic:aptr-bit-test-and-set8" or
-					"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
+					"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
 					"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" or
 					"intrinsic:aptr-raw" or
 					"intrinsic:iff-handle-stream" or

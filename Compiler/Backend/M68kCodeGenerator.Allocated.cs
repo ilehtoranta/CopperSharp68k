@@ -9183,6 +9183,22 @@ internal sealed partial class M68kCodeGenerator
 			EmitAllocatedAddress(ExportLabel(exportName), Definition());
 			return;
 		}
+		if (name is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative")
+		{
+			var baseRegister = Use(0);
+			var displacement = instruction.Immediate;
+			if (displacement is null) {
+				EmitAllocatedBinaryInPlace(M68kMachineOperation.Add, Use(1), baseRegister, M68kMachineValueWidth.Long);
+				displacement = 0;
+			}
+			int address = (int)baseRegister - (int)M68kRegister.A0;
+			bool increment = name == "intrinsic:aptr-increment-word-zero";
+			_assembler.EmitWord((ushort)((increment ? 0x5240 : 0x5340) |
+				(displacement == 0 ? 0x10 : 0x28) | address));
+			if (displacement != 0) _assembler.EmitWord(unchecked((ushort)displacement.Value));
+			EmitAllocatedConditionResult(increment ? M68kCondition.Equal : M68kCondition.Minus, Definition());
+			return;
+		}
 		if (name == "intrinsic:aptr-bit-test-and-set8")
 		{
 			var address = (int)Use(0) - (int)M68kRegister.A0;
@@ -11030,6 +11046,7 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:amiga-vararg-from-literal" or
 			"intrinsic:aptr-export-address" or
 			"intrinsic:aptr-bit-test-and-set8" or
+			"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
 			"intrinsic:aptr-read-uint8" or
 			"intrinsic:aptr-read-uint16" or
 			"intrinsic:aptr-read-uint32" or
