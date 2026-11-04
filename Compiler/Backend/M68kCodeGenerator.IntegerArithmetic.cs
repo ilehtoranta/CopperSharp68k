@@ -40,8 +40,13 @@ internal sealed partial class M68kCodeGenerator
 		{
 			case M68kIntegerArithmeticKind.SignedWordMultiply:
 			case M68kIntegerArithmeticKind.UnsignedWordMultiply:
-				_assembler.EmitWord(plan.Kind == M68kIntegerArithmeticKind.SignedWordMultiply
-					? (ushort)0xC1C1 : (ushort)0xC0C1); // MUL[SU].W D1,D0
+				var left = allocated.Allocation.Registers[instruction.Uses[0]].Register;
+				var right = allocated.Allocation.Registers[instruction.Uses[1]].Register;
+				var result = allocated.Allocation.Registers[instruction.Definitions[0]].Register;
+				if (result == right) (left, right) = (right, left);
+				EmitAllocatedMove(left, result, M68kMachineValueWidth.Long);
+				_assembler.EmitWord((ushort)((plan.Kind == M68kIntegerArithmeticKind.SignedWordMultiply
+					? 0xC1C0 : 0xC0C0) | ((int)result << 9) | (int)right));
 				return true;
 			case M68kIntegerArithmeticKind.FactoredWordMultiply:
 				var source = allocated.Allocation.Registers[instruction.Uses[plan.SourceOperand]].Register;

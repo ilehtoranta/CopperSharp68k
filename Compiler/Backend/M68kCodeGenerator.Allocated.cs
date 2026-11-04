@@ -2350,6 +2350,9 @@ internal sealed partial class M68kCodeGenerator
 				}
 				else if (TryEmitAllocatedIntegerMultiply(allocated, instruction))
 				{
+					EmitAllocatedDefinitionNormalization(allocated, instruction,
+						Location(instruction.Definitions[0]).Register);
+					return;
 				}
 				else if (_allocatedConstantMultiplies.TryGetValue(
 					instruction.Id,
@@ -2424,6 +2427,14 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Shift:
+				if (instruction.Immediate is { } constantCount &&
+					allocated.Function.Values[instruction.Definitions[0]].Kind == CilStackValueKind.Int32)
+				{
+					var destination = Location(instruction.Definitions[0]).Register;
+					EmitAllocatedMove(Location(instruction.Uses[0]).Register, destination, M68kMachineValueWidth.Long);
+					EmitImmediateShift(instruction.SourceInstruction!.OpCode, 4, constantCount, destination);
+					return;
+				}
 				if (allocated.Function.Values[instruction.Definitions[0]].Kind == CilStackValueKind.Int64)
 					M68kWideShiftEmitter.Emit(_assembler, instruction.SourceInstruction!.OpCode,
 						instruction.Immediate, UniqueLabel);
@@ -5514,6 +5525,11 @@ internal sealed partial class M68kCodeGenerator
 			// promised to the callee by interprocedural analysis.
 			return false;
 		}
+
+		// Outgoing callee-saved argument registers must not be overwritten by
+		// the caller's epilogue. Keep a normal call when restoration overlaps.
+		if (GetInternalCallAbi(callee).Arguments.Any(argument => argument.Register is { } register &&
+			allocated.Frame.CalleeSavedRegisters.Contains(register))) return false;
 
 		foreach (var instruction in trailing)
 		{

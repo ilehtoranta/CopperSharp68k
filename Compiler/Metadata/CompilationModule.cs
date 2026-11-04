@@ -592,6 +592,21 @@ internal sealed partial class CompilationModule : IDisposable
 				constructedDeclaringType,
 				methodTypeArguments,
 				definition.ImplAttributes);
+		if (HasAttribute(definition.GetCustomAttributes(), typeof(M68kInternalRegisterAbiAttribute).FullName!))
+		{
+			var abi = GetRequiredRegisterAbi(definition, signature, displayName, "internal register ABI");
+			if (signature.Header.IsInstance || importName is not null || externalCall is not null ||
+				signature.ParameterTypes.Any(type => type.Kind == CilTypeKind.ValueType
+					? !IsTransparentScalarType(type)
+					: type.Kind is CilTypeKind.GenericParameter or CilTypeKind.FloatingPoint || type.Size is < 1 or > 4) ||
+				!signature.ReturnType.IsVoid && (signature.ReturnType.Size != 4 || signature.ReturnType.Kind is not (CilTypeKind.SignedInteger or CilTypeKind.UnsignedInteger)) ||
+				abi.ReturnRegister != M68kRegister.D0 ||
+				abi.ParameterRegisters.Any(register => register < M68kRegister.D0 || register > M68kRegister.A6) ||
+				abi.ParameterRegisters.Distinct().Count() != abi.ParameterRegisters.Count)
+				throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature,
+					"Internal register ABI requires a static scalar body, distinct D0-D7/A0-A6 parameters and void/Int32 return in D0.", displayName);
+			method = method with { InternalRegisterAbi = abi };
+		}
 		if (deferBody) return method with { HasDeferredBody = true };
 		_methodCache.Add(cacheKey, method);
 		method = CilHardwareSupportSpecializer.Specialize(method, this);
@@ -10704,6 +10719,7 @@ internal sealed record CilMethod(
 	// only when reached. An unsupported unused reflection body cannot poison a
 	// canonical RuntimeType's ToString slot.
 	public bool HasDeferredBody { get; init; }
+	public CilRegisterAbi? InternalRegisterAbi { get; init; }
 
 	public string Construction => FormatConstruction(
 		ConstructedDeclaringType,

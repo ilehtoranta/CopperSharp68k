@@ -5527,7 +5527,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord((ushort)(ShiftOpcode(op, width) | 0x0020));
 	}
 
-	private void EmitImmediateShift(OpCode op, int width, int count)
+	private void EmitImmediateShift(OpCode op, int width, int count, M68kRegister register = M68kRegister.D0)
 	{
 		count &= 31;
 		while (count != 0)
@@ -5537,7 +5537,7 @@ internal sealed partial class M68kCodeGenerator
 			var opcode = ShiftOpcode(op, width);
 			_assembler.EmitWord((ushort)(
 				(opcode & ~(7 << 9)) |
-				(encodedCount << 9)));
+				(encodedCount << 9) | (int)register));
 			count -= chunk;
 		}
 	}
@@ -9104,6 +9104,11 @@ internal sealed partial class M68kCodeGenerator
 
 	private InternalCallAbi GetInternalCallAbi(CilMethod method)
 	{
+		if (method.InternalRegisterAbi is { } declared)
+			return new InternalCallAbi(declared.ParameterRegisters.Select((register, index) =>
+				new InternalArgumentLocation(index, 1, register, null, -1,
+					method.Signature.ParameterTypes[index].Kind == CilTypeKind.ManagedReference)).ToImmutableArray(), 0);
+
 		if (!method.Signature.Header.IsInstance && HasAmigaStartupArguments(method))
 		{
 			return new InternalCallAbi(

@@ -6543,6 +6543,8 @@ internal static class CilMachineIrBuilder
 				.Select(CallArgumentConstraint.Fixed)
 				.ToArray();
 		}
+		if (target.Definition?.InternalRegisterAbi is { } internalAbi)
+			return internalAbi.ParameterRegisters.Select(CallArgumentConstraint.Fixed).ToArray();
 		if (target.Definition?.ImportAbi is { } importAbi)
 		{
 			return importAbi.ParameterRegisters
@@ -7285,14 +7287,17 @@ internal static class CilMachineIrBuilder
 			}
 			if (target.Definition?.ExternalCall is { } externalCall)
 			{
-				var result = RegistersUsedByAbi(
-					externalCall.Abi,
-					target.Signature, includeVoidReturn: false);
+				var result = externalCall.Convention.PreservesInputRegisters
+					? (target.Signature.ReturnType.IsVoid ? M68kRegisterSet.None :
+						M68kRegisterSet.From(externalCall.Abi.ReturnRegister))
+					: RegistersUsedByAbi(externalCall.Abi,
+						target.Signature, includeVoidReturn: false);
 				foreach (var register in externalCall.Convention.ClobberedRegisters ?? [])
 				{
 					result = result.Add(register);
 				}
-				result = result.Add(externalCall.Convention.BaseRegister);
+				if (!externalCall.Convention.PreservesInputRegisters)
+					result = result.Add(externalCall.Convention.BaseRegister);
 				if (externalCall.Convention.CacheRegister is { } cache)
 				{
 					result = result.Add(cache);

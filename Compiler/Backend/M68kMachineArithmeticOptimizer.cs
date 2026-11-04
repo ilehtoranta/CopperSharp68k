@@ -48,6 +48,20 @@ internal static class M68kMachineArithmeticOptimizer
 			for (var index = 0; index < block.Instructions.Count; index++)
 			{
 				var instruction = block.Instructions[index];
+				if (instruction.Operation == M68kMachineOperation.Shift && instruction.Immediate is not null &&
+					instruction.Uses is [var shifted] && instruction.Definitions is [var shiftResult] &&
+					function.Values[shiftResult].Kind == CilStackValueKind.Int32 &&
+					IsPrivateOperandCopy(function, shifted, instruction.Id))
+				{
+					foreach (var id in new[] { shifted, shiftResult })
+						function.Values[id] = function.Values[id] with
+						{
+							PrecoloredRegister = null, AllowedRegisters = M68kRegisterSet.Data
+						};
+					block.Instructions[index] = instruction with { Clobbers = M68kRegisterSet.None };
+					continue;
+				}
+
 				if (instruction.Uses is not [var left, var right] ||
 					instruction.Definitions.Length is < 1 or > 2 ||
 					function.Values[instruction.Definitions[0]].Kind is
@@ -104,7 +118,21 @@ internal static class M68kMachineArithmeticOptimizer
 				}
 				if (plan is null) continue;
 				plans.Add(instruction.Id, plan);
-				// The replacement emits into D0 and uses D2 only for the factored
+				if (plan.Kind is M68kIntegerArithmeticKind.SignedWordMultiply or M68kIntegerArithmeticKind.UnsignedWordMultiply &&
+					instruction.Uses.All(value => IsPrivateOperandCopy(function, value, instruction.Id)))
+				{
+					// MULS/MULU.W accept any pair of data registers. Drop the generic
+					// software multiply's D0/D1 staging constraints before allocation.
+					// Only private staging copies may lose a fixed-register contract.
+					foreach (var id in instruction.Uses.Concat(instruction.Definitions))
+						function.Values[id] = function.Values[id] with
+						{
+							PrecoloredRegister = null, AllowedRegisters = M68kRegisterSet.Data
+						};
+				}
+
+				// Division retains D0; word products use the allocated result.
+				// D2 is scratch only for the factored
 				// product or a paired remainder-first division. Paired quotient-first
 				// division explicitly defines D3 instead of making it an invisible
 				// scratch clobber. The old D4-D6 saves/spills can therefore disappear.
@@ -118,6 +146,25 @@ internal static class M68kMachineArithmeticOptimizer
 		}
 		M68kMachineIrVerifier.Verify(function);
 		return plans;
+	}
+
+	private static bool IsPrivateOperandCopy(M68kMachineFunction function, int value, int operationId)
+	{
+		bool copied = false;
+		foreach (var block in function.Blocks)
+		{
+			if (block.Phis.Any(phi => phi.Definition == value || phi.Inputs.Values.Contains(value))) return false;
+			foreach (var instruction in block.Instructions)
+			{
+				if (instruction.Definitions.Contains(value))
+				{
+					if (instruction.Operation != M68kMachineOperation.Copy || instruction.Definitions.Length != 1) return false;
+					copied = true;
+				}
+				if (instruction.Uses.Contains(value) && instruction.Id != operationId) return false;
+			}
+		}
+		return copied;
 	}
 
 	private static bool FitsSignedWord(long value) => value is >= short.MinValue and <= short.MaxValue;

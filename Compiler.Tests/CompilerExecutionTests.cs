@@ -11269,9 +11269,9 @@ public sealed partial class CompilerExecutionTests
 		Assert.Equal(
 			"Console input/output example\nType text: ",
 			System.Text.Encoding.Latin1.GetString(eofOutput));
-		// Retain mask definitions whose values are still consumed after ANDI.
-		// The corrected code executes one additional constant load per iteration.
-		Assert.Equal((32_430L, 3_269L, 18_454L, 1_948L),
+		// Pin the exact paths after preserving live masks and preferring
+		// read-only incoming register homes during allocation.
+		Assert.Equal((32_418L, 3_271L, 18_458L, 1_952L),
 			(input.Cycles, input.Instructions, eof.Cycles, eof.Instructions));
 	}
 

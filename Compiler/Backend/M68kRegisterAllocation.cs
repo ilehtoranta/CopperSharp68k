@@ -243,6 +243,14 @@ internal static class M68kAddressRegisterEligibility
 	public static void Apply(M68kMachineFunction function)
 	{
 		var candidates = new HashSet<int>();
+		// A scalar transported in an address register need not be copied into
+		// a data register merely to forward it to address-compatible uses.
+		foreach (var copy in function.Blocks.SelectMany(block => block.Instructions))
+			if (copy.Operation == M68kMachineOperation.Copy && copy.Uses is [var source] &&
+				copy.Definitions is [var destination] &&
+				function.Values[source].PrecoloredRegister is >= M68kRegister.A0 and <= M68kRegister.A6)
+				AddCandidate(destination);
+
 		foreach (var instruction in function.Blocks
 			.SelectMany(static block => block.Instructions))
 		{
@@ -1826,8 +1834,18 @@ internal static class M68kGraphColoringAllocator
 		// ownership and allowed registers may have changed. No set escapes this run.
 		var neighborGroups = new HashSet<int>();
 		var degreeNeighbors = new HashSet<int>();
+		// Retaining a nonvolatile incoming home avoids both an entry move and
+		// a save/restore when it is read-only. Prefer that affinity over a
+		// transient outgoing argument copy; interference still decides legality.
+		var incomingPreserved = function.Blocks.SelectMany(block => block.Instructions)
+			.Where(instruction => instruction.Operation == M68kMachineOperation.Argument)
+			.SelectMany(instruction => instruction.Definitions)
+			.Where(id => function.Values[id].PrecoloredRegister is
+				>= M68kRegister.D2 and <= M68kRegister.D7 or >= M68kRegister.A2 and <= M68kRegister.A6)
+			.ToHashSet();
 		foreach (var (left, right) in graph.CopyPreferences
-			.OrderByDescending(pair =>
+			.OrderByDescending(pair => incomingPreserved.Contains(pair.Left) || incomingPreserved.Contains(pair.Right))
+			.ThenByDescending(pair =>
 				function.Values[pair.Left].AllowedRegisters == M68kRegisterSet.Address ||
 				function.Values[pair.Right].AllowedRegisters == M68kRegisterSet.Address)
 			.ThenByDescending(pair => function.OptimizeRegisterCopies
@@ -1953,6 +1971,13 @@ internal static class M68kGraphColoringAllocator
 				}
 			}
 		}
+		// Explicit internal ABIs deliberately choose their nonvolatile homes.
+		// The checks above prove the merge legal. Do not apply the generic
+		// singleton-color pressure heuristic, which otherwise rejects a long-
+		// lived base and creates an extra home plus an unnecessary save frame.
+		if (function.SourceMethod?.InternalRegisterAbi is not null && fixedRegister is
+			>= M68kRegister.D2 and <= M68kRegister.D7 or >= M68kRegister.A2 and <= M68kRegister.A6)
+			return true;
 		if (!function.SimplifyLoopPhis &&
 			(left.AllowedRegisters == M68kRegisterSet.Address ||
 			right.AllowedRegisters == M68kRegisterSet.Address))

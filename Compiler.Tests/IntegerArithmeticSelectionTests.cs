@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Copper68k;
 using Amiga;
+using CopperSharp.Compiler.Backend;
+using CopperSharp.Compiler.Metadata;
 using CopperSharp.Targets.Amiga;
 
 namespace CopperSharp.Compiler.Tests;
@@ -22,6 +24,10 @@ public sealed class IntegerArithmeticSelectionTests
 				nameof(IntegerArithmeticSelectionFixture.PowerRemainder),
 				nameof(IntegerArithmeticSelectionFixture.HighPowerQuotient),
 				nameof(IntegerArithmeticSelectionFixture.MaskedProduct),
+                nameof(IntegerArithmeticSelectionFixture.PackedProduct),
+                nameof(IntegerArithmeticSelectionFixture.LiveConstantShifts),
+                nameof(IntegerArithmeticSelectionFixture.LiveWordProducts),
+                nameof(IntegerArithmeticSelectionFixture.LiveSignedWordProducts),
 				nameof(IntegerArithmeticSelectionFixture.UpperProduct),
 				nameof(IntegerArithmeticSelectionFixture.SignedWordProduct),
 				nameof(IntegerArithmeticSelectionFixture.NegatedWordQuotient),
@@ -55,6 +61,27 @@ public sealed class IntegerArithmeticSelectionTests
 			foreach (var mode in new[] { M68kPeepholeOptimizationMode.FixedPoint, M68kPeepholeOptimizationMode.Disabled })
 				yield return [method, target, model, mode];
 		}
+	}
+
+	[Theory]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.MaskedProduct))]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.UpperProduct))]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.SignedWordProduct))]
+	public void WordMultiplyOperandsAreAllocatedInsteadOfForcedThroughD0D1(string method)
+	{
+		using var module = new CompilationModule(typeof(IntegerArithmeticSelectionFixture).Assembly.Location);
+		var cil = module.ResolveEntryPoint($"{typeof(IntegerArithmeticSelectionFixture).FullName}::{method}");
+		var function = CilMachineIrBuilder.Build(cil, module, M68kCpuTarget.M68000);
+		var plans = M68kMachineArithmeticOptimizer.Run(function, M68kCpuTarget.M68000, module);
+		var multiply = Assert.Single(function.Blocks.SelectMany(block => block.Instructions)
+			.Where(instruction => plans.TryGetValue(instruction.Id, out var plan) &&
+				plan.Kind is M68kIntegerArithmeticKind.SignedWordMultiply or M68kIntegerArithmeticKind.UnsignedWordMultiply));
+		Assert.All(multiply.Uses.Concat(multiply.Definitions), id =>
+		{
+			Assert.Null(function.Values[id].PrecoloredRegister);
+			Assert.Equal(M68kRegisterSet.Data, function.Values[id].AllowedRegisters);
+		});
+		Assert.True(multiply.Clobbers.IsEmpty);
 	}
 
 	[Theory]
@@ -215,6 +242,10 @@ public static class IntegerArithmeticSelectionFixture
 	public static uint PowerQuotientEntry() => PowerQuotient(ReadLeft(), ReadRight());
 	public static uint PowerRemainderEntry() => PowerRemainder(ReadLeft(), ReadRight());
 	public static uint HighPowerQuotientEntry() => HighPowerQuotient(ReadLeft(), ReadRight());
+	public static uint LiveConstantShiftsEntry() => LiveConstantShifts(ReadLeft(), ReadRight());
+	public static uint PackedProductEntry() => PackedProduct(ReadLeft(), ReadRight());
+	public static uint LiveWordProductsEntry() => LiveWordProducts(ReadLeft(), ReadRight());
+	public static uint LiveSignedWordProductsEntry() => LiveSignedWordProducts(ReadLeft(), ReadRight());
 	public static uint MaskedProductEntry() => MaskedProduct(ReadLeft(), ReadRight());
 	public static uint UpperProductEntry() => UpperProduct(ReadLeft(), ReadRight());
 	public static uint SignedWordProductEntry() => SignedWordProduct(ReadLeft(), ReadRight());
@@ -251,6 +282,28 @@ public static class IntegerArithmeticSelectionFixture
 	public static uint PowerRemainder(uint value, uint ignored) => value % 16;
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint HighPowerQuotient(uint value, uint ignored) => value / 0x8000_0000u;
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint LiveConstantShifts(uint left, uint right) =>
+		(left << 3) ^ (left >> 17) ^ unchecked((uint)((int)right >> 31)) ^ (right << 9) ^ left ^ right;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint PackedProduct(uint count, uint flags) =>
+		((flags & 2) != 0 ? (count >> 16) * (ushort)count : count) ^ flags;
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint LiveWordProducts(uint left, uint right)
+	{
+		uint first = (ushort)left * (uint)(ushort)right;
+		uint second = (left >> 16) * (right >> 16);
+		return first ^ second ^ left ^ right;
+	}
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint LiveSignedWordProducts(uint left, uint right)
+	{
+		int first = (short)left * (short)right;
+		int second = (short)(left >> 16) * (short)(right >> 16);
+		return unchecked((uint)(first ^ second)) ^ left ^ right;
+	}
+
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint MaskedProduct(uint left, uint right) => (left & 65535u) * (right & 65535u);
 	[MethodImpl(MethodImplOptions.NoInlining)]

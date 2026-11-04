@@ -9,17 +9,19 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class PrivateExternalCallContractTests
 {
-    [Fact]
-    public void VoidPrivateCallClobbersOnlyItsArgumentSetupBeforeAllocation()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void VoidPrivateCallSeparatesSetupFromPreservedInputs(bool preservesInputs)
     {
-        using var module = new CompilationModule(typeof(PrivateExternalCallFixture).Assembly.Location, [new Resolver()]);
+        using var module = new CompilationModule(typeof(PrivateExternalCallFixture).Assembly.Location, [new Resolver(preservesInputs)]);
         var entry = module.ResolveEntryPoint(typeof(PrivateExternalCallFixture).FullName + "::Entry");
         var function = CilMachineIrBuilder.Build(entry, module);
         var call = Assert.Single(function.Blocks.SelectMany(b => b.Instructions)
-            .Where(i => i.Operation == M68kMachineOperation.Call && !i.Clobbers.IsEmpty));
-        // A6 remains a setup clobber: another value cannot survive where the
-        // caller must place a different base. The void call has no D0 result.
-        Assert.Equal(M68kRegisterSet.From(M68kRegister.A6), call.Clobbers);
+            .Where(i => i.Operation == M68kMachineOperation.Call && i.PlatformBaseConvention?.Identity == "fixture.library"));
+        // Default contracts remain conservative. A known preserving callee
+        // has no call clobber; its explicit input copies still define A6.
+        Assert.Equal(preservesInputs ? M68kRegisterSet.None : M68kRegisterSet.From(M68kRegister.A6), call.Clobbers);
     }
 
     [Fact]
@@ -47,7 +49,7 @@ public sealed class PrivateExternalCallContractTests
                 AssemblyPath = typeof(PrivateExternalCallFixture).Assembly.Location,
                 EntryPoint = typeof(PrivateExternalCallFixture).FullName + "::Entry", IncludedExportNames = [],
                 Cpu = target, RuntimeProfile = M68kRuntimeProfile.Freestanding, OutputFormat = M68kOutputFormat.Hunk,
-                ExternalCallResolvers = privateCall ? [new Resolver()] : [], PeepholeOptimization = mode
+                ExternalCallResolvers = privateCall ? [new Resolver(true)] : [], PeepholeOptimization = mode
             });
             var bus = new TestBus(); result.Code.CopyTo(bus.Memory.AsSpan(0x10000));
             foreach (var reloc in result.Relocations) {
@@ -68,14 +70,14 @@ public sealed class PrivateExternalCallContractTests
         }
     }
 
-    private sealed class Resolver : IM68kExternalCallResolver
+    private sealed class Resolver(bool preservesInputs = false) : IM68kExternalCallResolver
     {
         public bool TryResolve(M68kExternalMethod method, out M68kExternalCallConvention convention)
         {
             convention = null!;
             if (method.DeclaringTypeName != typeof(PrivateExternalCallFixture).FullName || method.Name != "Call") return false;
             new AmigaExternalCallResolver().TryResolve(method, out convention);
-            convention = convention with { ClobberedRegisters = [] }; return true;
+            convention = convention with { ClobberedRegisters = [], PreservesInputRegisters = preservesInputs }; return true;
         }
     }
 }

@@ -216,10 +216,19 @@ public sealed record M68kExternalCallConvention(
 	/// <summary>
 	/// Additional D0-D7/A0-A6 registers that the target ABI allows the callee to
 	/// overwrite, including registers absent from its signature. Parameter,
-	/// non-void return, base, cache, and exception-status effects remain implicit.
+	/// non-void return, base, cache, and exception-status effects remain implicit,
+	/// except for inputs covered by PreservesInputRegisters.
 	/// Null preserves the existing convention with no additional clobbers.
 	/// </summary>
 	public IReadOnlyList<M68kRegister>? ClobberedRegisters { get; init; }
+
+	/// <summary>
+	/// The callee preserves parameter and base registers unless listed in
+	/// ClobberedRegisters or used for a non-void result. Argument/base setup
+	/// remains an explicit write in machine IR. Opt in only for a known ABI.
+	/// </summary>
+	public bool PreservesInputRegisters { get; init; }
+
 }
 
 /// <summary>Optional target-platform metadata and call-convention resolver.</summary>
@@ -314,6 +323,11 @@ public sealed class M68kImportAttribute : Attribute
 
 	public string Name { get; }
 }
+
+/// <summary>Uses parameter M68kRegister annotations for calls to a static scalar managed body.
+/// Callee-saved registers retain their usual preservation contract.</summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class M68kInternalRegisterAbiAttribute : Attribute { }
 
 /// <summary>Maps a parameter or return value to a physical 68k register.</summary>
 [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.ReturnValue, AllowMultiple = false)]
