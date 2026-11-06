@@ -84,6 +84,47 @@ internal sealed partial class M68kPeepholeOptimizer
         return false;
     }
 
+    private bool TryFoldMaskedWordCompare(M68kInstructionDataflow dataflow)
+    {
+        var instructions = dataflow.Instructions;
+        for (int i = 2; i + 2 < instructions.Count; i++) {
+            var zero = instructions[i - 2]; var load = instructions[i - 1];
+            var constant = instructions[i]; var mask = instructions[i + 1]; var compare = instructions[i + 2];
+            int temporary = constant.Opcode >> 9 & 7, destination = mask.Opcode & 7;
+            if (!zero.IsDecoded || !load.IsDecoded || !constant.IsDecoded || !mask.IsDecoded || !compare.IsDecoded ||
+                zero.Length != 2 || zero.Opcode != (0x7000 | destination << 9) ||
+                (load.Opcode & 0xF1C0) != 0x3000 || (load.Opcode >> 9 & 7) != destination ||
+                load.Offset != zero.Offset + 2 || constant.Offset != load.Offset + load.Length ||
+                constant.Length != 6 || (constant.Opcode & 0xF1FF) != 0x203C ||
+                mask.Length != 4 || (mask.Opcode & 0xFFF8) != 0x0240 ||
+                mask.Offset != constant.Offset + 6 || compare.Offset != mask.Offset + 4 ||
+                compare.Length != 2 || compare.Opcode != (0xB080 | destination << 9 | temporary) ||
+                temporary == destination || constant.ExtensionLong != mask.ExtensionWord ||
+                HasAddressFixup(constant) || HasAddressFixup(mask) || HasAddressFixup(compare) ||
+                !GeneratedSizeEligible(zero.Offset, compare.Offset + 2) ||
+                !CanFoldAcrossUnreferencedIlLabels(zero.Offset, compare.Offset + 2) ||
+                IsReferencedLabelAt(load.Offset) || IsReferencedLabelAt(constant.Offset) || IsReferencedLabelAt(mask.Offset) || IsReferencedLabelAt(compare.Offset) ||
+                _assembler.TryGetInstructionEffects(constant.Offset, out _) ||
+                _assembler.TryGetInstructionEffects(mask.Offset, out _) ||
+                _assembler.TryGetInstructionEffects(compare.Offset, out _) ||
+                !dataflow.TryGetFacts(compare.Offset, out var facts) ||
+                (facts.LiveDataAfter & (1 << temporary)) != 0 ||
+                (facts.LiveConditionsAfter & (M68kConditionCodeSet.Negative | M68kConditionCodeSet.Overflow | M68kConditionCodeSet.Carry)) != 0) continue;
+            // The preceding MOVEQ/MOVE.W proves a zero-extended word. Keep
+            // that read (including MMIO) and mask, compare the immediate
+            // directly, and retire only the dead constant register. Z and X
+            // are identical; the other compare flags must be dead.
+            _buffer.WriteWord(constant.Offset, mask.Opcode);
+            _buffer.WriteWord(constant.Offset + 2, mask.ExtensionWord);
+            _buffer.WriteWord(constant.Offset + 4, (ushort)(0x0C40 | destination));
+            _buffer.WriteWord(constant.Offset + 6, mask.ExtensionWord);
+            _buffer.RemoveBytes(constant.Offset + 8, 4);
+            RecordGeneratedTransportRewrite(4);
+            return true;
+        }
+        return false;
+    }
+
     private bool TryFoldLongConstantCompare(M68kInstructionDataflow dataflow)
     {
         var instructions = dataflow.Instructions;

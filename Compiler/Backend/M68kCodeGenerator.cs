@@ -6173,6 +6173,8 @@ internal sealed partial class M68kCodeGenerator
 			M68kCondition.Higher => M68kCondition.LowerOrSame,
 			M68kCondition.LowerOrSame => M68kCondition.Higher,
 			M68kCondition.CarrySet => M68kCondition.CarryClear,
+			M68kCondition.Minus => M68kCondition.Plus,
+			M68kCondition.Plus => M68kCondition.Minus,
 			M68kCondition.CarryClear => M68kCondition.CarrySet,
 			_ => throw new InvalidOperationException($"Condition '{condition}' cannot be inverted.")
 		};
@@ -6825,15 +6827,27 @@ internal sealed partial class M68kCodeGenerator
 				return;
 			}
 
-			if (target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative")
+			if (target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative")
 			{
 				EmitPopRegister(M68kRegister.D0);
 				EmitPopRegister(M68kRegister.A0);
 				_assembler.EmitWord(0xD1C0); // ADDA.L D0,A0
-				bool increment = target.ImportName == "intrinsic:aptr-increment-word-zero";
-				_assembler.EmitWord(increment ? (ushort)0x5250 : (ushort)0x5350);
-				EmitAllocatedConditionResult(increment ? M68kCondition.Equal : M68kCondition.Minus, M68kRegister.D0);
-				if (pushResult) EmitPushRegister(M68kRegister.D0);
+				bool increment = target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-increment-byte-zero";
+				int sizeBits = target.ImportName.Contains("-byte-", StringComparison.Ordinal) ? 0 : 0x40;
+				_assembler.EmitWord((ushort)((increment ? 0x5210 : 0x5310) | sizeBits));
+				if (pushResult) {
+					EmitAllocatedConditionResult(increment ? M68kCondition.Equal : M68kCondition.Minus, M68kRegister.D0);
+					EmitPushRegister(M68kRegister.D0);
+				}
+				return;
+			}
+			if (target.ImportName == "intrinsic:aptr-or-uint32")
+			{
+				EmitPopRegister(M68kRegister.D0);
+				EmitPopRegister(M68kRegister.D1);
+				EmitPopRegister(M68kRegister.A0);
+				_assembler.EmitWord(0xD1C1); // ADDA.L D1,A0
+				_assembler.EmitWord(0x8190); // OR.L D0,(A0)
 				return;
 			}
 			if (target.ImportName == "intrinsic:aptr-bit-test-and-set8")
@@ -11140,7 +11154,8 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitPushRegisters(ReadOnlySpan<M68kRegister> registers)
 	{
-		if (registers.Length < 3)
+		if (registers.Length < 3 && !(registers.Length == 2 && SupportsGeneratedCodeSizeProfile &&
+            _request.CodeSizeOptimizations!.RemoveRedundantTransport))
 		{
 			foreach (var register in registers)
 			{
@@ -11214,7 +11229,8 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitPopRegisters(ReadOnlySpan<M68kRegister> registers)
 	{
-		if (registers.Length < 3)
+		if (registers.Length < 3 && !(registers.Length == 2 && SupportsGeneratedCodeSizeProfile &&
+            _request.CodeSizeOptimizations!.RemoveRedundantTransport))
 		{
 			for (var index = registers.Length - 1; index >= 0; index--)
 			{
@@ -11490,6 +11506,7 @@ internal sealed partial class M68kCodeGenerator
 					(byte)value));
 				return;
 			}
+
 			_assembler.EmitWord((ushort)(0x203C | ((int)register << 9)));
 			_assembler.EmitLong(unchecked((uint)value));
 			return;

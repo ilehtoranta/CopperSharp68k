@@ -8,6 +8,14 @@ Allocation respects the distinct data and address register banks, fixed operands
 
 GC-visible references remain either in described registers or typed frame-root slots at safepoints. Exception/unwind state and exported Amiga callback conventions take precedence over local register-pressure improvements.
 
+Explicit internal register ABIs prefer incoming register homes before transient
+outgoing-call copies, including volatile D0/D1/A0/A1 homes. A fixed-home copy
+merge still requires compatible width/banks, no interference, no forbidden call
+clobbers and no conflicting precolored neighbor. Once those checks pass, it
+does not use the generic singleton-color pressure rejection. Values live across
+clobbering calls still move to preserved homes; this is not a weaker ABI contract.
+
+
 ## Acceptance baseline and result
 
 The following dated measurements record the transition to the current allocator. They are historical evidence, not permanent performance ceilings. The baseline was reconstructed from the pre-allocation compiler and the final measurements used the same MC68000 fixtures.
@@ -143,3 +151,73 @@ both profiles. Broadening bank repair to full-width values was measured
 separately and rejected because it grew Search. The CopperOS qualification
 report binds the accepted images to compiler regressions, both-profile vector
 checks, original DOS checks for the shipping entries, and final installed hashes.
+
+### Conditional preservation for small native register entries
+
+For explicit internal register ABIs, the emitter may move one callee-preserved
+register's save from the prologue into the blocks that use it. The initial policy
+is limited to frame-free, scalar methods with at most three preserved registers,
+register-only arguments, no return buffer, no managed memory, and Yolo exception
+mode. Loops are allowed outside the relocated register's saved region; any loop
+inside that region keeps ordinary preservation. Exception/unwind frames, register
+pairs, switches and parallel-copy scratch also retain the established path.
+
+Selection happens before preservation planning: boolean single-bit predicates
+and immediate operands expose their actual registers, excluding eliminated mask
+and constant transport homes. Narrow masked equality is selected only when the
+masked result has no other consumer. Memory reads retain their original width
+and order. Shared small comparison constants retain their register form when
+replacing every use with an immediate would increase execution cost.
+
+A block-local scalar arithmetic scratch may reuse the other preserved data
+register if fixed homes, allowed registers, forbidden registers, interference,
+liveness and edge transports all permit it. The normal allocation verifier runs
+again. This avoids saving a temporary for a short arithmetic prefix, restoring
+it at a join, then saving it again in a later CPU path.
+
+Each emitted block has a statically known saved/unsaved state. Transitions save
+or restore once; branch-specific transitions use bounded edge stubs. Joins whose
+predecessors all retain a save keep that state through their return. The return
+and tail-call paths restore exactly the active slots. The ABI preservation
+contract remains conservative and complete; no caller-visible register becomes
+volatile. Frame statistics describe the maximum save requirement, not a promise
+that every path executes the prologue save sequence.
+
+Single-use byte reads followed immediately by a one-bit predicate can use memory
+BTST before preservation planning. Adjacent scalar copies need no separate home
+when the tested bit lies within the original width. Word and long reads never
+become byte tests. Discarded APTR reads use same-width TST, retaining the read and
+its position while eliminating the unused value and normalization. These memory
+selections require the explicit native ABI, no managed memory and Yolo mode.
+
+An adjacent single-use boolean branch on atomic word increment/decrement consumes
+the instruction's zero/sign flags directly. The word update remains one atomic
+RMW instruction; no boolean extension or retest is needed, including when late
+peepholes are disabled. Both branch polarities preserve the scalar boolean
+semantics, including signed-negative decrement and word wraparound.
+
+A narrow APTR read used only by selected low-bit tests can keep its upper bits
+uncanonicalized. A visited worklist follows copies and phi transports and rejects
+any full-value consumer; byte/word access width and position stay unchanged.
+Signed-word conversions with one adjacent comparison against a signed-word-range
+constant use CMPI.W directly on the original word/long scalar register. This
+removes both the extended temporary and the materialized comparison constant
+before preservation planning. Other conversions and comparison domains retain
+the general path.
+
+With the generated code-size profile, `NarrowOperations` may materialize a small
+positive high-word constant as MOVEQ followed by SWAP. The final value and CCR
+match MOVE.L immediate, using four bytes instead of six. With
+`RemoveRedundantTransport`, two-register preservation uses MOVEM, matching the
+existing grouping for larger sets. Save and restore use the same canonical mask
+order; conditional single-register slots remain separate. Whole-kernel cycle
+measurements, including completed DMA and CPU clears, determine retention.
+
+Native predicate selection also applies to zero-save leaves. Low-only read
+analysis runs after predicate selection and follows the operands that will
+actually be emitted, including word comparisons and word masks. Full-width
+consumers and address operands still require a canonical value. A single-use
+full-width address-to-data copy immediately preceding an immediate comparison
+can be replaced by CMPA.L on the original address register when intervening
+instructions are suppressed. Signed and unsigned branch flags retain the
+original full-width comparison semantics; no memory access is narrowed.

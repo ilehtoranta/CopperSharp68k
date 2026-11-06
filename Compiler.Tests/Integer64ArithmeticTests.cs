@@ -10,6 +10,15 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class Integer64ArithmeticTests
 {
 	[Fact]
+	public void PowerOfTwoDivisorsPreserveFullWidthQuotientsAndRemainders()
+	{
+		ulong[] values = [0, 1, 511, 512, 513, uint.MaxValue, 0x100000000, 0x100000201,
+			0x7fffffffffffffff, 0x8000000000000000, ulong.MaxValue];
+		for (var bit = 0; bit < 64; bit++)
+		foreach (var value in values) Check(value, 1UL << bit);
+	}
+
+	[Fact]
 	public void FullWidthDivisionAndRemainderMatchHostForBoundaryAndDeterministicInputs()
 	{
 		ulong[] boundaries = [0, 1, 2, 3, 10, 0x7fffffff, 0x80000000, 0xffffffff, 0x100000001,

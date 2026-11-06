@@ -861,10 +861,10 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
-			if ((opcode & 0xF000) == 0x0000 && (opcode & 0x0C00) == 0x0C00)
+			if ((opcode & 0xFF00) == 0x0C00)
 			{
 				AddEffectiveAddress(opcode, EffectiveAddressAccess.Read);
-				WriteArithmeticConditions();
+				WriteMoveConditions(); // CMPI writes N/Z/V/C and preserves X.
 				_canRemoveWhenOutputsDead = true;
 				return;
 			}

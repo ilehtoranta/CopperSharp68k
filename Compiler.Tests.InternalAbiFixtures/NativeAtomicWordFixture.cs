@@ -22,4 +22,8 @@ public static class NativeAtomicWordFixture
     [M68kInternalRegisterAbi]
     [M68kExport("Branch")]
     public static uint Branch([M68kRegister(M68kRegister.A6)] APTR pointer) => APTR.IncrementWordIsZero(pointer, 170) ? 17u : 29u;
+    [M68kInternalRegisterAbi, M68kExport("BranchDecrement")]
+    public static uint BranchDecrement([M68kRegister(M68kRegister.A6)] APTR pointer) => APTR.DecrementWordIsNegative(pointer, 170) ? 17u : 29u;
+    [M68kInternalRegisterAbi, M68kExport("BranchInverted")]
+    public static uint BranchInverted([M68kRegister(M68kRegister.A6)] APTR pointer) => !APTR.IncrementWordIsZero(pointer, 170) ? 17u : 29u;
 }

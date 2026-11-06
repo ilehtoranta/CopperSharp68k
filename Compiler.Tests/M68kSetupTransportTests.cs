@@ -85,6 +85,49 @@ public sealed class M68kSetupTransportTests
         return Finish(a, "TryFoldCopiedArgumentBitTest");
     }
 
+    [Theory]
+    [InlineData(0x0240)]
+    [InlineData(0x8000)]
+    [InlineData(0xFFFF)]
+    public void MaskedWordComparePreservesZeroExtendedValuesAndResult(int mask)
+    {
+        byte[] before = MaskedCompare(false, mask), after = MaskedCompare(true, mask);
+        Assert.Equal(before.Length - 4, after.Length);
+        foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020 })
+        foreach (uint value in new uint[] { 0, (uint)mask, (uint)mask - 1, 0xFFFF, 0xA55A0240, uint.MaxValue })
+        for (ushort ccr = 0; ccr < 32; ccr++)
+            Assert.Equal(Run(before, model, ccr, value), Run(after, model, ccr, value));
+    }
+
+    [Theory]
+    [InlineData("upper")]
+    [InlineData("value")]
+    [InlineData("flags")]
+    [InlineData("entry")]
+    public void MaskedWordCompareKeepsUnknownUpperBitsAndObservableState(string guard)
+        => Assert.Equal(MaskedCompare(false, 0x240, guard), MaskedCompare(true, 0x240, guard));
+
+    private static byte[] MaskedCompare(bool enabled, int mask, string guard = "")
+    {
+        var a = Start(enabled); a.Mark("start");
+        if (guard == "entry") a.EmitBranch(M68kCondition.Equal, "mask-load");
+        if (guard != "upper") a.EmitWord(0x7400); // MOVEQ #0,D2
+        a.EmitWord(0x3401); // MOVE.W D1,D2
+        if (guard == "entry") a.Mark("mask-load");
+        a.EmitWord(0x203C); a.EmitLong((uint)mask);
+        a.EmitWord(0x0242); a.EmitWord((ushort)mask);
+        a.EmitWord(0xB480); // CMP.L D0,D2
+        if (guard == "flags") {
+            int status = a.Offset; a.EmitWord(0x40C4);
+            a.SetInstructionEffects(status, new(0, 16, 0, 0, M68kConditionCodeSet.All,
+                M68kConditionCodeSet.None, M68kMemorySet.None, M68kMemorySet.None, 0, false, false));
+        }
+        a.EmitWord(0x57C5); // SEQ D5 consumes Z
+        if (guard != "value") a.EmitWord(0x7000);
+        a.EmitWord(0x5283); // Retire CCR; both sequences retain X until here.
+        return Finish(a, "TryFoldMaskedWordCompare");
+    }
+
     private static M68kAssembler Start(bool enabled) => new() {
         GeneratedCodeSizeOptions = new() { RemoveRedundantTransport = enabled },
         GeneratedCodeSizeRanges = [("start", "end")]

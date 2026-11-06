@@ -4,12 +4,36 @@
  */
 
 using System.Buffers.Binary;
+using Copper68k;
 using CopperSharp.Compiler.Backend;
 
 namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kInstructionDataflowTests
 {
+	[Theory]
+	[InlineData(1, false)] [InlineData(1, true)]
+	[InlineData(2, false)] [InlineData(2, true)]
+	[InlineData(4, false)] [InlineData(4, true)]
+	public void MemoryCmpiKeepsImmediateAndAddressExtensionsInsideOneInstruction(int width, bool displacement)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord((ushort)(0x0C00 | (width == 1 ? 0 : width == 2 ? 0x40 : 0x80) |
+			(displacement ? 0x28 : 0x10) | 1));
+		if (width == 4) assembler.EmitLong(0x20000000);
+		else assembler.EmitWord((ushort)(width == 1 ? 4 : 0x1000));
+		if (displacement) assembler.EmitWord(0x1000);
+		assembler.EmitWord(0x4E75);
+		var instructions = assembler.GetInstructionStream();
+		Assert.Equal(2, instructions.Count);
+		Assert.Equal(2 + (width == 4 ? 4 : 2) + (displacement ? 2 : 0), instructions[0].Length);
+		Assert.Equal(0x4E75, instructions[1].Opcode);
+		var effects = M68kInstructionDataflow.GetEffects(instructions[0]);
+		Assert.Equal(1 << 1, effects.UsesAddress); Assert.Equal(0, effects.DefinesAddress);
+		Assert.NotEqual(M68kMemorySet.None, effects.ReadsMemory); Assert.Equal(M68kMemorySet.None, effects.WritesMemory);
+		Assert.Equal(M68kConditionCodeSet.All & ~M68kConditionCodeSet.Extend, effects.WritesConditions);
+	}
+
 	[Theory]
 	[InlineData(0xB705)] // EOR.B D3,D5
 	[InlineData(0xB745)] // EOR.W D3,D5
@@ -5665,12 +5689,14 @@ public sealed class M68kInstructionDataflowTests
 		Assert.DoesNotContain("andi.w", liveAssembly, StringComparison.Ordinal);
 	}
 
-	[Fact]
-	public void UsesSwapAndClearWordForFlagDeadLongShiftBySixteenOnM68000()
+	[Theory]
+	[InlineData(0xE188)]
+	[InlineData(0xE088)]
+	public void UsesSwapAndClearWordForFlagDeadLongShiftBySixteenOnM68000(ushort opcode)
 	{
 		var assembler = new M68kAssembler();
-		assembler.EmitWord(0xE188); // LSL.L #8,D0
-		assembler.EmitWord(0xE188); // LSL.L #8,D0
+		assembler.EmitWord(opcode); // LSL.L or LSR.L #8,D0
+		assembler.EmitWord(opcode);
 		assembler.EmitWord(0x2200); // MOVE.L D0,D1 keeps the value live.
 		assembler.EmitWord(0x4E75); // RTS
 
@@ -5680,14 +5706,35 @@ public sealed class M68kInstructionDataflowTests
 		Assert.Contains("swap\td0", assembly, StringComparison.Ordinal);
 		Assert.Contains("clr.w\td0", assembly, StringComparison.Ordinal);
 		Assert.DoesNotContain("lsl.l\t#8,d0", assembly, StringComparison.Ordinal);
+		Assert.DoesNotContain("lsr.l\t#8,d0", assembly, StringComparison.Ordinal);
+		Assert.Contains(opcode == 0xE188 ? "swap\td0\r\n\tclr.w\td0" :
+			"clr.w\td0\r\n\tswap\td0", assembly, StringComparison.Ordinal);
+
+		var bus = new TestBus();
+		assembler.Link(0x10000, new Dictionary<string, uint>()).Bytes.CopyTo(bus.Memory.AsSpan(0x10000));
+		foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68EC020 })
+		{
+			using var core = M68kCoreFactory.Default.Create(model, bus);
+			foreach (uint value in new uint[] { 0, 1, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xA55A1234, 0xFFFFFFFF })
+			{
+				bus.WriteLong(0x80000, 0x1000);
+				core.Reset(0x10000, 0x80000); core.State.D[0] = value;
+				for (int step = 0; step < 16 && core.State.ProgramCounter != 0x1000; step++)
+					core.ExecuteInstruction();
+				Assert.Equal(0x1000u, core.State.ProgramCounter);
+				Assert.Equal(opcode == 0xE188 ? value << 16 : value >> 16, core.State.D[0]);
+			}
+		}
 	}
 
-	[Fact]
-	public void KeepsLongShiftBySixteenWhenItsConditionCodesAreLive()
+	[Theory]
+	[InlineData(0xE188)]
+	[InlineData(0xE088)]
+	public void KeepsLongShiftBySixteenWhenItsConditionCodesAreLive(ushort opcode)
 	{
 		var assembler = new M68kAssembler();
-		assembler.EmitWord(0xE188); // LSL.L #8,D0
-		assembler.EmitWord(0xE188); // LSL.L #8,D0
+		assembler.EmitWord(opcode); // LSL.L or LSR.L #8,D0
+		assembler.EmitWord(opcode);
 		assembler.EmitBranch(M68kCondition.Equal, "done");
 		assembler.EmitWord(0x7201); // Preserve a distinct fallthrough.
 		assembler.Mark("done");
@@ -5698,7 +5745,7 @@ public sealed class M68kInstructionDataflowTests
 		var assembly = assembler.RenderAssembly(M68kCpuTarget.M68000);
 		Assert.Equal(
 			2,
-			assembly.Split("lsl.l\t#8,d0", StringSplitOptions.None).Length - 1);
+			assembly.Split(opcode == 0xE188 ? "lsl.l\t#8,d0" : "lsr.l\t#8,d0", StringSplitOptions.None).Length - 1);
 		Assert.DoesNotContain("swap\td0", assembly, StringComparison.Ordinal);
 	}
 

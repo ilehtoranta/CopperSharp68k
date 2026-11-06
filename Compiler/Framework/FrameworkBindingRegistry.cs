@@ -4042,13 +4042,28 @@ internal static class FrameworkBindingRegistry
 						FrameworkFeature.NativeMemory));
 			}
 
-			if (typeName == "Amiga.APTR" && name is "IncrementWordIsZero" or "DecrementWordIsNegative" &&
+			if (typeName == "Amiga.APTR" && name is "IncrementWordIsZero" or "DecrementWordIsNegative" or
+				"IncrementByteIsZero" or "DecrementByteIsNegative" &&
 				signature.ParameterTypes.Length == 2 &&
 				signature.ParameterTypes[0].DisplayName == typeName &&
 				signature.ParameterTypes[1].DisplayName == "int")
 			{
-				return Intrinsic(member, name == "IncrementWordIsZero" ?
-					"intrinsic:aptr-increment-word-zero" : "intrinsic:aptr-decrement-word-negative",
+				return Intrinsic(member, name switch {
+					"IncrementWordIsZero" => "intrinsic:aptr-increment-word-zero",
+					"DecrementWordIsNegative" => "intrinsic:aptr-decrement-word-negative",
+					"IncrementByteIsZero" => "intrinsic:aptr-increment-byte-zero",
+					_ => "intrinsic:aptr-decrement-byte-negative" },
+					Effects(FrameworkEffects.ReadsNativeMemory | FrameworkEffects.WritesNativeMemory,
+						FrameworkFeature.NativeMemory));
+			}
+
+			if (typeName == "Amiga.APTR" && name == "OrUInt32" &&
+				signature.ParameterTypes.Length == 3 &&
+				signature.ParameterTypes[0].DisplayName == typeName &&
+				signature.ParameterTypes[1].DisplayName == "int" &&
+				signature.ParameterTypes[2].DisplayName == "uint")
+			{
+				return Intrinsic(member, "intrinsic:aptr-or-uint32",
 					Effects(FrameworkEffects.ReadsNativeMemory | FrameworkEffects.WritesNativeMemory,
 						FrameworkFeature.NativeMemory));
 			}

@@ -124,3 +124,27 @@ range, or when requested alignment could be disturbed. The comparison in
 loop with the transformation enabled and disabled. On the 68000 emulator,
 its 100 iterations took 106,668 versus 106,860 cycles, with code growing from
 284 to 286 bytes. This synthetic measurement is not a general workload result.
+
+## Contiguous stores after grouped scalar loads
+
+With `CompactGuestMemory`, adjacent groups of at least three longword loads
+followed by their contiguous stores can use one MOVEM store. Only the original
+temporaries are permuted into register-mask order, and all must be dead after
+the stores. Address bases, stack pointer, live NZVC, interior entries, address
+fixups and explicit instruction effects prevent the rewrite. X stays intact.
+
+Loads remain scalar to avoid the additional source read made by MC68000 MOVEM
+loads. Read/write widths and order stay the same, including overlapping ranges;
+there is no overread or additional ABI clobber. `M68kLoadedCopyTests` compares
+bytes, registers, CCR and the complete data-access trace on 68000, 68020 and
+68040, and checks that observable values, flags and independent entries retain
+their original sequences.
+
+The same profile folds a longword access followed by an address-register
+advance into ordinary MOVE postincrement. Consecutive postincrement load/store
+pairs can then become one memory-to-memory MOVE when the data temporary is
+dead. Both rewrites preserve all CCR bits, data-access widths and order, and
+the address updates. Stack pointers, base aliases, explicit effects, fixups and
+independent interior entries are excluded. Tests compare complete execution
+and data-access traces on three CPU models and check the full C# compilation
+pipeline, including unreferenced IL labels.

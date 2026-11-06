@@ -41,7 +41,7 @@ internal static class M68kIncomingArgumentSpills
 			{
 				if (phiUses.Contains(incoming) || !users.TryGetValue(incoming, out var copies) || copies is not [var candidate] ||
 					candidate.Operation != M68kMachineOperation.Copy || candidate.Uses is not [var source] || source != incoming ||
-					candidate.IlOffset != entry.StartIlOffset || candidate.Definitions is not [var copied] ||
+					candidate.IlOffset != Math.Max(0, entry.StartIlOffset) || candidate.Definitions is not [var copied] ||
 					!positions.TryGetValue(candidate.Id, out position)) continue;
 				copy = candidate;
 				value = copied;

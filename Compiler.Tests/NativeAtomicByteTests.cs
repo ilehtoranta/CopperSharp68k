@@ -1,0 +1,62 @@
+using Amiga;
+using Copper68k;
+using CopperSharp.Targets.Amiga;
+
+namespace CopperSharp.Compiler.Tests;
+
+public sealed class NativeAtomicByteTests
+{
+    [Theory]
+    [InlineData(M68kCpuTarget.M68000, M68kCpuModel.M68000)]
+    [InlineData(M68kCpuTarget.M68020, M68kCpuModel.M68020)]
+    public void ByteTransitionsAreAtomicAndUseDirectDisplacement(M68kCpuTarget target, M68kCpuModel model)
+    {
+        foreach (var mode in new[] { M68kPeepholeOptimizationMode.Disabled, M68kPeepholeOptimizationMode.FixedPoint })
+        foreach (string method in new[] { "Increment", "Decrement", "DynamicIncrement", "DynamicDecrement", "Branch", "BranchDecrement", "BranchInverted", "DiscardIncrement", "DiscardDecrement", "BranchDefaultDecrement", "DiscardDefaultDecrement" }) {
+            var result = AmigaM68kCompiler.Compile(new() {
+                AssemblyPath = typeof(NativeAtomicByteFixture).Assembly.Location,
+                EntryPoint = typeof(NativeAtomicByteFixture).FullName + "::Empty", IncludedExportNames = ["Byte" + method],
+                MemoryManagement = M68kMemoryManagement.None, ExceptionMode = M68kExceptionMode.Yolo,
+                Cpu = target, RuntimeProfile = M68kRuntimeProfile.Freestanding,
+                OutputFormat = M68kOutputFormat.Hunk, PeepholeOptimization = mode
+            });
+            var bus = new TestBus(); result.Code.CopyTo(bus.Memory.AsSpan(0x10000));
+            foreach (var reloc in result.Relocations) {
+                uint at = 0x10000u + (uint)reloc.Offset; bus.WriteLong(at, bus.ReadLong(at) + 0x10000);
+            }
+            using var core = M68kCoreFactory.Default.Create(model, bus);
+            bool increment = !method.Contains("Decrement");
+            foreach (int offset in method.StartsWith("Dynamic") ? new[] { -32770, -170, 0, 170, 32768 } : new[] { 171 })
+            foreach (byte before in Enumerable.Range(0, 256).Select(n => (byte)n)) {
+                uint address = unchecked(0x9000u + (uint)offset);
+                bus.Memory[address - 1] = 0xA5; bus.Memory[address + 1] = 0x5A;
+                bus.Memory[address] = before; bus.WriteLong(0x80000, 0x1000);
+                core.Reset(0x10000 + result.Symbols.Single(s => s.Name == "Byte" + method).Address, 0x80000);
+                core.State.A[6] = 0x9000; core.State.D[1] = unchecked((uint)offset);
+                core.State.A[0] = 0x9000;
+                int updates = 0;
+                for (int n = 0; n < 1000 && core.State.ProgramCounter != 0x1000; n++) {
+                    uint pc = core.State.ProgramCounter; ushort op = bus.ReadWord(pc);
+                    if (method.StartsWith("Discard") || method == "BranchDefaultDecrement")
+                        Assert.NotEqual(0x50C0, op & 0xF0C0); // No unused/materialized branch boolean.
+                    byte old = bus.Memory[address]; core.ExecuteInstruction();
+                    if (old != bus.Memory[address]) {
+                        updates++;
+                        Assert.Equal(increment ? 0x5200 : 0x5300, op & 0xFFC0);
+                        if (!method.StartsWith("Dynamic")) {
+                            Assert.Equal(method.Contains("Default") ? 0x28 : 0x2E, op & 0x3F); // d16(A0/A6), no address scratch
+                            Assert.Equal(171, bus.ReadWord(pc + 2));
+                        }
+                    }
+                }
+                byte after = unchecked((byte)(before + (increment ? 1 : -1)));
+                bool condition = increment ? after == 0 : (sbyte)after < 0;
+                Assert.Equal(0x1000u, core.State.ProgramCounter); Assert.Equal(1, updates);
+                Assert.Equal(after, bus.Memory[address]);
+                Assert.Equal(method.StartsWith("Discard") ? 17u : method.StartsWith("Branch") ? (method == "BranchInverted" ? !condition : condition) ? 17u : 29u : condition ? 1u : 0u, core.State.D[0]);
+                Assert.Equal(0x9000u, core.State.A[6]); Assert.Equal(0x80004u, core.State.A[7]);
+                Assert.Equal(0xA5, bus.Memory[address - 1]); Assert.Equal(0x5A, bus.Memory[address + 1]);
+            }
+        }
+    }
+}

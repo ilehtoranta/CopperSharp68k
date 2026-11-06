@@ -128,7 +128,34 @@ internal sealed record M68kBlockLayoutPlan(IReadOnlyList<int> BlockIds)
 			.ThenByDescending(static chain => chain.Blocks.Max(block => block.LoopDepth))
 			.ThenBy(chain => chain.Blocks.Min(block => originalOrder[block.Id]))
 			.ThenBy(static chain => chain.Blocks[0].Id)
-			.Prepend(entryChain);
+			.Prepend(entryChain)
+			.ToList();
+
+		// A small side path that rejoins the start of a loop-bearing chain
+		// should precede that chain, not sit beyond its entire loop body.
+		// Keep every selected fallthrough intact and never move before entry.
+		// Both cross-chain edges then stay near the chain head; this permits
+		// short conditional branches without adding a jump to the main path.
+		var chainEdges = emittedBlocks.SelectMany(block => block.Successors.Select(successor =>
+			(From: block.Id, To: finalDestinations.Resolve(successor))))
+			.Where(edge => chainByBlock[edge.From] != chainByBlock[edge.To]).ToArray();
+		foreach (var main in orderedChains.Skip(1).ToArray())
+		{
+			if (!main.Blocks.Any(static block => block.LoopDepth > 0)) continue;
+			var head = main.Blocks.Take(2).Select(static block => block.Id).ToHashSet();
+			foreach (var side in orderedChains.Skip(1).ToArray())
+			{
+				if (side == main || side.Blocks.Sum(static block => block.Instructions.Count) > 16 ||
+					side.Blocks.Any(block => block.LoopDepth != 0 || coldBlocks.Contains(block.Id))) continue;
+				var incoming = chainEdges.Where(edge => chainByBlock[edge.To] == side).ToArray();
+				var outgoing = chainEdges.Where(edge => chainByBlock[edge.From] == side).ToArray();
+				if (incoming.Length == 0 || outgoing.Length == 0 ||
+					!incoming.All(edge => head.Contains(edge.From)) ||
+					!outgoing.All(edge => head.Contains(edge.To))) continue;
+				orderedChains.Remove(side);
+				orderedChains.Insert(orderedChains.IndexOf(main), side);
+			}
+		}
 
 		var orderedBlocks = orderedChains
 			.SelectMany(static chain => chain.Blocks)

@@ -19,6 +19,8 @@ internal sealed partial class M68kCodeGenerator
 				instruction.Definitions is [var value] &&
 				IsAllocatedScalarIntegerConstant(allocated.Function, value))
 			.Select(static instruction => instruction.Definitions[0]).ToHashSet();
+		nonEmittedConstants.UnionWith(_allocatedBitBranchDeadValues);
+		nonEmittedConstants.UnionWith(_allocatedDiscardedReadValues);
 		var selectedClobbers = instructions.Where(instruction =>
 				_allocatedConstantMultiplies.ContainsKey(instruction.Id))
 			.ToDictionary(static instruction => instruction.Id, instruction =>

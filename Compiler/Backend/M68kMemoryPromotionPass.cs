@@ -365,7 +365,7 @@ internal static class M68kMemoryPromotionPass
 			var instruction = entry.Instructions[insertionIndex];
 			if (instruction.Operation != M68kMachineOperation.Argument &&
 				!(instruction.Operation == M68kMachineOperation.Copy &&
-				  instruction.IlOffset == entry.StartIlOffset &&
+				  instruction.IlOffset == Math.Max(0, entry.StartIlOffset) &&
 				  instruction.Uses is [var source] && incomingValues.Contains(source) &&
 				  instruction.Definitions.Length == 1))
 				break;

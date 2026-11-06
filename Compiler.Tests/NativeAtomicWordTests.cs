@@ -12,10 +12,11 @@ public sealed class NativeAtomicWordTests
     public void WordTransitionsAreAtomicAndUseDirectDisplacement(M68kCpuTarget target, M68kCpuModel model)
     {
         foreach (var mode in new[] { M68kPeepholeOptimizationMode.Disabled, M68kPeepholeOptimizationMode.FixedPoint })
-        foreach (string method in new[] { "Increment", "Decrement", "DynamicIncrement", "DynamicDecrement", "Branch" }) {
+        foreach (string method in new[] { "Increment", "Decrement", "DynamicIncrement", "DynamicDecrement", "Branch", "BranchDecrement", "BranchInverted" }) {
             var result = AmigaM68kCompiler.Compile(new() {
                 AssemblyPath = typeof(NativeAtomicWordFixture).Assembly.Location,
                 EntryPoint = typeof(NativeAtomicWordFixture).FullName + "::Empty", IncludedExportNames = [method],
+                MemoryManagement = M68kMemoryManagement.None, ExceptionMode = M68kExceptionMode.Yolo,
                 Cpu = target, RuntimeProfile = M68kRuntimeProfile.Freestanding,
                 OutputFormat = M68kOutputFormat.Hunk, PeepholeOptimization = mode
             });
@@ -49,7 +50,7 @@ public sealed class NativeAtomicWordTests
                 bool condition = increment ? after == 0 : (short)after < 0;
                 Assert.Equal(0x1000u, core.State.ProgramCounter); Assert.Equal(1, updates);
                 Assert.Equal(after, bus.ReadWord(address));
-                Assert.Equal(method == "Branch" ? condition ? 17u : 29u : condition ? 1u : 0u, core.State.D[0]);
+                Assert.Equal(method.StartsWith("Branch") ? (method == "BranchInverted" ? !condition : condition) ? 17u : 29u : condition ? 1u : 0u, core.State.D[0]);
                 Assert.Equal(0x9000u, core.State.A[6]); Assert.Equal(0x80004u, core.State.A[7]);
                 Assert.Equal(0xA5, bus.Memory[address - 1]); Assert.Equal(0x5A, bus.Memory[address + 2]);
             }

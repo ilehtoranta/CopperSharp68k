@@ -2765,6 +2765,26 @@ internal sealed class M68kAssembler
 		out int length,
 		bool renderText = true)
 	{
+		var mode = (opcode >> 3) & 7;
+		var size = (opcode >> 6) & 3;
+		if ((opcode & 0xFF00) == 0x0C00 && size != 3 && mode >= 2 &&
+			(mode != 7 || (opcode & 7) <= 1))
+		{
+			int width = 1 << size, immediateBytes = size == 2 ? 4 : 2;
+			uint value = 0;
+			bool hasImmediate;
+			if (immediateBytes == 4) hasImmediate = TryReadLong(offset + 2, out value);
+			else { hasImmediate = TryReadWord(offset + 2, out var word); value = word; }
+			if (hasImmediate && TryDecodeEffectiveAddress(offset + 2 + immediateBytes,
+				mode, opcode & 7, width, out var memory, renderText))
+			{
+				instruction = renderText ? $"cmpi.{(width == 1 ? "b" : width == 2 ? "w" : "l")}\t#$" +
+					(width == 1 ? value & 0xFF : value).ToString(width == 1 ? "X2" : width == 2 ? "X4" : "X8") +
+					$",{memory.Text}" : string.Empty;
+				length = 2 + immediateBytes + memory.ExtensionBytes;
+				return true;
+			}
+		}
 		foreach (var rule in ImmediateInstructionRules)
 		{
 			if ((opcode & rule.Mask) != rule.Value)

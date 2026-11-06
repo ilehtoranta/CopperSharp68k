@@ -811,7 +811,7 @@ internal static class M68kInterferenceBuilder
 
 			var copies = entry.Instructions.Where(instruction =>
 				instruction.Operation == M68kMachineOperation.Copy &&
-				instruction.IlOffset == entry.StartIlOffset &&
+				instruction.IlOffset == Math.Max(0, entry.StartIlOffset) &&
 				instruction.Uses is [var source] &&
 				source == incoming &&
 				instruction.Definitions.Length == 1).ToArray();
@@ -1836,15 +1836,17 @@ internal static class M68kGraphColoringAllocator
 		var degreeNeighbors = new HashSet<int>();
 		// Retaining a nonvolatile incoming home avoids both an entry move and
 		// a save/restore when it is read-only. Prefer that affinity over a
-		// transient outgoing argument copy; interference still decides legality.
-		var incomingPreserved = function.Blocks.SelectMany(block => block.Instructions)
+		// transient outgoing argument copy. Explicit internal ABIs also prefer
+		// their volatile input homes; interference and clobbers decide legality.
+		var incomingPreferred = function.Blocks.SelectMany(block => block.Instructions)
 			.Where(instruction => instruction.Operation == M68kMachineOperation.Argument)
 			.SelectMany(instruction => instruction.Definitions)
-			.Where(id => function.Values[id].PrecoloredRegister is
-				>= M68kRegister.D2 and <= M68kRegister.D7 or >= M68kRegister.A2 and <= M68kRegister.A6)
+			.Where(id => function.Values[id].PrecoloredRegister is { } register &&
+				(function.SourceMethod?.InternalRegisterAbi is not null || register is
+					>= M68kRegister.D2 and <= M68kRegister.D7 or >= M68kRegister.A2 and <= M68kRegister.A6))
 			.ToHashSet();
 		foreach (var (left, right) in graph.CopyPreferences
-			.OrderByDescending(pair => incomingPreserved.Contains(pair.Left) || incomingPreserved.Contains(pair.Right))
+			.OrderByDescending(pair => incomingPreferred.Contains(pair.Left) || incomingPreferred.Contains(pair.Right))
 			.ThenByDescending(pair =>
 				function.Values[pair.Left].AllowedRegisters == M68kRegisterSet.Address ||
 				function.Values[pair.Right].AllowedRegisters == M68kRegisterSet.Address)
@@ -1971,12 +1973,12 @@ internal static class M68kGraphColoringAllocator
 				}
 			}
 		}
-		// Explicit internal ABIs deliberately choose their nonvolatile homes.
+		// Explicit internal ABIs deliberately choose their register homes.
 		// The checks above prove the merge legal. Do not apply the generic
 		// singleton-color pressure heuristic, which otherwise rejects a long-
-		// lived base and creates an extra home plus an unnecessary save frame.
+		// lived argument and creates an extra home plus an unnecessary save frame.
 		if (function.SourceMethod?.InternalRegisterAbi is not null && fixedRegister is
-			>= M68kRegister.D2 and <= M68kRegister.D7 or >= M68kRegister.A2 and <= M68kRegister.A6)
+			>= M68kRegister.D0 and <= M68kRegister.A6)
 			return true;
 		if (!function.SimplifyLoopPhis &&
 			(left.AllowedRegisters == M68kRegisterSet.Address ||

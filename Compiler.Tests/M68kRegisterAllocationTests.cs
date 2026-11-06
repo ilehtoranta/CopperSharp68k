@@ -175,6 +175,40 @@ public sealed class M68kRegisterAllocationTests
 			order.IndexOf(body.Id) < order.IndexOf(exit.Id));
 	}
 
+	[Theory]
+	[InlineData(false)]
+	[InlineData(true)]
+	public void BlockLayoutKeepsSmallRejoiningSidePathNearLoopChainHead(bool switchIncoming)
+	{
+		var function = new M68kMachineFunction("layout-rejoining-side-path", 0);
+		var entry = AddBlock(function, 0, 0);
+		var fallback = AddBlock(function, 1, 10);
+		var acquire = AddBlock(function, 2, 20);
+		var setup = AddBlock(function, 3, 30);
+		var loop = AddBlock(function, 4, 40);
+		var done = AddBlock(function, 5, 50);
+		var side = AddBlock(function, 6, 60);
+		var closed = AddBlock(function, 7, 70);
+		Connect(entry, acquire); Connect(entry, fallback);
+		Connect(acquire, side); Connect(acquire, setup);
+		Connect(setup, loop); Connect(loop, loop); Connect(loop, done);
+		Connect(side, setup); Connect(side, closed);
+		loop.LoopDepth = 1;
+		if (switchIncoming)
+		{
+			entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Switch, 0));
+			Connect(entry, side);
+		}
+
+		var order = CreateIdentityLayout(function).BlockIds.ToList();
+
+		Assert.Equal(entry.Id, order[0]);
+		Assert.Equal(order.IndexOf(acquire.Id) + 1, order.IndexOf(setup.Id));
+		Assert.Equal(order.IndexOf(setup.Id) + 1, order.IndexOf(loop.Id));
+		if (switchIncoming) Assert.True(order.IndexOf(side.Id) > order.IndexOf(loop.Id));
+		else Assert.Equal(order.IndexOf(acquire.Id) - 1, order.IndexOf(closed.Id));
+	}
+
 	[Fact]
 	public void BlockLayoutSinksTransitiveColdFailureChain()
 	{

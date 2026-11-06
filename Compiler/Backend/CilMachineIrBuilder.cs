@@ -71,8 +71,7 @@ internal static class CilMachineIrBuilder
 		var blockInstructions = PartitionBlocks(instructions, leaders);
 		var blocksByOffset = new Dictionary<int, M68kMachineBlock>();
 		var promotableByrefArguments = GetPromotableByrefArguments(method, module);
-		var needsArgumentEntry = promotableByrefArguments.Any(static promotable => promotable) &&
-			instructions.Any(instruction =>
+		var needsArgumentEntry = instructions.Any(instruction =>
 				instruction.OpCode.FlowControl is FlowControl.Branch or FlowControl.Cond_Branch &&
 				(instruction.Operand is int target && target == instructions[0].Offset ||
 				 instruction.Operand is int[] targets && targets.Contains(instructions[0].Offset)));
@@ -100,8 +99,10 @@ internal static class CilMachineIrBuilder
 		ConnectBlocks(function, blockInstructions, function.Blocks, blocksByOffset);
 		if (needsArgumentEntry)
 		{
-			// A loop may return to the first CIL instruction. Seed arguments once
-			// in a separate entry so the loop header can merge their assigned values.
+			// Argument definitions and local initialization happen once, even when
+			// a backedge targets the first CIL instruction. Keep them out of the
+			// loop so liveness cannot treat a call-clobbered argument as redefined
+			// on every iteration. Promoted byref arguments also merge here.
 			var argumentEntry = new M68kMachineBlock(function.EntryBlockId, -1);
 			AddEdge(function, argumentEntry, function.Blocks[0]);
 			function.Blocks.Insert(0, argumentEntry);
@@ -220,7 +221,7 @@ internal static class CilMachineIrBuilder
 						method.InitializeLocals
 							? M68kMachineOperation.Constant
 							: M68kMachineOperation.Other,
-						block.StartIlOffset,
+						isArgumentEntry ? method.Instructions[0].Offset : block.StartIlOffset,
 						definitions: [value],
 						constantValue: method.InitializeLocals
 							? M68kMachineConstant.Int32(0)
@@ -2306,10 +2307,11 @@ internal static class CilMachineIrBuilder
 		Array.Copy(assignedArguments, state.ExitArguments, assignedArguments.Length);
 		if (state.Instructions.Count == 0)
 		{
+			var originalOffset = method.Instructions[0].Offset;
 			state.Block.Instructions.Add(function.CreateInstruction(
 				M68kMachineOperation.Branch,
-				state.Block.StartIlOffset,
-				sourceInstruction: new CilInstruction(state.Block.StartIlOffset,
+				originalOffset,
+				sourceInstruction: new CilInstruction(originalOffset,
 					OpCodes.Br, method.Instructions[0].Offset, method.Instructions[0].Offset)));
 		}
 	}
@@ -3396,12 +3398,12 @@ internal static class CilMachineIrBuilder
 				[
 					function.CreateInstruction(
 						M68kMachineOperation.Argument,
-						entryBlock.StartIlOffset,
+						Math.Max(0, entryBlock.StartIlOffset),
 						definitions: [incoming.Id],
 						argumentIndex: argumentIndex),
 					function.CreateInstruction(
 						M68kMachineOperation.Copy,
-						entryBlock.StartIlOffset,
+						Math.Max(0, entryBlock.StartIlOffset),
 						uses: [incoming.Id],
 						definitions: [value.Id],
 						allowCopyCoalescing: !usesNarrowAddressTransport)
@@ -3413,7 +3415,7 @@ internal static class CilMachineIrBuilder
 				0,
 				function.CreateInstruction(
 					M68kMachineOperation.Argument,
-					entryBlock.StartIlOffset,
+					Math.Max(0, entryBlock.StartIlOffset),
 					definitions: [value.Id],
 					argumentIndex: argumentIndex));
 		}
@@ -5147,9 +5149,9 @@ internal static class CilMachineIrBuilder
 		}
 
 		if (target.ImportName is
-				"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+				"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
-				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
+				"intrinsic:aptr-or-uint32" or "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			sourceUses.Count > 1 &&
 			TryGetMachineIntegerConstant(
 				block,
@@ -5163,9 +5165,9 @@ internal static class CilMachineIrBuilder
 		}
 		if (embeddedDisplacement is null &&
 			target.ImportName is
-				"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+				"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
-				"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
+				"intrinsic:aptr-or-uint32" or "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			argumentConstraints.Count != 0)
 		{
 			argumentConstraints[0] = argumentConstraints[0] with
@@ -5174,7 +5176,7 @@ internal static class CilMachineIrBuilder
 			};
 		}
 		if (embeddedDisplacement is not null &&
-			target.ImportName is "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
+			target.ImportName is "intrinsic:aptr-or-uint32" or "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" &&
 			argumentConstraints.Count != 0)
 		{
 			// A constant displacement leaves the value as a direct memory-store
@@ -5325,7 +5327,7 @@ internal static class CilMachineIrBuilder
 		M68kMachineValue? fixedReturn = null;
 		if (!hasMultiwordReturn &&
 			definitions.Count == 1 &&
-			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
 			!HasFlexibleScalarReturn(target.ImportName))
 		{
@@ -6490,7 +6492,7 @@ internal static class CilMachineIrBuilder
 			return [CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Data)];
 		}
-		if (target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+		if (target.ImportName is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" ||
 			target.ImportName?.StartsWith(
 				"intrinsic:file-info-block-read-int32:",
@@ -6512,7 +6514,7 @@ internal static class CilMachineIrBuilder
 				CallArgumentConstraint.Fixed(M68kRegister.A2),
 				CallArgumentConstraint.Fixed(M68kRegister.A3)];
 		}
-		if (target.ImportName is "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32")
+		if (target.ImportName is "intrinsic:aptr-or-uint32" or "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32")
 		{
 			return [
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
@@ -7259,9 +7261,9 @@ internal static class CilMachineIrBuilder
 			if (target.Definition is null &&
 				target.ImportName is
 					"intrinsic:aptr-bit-test-and-set8" or
-					"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or
+					"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
-					"intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" or
+					"intrinsic:aptr-or-uint32" or "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" or
 					"intrinsic:aptr-raw" or
 					"intrinsic:iff-handle-stream" or
 					"intrinsic:iff-handle-set-stream" or

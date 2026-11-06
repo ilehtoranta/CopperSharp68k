@@ -13,6 +13,7 @@ internal sealed partial class M68kPeepholeOptimizer
 		if (TryFoldCopiedArgumentBitTest(dataflow)) return true;
 		if (TryFoldMaterializedConditionBranch(dataflow)) return true;
 		if (TryFoldLongConstantCompare(dataflow)) return true;
+		if (TryFoldMaskedWordCompare(dataflow)) return true;
 		if (TryFoldByteLoadBitTest(dataflow)) return true;
 		if (TryFoldAbsolutePollingFence(dataflow)) return true;
 		if (TryBypassPollingAddressReload(dataflow)) return true;

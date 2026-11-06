@@ -132,7 +132,10 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				// A successful rewrite always starts a fresh analysis next round.
 				initialAnalysis = null;
 				var groupedTransfer = _rewriteBudget == int.MaxValue &&
-					(TryGroupContiguousLongMemoryPush(dataflow) ||
+					(TryFoldLongMemoryPointerAdvance(dataflow) ||
+					 TryFoldPostincrementLongCopy(dataflow) ||
+					 TryGroupLoadedLongMemoryCopy(dataflow) ||
+					 TryGroupContiguousLongMemoryPush(dataflow) ||
 					 TryGroupContiguousLongMemoryCopy(dataflow));
 				if (!groupedTransfer && _rewriteBudget == int.MaxValue)
 				{
@@ -588,7 +591,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		{
 			var first = instructions[index];
 			var second = instructions[index + 1];
-			if ((first.Opcode & 0xFFF8) != 0xE188 ||
+			if ((first.Opcode & 0xFFF8) is not (0xE188 or 0xE088) ||
 				second.Opcode != first.Opcode ||
 				first.Length != 2 ||
 				second.Length != 2 ||
@@ -600,8 +603,11 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			}
 
 			var register = first.Opcode & 7;
-			_buffer.WriteWord(first.Offset, (ushort)(0x4840 | register)); // SWAP Dn
-			_buffer.WriteWord(second.Offset, (ushort)(0x4240 | register)); // CLR.W Dn
+			// Left shift: swap, then clear the low word. Logical right shift:
+			// clear the low word first, then swap the original high word down.
+			bool left = (first.Opcode & 0x0100) != 0;
+			_buffer.WriteWord(first.Offset, (ushort)((left ? 0x4840 : 0x4240) | register));
+			_buffer.WriteWord(second.Offset, (ushort)((left ? 0x4240 : 0x4840) | register));
 			return true;
 		}
 
@@ -5213,7 +5219,14 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			var arithmetic = instructions[index + 1];
 			var sourceMode = (load.Opcode >> 3) & 7;
 			var arithmeticOperation = arithmetic.Opcode & 0xF000;
-			if ((load.Opcode & 0xF000) != 0x2000 ||
+			var operandSize = (load.Opcode & 0xF000) switch
+			{
+				0x1000 => 0, // byte
+				0x3000 => 1, // word
+				0x2000 => 2, // long
+				_ => -1,
+			};
+			if (operandSize < 0 ||
 				((load.Opcode >> 6) & 7) != 0 ||
 				!load.IsDecoded ||
 				load.Length is not (2 or 4 or 6) ||
@@ -5222,8 +5235,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				!arithmetic.IsDecoded ||
 				arithmetic.Length != 2 ||
 				arithmeticOperation is not (0x9000 or 0xB000 or 0xD000) ||
-				((arithmetic.Opcode >> 6) & 7) != 2 ||
+				((arithmetic.Opcode >> 6) & 7) != operandSize ||
 				IsReferencedLabelAt(arithmetic.Offset) ||
+				HasInternalLabel(load) || HasInternalLabel(arithmetic) ||
+				!CanFoldAcrossUnreferencedIlLabels(load.Offset, arithmetic.Offset + arithmetic.Length) ||
+				_assembler.TryGetInstructionEffects(load.Offset, out _) ||
+				_assembler.TryGetInstructionEffects(arithmetic.Offset, out _) ||
 				!dataflow.TryGetFacts(arithmetic.Offset, out _))
 			{
 				continue;
@@ -5239,6 +5256,9 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				continue;
 			}
 
+			// Keep the access at its original position and width. ADD/SUB replace
+			// every flag written by MOVE; CMP, like MOVE, preserves X. The dead
+			// temporary's preserved upper bits are unobservable at every width.
 			var replacement = (ushort)(
 				(arithmetic.Opcode & 0xFFC0) |
 				(load.Opcode & 0x003F));

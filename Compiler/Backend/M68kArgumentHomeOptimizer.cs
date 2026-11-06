@@ -73,7 +73,7 @@ internal static class M68kArgumentHomeOptimizer
 				{
 					var copies = entry.Instructions.Where(instruction =>
 						instruction.Operation == M68kMachineOperation.Copy &&
-						instruction.IlOffset == entry.StartIlOffset &&
+						instruction.IlOffset == Math.Max(0, entry.StartIlOffset) &&
 						instruction.Uses is [var source] && source == value &&
 						instruction.Definitions.Length == 1).ToArray();
 					if (copies.Length != 1) continue;
@@ -105,15 +105,15 @@ internal static class M68kArgumentHomeOptimizer
 					entry.Instructions.InsertRange(0,
 					[
 						function.CreateInstruction(M68kMachineOperation.Argument,
-							entry.StartIlOffset, definitions: [incoming], argumentIndex: home.Index),
+							Math.Max(0, entry.StartIlOffset), definitions: [incoming], argumentIndex: home.Index),
 						function.CreateInstruction(M68kMachineOperation.Copy,
-							entry.StartIlOffset, uses: [incoming], definitions: [value])
+							Math.Max(0, entry.StartIlOffset), uses: [incoming], definitions: [value])
 					]);
 				}
 				else
 				{
 					entry.Instructions.Insert(0, function.CreateInstruction(
-						M68kMachineOperation.Argument, entry.StartIlOffset,
+						M68kMachineOperation.Argument, Math.Max(0, entry.StartIlOffset),
 						definitions: [value], argumentIndex: home.Index));
 				}
 			}

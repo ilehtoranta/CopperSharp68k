@@ -50,6 +50,22 @@ public readonly struct APTR
 	public static bool DecrementWordIsNegative(APTR address, int offset) =>
 		throw new System.NotSupportedException("APTR.DecrementWordIsNegative is lowered by CopperSharp.");
 
+	/// <summary>Atomically increments a native RAM byte modulo 256 and reports
+	/// a zero result. One guest ADDQ.B; no synchronization with DMA writes.</summary>
+	public static bool IncrementByteIsZero(APTR address, int offset) =>
+		throw new System.NotSupportedException("APTR.IncrementByteIsZero is lowered by CopperSharp.");
+
+	/// <summary>Atomically decrements a native RAM byte modulo 256 and reports
+	/// a negative signed-byte result. One guest SUBQ.B; not for MMIO.</summary>
+	public static bool DecrementByteIsNegative(APTR address, int offset) =>
+		throw new System.NotSupportedException("APTR.DecrementByteIsNegative is lowered by CopperSharp.");
+
+	/// <summary>ORs bits into an even-aligned native RAM longword with one guest
+	/// OR.L instruction. Indivisible at CPU interrupt boundaries; not a host
+	/// interlocked operation or synchronization with DMA writes. Not for MMIO.</summary>
+	public static void OrUInt32(APTR address, int offset, uint bits) =>
+		throw new System.NotSupportedException("APTR.OrUInt32 is lowered by CopperSharp.");
+
 	public static byte ReadUInt8(APTR address, int offset) =>
 		throw new System.NotSupportedException(
 			"APTR.ReadUInt8 is lowered by CopperSharp.");
