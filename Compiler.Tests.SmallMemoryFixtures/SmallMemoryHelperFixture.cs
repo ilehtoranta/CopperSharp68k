@@ -6,6 +6,12 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class SmallMemoryHelperFixture
 {
+    public static void LongStorePair(APTR address, uint value)
+    {
+        StoreLong(address, 0, value);
+        StoreLong(address, 4, value);
+    }
+    private static void StoreLong(APTR address, int offset, uint value) => APTR.WriteUInt32(address, offset, value);
     [M68kExport("small-memory-helper.direct")]
     public static void NativeEntry() => Entry(APTR.FromPointer(0x5000));
 

@@ -8,6 +8,31 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class SmallMemoryHelperInliningTests
 {
+    [Fact]
+    public void InlinedLongStoresKeepAddressRegistersAvailableAfterDisplacementFolding()
+    {
+        using var module = new CompilationModule(typeof(SmallMemoryHelperFixture).Assembly.Location);
+        var name = typeof(SmallMemoryHelperFixture).FullName;
+        var entry = module.ResolveEntryPoint(name + "::LongStorePair");
+        var helper = module.ResolveEntryPoint(name + "::StoreLong");
+        var caller = CilMachineIrBuilder.Build(entry, module);
+        var target = CilMachineIrBuilder.Build(helper, module);
+        M68kMachineModuleOptimizer.Run([entry, helper],
+            new Dictionary<CilMethodIdentity, M68kMachineFunction>
+            { [entry.Identity] = caller, [helper.Identity] = target },
+            module, M68kCpuTarget.M68000, new HashSet<CilMethodIdentity> { entry.Identity });
+        var stores = caller.Blocks.SelectMany(b => b.Instructions)
+            .Where(i => i.Operation == M68kMachineOperation.Call && i.Origin is { } origin &&
+                module.ResolveMethodToken((int)origin.SourceInstruction.Operand!, origin.SourceMethod,
+                    origin.SourceInstruction.Offset).ImportName == "intrinsic:aptr-write-uint32").ToArray();
+        Assert.Equal(2, stores.Length);
+        foreach (var store in stores)
+        {
+            Assert.NotNull(store.Immediate);
+            Assert.Equal(M68kRegisterSet.DataOrAddress, caller.Values[store.Uses[^1]].AllowedRegisters);
+        }
+        M68kMachineIrVerifier.Verify(caller);
+    }
     [Theory]
     [InlineData(false, false, true)]
     [InlineData(true, false, false)]
