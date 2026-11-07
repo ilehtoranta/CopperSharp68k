@@ -77,6 +77,7 @@ static int Run(string[] args)
 				ValidateLiteralOperands = selected.Contains(nameof(M68kCodeSizeOptions.ValidateLiteralOperands)),
 				RemoveRedundantTransport = selected.Contains(nameof(M68kCodeSizeOptions.RemoveRedundantTransport)),
 				CompactPrivateStackCopies = selected.Contains(nameof(M68kCodeSizeOptions.CompactPrivateStackCopies)),
+				CompactFrameHomeInitialization = selected.Contains(nameof(M68kCodeSizeOptions.CompactFrameHomeInitialization)),
 				SimplifyLoopPhis = selected.Contains(nameof(M68kCodeSizeOptions.SimplifyLoopPhis)),
 				CompactGuestMemory = selected.Contains(nameof(M68kCodeSizeOptions.CompactGuestMemory)),
 				NarrowOperations = selected.Contains(nameof(M68kCodeSizeOptions.NarrowOperations)),
@@ -161,6 +162,7 @@ static int Run(string[] args)
 			Rom = new KickstartRomOutputOptions
 			{
 				Size = romSize,
+				HeaderBytes = ParseInt(GetOptional(args, "--rom-header-bytes") ?? "8"),
 				BaseAddress = romBase,
 				InitialStackPointer = stack
 			},
@@ -301,6 +303,7 @@ static string[] ExpandResponseManifest(string[] args)
 			"clr" => "--clr",
 			"peephole" => "--peephole",
 			"rom-size-optimizations" => "--rom-size-optimizations",
+			"rom-header-bytes" => "--rom-header-bytes",
 			"code-size-optimizations" => "--code-size-optimizations",
 			"code-size-passes" => "--code-size-passes",
 			"resident-stack-context-threshold" => "--resident-stack-context-threshold",
@@ -732,6 +735,7 @@ static void PrintUsage()
 		  [--runtime freestanding|application|resident|rom]
 		  [--memory default|none|external|managed-pool|exec-pool] [--heap-size <bytes>]
 		  [--rom-size 262144|524288] [--rom-base <address>] [--stack <address>]
+		  [--rom-header-bytes <longword-aligned bytes; default 8>]
 		  [--import name=address ...]
 		  [--managed-assemblies <UTF-8 path-list>]
 		  [--framework-implementation-manifest <JSON manifest>]

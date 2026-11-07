@@ -18,18 +18,18 @@ internal static class KickstartRomWriter
 	{
 		ValidateOptions(options);
 		var checksumOffset = options.Size - ChecksumDistanceFromEnd;
-		if (code.Length > checksumOffset - 8)
+		if (code.Length > checksumOffset - options.HeaderBytes)
 		{
 			throw new M68kCompilationException(
 				M68kDiagnosticIds.ImageOverflow,
-				$"Linked code requires {code.Length} bytes but ROM has only {checksumOffset - 8} code bytes.");
+				$"Linked code requires {code.Length} bytes but ROM has only {checksumOffset - options.HeaderBytes} code bytes.");
 		}
 
 		var image = GC.AllocateUninitializedArray<byte>(options.Size);
 		image.AsSpan().Fill(options.FillByte);
 		BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(0, 4), options.InitialStackPointer);
 		BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(4, 4), entryPoint);
-		code.CopyTo(image.AsSpan(8));
+		code.CopyTo(image.AsSpan(options.HeaderBytes));
 		BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(checksumOffset, 4), 0);
 		var checksum = ~ComputeEndAroundCarrySum(image);
 		BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(checksumOffset, 4), checksum);
@@ -74,6 +74,12 @@ internal static class KickstartRomWriter
 
 	private static void ValidateOptions(KickstartRomOutputOptions options)
 	{
+		if (options.HeaderBytes < 8 || (options.HeaderBytes & 3) != 0 ||
+			options.HeaderBytes > options.Size - ChecksumDistanceFromEnd)
+		{
+			throw new M68kCompilationException(M68kDiagnosticIds.InvalidOutputOptions,
+				"ROM header must include the reset vectors, be longword aligned and fit before the checksum.");
+		}
 		if (options.Size is not (256 * 1024) and not (512 * 1024))
 		{
 			throw new M68kCompilationException(

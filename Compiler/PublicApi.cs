@@ -405,6 +405,9 @@ public sealed record HunkOutputOptions
 /// <summary>Options for a Kickstart-compatible ROM image.</summary>
 public sealed record KickstartRomOutputOptions
 {
+	/// <summary>Bytes reserved before linked code, including both reset vectors.</summary>
+	public int HeaderBytes { get; init; } = 8;
+
 	/// <summary>ROM size. Version one accepts 256 KiB or 512 KiB.</summary>
 	public int Size { get; init; } = 512 * 1024;
 
@@ -634,6 +637,8 @@ public sealed record M68kCodeSizeOptions
 	public bool RemoveRedundantTransport { get; init; }
 	/// <summary>Fold private stack copies when their intermediate register is dead.</summary>
 	public bool CompactPrivateStackCopies { get; init; }
+	/// <summary>Enable the ROM policy's compiler-owned frame initialization compaction for eligible MC68000 YOLO ROMs. Guest-memory clears are unchanged.</summary>
+	public bool CompactFrameHomeInitialization { get; init; }
 	/// <summary>Remove trivial loop phis before allocation for MC68000 ROMs and resident HUNKs with YOLO exceptions and no managed memory.</summary>
 	public bool SimplifyLoopPhis { get; init; }
 	/// <summary>Select compact indexed guest accesses and direct memory tests.</summary>

@@ -9,7 +9,8 @@ internal sealed partial class M68kCodeGenerator
 {
 	private bool AllowAllocatedFrameHomeClearCompaction =>
 		_request.ClrPolicy != M68kClrPolicy.Always ||
-		_request.RomSizeOptimizations?.CompactFrameHomeInitialization == true &&
+		(_request.RomSizeOptimizations?.CompactFrameHomeInitialization == true ||
+		 _request.CodeSizeOptimizations?.CompactFrameHomeInitialization == true) &&
 		_request.Cpu == M68kCpuTarget.M68000 &&
 		_request.RuntimeProfile == M68kRuntimeProfile.Rom &&
 		_request.OutputFormat == M68kOutputFormat.KickstartRom &&

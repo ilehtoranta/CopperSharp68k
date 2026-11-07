@@ -10758,9 +10758,7 @@ internal sealed partial class M68kCodeGenerator
 				copy.Uses is not [var source] ||
 				source != definition ||
 				copy.Definitions is not [var copyDefinition] ||
-				allocated.Function.Blocks
-					.SelectMany(static candidate => candidate.Instructions)
-					.Sum(candidate => candidate.Uses.Count(use => use == definition)) != 1)
+				CountAllocatedValueUses(allocated.Function, definition) != 1)
 			{
 				return false;
 			}
@@ -10775,6 +10773,8 @@ internal sealed partial class M68kCodeGenerator
 				// path normalize in a data register before a canonical long transfer.
 				return false;
 			}
+			// Phi inputs also keep the original result live. Redirecting its load
+			// to the address copy would otherwise leave the merge register unset.
 			_allocatedSuppressedInstructions.Add(copy.Id);
 			return true;
 		}
@@ -11698,13 +11698,19 @@ internal sealed partial class M68kCodeGenerator
 				effectiveAddress));
 			return;
 		}
-		if (source >= M68kRegister.A0)
+		// ADD/SUB accept address-register direct sources for word and long
+		// operations (M68000 PRM, ADD/SUB effective-address tables). These
+		// still update the data destination and CCR, unlike ADDA/SUBA.
+		var addressArithmeticSource =
+			(operation is M68kMachineOperation.Add or M68kMachineOperation.Subtract) &&
+			(width is M68kMachineValueWidth.Word or M68kMachineValueWidth.Long);
+		if (source >= M68kRegister.A0 && !addressArithmeticSource)
 		{
 			throw new InvalidOperationException(
 				$"{operation} cannot use address source {source} with data destination.");
 		}
 		var sizeBits = AllocatedSizeBits(width);
-		var sourceIndex = (int)source;
+		var sourceIndex = AllocatedRegisterEa(source);
 		var destinationIndexData = (int)destination;
 		var opcode = operation switch
 		{

@@ -654,7 +654,7 @@ public static class M68kCompiler
 		M68kFrameworkAnalysisResult frameworkAnalysis)
 	{
 		var romBase = KickstartRomWriter.GetBaseAddress(request.Rom);
-		var codeOrigin = checked(romBase + 8);
+		var codeOrigin = checked(romBase + (uint)request.Rom.HeaderBytes);
 		var linked = program.Assembler.Link(codeOrigin, request.Imports);
 		var symbols = CreateSymbols(program, linked, codeOrigin);
 		var loopFootprints = M68kLoopFootprintAnalysis.Measure(
