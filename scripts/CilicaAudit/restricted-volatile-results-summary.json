@@ -1,0 +1,653 @@
+{
+  "CilicaRevision": "a879c85f1608c764c7ab4f52b66b2b5db1ee60b6",
+  "CompilerHead": "561bc80c22fff8d2217c7fa43f7422822263869b",
+  "Environment": {
+    "Runtime": ".NET 10.0.12",
+    "OS": "Microsoft Windows 10.0.26200",
+    "ProcessorCount": 12,
+    "TieredCompilation": "0",
+    "CompilerSha256": "50D2F3F81314A978878E0091A1B6730A48E784A6AD341006A45F2D1EEB3ECF54",
+    "CilicaSha256": "EE56129F606FBD392B531A6AFF976581C99971273B23E1512F9696DCE7310117",
+    "Inputs": [
+      {
+        "Name": "baseline",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaRestrictedVolatileVerified\\build\\bin\\Fixtures\\release\\CilicaAudit.Fixtures.dll",
+        "Sha256": "B6FB3C3D5F04B228440D2B7402337C202D12A94F1A855A86CCC8FC8D0F0BD61E"
+      },
+      {
+        "Name": "portable",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaRestrictedVolatileVerified\\build\\bin\\Fixtures\\release\\portable\\CilicaAudit.Fixtures.dll",
+        "Sha256": "FBF0A136E2F49402C314FB3E791D14BEA2CCE64015E13E89D53BF108CD32DAA6"
+      },
+      {
+        "Name": "restricted",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaRestrictedVolatileVerified\\build\\bin\\Fixtures\\release\\restricted\\CilicaAudit.Fixtures.dll",
+        "Sha256": "93CA8925601BB5C7954F23E23CCF43F4DB766A88E62E6B308D04D96B42D687D5"
+      }
+    ],
+    "TimingScope": "In-process Compile only, one unrecorded warmup per variant/case/CPU, reversed variant order on odd rounds. Target cycles include cold startup. No preprocessing time included in Compile."
+  },
+  "Repetitions": 3,
+  "Coverage": [
+    {
+      "Variant": "baseline",
+      "SuccessfulSamples": 135,
+      "FailedCombinations": 6,
+      "CheckedExecutions": 756
+    },
+    {
+      "Variant": "portable",
+      "SuccessfulSamples": 117,
+      "FailedCombinations": 12,
+      "CheckedExecutions": 684
+    },
+    {
+      "Variant": "restricted",
+      "SuccessfulSamples": 135,
+      "FailedCombinations": 6,
+      "CheckedExecutions": 756
+    }
+  ],
+  "StableSuccessfulGroups": 129,
+  "CompatibilityRegressions": [],
+  "IncorrectResults": 0,
+  "GainsRetained": true,
+  "Comparisons": [
+    {
+      "Kernel": "Arithmetic",
+      "Cpu": "M68000",
+      "BaselineCycles31": 1194,
+      "RestrictedCycles31": 1138,
+      "PortableCycles31": 1138,
+      "Speedup": 1.0492091388400704,
+      "BaselineLoadedBytes": 3144,
+      "RestrictedLoadedBytes": 3088
+    },
+    {
+      "Kernel": "Arithmetic",
+      "Cpu": "M68020",
+      "BaselineCycles31": 252,
+      "RestrictedCycles31": 218,
+      "PortableCycles31": 218,
+      "Speedup": 1.1559633027522935,
+      "BaselineLoadedBytes": 3072,
+      "RestrictedLoadedBytes": 3016
+    },
+    {
+      "Kernel": "Arithmetic",
+      "Cpu": "M68040",
+      "BaselineCycles31": 72,
+      "RestrictedCycles31": 66,
+      "PortableCycles31": 66,
+      "Speedup": 1.0909090909090908,
+      "BaselineLoadedBytes": 2972,
+      "RestrictedLoadedBytes": 2916
+    },
+    {
+      "Kernel": "CommonExpressions",
+      "Cpu": "M68000",
+      "BaselineCycles31": 1050,
+      "RestrictedCycles31": 946,
+      "PortableCycles31": 946,
+      "Speedup": 1.109936575052854,
+      "BaselineLoadedBytes": 3052,
+      "RestrictedLoadedBytes": 2984
+    },
+    {
+      "Kernel": "CommonExpressions",
+      "Cpu": "M68020",
+      "BaselineCycles31": 229,
+      "RestrictedCycles31": 188,
+      "PortableCycles31": 188,
+      "Speedup": 1.2180851063829787,
+      "BaselineLoadedBytes": 3068,
+      "RestrictedLoadedBytes": 2996
+    },
+    {
+      "Kernel": "CommonExpressions",
+      "Cpu": "M68040",
+      "BaselineCycles31": 70,
+      "RestrictedCycles31": 60,
+      "PortableCycles31": 60,
+      "Speedup": 1.1666666666666667,
+      "BaselineLoadedBytes": 2968,
+      "RestrictedLoadedBytes": 2896
+    },
+    {
+      "Kernel": "Inlining",
+      "Cpu": "M68000",
+      "BaselineCycles31": 1324,
+      "RestrictedCycles31": 836,
+      "PortableCycles31": 836,
+      "Speedup": 1.5837320574162679,
+      "BaselineLoadedBytes": 3116,
+      "RestrictedLoadedBytes": 2980
+    },
+    {
+      "Kernel": "Inlining",
+      "Cpu": "M68020",
+      "BaselineCycles31": 230,
+      "RestrictedCycles31": 204,
+      "PortableCycles31": 204,
+      "Speedup": 1.1274509803921569,
+      "BaselineLoadedBytes": 3120,
+      "RestrictedLoadedBytes": 3020
+    },
+    {
+      "Kernel": "Inlining",
+      "Cpu": "M68040",
+      "BaselineCycles31": 76,
+      "RestrictedCycles31": 69,
+      "PortableCycles31": 69,
+      "Speedup": 1.1014492753623188,
+      "BaselineLoadedBytes": 3024,
+      "RestrictedLoadedBytes": 2920
+    },
+    {
+      "Kernel": "StructPromotion",
+      "Cpu": "M68000",
+      "BaselineCycles31": 1188,
+      "RestrictedCycles31": 1214,
+      "PortableCycles31": 1214,
+      "Speedup": 0.9785831960461285,
+      "BaselineLoadedBytes": 3084,
+      "RestrictedLoadedBytes": 3052
+    },
+    {
+      "Kernel": "StructPromotion",
+      "Cpu": "M68020",
+      "BaselineCycles31": 225,
+      "RestrictedCycles31": 220,
+      "PortableCycles31": 220,
+      "Speedup": 1.0227272727272727,
+      "BaselineLoadedBytes": 3092,
+      "RestrictedLoadedBytes": 3052
+    },
+    {
+      "Kernel": "StructPromotion",
+      "Cpu": "M68040",
+      "BaselineCycles31": 77,
+      "RestrictedCycles31": 75,
+      "PortableCycles31": 75,
+      "Speedup": 1.0266666666666666,
+      "BaselineLoadedBytes": 2992,
+      "RestrictedLoadedBytes": 2952
+    },
+    {
+      "Kernel": "ScalarReplacement",
+      "Cpu": "M68000",
+      "BaselineCycles31": 2092,
+      "RestrictedCycles31": 704,
+      "PortableCycles31": 704,
+      "Speedup": 2.971590909090909,
+      "BaselineLoadedBytes": 3244,
+      "RestrictedLoadedBytes": 2932
+    },
+    {
+      "Kernel": "ScalarReplacement",
+      "Cpu": "M68020",
+      "BaselineCycles31": 470,
+      "RestrictedCycles31": 162,
+      "PortableCycles31": 162,
+      "Speedup": 2.9012345679012346,
+      "BaselineLoadedBytes": 3292,
+      "RestrictedLoadedBytes": 2984
+    },
+    {
+      "Kernel": "ScalarReplacement",
+      "Cpu": "M68040",
+      "BaselineCycles31": 181,
+      "RestrictedCycles31": 55,
+      "PortableCycles31": 55,
+      "Speedup": 3.290909090909091,
+      "BaselineLoadedBytes": 3192,
+      "RestrictedLoadedBytes": 2884
+    },
+    {
+      "Kernel": "Devirtualization",
+      "Cpu": "M68000",
+      "BaselineCycles31": 2650,
+      "RestrictedCycles31": 716,
+      "PortableCycles31": 716,
+      "Speedup": 3.701117318435754,
+      "BaselineLoadedBytes": 3508,
+      "RestrictedLoadedBytes": 2936
+    },
+    {
+      "Kernel": "Devirtualization",
+      "Cpu": "M68020",
+      "BaselineCycles31": 608,
+      "RestrictedCycles31": 160,
+      "PortableCycles31": 160,
+      "Speedup": 3.8,
+      "BaselineLoadedBytes": 3544,
+      "RestrictedLoadedBytes": 2976
+    },
+    {
+      "Kernel": "Devirtualization",
+      "Cpu": "M68040",
+      "BaselineCycles31": 219,
+      "RestrictedCycles31": 55,
+      "PortableCycles31": 55,
+      "Speedup": 3.981818181818182,
+      "BaselineLoadedBytes": 3444,
+      "RestrictedLoadedBytes": 2876
+    },
+    {
+      "Kernel": "Loop",
+      "Cpu": "M68000",
+      "BaselineCycles31": 3322,
+      "RestrictedCycles31": 3280,
+      "PortableCycles31": 3280,
+      "Speedup": 1.0128048780487804,
+      "BaselineLoadedBytes": 3016,
+      "RestrictedLoadedBytes": 2968
+    },
+    {
+      "Kernel": "Loop",
+      "Cpu": "M68020",
+      "BaselineCycles31": 1224,
+      "RestrictedCycles31": 1214,
+      "PortableCycles31": 1214,
+      "Speedup": 1.0082372322899507,
+      "BaselineLoadedBytes": 3072,
+      "RestrictedLoadedBytes": 3024
+    },
+    {
+      "Kernel": "Loop",
+      "Cpu": "M68040",
+      "BaselineCycles31": 369,
+      "RestrictedCycles31": 366,
+      "PortableCycles31": 366,
+      "Speedup": 1.0081967213114753,
+      "BaselineLoadedBytes": 2968,
+      "RestrictedLoadedBytes": 2920
+    },
+    {
+      "Kernel": "ArrayLoop",
+      "Cpu": "M68000",
+      "BaselineCycles31": 21778,
+      "RestrictedCycles31": 21236,
+      "PortableCycles31": null,
+      "Speedup": 1.0255226973064606,
+      "BaselineLoadedBytes": 3544,
+      "RestrictedLoadedBytes": 3504
+    },
+    {
+      "Kernel": "ArrayLoop",
+      "Cpu": "M68020",
+      "BaselineCycles31": 4108,
+      "RestrictedCycles31": 4108,
+      "PortableCycles31": null,
+      "Speedup": 1,
+      "BaselineLoadedBytes": 3584,
+      "RestrictedLoadedBytes": 3544
+    },
+    {
+      "Kernel": "ArrayLoop",
+      "Cpu": "M68040",
+      "BaselineCycles31": 1911,
+      "RestrictedCycles31": 2036,
+      "PortableCycles31": null,
+      "Speedup": 0.9386051080550099,
+      "BaselineLoadedBytes": 3484,
+      "RestrictedLoadedBytes": 3444
+    },
+    {
+      "Kernel": "LinqRangeSelect",
+      "Cpu": "M68000",
+      "BaselineCycles31": 31910,
+      "RestrictedCycles31": 31868,
+      "PortableCycles31": null,
+      "Speedup": 1.0013179364880131,
+      "BaselineLoadedBytes": 8764,
+      "RestrictedLoadedBytes": 8708
+    },
+    {
+      "Kernel": "LinqRangeSelect",
+      "Cpu": "M68020",
+      "BaselineCycles31": 7268,
+      "RestrictedCycles31": 7258,
+      "PortableCycles31": null,
+      "Speedup": 1.0013777900248002,
+      "BaselineLoadedBytes": 8816,
+      "RestrictedLoadedBytes": 8760
+    },
+    {
+      "Kernel": "LinqRangeSelect",
+      "Cpu": "M68040",
+      "BaselineCycles31": 2659,
+      "RestrictedCycles31": 2656,
+      "PortableCycles31": null,
+      "Speedup": 1.0011295180722892,
+      "BaselineLoadedBytes": 8704,
+      "RestrictedLoadedBytes": 8644
+    },
+    {
+      "Kernel": "ListGrowth",
+      "Cpu": "M68000",
+      "BaselineCycles31": 37690,
+      "RestrictedCycles31": 37632,
+      "PortableCycles31": 23668,
+      "Speedup": 1.0015412414965987,
+      "BaselineLoadedBytes": 4944,
+      "RestrictedLoadedBytes": 4888
+    },
+    {
+      "Kernel": "ListGrowth",
+      "Cpu": "M68020",
+      "BaselineCycles31": 7869,
+      "RestrictedCycles31": 7855,
+      "PortableCycles31": 4907,
+      "Speedup": 1.0017823042647995,
+      "BaselineLoadedBytes": 4980,
+      "RestrictedLoadedBytes": 4920
+    },
+    {
+      "Kernel": "ListGrowth",
+      "Cpu": "M68040",
+      "BaselineCycles31": 3255,
+      "RestrictedCycles31": 3250,
+      "PortableCycles31": 2074,
+      "Speedup": 1.0015384615384615,
+      "BaselineLoadedBytes": 4876,
+      "RestrictedLoadedBytes": 4816
+    },
+    {
+      "Kernel": "Aliasing",
+      "Cpu": "M68000",
+      "BaselineCycles31": 892,
+      "RestrictedCycles31": 694,
+      "PortableCycles31": 694,
+      "Speedup": 1.2853025936599423,
+      "BaselineLoadedBytes": 3040,
+      "RestrictedLoadedBytes": 2928
+    },
+    {
+      "Kernel": "Aliasing",
+      "Cpu": "M68020",
+      "BaselineCycles31": 198,
+      "RestrictedCycles31": 162,
+      "PortableCycles31": 162,
+      "Speedup": 1.2222222222222223,
+      "BaselineLoadedBytes": 3080,
+      "RestrictedLoadedBytes": 2984
+    },
+    {
+      "Kernel": "Aliasing",
+      "Cpu": "M68040",
+      "BaselineCycles31": 68,
+      "RestrictedCycles31": 55,
+      "PortableCycles31": 55,
+      "Speedup": 1.2363636363636363,
+      "BaselineLoadedBytes": 2980,
+      "RestrictedLoadedBytes": 2884
+    },
+    {
+      "Kernel": "Volatile",
+      "Cpu": "M68000",
+      "BaselineCycles31": 824,
+      "RestrictedCycles31": 922,
+      "PortableCycles31": 922,
+      "Speedup": 0.8937093275488069,
+      "BaselineLoadedBytes": 3024,
+      "RestrictedLoadedBytes": 3164
+    },
+    {
+      "Kernel": "Volatile",
+      "Cpu": "M68020",
+      "BaselineCycles31": 175,
+      "RestrictedCycles31": 201,
+      "PortableCycles31": 201,
+      "Speedup": 0.8706467661691543,
+      "BaselineLoadedBytes": 3072,
+      "RestrictedLoadedBytes": 3208
+    },
+    {
+      "Kernel": "Volatile",
+      "Cpu": "M68040",
+      "BaselineCycles31": 67,
+      "RestrictedCycles31": 77,
+      "PortableCycles31": 77,
+      "Speedup": 0.8701298701298701,
+      "BaselineLoadedBytes": 2972,
+      "RestrictedLoadedBytes": 3112
+    },
+    {
+      "Kernel": "Finally",
+      "Cpu": "M68000",
+      "BaselineCycles31": 1092,
+      "RestrictedCycles31": 1082,
+      "PortableCycles31": 1082,
+      "Speedup": 1.009242144177449,
+      "BaselineLoadedBytes": 3536,
+      "RestrictedLoadedBytes": 3492
+    },
+    {
+      "Kernel": "Finally",
+      "Cpu": "M68020",
+      "BaselineCycles31": 236,
+      "RestrictedCycles31": 234,
+      "PortableCycles31": 234,
+      "Speedup": 1.0085470085470085,
+      "BaselineLoadedBytes": 3564,
+      "RestrictedLoadedBytes": 3516
+    },
+    {
+      "Kernel": "Finally",
+      "Cpu": "M68040",
+      "BaselineCycles31": 81,
+      "RestrictedCycles31": 81,
+      "PortableCycles31": 81,
+      "Speedup": 1,
+      "BaselineLoadedBytes": 3468,
+      "RestrictedLoadedBytes": 3420
+    },
+    {
+      "Kernel": "NativeWidth",
+      "Cpu": "M68000",
+      "BaselineCycles31": 788,
+      "RestrictedCycles31": 754,
+      "PortableCycles31": 754,
+      "Speedup": 1.0450928381962865,
+      "BaselineLoadedBytes": 2976,
+      "RestrictedLoadedBytes": 2932
+    },
+    {
+      "Kernel": "NativeWidth",
+      "Cpu": "M68020",
+      "BaselineCycles31": 169,
+      "RestrictedCycles31": 161,
+      "PortableCycles31": 161,
+      "Speedup": 1.049689440993789,
+      "BaselineLoadedBytes": 3024,
+      "RestrictedLoadedBytes": 2980
+    },
+    {
+      "Kernel": "NativeWidth",
+      "Cpu": "M68040",
+      "BaselineCycles31": 59,
+      "RestrictedCycles31": 57,
+      "PortableCycles31": 57,
+      "Speedup": 1.0350877192982457,
+      "BaselineLoadedBytes": 2924,
+      "RestrictedLoadedBytes": 2880
+    },
+    {
+      "Kernel": "SwitchTable",
+      "Cpu": "M68000",
+      "BaselineCycles31": 856,
+      "RestrictedCycles31": 818,
+      "PortableCycles31": 818,
+      "Speedup": 1.0464547677261613,
+      "BaselineLoadedBytes": 3080,
+      "RestrictedLoadedBytes": 3032
+    },
+    {
+      "Kernel": "SwitchTable",
+      "Cpu": "M68020",
+      "BaselineCycles31": 173,
+      "RestrictedCycles31": 164,
+      "PortableCycles31": 164,
+      "Speedup": 1.0548780487804879,
+      "BaselineLoadedBytes": 3116,
+      "RestrictedLoadedBytes": 3068
+    },
+    {
+      "Kernel": "SwitchTable",
+      "Cpu": "M68040",
+      "BaselineCycles31": 68,
+      "RestrictedCycles31": 65,
+      "PortableCycles31": 65,
+      "Speedup": 1.0461538461538462,
+      "BaselineLoadedBytes": 3028,
+      "RestrictedLoadedBytes": 2980
+    }
+  ],
+  "Failures": [
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_0050: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_0050: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0010: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "restricted",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_005E: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_005E: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_0050: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_0050: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0010: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "restricted",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_005E: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_005E: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_0050: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_0050: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0010: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "restricted",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_005E: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_005E: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_000E: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_000E: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_000E: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "baseline",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000C assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "restricted",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "baseline",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000C assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "restricted",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "baseline",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000C assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "restricted",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    }
+  ]
+}

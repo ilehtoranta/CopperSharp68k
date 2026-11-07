@@ -12,6 +12,14 @@ reuse a previous read, promote the location into a register, merge stores, narro
 the access, or move ordinary memory observations across its ordering boundary.
 Method memory summaries carry this boundary through managed calls.
 
+The address of linked static storage is known non-null after its required type
+initialization. Repeated address materialization can reuse an unchanged address
+register within a basic block, including through full-width byref copies. Facts
+are invalidated by register definitions and call clobbers and cleared at block
+boundaries. This reuses the address only; every volatile load/store and its
+synchronization still executes. Values loaded from static fields retain their
+ordinary nullability rules.
+
 Volatile reads provide acquire ordering and volatile writes provide release
 ordering. The initial implementation deliberately uses stronger synchronization:
 each emitted volatile memory operation has `NOP` before and after it. Native FPU
@@ -62,6 +70,10 @@ output targets with disabled, fixed-point and bounded peepholes. Floating-point
 cases cover software float and both native FPU configurations. Negative cases
 cover malformed prefixes, prefix-bypassing branches and unsupported aggregate,
 bulk and unaligned forms.
+Static-address cases additionally check changing reads across register clobbers,
+different fields, managed calls and both paths through a control-flow join, while
+asserting that redundant null checks and unchanged-register address reloads are
+absent and synchronization remains.
 
 Execution uses Copper68k's bus interface to script changing values and assert
 access count, width and order. MC68060 output runs on its MC68040 core; the

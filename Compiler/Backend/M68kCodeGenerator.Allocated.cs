@@ -55,6 +55,8 @@ internal sealed partial class M68kCodeGenerator
 	private readonly HashSet<int> _allocatedExceptionFrameStores = new();
 	private readonly HashSet<int> _allocatedKnownNonNullValues = new();
 	private readonly HashSet<M68kRegister> _allocatedKnownNonNullRegisters = new();
+	private readonly Dictionary<M68kRegister, string> _allocatedKnownStaticAddresses = new();
+	private (M68kRegister Register, string Label)? _allocatedStaticAddressEmitted;
 	private readonly HashSet<M68kRegister> _allocatedFrameAddressesEmitted = new();
 	private readonly Dictionary<int, AllocatedFunctionAddressSwitchPlan>
 		_allocatedFunctionAddressSwitches = new();
@@ -151,6 +153,7 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedExceptionFrameStores.Clear();
 		_allocatedKnownNonNullValues.Clear();
 		_allocatedKnownNonNullRegisters.Clear();
+		_allocatedKnownStaticAddresses.Clear();
 		_allocatedFrameAddressesEmitted.Clear();
 		_allocatedFunctionAddressSwitches.Clear();
 		PrepareAllocatedConstantCopies(method, allocated);
@@ -249,6 +252,7 @@ internal sealed partial class M68kCodeGenerator
 			var block = layoutBlocks[blockIndex];
 			_allocatedKnownNonNullValues.Clear();
 			_allocatedKnownNonNullRegisters.Clear();
+			_allocatedKnownStaticAddresses.Clear();
 			if (nonNullBlockEntries.TryGetValue(block.Id, out var knownNonNull))
 			{
 				_allocatedKnownNonNullValues.UnionWith(knownNonNull);
@@ -324,6 +328,7 @@ internal sealed partial class M68kCodeGenerator
 				}
 				_emittingMachineInstruction = instruction;
 				_allocatedFrameAddressesEmitted.Clear();
+				_allocatedStaticAddressEmitted = null;
 				if (IsEmittingVolatileAccess) EmitVolatileSynchronization();
 				EmitAllocatedInstruction(
 					method,
@@ -345,6 +350,7 @@ internal sealed partial class M68kCodeGenerator
 				UpdateAllocatedNonNullRegistersAfterInstruction(
 					allocated,
 					instruction);
+				UpdateAllocatedStaticAddressRegisters(allocated, instruction);
 			}
 			if (_allocatedOutgoingStackBytes != 0)
 			{
@@ -2360,6 +2366,12 @@ internal sealed partial class M68kCodeGenerator
 					instruction,
 					copyDestination,
 					IsNarrowIntegerKind(copiedKind) ? copiedKind : null);
+				if (copySource >= M68kRegister.A0 && copyDestination >= M68kRegister.A0 &&
+					copiedValue.Width == M68kMachineValueWidth.Long && copyDestinationValue.Width == M68kMachineValueWidth.Long &&
+					copiedKind is CilStackValueKind.ManagedPointer or CilStackValueKind.AggregateAddress &&
+					copyDestinationValue.Kind == copiedKind &&
+					_allocatedKnownStaticAddresses.TryGetValue(copySource, out var copiedStaticAddress))
+					_allocatedStaticAddressEmitted = (copyDestination, copiedStaticAddress);
 				return;
 
 			case M68kMachineOperation.Add:
@@ -4642,6 +4654,24 @@ internal sealed partial class M68kCodeGenerator
 		_allocatedFrameAddressesEmitted.Clear();
 	}
 
+	private void UpdateAllocatedStaticAddressRegisters(
+		M68kAllocatedFunction allocated,
+		M68kMachineInstruction instruction)
+	{
+		if (_allocatedKnownStaticAddresses.Count == 0 && _allocatedStaticAddressEmitted is null) return;
+		foreach (var register in instruction.Clobbers.Enumerate())
+			_allocatedKnownStaticAddresses.Remove(register);
+		foreach (var definition in instruction.Definitions)
+		{
+			if (!allocated.Allocation.Registers.TryGetValue(definition, out var location)) continue;
+			_allocatedKnownStaticAddresses.Remove(location.Register);
+			if (location.IsPair)
+				_allocatedKnownStaticAddresses.Remove((M68kRegister)((int)location.Register + 1));
+		}
+		if (_allocatedStaticAddressEmitted is { } address)
+			_allocatedKnownStaticAddresses[address.Register] = address.Label;
+	}
+
 	private void AddAllocatedNonNullValueRegister(
 		M68kAllocatedFunction allocated,
 		int value)
@@ -4716,7 +4746,15 @@ internal sealed partial class M68kCodeGenerator
 		if (instruction.Operation == M68kMachineOperation.Load &&
 			instruction.SourceInstruction is { } load)
 		{
-			if (IsIndirectLoad(load.OpCode))
+			if (load.OpCode == OpCodes.Ldsflda)
+			{
+				// This is the address of linked static storage, not the nullable
+				// value held there. Any required type initialization has already
+				// completed before this instruction produces the address.
+				foreach (var definition in instruction.Definitions)
+					yield return definition;
+			}
+			else if (IsIndirectLoad(load.OpCode))
 			{
 				yield return instruction.Uses[0];
 			}
@@ -5780,6 +5818,14 @@ internal sealed partial class M68kCodeGenerator
 		var label = StaticFieldLabel(field);
 		if (source.OpCode == OpCodes.Ldsflda)
 		{
+			// Volatile accesses invalidate memory contents, not the linked address
+			// already held in an otherwise unchanged physical register.
+			if (destination >= M68kRegister.A0)
+			{
+				_allocatedStaticAddressEmitted = (destination, label);
+				if (_allocatedKnownStaticAddresses.TryGetValue(destination, out var knownLabel) && knownLabel == label)
+					return;
+			}
 			var destinationEa = destination <= M68kRegister.D7
 				? (int)destination << 9
 				: (((int)destination - (int)M68kRegister.A0) << 9) | 0x40;

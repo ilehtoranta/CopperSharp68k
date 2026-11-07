@@ -110,6 +110,34 @@ public sealed class VolatileExecutionTests
 
 	[Theory]
 	[MemberData(nameof(Targets))]
+	public void StaticAddressVolatileAccessesKeepTheirEffectsWithoutRedundantNullChecks(M68kCpuTarget target, M68kPeepholeOptimizationMode mode)
+	{
+		foreach (string operation in new[] { "static", "static-clobber", "static-other", "static-call", "static-branch" })
+		{
+			var result = CompilePath(CreateIndirectFixture(operation, 4), "VolatileIndirect::Entry", target, mode,
+				output: M68kOutputFormat.Assembly);
+			var relocation = result.Relocations.First(r => r.Target == "static:04000001");
+			uint address = 0x10000 + BinaryPrimitives.ReadUInt32BigEndian(result.Code.AsSpan(relocation.Offset, 4));
+			foreach (uint condition in new uint[] { 0, 1 })
+			{
+				var bus = new ObservedBus();
+				bus.ReadScript[address] = n => (uint)n;
+				bus.ReadScript[0x5000] = _ => condition;
+				bus.ReadScript[0x6000] = _ => 77;
+				bus.ReadScript[0x7000] = _ => 88;
+				Assert.Equal(12u, Execute(result, target, bus));
+				Assert.Equal(new[] { $"W4:{address:X}:0", $"R4:{address:X}:1", $"R4:{address:X}:2" },
+					bus.Events.Where(e => e.Contains($":{address:X}:")));
+			}
+			Assert.DoesNotContain("allocated_nonnull", result.Text!, StringComparison.Ordinal);
+			Assert.True(result.Text!.Split('\n').Count(line => line.Trim() == "nop") >= 6);
+			if (operation == "static")
+				Assert.Single(result.Text.Split('\n').Where(line => line.Contains("#C68K_static_003A04000001,")));
+		}
+	}
+
+	[Theory]
+	[MemberData(nameof(Targets))]
 	public void IndirectReadsWritesAndPollingPreserveWidthCountAndOrder(M68kCpuTarget target, M68kPeepholeOptimizationMode mode)
 	{
 		foreach (int width in new[] { 1, 2, 4 })
@@ -282,6 +310,7 @@ public sealed class VolatileExecutionTests
 
 	private static string CreateIndirectFixture(string operation, int width)
 	{
+		string staticOperation = operation;
 		bool typed = operation.StartsWith("typed-", StringComparison.Ordinal);
 		if (typed) operation = operation[6..];
 		var directory = Path.Combine(AppContext.BaseDirectory, "VolatileProbes", Guid.NewGuid().ToString("N"));
@@ -291,6 +320,13 @@ public sealed class VolatileExecutionTests
 		var type = module.DefineType("VolatileIndirect", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
 		var method = type.DefineMethod("Entry", MethodAttributes.Public | MethodAttributes.Static, typeof(int), Type.EmptyTypes);
 		var il = method.GetILGenerator();
+		var field = operation.StartsWith("static", StringComparison.Ordinal) ? type.DefineField("Value", typeof(int), FieldAttributes.Public | FieldAttributes.Static) : null;
+		var otherField = staticOperation == "static-other" ? type.DefineField("Other", typeof(int), FieldAttributes.Public | FieldAttributes.Static) : null;
+		if (field is not null)
+		{
+			operation = "read";
+			il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Volatile); il.Emit(OpCodes.Stsfld, field);
+		}
 		bool local = operation == "local";
 		if (local)
 		{
@@ -298,7 +334,8 @@ public sealed class VolatileExecutionTests
 			il.DeclareLocal(typeof(int)); il.Emit(OpCodes.Ldc_I4, 0x13579BDF); il.Emit(OpCodes.Stloc_0);
 		}
 		void Address() {
-			if (local) il.Emit(OpCodes.Ldloca_S, (byte)0);
+			if (field is not null) il.Emit(OpCodes.Ldsflda, field);
+			else if (local) il.Emit(OpCodes.Ldloca_S, (byte)0);
 			else { il.Emit(OpCodes.Ldc_I4, 0x5000); il.Emit(OpCodes.Conv_U); }
 		}
 		void Read() {
@@ -306,6 +343,11 @@ public sealed class VolatileExecutionTests
 			if (typed) il.Emit(OpCodes.Ldobj, typeof(int));
 			else il.Emit(width == 1 ? OpCodes.Ldind_U1 : width == 2 ? OpCodes.Ldind_U2 : width == 8 ? OpCodes.Ldind_I8 : OpCodes.Ldind_I4);
 			if (width == 8) il.Emit(OpCodes.Conv_I4);
+		}
+		void ReadForeign(int address)
+		{
+			il.Emit(OpCodes.Ldc_I4, address); il.Emit(OpCodes.Conv_U);
+			il.Emit(OpCodes.Volatile); il.Emit(OpCodes.Ldind_I4); il.Emit(OpCodes.Pop);
 		}
 		if (operation == "branch")
 		{
@@ -341,6 +383,27 @@ public sealed class VolatileExecutionTests
 			Read();
 			if (operation == "discard") il.Emit(OpCodes.Pop);
 			else { il.Emit(OpCodes.Ldc_I4, 10); il.Emit(OpCodes.Mul); }
+			if (staticOperation == "static-clobber") ReadForeign(0x6000);
+			else if (otherField is not null)
+			{
+				il.Emit(OpCodes.Ldsflda, otherField); il.Emit(OpCodes.Volatile); il.Emit(OpCodes.Ldind_I4); il.Emit(OpCodes.Pop);
+			}
+			else if (staticOperation == "static-call")
+			{
+				var helper = type.DefineMethod("Clobber", MethodAttributes.Private | MethodAttributes.Static, typeof(void), Type.EmptyTypes);
+				helper.SetImplementationFlags(MethodImplAttributes.NoInlining);
+				var helperIl = helper.GetILGenerator();
+				helperIl.Emit(OpCodes.Ldc_I4, 0x6000); helperIl.Emit(OpCodes.Conv_U);
+				helperIl.Emit(OpCodes.Volatile); helperIl.Emit(OpCodes.Ldind_I4); helperIl.Emit(OpCodes.Pop); helperIl.Emit(OpCodes.Ret);
+				il.Emit(OpCodes.Call, helper);
+			}
+			else if (staticOperation == "static-branch")
+			{
+				var taken = il.DefineLabel(); var join = il.DefineLabel();
+				il.Emit(OpCodes.Ldc_I4, 0x5000); il.Emit(OpCodes.Conv_U); il.Emit(OpCodes.Ldind_I4);
+				il.Emit(OpCodes.Brtrue, taken); ReadForeign(0x6000); il.Emit(OpCodes.Br, join);
+				il.MarkLabel(taken); ReadForeign(0x7000); il.MarkLabel(join);
+			}
 			Read(); if (operation == "read") il.Emit(OpCodes.Add);
 		}
 		il.Emit(OpCodes.Ret); type.CreateType();

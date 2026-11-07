@@ -75,18 +75,123 @@ retention of both gains against portable, and fails the run if any check fails.
 Raw evidence for this run is in `TestResults/CilicaRestrictedVerified`. The
 original broader-pipeline audit below is retained as historical evidence.
 
-## Volatile support follow-up — 2026-11-07
+## Restricted benchmark rerun with volatile — 2026-11-07
 
-CopperSharp now supports scalar/reference CIL `volatile.` accesses; the earlier
-volatile compilation failures below are historical. With this implementation,
-the original `Volatile` kernel returns the expected **3** at input 1 in both
-baseline and restricted assemblies on MC68000/020/040 (six executions). This
-follow-up checks compatibility and result correctness; the retained benchmark
-summaries and cycle measurements have not been regenerated.
+A complete fresh run from clean compiler commit
+`561bc80c22fff8d2217c7fa43f7422822263869b` used the same pinned CILica revision,
+SDK 10.0.401, three recorded samples after warmup, and baseline/portable/restricted
+variants on MC68000/020/040. The
+[new machine-readable summary](restricted-volatile-results-summary.json)
+retains compiler/input hashes, coverage, failures, loaded sizes and cycle counts.
+The earlier summaries above remain historical.
 
-See [volatile memory support](../../Compiler/VolatileMemory.md) for semantics,
-scope, optimization tradeoffs and execution-test coverage. Local probe output
-is retained under `TestResults/VolatileSupport`.
+Restricted now compiles and passes **all 15 baseline-supported kernels on all
+three CPUs**, including volatile. All **756 restricted executions** passed;
+**2,196 executions** passed across the three variants. All 129 successful
+kernel/CPU/variant groups have stable image hashes and per-input results/cycles.
+There are **no restricted compatibility regressions or incorrect results**.
+Range.Where.Select.Sum and checked multiply remain unsupported in baseline and
+restricted output. Portable retains its existing ArrayLoop and Range.Select.Sum
+compilation failures.
+
+All six scalar-replacement/devirtualization cycle counts and speedups in the
+earlier table are unchanged, and still equal portable output. All **42 earlier
+baseline/restricted kernel/CPU comparisons** retain exactly the same cycle counts
+and loaded sizes. Both bundled applications compile with unchanged loaded sizes;
+they remain compilation/size probes only.
+
+The volatile kernel passed all four inputs (1, 7, 13, 31), three repetitions and
+three CPUs in every variant: **108 checked executions**, including 36 restricted.
+Both rewritten variants preserve all four `volatile.` prefixes. CILica expresses
+the static accesses using `ldsflda` plus volatile indirect loads/stores. This
+retains correctness but increases cycles and loaded size for this kernel:
+
+| CPU | Baseline cycles at input 31 | Restricted cycles | Cycle increase | Baseline → restricted loaded bytes |
+| --- | ---: | ---: | ---: | ---: |
+| MC68000 | 824 | 922 | 11.9% | 3,024 → 3,164 |
+| MC68020 | 175 | 201 | 14.9% | 3,072 → 3,208 |
+| MC68040 | 67 | 77 | 14.9% | 2,972 → 3,112 |
+
+Portable matches restricted for volatile. These are cold-invocation interpreter
+cycles, including startup, rather than wall-clock or physical-hardware timings.
+The profile preserves the requested scalar gains but does not improve every
+kernel.
+
+All **111 volatile regression tests** also passed again, covering changing bus
+reads, polling, repeated/discarded accesses and acquire/release boundaries through
+calls. These separately test the native backend's volatile implementation; the
+benchmark executes the rewritten volatile kernel. See
+[volatile memory support](../../Compiler/VolatileMemory.md) for semantics and
+hardware/model limits.
+
+Reproduce with:
+
+```powershell
+./scripts/CilicaAudit/run.ps1 -Restricted -SdkVersion 10.0.401 -Repetitions 3 `
+  -ResultsDirectory TestResults/CilicaRestrictedVolatileRepeat
+```
+
+Raw evidence is retained in `TestResults/CilicaRestrictedVolatileVerified`, with
+the run log at `TestResults/CilicaRestrictedVolatileVerified-run.log` and the
+historical coverage/performance cross-check in `kernels/followup-verification.json`.
+The separate regression log is
+`TestResults/VolatileSupport/volatile-benchmark-followup-tests.log`.
+
+## Removing the volatile preprocessing overhead — 2026-11-07
+
+The native output isolated two avoidable costs in CILica's volatile kernel:
+four null checks on `ldsflda` results, and repeated materialization of the same
+linked address into an unchanged address register. The compiler now recognizes
+static storage addresses as non-null after type initialization and remembers
+their exact labels within a basic block. Full-width byref copies propagate the
+fact; register definitions, call clobbers and block boundaries invalidate it.
+The address-register restriction avoids changing implicit data-register
+condition-code writes. Static field contents keep their existing nullability.
+
+No volatile load, store, width, or synchronization instruction was removed.
+The kernel still has two volatile reads, two volatile writes and eight `NOP`
+synchronization instructions. The original implementation's four redundant
+null checks disappear; two repeated address reloads also disappear. A staged
+probe with only the null-check fix measured 826/177/69 cycles, identifying the
+last two-cycle overhead before address reuse.
+
+| CPU | Baseline cycles | Restricted before | Restricted after | Restricted loaded bytes, before → after |
+| --- | ---: | ---: | ---: | ---: |
+| MC68000 | 824 | 922 | 802 | 3,164 → 2,988 |
+| MC68020 | 175 | 201 | 171 | 3,208 → 3,032 |
+| MC68040 | 67 | 77 | 67 | 3,112 → 2,936 |
+
+These are input-31 cold-invocation interpreter cycles including startup. The
+12–15% slowdown is eliminated on all three CPUs; portable matches restricted.
+Each rewritten volatile image is 176 loaded bytes smaller than before.
+
+A fresh three-sample baseline/portable/restricted run again passed **all 15
+baseline-supported kernels** on all three CPUs: **2,196 correct executions**,
+including **756 restricted** and **108 volatile** executions across variants.
+All 129 successful groups have stable images, results and cycles. Restricted
+introduced no compatibility regressions. All 42 nonvolatile baseline/restricted
+kernel/CPU comparisons have unchanged cycles and loaded sizes, including all
+six scalar-replacement/devirtualization gains. The existing unsupported cases
+remain compilation failures.
+Both applications still compile in every variant/CPU combination. Polymorphism
+keeps its earlier loaded sizes; StopwatchBenchmark is 76 loaded bytes smaller in
+every combination. These remain compilation/size checks, without native OS
+execution.
+
+The [optimized summary](restricted-volatile-optimized-results-summary.json)
+records the compiler binary hash, base commit `561bc80c2`, and SHA-256 of the
+uncommitted source patch used for this build. Raw evidence and that patch are
+under `TestResults/CilicaVolatileOptimizedVerified`; the run log is
+`TestResults/CilicaVolatileOptimizedVerified-run.log`. The historical cross-check
+is in `kernels/optimization-verification.json`. Staged assembly and cycle probes
+are under `TestResults/VolatileOptimization`.
+
+All **123 volatile tests** pass, including static-address access traces through
+clobbers, different fields, managed calls and both branch paths, with assembly
+checks for synchronization and address reuse. Another **232 related tests** and
+**12 type-initialization tests** pass. Logs are in
+`TestResults/VolatileSupport/static-address-reuse-final-tests.log`,
+`static-address-related-tests.log` and `static-address-type-init-tests.log`.
 
 ## Inputs and measurement
 
