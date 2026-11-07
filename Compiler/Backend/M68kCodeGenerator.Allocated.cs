@@ -1971,8 +1971,9 @@ internal sealed partial class M68kCodeGenerator
 								instruction.ArgumentIndex!.Value]));
 					return;
 				}
-				EmitAllocatedFrameStore(
+				EmitAllocatedTypedFrameStore(
 					Location(instruction.Uses[0]).Register,
+					storedValue.Kind,
 					localHome.Index < method.Locals.Length
 						? AllocatedFrameStorageWidth(
 							method.Locals[localHome.Index],
@@ -1996,8 +1997,9 @@ internal sealed partial class M68kCodeGenerator
 					 storedArgumentValue.Width == M68kMachineValueWidth.LongPair &&
 					 allocated.Function.ArgumentHomes[storedArgumentIndex].Size == 8))
 				{
-					EmitAllocatedFrameStore(
+					EmitAllocatedTypedFrameStore(
 						Location(instruction.Uses[0]).Register,
+						storedArgumentValue.Kind,
 						AllocatedFrameStorageWidth(storedArgumentType,
 							storedArgumentValue.Width),
 						AllocatedFrameOffset(allocated,
@@ -2581,6 +2583,11 @@ internal sealed partial class M68kCodeGenerator
 				var rotateRegister = Location(instruction.Definitions[0]).Register;
 				EmitAllocatedMove(Location(instruction.Uses[0]).Register, rotateRegister, M68kMachineValueWidth.Long);
 				int rotate = instruction.Immediate!.Value;
+				if (rotate == 16)
+				{
+					_assembler.EmitWord((ushort)(0x4840 | (int)rotateRegister)); // SWAP Dn
+					return;
+				}
 				_assembler.EmitWord((ushort)((rotate > 0 ? 0xE198 : 0xE098) |
 					((Math.Abs(rotate) & 7) << 9) | (int)rotateRegister));
 				return;
@@ -5205,6 +5212,22 @@ internal sealed partial class M68kCodeGenerator
 				? M68kMachineValueWidth.Word
 				: M68kMachineValueWidth.Long;
 
+	private void EmitAllocatedTypedFrameStore(
+		M68kRegister source,
+		CilStackValueKind sourceKind,
+		M68kMachineValueWidth storageWidth,
+		int displacement)
+	{
+		// A narrow evaluation-stack value can be assigned to a wider CIL home.
+		// Normalize before writing the whole slot, even when normalization was
+		// deferred at its producer. A partial store would move the value to the
+		// high byte/word of a later big-endian Int32 reload.
+		if (storageWidth == M68kMachineValueWidth.Long && CilStackValueLayout.IsSmall(sourceKind) ||
+			storageWidth == M68kMachineValueWidth.Word && CilStackValueLayout.IsByte(sourceKind))
+			EmitAllocatedNormalize(source, sourceKind);
+		EmitAllocatedFrameStore(source, storageWidth, displacement);
+	}
+
 	private static M68kMachineValueWidth AllocatedFrameStorageWidth(
 		CilType type,
 		M68kMachineValueWidth valueWidth) =>
@@ -5212,6 +5235,8 @@ internal sealed partial class M68kCodeGenerator
 		{
 			1 => M68kMachineValueWidth.Byte,
 			2 => M68kMachineValueWidth.Word,
+			// Aggregate lane stores retain the lane's width, even for a four-byte struct.
+			4 when type.IsSupportedScalar => M68kMachineValueWidth.Long,
 			_ => valueWidth
 		};
 

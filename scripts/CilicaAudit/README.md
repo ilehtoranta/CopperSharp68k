@@ -193,6 +193,206 @@ checks for synchronization and address reuse. Another **232 related tests** and
 `TestResults/VolatileSupport/static-address-reuse-final-tests.log`,
 `static-address-related-tests.log` and `static-address-type-init-tests.log`.
 
+## Signed checked Int32 support — 2026-11-08
+
+Signed Int32 `mul.ovf` now lowers to the registered managed numeric helper
+`Integer32Arithmetic.MultiplyCheckedSigned`. It widens the operands before the
+multiply, checks both Int32 bounds and raises the canonical OverflowException.
+The replacement call retains the original IL offset and EH boundaries, so
+discarded checked results, catches and finally blocks remain observable. It uses
+the existing integer backend with floating point disabled; checked Int64
+multiplication remains explicitly unsupported.
+
+The benchmark oracle is now shared directly with the test project in
+[`ReferenceResults.cs`](ReferenceResults.cs). Its checked case uses host C#
+`checked` multiplication and catches OverflowException, fixing the previous
+one-sided threshold. The benchmark now executes **12 checked inputs**:
+0, 1, -1, 7, 13, 21, 22, -21, -22, 31, Int32.MinValue and Int32.MaxValue.
+Thus both successful ±21 products and overflowing ±22 products are checked.
+
+The new narrowed-result test also exposed a separate frame-store error: storing
+a byte-converted result into a declared Int32 local emitted a byte write, then
+reloaded the whole slot. Big-endian output returned `0xFF000000` for 255. Scalar
+local/argument stores now use the declared home width and normalize narrower
+sources before wider stores, including when producer normalization was deferred.
+Aggregate lane stores retain their original widths.
+Independent plain-narrow-local and address-taken-argument cases cover this fix.
+
+All **37 new tests** pass. They include 28 operand pairs over four output targets
+and all three peephole modes, covering signs, zero, Int32 limits, MinValue times
+-1, 46340/46341 square boundaries, narrowed operands/results, constant overflow,
+discarded results, calls and catch/finally unwinding. Their target tests perform
+**2,700 executions**. Host helper checks also cover the boundaries and 10,000
+deterministic random pairs; nine test rows exercise the actual benchmark oracle.
+Another **598 related tests** pass, including arithmetic selection, Int64,
+floating conversions, narrow ABI/frame storage, struct-return and frame-transfer
+coverage, volatile, byref and optimizers. MC68060 output uses the emulator's
+MC68040 core for execution.
+
+A fresh three-sample restricted run passes **all 16 baseline-supported kernels
+on MC68000/020/040**. It records **2,520 correct executions** across baseline,
+portable and restricted, including **864 restricted** and **324 checked-overflow**
+executions. All 138 successful kernel/CPU/variant groups have stable images,
+per-input results and cycles. There are no restricted compatibility regressions
+or incorrect results. The original Range.Where.Select.Sum case is now the only
+baseline/restricted failure. Portable retains its separate ArrayLoop and
+Range.Select.Sum failures.
+
+| CheckedOverflow at input 31 | Baseline cycles | Restricted cycles | Baseline → restricted loaded bytes |
+| --- | ---: | ---: | ---: |
+| MC68000 | 7,380 | 7,222 | 3,376 → 3,332 |
+| MC68020 | 1,905 | 1,868 | 3,416 → 3,372 |
+| MC68040 | 734 | 718 | 3,320 → 3,276 |
+
+All **45 earlier baseline/restricted kernel/CPU comparisons** retain their
+cycles and loaded sizes, including scalar replacement, devirtualization and the
+optimized volatile path. Both application compilation/size probes also pass.
+These remain cold-invocation interpreter cycles including startup, rather than
+physical hardware timings or host compilation-time claims.
+
+The [checked-Int32 summary](checked-int32-results-summary.json) records compiler,
+managed-runtime and input hashes. This run uses base commit `c156ad864` plus the
+recorded worktree snapshot, which includes other in-flight backend edits. Raw
+evidence is under `TestResults/CilicaCheckedInt32Final`, with its run log at
+`TestResults/CilicaCheckedInt32Final-run.log`. The historical/matrix cross-check
+is `kernels/checked-support-verification.json`. New source files and source hashes
+are retained in `source-inputs/` and `source-inputs.json`; test logs are
+`TestResults/CheckedInt32Support/checked-final-tests.log` (the expanded final set),
+`checked-tests-4.log` and `related-tests.log` (the earlier focused runs).
+
+Reproduce with:
+
+```powershell
+./scripts/CilicaAudit/run.ps1 -Restricted -SdkVersion 10.0.401 -Repetitions 3 `
+  -ResultsDirectory TestResults/CilicaCheckedInt32Repeat
+```
+
+## Remaining unsupported cases: feasibility investigation — 2026-11-07
+
+This retained investigation predates the signed checked Int32 support described
+above; that implementation supersedes the multiplication findings below.
+
+Both remaining failures also occur in baseline IL. They are CopperSharp support
+gaps, independent of the restricted CILica pass selection. This investigation
+leaves the production compiler unchanged. The retained
+[probe summary](unsupported-cases-investigation.json) records the clean base
+commit `c156ad864`, compiler/input hashes and execution coverage.
+
+### Range.Where.Select.Sum
+
+The exact missing stage is `Select<int,int>` after `Range.Where`.
+[`CompilationModule`](../../Compiler/Metadata/CompilationModule.cs) deliberately
+requires exact `Range` provenance at the Select call. This matches the runtime:
+[`ShadowEnumerable.SelectInt32`](../../Runtime.Managed/FrameworkShadows.cs)
+casts its source to `ShadowRangeIterator`. Removing the provenance guard would
+therefore select the wrong runtime representation.
+
+The existing compiler already supports the benchmark-equivalent expression:
+
+```csharp
+Enumerable.Range(0, n).Where(x => (x & 1) == 0).Sum(x => x * 3)
+```
+
+It resolves to `RangeWhereInt32SumSelector`, whose existing filtered loop invokes
+the selector only on accepted elements and uses checked accumulation. This proves
+the required predicate/selector delegates, checked Sum and exception machinery
+already work. It is an application-level alternative for this direct, pure
+benchmark expression, rather than a general justification for rewriting deferred
+Select queries into Sum calls.
+
+A focused implementation of the original syntax would:
+
+1. Add a distinct `RangeWhereSelect` provenance state and its transfer through
+   stack/local/control-flow joins in `EnumerableSourceProvenance.cs`. Unknown or
+   mixed iterator families must continue to fail closed.
+2. Select a dedicated factory for `Select<int,int>` on an exact `RangeWhere`
+   source. Add immutable deferred state holding that source and selector, with
+   immediate argument validation and no callback evaluation at construction.
+3. Bind Sum on the new family to its exact terminal, reusing the existing
+   filtered selector-sum loop. Keep callback order, checked accumulation and
+   repeatability. Keep the factory's source/selector rooted across GC.
+4. Add host and native tests for empty/all/none matches, null selector timing,
+   captured delegates, callback exceptions, repeated terminals, explicit
+   collection, and provenance merges. Unknown sources and indexed/generic
+   overloads remain outside this narrow slice.
+
+`Range.Select.Where` is an existing, different family; it cannot stand in for
+filter-then-project. Extending `Take`, `Any`, `ToArray` and public enumeration to
+the new family is additional work and should be explicitly admitted/tested.
+For a first Sum-only Int32 slice, estimate **1–2 engineering days**, including
+tests and audit rerun. A matching set of additional terminals is a larger follow-up.
+
+### Signed checked Int32 multiplication
+
+The benchmark fails at `mul.ovf`. Typed stack analysis accepts its Int32 form,
+but `CilMachineIrBuilder` maps only `mul` and `mul.ovf.un` to Multiply and only
+constrains those forms to the arithmetic registers. Signed `mul.ovf` becomes
+`Other` and later produces the internal "allocated emission is incomplete"
+failure. Unsigned checked multiplication and canonical OverflowException
+raising already exist; signed checked Int64 arithmetic is a separate rejected
+scope.
+
+The smallest correctness-first route is to extend the existing numeric-helper
+lowering in `CompilationModule.Numeric.cs`: replace signed Int32 `mul.ovf` with
+a registered runtime helper call at the same IL offset. The helper computes:
+
+```csharp
+long product = (long)left * right;
+if (product < int.MinValue || product > int.MaxValue)
+    M68kRuntime.ThrowOverflowException();
+return (int)product;
+```
+
+Every Int32-by-Int32 product fits in Int64, and the compiler already emits this
+unchecked Int64 multiply and comparison sequence on all output targets. The
+registered call path already carries throwing behavior, call clobbers and EH
+edges, so it avoids prematurely routing the opcode into unchecked native
+multiply or constant-strength-reduction paths. It requires the managed numeric
+runtime to be resolvable, as existing numeric-helper operations do. This is a
+portable starting point; CPU-specific faster lowering can follow separately.
+
+A direct native implementation would additionally need signed opcode mapping,
+fixed-register constraints, scratch clobbers, `MayThrow`, correct overflow
+detection, and exclusion from unchecked constant-multiply transforms. Changing
+the opcode classifier alone would not provide checked semantics.
+
+Tests should cover zero, all sign combinations, Int32 bounds, MinValue times
+-1, 46340/46341 square boundaries, discarded results, catches/finally, and all
+peephole modes. The audit's current checked-overflow oracle only handles its
+positive inputs: before adding negative edge inputs, replace its one-sided
+threshold with a host `checked` multiply/catch oracle. The benchmark's
+100,000,000 factor needs both +21/+22 and -21/-22 cases.
+
+Estimate **half a day to one engineering day** for the helper-based Int32 slice,
+including integration, regression tests, stable diagnostics for remaining
+unsupported forms and the benchmark rerun. Full checked arithmetic, especially
+64-bit multiplication, is outside that estimate.
+
+### Probe evidence and recommended order
+
+On the unchanged compiler, **1,704 alternative executions passed** across
+baseline/restricted IL, all four output targets and disabled/fixed-point/bounded
+peepholes. The original two forms still fail in all **48 expected unsupported
+groups**; the alternatives pass in 120 groups:
+
+| Alternative | Checked executions |
+| --- | ---: |
+| Where.Sum(selector), including empty input | 168 |
+| Where.Sum(selector), catching accumulation overflow | 168 |
+| Explicit widened checked product | 456 |
+| Widened checked product with discarded result | 456 |
+| Widened checked product through catch/finally | 456 |
+
+These probes validate the reusable building blocks, not an implementation of
+the original unsupported opcodes/query shape. MC68060 output executes on the
+emulator's MC68040 model. The full logs, fixture/runner sources, rewritten DLLs
+and maps are under `TestResults/UnsupportedPipelineInvestigation`.
+
+Implement the signed Int32 helper route first, then the deferred Range.Where.Select
+family with an exact Sum terminal. Keep the restricted CILica pass allowlist
+unchanged. The effort ranges above are engineering estimates for these focused
+slices, not for general LINQ or every checked CIL operation.
+
 ## Inputs and measurement
 
 Upstream: [hez2010/Cilica](https://github.com/hez2010/Cilica), commit

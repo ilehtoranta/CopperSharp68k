@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="../scripts/CilicaAudit/ReferenceResults.cs" Link="CilicaAuditReferenceResults.cs" />
   </ItemGroup>
 
   <ItemGroup>

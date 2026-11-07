@@ -273,7 +273,7 @@ internal static class M68kMachineOptimizer
 		// C# expresses a rotate as two complementary logical shifts of the same
 		// value. Fold before allocation so neither shifted copy needs a register.
 		if (!function.Blocks.Any(b => b.Instructions.Any(i => i.Operation == M68kMachineOperation.Shift &&
-			i.Immediate is >= 24 and <= 31))) return;
+			i.Immediate is 16 or (>= 24 and <= 31)))) return;
 		var definitions = function.Blocks.SelectMany(b => b.Instructions)
 			.SelectMany(i => i.Definitions.Select(v => (v, i))).ToDictionary(p => p.v, p => p.i);
 		foreach (var block in function.Blocks)
@@ -296,9 +296,9 @@ internal static class M68kMachineOptimizer
 				function.Values[left.Definitions[0]].Width != M68kMachineValueWidth.Long ||
 				function.Values[right.Definitions[0]].Width != M68kMachineValueWidth.Long ||
 				left.Immediate is not int l || right.Immediate is not int r || l + r != 32 ||
-				l is < 1 or > 31 || Math.Min(l, r) > 8) continue;
+				l is < 1 or > 31 || (l != 16 && Math.Min(l, r) > 8)) continue;
 			block.Instructions[index] = instruction with { Operation = M68kMachineOperation.RotateImmediate,
-				Uses = [x], Immediate = l <= 8 ? l : -r, Clobbers = M68kRegisterSet.None };
+				Uses = [x], Immediate = l <= 8 || l == 16 ? l : -r, Clobbers = M68kRegisterSet.None };
 			function.Values[result] = value with { AllowedRegisters = value.AllowedRegisters.Intersect(M68kRegisterSet.Data) };
 		}
 

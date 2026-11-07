@@ -4,10 +4,11 @@
 */
 namespace CopperSharp.Compiler.Backend;
 
-/// <summary>Least fixed point of writes-before-observation for private local bytes.
+/// <summary>Greatest fixed point of writes-before-observation for private local bytes.
 /// Unknown uses escape a home; later unknown effects can observe escaped homes.
 /// An unexposed home cannot be reached by a call without a derived address argument.
-/// Cycles without a definite write conservatively retain the implicit clear.</summary>
+/// A cycle that never observes a home does not require its entry clear. Any
+/// finite path to an observation before a write still retains initialization.</summary>
 internal static class M68kPrivateInitializationAnalysis
 {
     internal static IReadOnlySet<(int Home, int Offset)> FindOverwrites(
@@ -66,7 +67,11 @@ internal static class M68kPrivateInitializationAnalysis
                     if (IsAddressUse(instruction) && !IsAddressOnly(instruction) && !IsInitialize(instruction)) escaped = true;
                 }
             }
-            var entryWrites = function.Blocks.ToDictionary(b => b.Id, _ => new bool[home.Size]);
+            // This is a backward must analysis: start at the top and remove
+            // bytes with a path to an observation before their first write.
+            // Starting at the bottom makes an unrelated loop pin every home,
+            // even when all accesses follow a complete overwrite after it.
+            var entryWrites = function.Blocks.ToDictionary(b => b.Id, _ => Enumerable.Repeat(true, home.Size).ToArray());
             do {
                 changed = false;
                 foreach (var block in function.Blocks.AsEnumerable().Reverse()) {

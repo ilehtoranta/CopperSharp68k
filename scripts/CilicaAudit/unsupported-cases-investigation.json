@@ -1,0 +1,157 @@
+{
+  "CompilerHead": "c156ad8641413eec725b4e01a7f93e896bce033d",
+  "CompilerSha256": "EACD29B7B2B5DD5D2FE5F2284222BD05A8DDDF55205713A966E5301CB49C0534",
+  "CilicaRevision": "a879c85f1608c764c7ab4f52b66b2b5db1ee60b6",
+  "Runtime": ".NET 10.0.12",
+  "SdkVersion": "10.0.401",
+  "BaselineProbeSha256": "FBFDDD80E4C8F9CF693C14513577C624DF6781012D9EA9CAE287A3887BEE8D3B",
+  "RestrictedProbeSha256": "BC32467297E222313005F80EFE1CB5DC4B4BC96F65A192CDDF92347FA5DD4AC7",
+  "Targets": [
+    "M68000",
+    "M68020",
+    "M68040",
+    "M68060"
+  ],
+  "M68060ExecutionModel": "M68040",
+  "PeepholeModes": [
+    "Disabled",
+    "FixedPoint",
+    "Bounded"
+  ],
+  "Variants": [
+    "baseline",
+    "restricted"
+  ],
+  "OriginalUnsupportedGroups": 48,
+  "PassingAlternativeGroups": 120,
+  "PassingAlternativeExecutions": 1704,
+  "ProductionCompilerChanged": false,
+  "Scope": "Application-level feasibility probes; original LINQ Select-after-Where and signed mul.ovf remain unsupported.",
+  "Alternatives": [
+    {
+      "Entry": "SumSelectorLinq",
+      "Groups": 24,
+      "Executions": 168.0
+    },
+    {
+      "Entry": "SumSelectorOverflow",
+      "Groups": 24,
+      "Executions": 168.0
+    },
+    {
+      "Entry": "WideChecked",
+      "Groups": 24,
+      "Executions": 456.0
+    },
+    {
+      "Entry": "WideCheckedDiscarded",
+      "Groups": 24,
+      "Executions": 456.0
+    },
+    {
+      "Entry": "WideCheckedFinally",
+      "Groups": 24,
+      "Executions": 456.0
+    }
+  ],
+  "OriginalFailures": [
+    {
+      "Entry": "OriginalChecked",
+      "Groups": 24,
+      "Error": "System.InvalidOperationException: Failed to emit UnsupportedProbes.Probes::OriginalChecked: Allocated emission is incomplete for 'UnsupportedProbes.Probes::OriginalChecked': phi=False, operations=Other/mul.ovf@IL_000A assigned=[D2,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "OriginalLinq",
+      "Groups": 24,
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: UnsupportedProbes.Probes::OriginalLinq IL_004E: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: UnsupportedProbes.Probes::OriginalLinq IL_004E: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: UnsupportedProbes.Probes::OriginalLinq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    }
+  ],
+  "CheckedMultiplyPairs": [
+    [
+      0,
+      -2147483648
+    ],
+    [
+      1,
+      2147483647
+    ],
+    [
+      -1,
+      -2147483648
+    ],
+    [
+      -2147483648,
+      1
+    ],
+    [
+      -2147483648,
+      0
+    ],
+    [
+      -2147483648,
+      -2147483648
+    ],
+    [
+      2147483647,
+      2147483647
+    ],
+    [
+      2147483647,
+      2
+    ],
+    [
+      46340,
+      46340
+    ],
+    [
+      46341,
+      46341
+    ],
+    [
+      -46340,
+      46340
+    ],
+    [
+      -46341,
+      46341
+    ],
+    [
+      -21,
+      100000000
+    ],
+    [
+      -22,
+      100000000
+    ],
+    [
+      21,
+      100000000
+    ],
+    [
+      22,
+      100000000
+    ],
+    [
+      7,
+      13
+    ],
+    [
+      -7,
+      -13
+    ],
+    [
+      -7,
+      13
+    ]
+  ],
+  "LinqCounts": [
+    0,
+    1,
+    2,
+    3,
+    7,
+    13,
+    31
+  ],
+  "RawEvidenceDirectory": "TestResults/UnsupportedPipelineInvestigation"
+}

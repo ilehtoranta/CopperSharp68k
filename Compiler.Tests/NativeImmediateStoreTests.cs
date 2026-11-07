@@ -6,6 +6,32 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class NativeImmediateStoreTests
 {
     [Theory]
+    [InlineData(M68kCpuModel.M68000)]
+    [InlineData(M68kCpuModel.M68EC020)]
+    public void NarrowStoresPreserveTheFullInputAndOtherConsumersOfTheConversion(M68kCpuModel model)
+    {
+        const string export = "store.truncated-integer";
+        var result = AmigaM68kCompiler.Compile(new() {
+            AssemblyPath = typeof(NativeImmediateStoreFixture).Assembly.Location,
+            EntryPoint = typeof(NativeImmediateStoreFixture).FullName + "::Empty", IncludedExportNames = [export],
+            Cpu = M68kCpuTarget.M68000, MemoryManagement = M68kMemoryManagement.None, ExceptionMode = M68kExceptionMode.Yolo,
+            RuntimeProfile = M68kRuntimeProfile.Freestanding, OutputFormat = M68kOutputFormat.Hunk,
+        });
+        var bus = new StoreBus { Target = 0x30000, Width = 4 };
+        result.Code.CopyTo(bus.Inner.Memory.AsSpan(0x10000));
+        bus.Inner.WriteLong(bus.Target, 0xA5A5A5A5);
+        bus.Inner.WriteLong(0x80000, 0x1000);
+        using var core = M68kCoreFactory.Default.Create(model, bus);
+        core.Reset(0x10000 + result.Symbols.Single(s => s.Name == export).Address, 0x80000);
+        core.State.A[1] = bus.Target;
+        core.State.D[0] = 0x89ABCDEF;
+        for (int i = 0; i < 64 && core.State.ProgramCounter != 0x1000; i++) core.ExecuteInstruction();
+        Assert.Equal(0x1000u, core.State.ProgramCounter);
+        Assert.Equal(0x89AB0000u, core.State.D[0]);
+        Assert.Equal(0xCDEFEFA5u, bus.Inner.ReadLong(bus.Target));
+    }
+
+    [Theory]
     [InlineData("float", 0x3F800000u)]
     [InlineData("null", 0u)]
     public void SharedAddressSelectionDoesNotDecodeOtherConstantKindsAsAddresses(string kind, uint expected)

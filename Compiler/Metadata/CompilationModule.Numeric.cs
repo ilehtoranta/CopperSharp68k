@@ -29,7 +29,7 @@ internal sealed partial class CompilationModule
 		if (!ReferenceEquals(this, _root)) return _root.LowerNumericOperations(method);
 		if (method.IsImport || method.HasDeferredBody) return method;
 		if (_numericMethods.TryGetValue(method.Identity, out var previous)) return previous;
-		if (!method.Instructions.Any(instruction => IsIntegerDivision(instruction.OpCode) ||
+		if (!method.Instructions.Any(instruction => IsIntegerDivision(instruction.OpCode) || instruction.OpCode == OpCodes.Mul_Ovf ||
 			(_floatingPointMode != M68kFloatingPointMode.Disabled && (instruction.OpCode == OpCodes.Neg || IsFloatingBinary(instruction.OpCode) || FloatingComparisonName(instruction.OpCode) is not null ||
 			 instruction.OpCode.Name?.StartsWith("conv.", StringComparison.Ordinal) == true))))
 			return method;
@@ -44,6 +44,20 @@ internal sealed partial class CompilationModule
 		for (var index = 0; index < instructions.Length; index++)
 		{
 			var instruction = instructions[index];
+			if (instruction.OpCode == OpCodes.Mul_Ovf && states.TryGetValue(instruction.Offset, out var multiplyStack))
+			{
+				if (multiplyStack.Length < 2 || !IsInt32Operand(multiplyStack[^1]) || !IsInt32Operand(multiplyStack[^2]))
+					throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction,
+						"Signed checked multiplication currently requires Int32 operands.", method.DisplayName, instruction.Offset);
+				var type = IntegralType(false, false);
+				var multiplySignature = new MethodSignature<CilType>(new SignatureHeader(0), type, 2, 0, ImmutableArray.Create(type, type));
+				RegisterNumericCall(method, instruction, "Integer32Arithmetic", "MultiplyCheckedSigned", multiplySignature);
+				// Preserve the original IL/EH boundaries. A registered throwing call
+				// also keeps discarded products observable and avoids unchecked MUL
+				// strength reduction before the runtime has checked the full product.
+				instructions[index] = instruction with { OpCode = OpCodes.Call, Operand = 0 };
+				continue;
+			}
 			if (IsIntegerDivision(instruction.OpCode) && states.TryGetValue(instruction.Offset, out var arithmeticStack) &&
 				!arithmeticStack.IsEmpty && arithmeticStack[^1] == CilStackValueKind.Int64)
 			{
@@ -195,6 +209,7 @@ internal sealed partial class CompilationModule
 	private static bool IsFloatingBinary(OpCode op) => op == OpCodes.Add || op == OpCodes.Sub || op == OpCodes.Mul || op == OpCodes.Div || op == OpCodes.Rem;
 
 	private static bool IsIntegerDivision(OpCode op) => op == OpCodes.Div || op == OpCodes.Div_Un || op == OpCodes.Rem || op == OpCodes.Rem_Un;
+	private static bool IsInt32Operand(CilStackValueKind kind) => kind == CilStackValueKind.Int32 || CilStackValueLayout.IsSmall(kind);
 
 	private static CilType FloatingType(bool single) => new(CilTypeKind.FloatingPoint, single ? 4 : 8, single ? "float" : "double");
 	private static CilType IntegralType(bool wide, bool unsigned) => new(unsigned ? CilTypeKind.UnsignedInteger : CilTypeKind.SignedInteger,

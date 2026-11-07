@@ -5,6 +5,16 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class NativeImmediateStoreFixture
 {
+    [M68kInternalRegisterAbi, M68kExport("store.truncated-integer")]
+    public static uint StoreTruncatedInteger([M68kRegister(M68kRegister.A1)] APTR pointer,
+        [M68kRegister(M68kRegister.D0)] uint value)
+    {
+        ushort word = (ushort)value;
+        APTR.WriteUInt16(pointer, 0, word);
+        APTR.WriteUInt8(pointer, 2, (byte)value);
+        return value ^ word;
+    }
+
     [M68kInternalRegisterAbi, M68kExport("store.word.shared-float")]
     public static uint SharedAddressAlongsideFloat()
     {

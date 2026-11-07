@@ -11,6 +11,7 @@ using CopperSharp.Compiler;
 using CopperSharp.Compiler.Tests;
 using CopperSharp.Targets.Amiga;
 using CopperSharp.Tools;
+using CopperSharp.Tools.CilicaAudit;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
 string Hash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
@@ -102,6 +103,7 @@ Save(Path.Combine(output, "environment.json"), new { Runtime = System.Runtime.In
     OS = System.Runtime.InteropServices.RuntimeInformation.OSDescription, ProcessorCount = Environment.ProcessorCount,
     TieredCompilation = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"),
     CompilerSha256 = Hash(typeof(M68kCompiler).Assembly.Location), CilicaSha256 = Hash(typeof(Compilation).Assembly.Location),
+    ManagedRuntimeSha256 = Hash(Path.Combine(AppContext.BaseDirectory, "CopperSharp.Runtime.Managed.dll")),
     Inputs = variants.Where(v => File.Exists(v.Path)).Select(v => new { v.Name, v.Path, Sha256 = Hash(v.Path) }),
     TimingScope = "In-process Compile only, one unrecorded warmup per variant/case/CPU, reversed variant order on odd rounds. Target cycles include cold startup. No preprocessing time included in Compile." });
 var entries = args[0] == "example" ? new[] { args[3] } : new[] { "Arithmetic", "CommonExpressions", "Inlining", "StructPromotion", "ScalarReplacement", "Devirtualization", "Loop", "ArrayLoop", "Linq", "LinqRangeSelect", "ListGrowth", "Aliasing", "Volatile", "Finally", "NativeWidth", "SwitchTable", "CheckedOverflow" }.Select(x => "CilicaAudit.Kernels::" + x).ToArray();
@@ -135,7 +137,9 @@ foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kC
             File.WriteAllBytes(Path.Combine(output, stem + ".hunk"), result.Image);
             File.WriteAllText(Path.Combine(output, stem + ".map"), result.Map);
             string name = entry.Split("::")[1];
-            int[] inputs = name is "Arithmetic" or "CommonExpressions" or "Inlining" or "StructPromotion" or "ScalarReplacement" or "Devirtualization" or "Aliasing" or "NativeWidth"
+            int[] inputs = name == "CheckedOverflow"
+                ? [0, 1, -1, 7, 13, 21, 22, -21, -22, 31, int.MinValue, int.MaxValue]
+                : name is "Arithmetic" or "CommonExpressions" or "Inlining" or "StructPromotion" or "ScalarReplacement" or "Devirtualization" or "Aliasing" or "NativeWidth"
                 ? [1, 7, 13, 31, -1, int.MinValue, int.MaxValue] : [1, 7, 13, 31];
             var executions = args[0] == "example" ? [] : inputs.Select(value => Execute(result, target, value)).ToArray();
             foreach (var execution in executions)
@@ -182,20 +186,3 @@ static Execution Execute(M68kCompilationResult result, M68kCpuTarget target, int
     throw new InvalidOperationException("Execution budget exceeded");
 }
 record Execution(int Input, int Result, long Cycles, int Instructions);
-
-static class ReferenceResults
-{
-    public static int Get(string name, int x) => unchecked(name switch {
-        "Arithmetic" => ((x * 8 + x * 2) ^ (x >> 3)) + x % 16,
-        "CommonExpressions" => (x * 7 + 11) * (x * 7 + 11) + (x * 7 + 11),
-        "Inlining" => x * 3 + ((x * 3) >> 2) + x * 5 + ((x * 5) >> 2),
-        "StructPromotion" => (x + 7) * 7, "ScalarReplacement" => (x + 7) * 3,
-        "Devirtualization" => (x * 3 + 1) * 2, "Loop" => 3 * x * (x - 1) / 2 + 7 * x,
-        "ArrayLoop" => 2016 + 64 * x, "Linq" => 3 * ((x + 1) / 2) * (((x + 1) / 2) - 1),
-        "LinqRangeSelect" => 3 * x * (x - 1) / 2, "ListGrowth" => 2 * x - 1,
-        "Aliasing" => (x + 3) * 4, "Volatile" => 2 * x + 1,
-        "Finally" => x == 13 ? 35 : 6 * x + 1, "NativeWidth" => x & 7,
-        "SwitchTable" => (x & 7) switch { 0 => 0x1234, 1 => 0x2345, 2 => 0x3456, 3 => 0x4567, 4 => 0x5678, 5 => 0x6789, 6 => 0x789a, _ => 0x1357 },
-        "CheckedOverflow" => x > int.MaxValue / 100_000_000 ? 42 : x * 100_000_000,
-        _ => throw new ArgumentException(name) });
-}

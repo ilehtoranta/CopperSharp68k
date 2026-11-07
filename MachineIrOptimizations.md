@@ -1,5 +1,14 @@
 # SSA Machine-IR Optimization
 
+Private frame initialization uses a backward must analysis over local bytes.
+Its fixed point starts at the top: an unrelated, unobserved loop must not pin
+entry clearing of a home that is completely overwritten before observation.
+An execution path that reads or exposes the old bytes still retains their
+initialization. GC homes, exception handlers and dynamic stack allocation keep
+their existing conservative handling. The analysis does not remove volatile
+effects or change their ordering. CILica inlining makes this distinction visible
+when cold work records share a dispatcher with frequently executed packets.
+
 The always-on machine-IR optimizer runs on typed SSA values before physical
 register allocation. It is separate from the encoded-instruction peephole
 optimizer described in [PeepholeOptimizations.md](PeepholeOptimizations.md).

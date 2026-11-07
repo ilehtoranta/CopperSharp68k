@@ -69,12 +69,41 @@ public sealed class PrivateInitializationSizeTests
     }
 
     [Fact]
-    public void LoopWithoutDefiniteWriteRetainsInitialization()
+    public void LoopWithoutAnyObservationDoesNotRequireInitialization()
     {
         var function = new M68kMachineFunction("loop", 0); function.LocalHomes.Add(0, new(0, 8, false));
         var entry = new M68kMachineBlock(0, 0); function.Blocks.Add(entry);
         function.AddEdge(entry, entry, M68kMachineEdgeKind.Normal);
-        Assert.Empty(M68kPrivateInitializationAnalysis.FindOverwrites(function, i => i.MemorySize));
+        Assert.Equal(new[] { (0, 0), (0, 4) }, M68kPrivateInitializationAnalysis.FindOverwrites(function, i => i.MemorySize).OrderBy(v => v.Offset));
+    }
+
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    public void LoopBeforeACompleteWriteDoesNotPinUnobservedPrivateStorage(bool readInsideLoop, bool escapeInsideLoop, bool removable)
+    {
+        var function = new M68kMachineFunction("loop-before-write", 0);
+        function.LocalHomes.Add(0, new(0, 8, false));
+        var entry = new M68kMachineBlock(0, 0); var loop = new M68kMachineBlock(1, 10); var exit = new M68kMachineBlock(2, 20);
+        function.Blocks.AddRange([entry, loop, exit]);
+        function.AddEdge(entry, loop, M68kMachineEdgeKind.Normal);
+        function.AddEdge(loop, loop, M68kMachineEdgeKind.Normal);
+        function.AddEdge(loop, exit, M68kMachineEdgeKind.Normal);
+        if (readInsideLoop) loop.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalLoad, 10, argumentIndex: 0));
+        if (escapeInsideLoop)
+        {
+            var address = function.CreateValue(CilStackValueKind.ManagedPointer, M68kMachineValueWidth.Long, M68kRegisterSet.Address).Id;
+            entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalAddress, 0, definitions: [address], argumentIndex: 0));
+            loop.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Call, 11, uses: [address],
+                memoryEffect: M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write));
+        }
+        else loop.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Call, 11,
+            memoryEffect: M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Volatile));
+        exit.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalStore, 20, argumentIndex: 0, memorySize: 8));
+        exit.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalLoad, 21, argumentIndex: 0));
+        var result = M68kPrivateInitializationAnalysis.FindOverwrites(function, i => i.MemorySize);
+        Assert.Equal(removable ? new[] { (0, 0), (0, 4) } : [], result.OrderBy(v => v.Offset));
     }
 
     [Fact]

@@ -40,6 +40,22 @@ arithmetic and conversion kernels in
 [`FloatingPointArithmetic.cs`](../Runtime.Managed/FloatingPointArithmetic.cs)
 and [`FloatingPointConversions.cs`](../Runtime.Managed/FloatingPointConversions.cs).
 
+## Checked Int32 multiplication
+
+Signed CIL `mul.ovf` on Int32 evaluation-stack operands lowers to
+`CopperSharp.Runtime.Integer32Arithmetic.MultiplyCheckedSigned`. The helper
+widens both inputs to Int64, checks the full product against both Int32 bounds,
+then narrows the successful result. Overflow uses the runtime's canonical
+`OverflowException` path, preserving catches, finally handlers and discarded
+checked expressions. This works with floating point disabled and uses the
+existing wide-integer backend on every CPU target.
+
+The managed numeric runtime must be available through `ManagedAssemblyPaths`
+or beside the compiler driver, as for other numeric helpers. Checked Int64
+multiplication remains unsupported. See the
+[audit follow-up](../scripts/CilicaAudit/README.md) for boundary coverage and
+baseline/restricted pipeline results.
+
 ## Volatile memory
 
 Scalar and reference CIL `volatile.` accesses are supported, including C# volatile

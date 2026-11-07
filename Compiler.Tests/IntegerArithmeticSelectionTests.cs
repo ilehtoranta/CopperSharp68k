@@ -226,6 +226,7 @@ public sealed class IntegerArithmeticSelectionTests
 	[Theory]
 	[InlineData(nameof(IntegerArithmeticSelectionFixture.HighWord), "swap")]
 	[InlineData(nameof(IntegerArithmeticSelectionFixture.RotateLeftByte), "rol.l")]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.SwapWords), "swap")]
 	[InlineData(nameof(IntegerArithmeticSelectionFixture.RotateRightOne), "ror.l")]
 	[InlineData(nameof(IntegerArithmeticSelectionFixture.RotateDifferentSources), null)]
 	[InlineData(nameof(IntegerArithmeticSelectionFixture.ArithmeticShiftOr), null)]
@@ -237,6 +238,8 @@ public sealed class IntegerArithmeticSelectionTests
 			Assert.DoesNotContain("ror.l", compiled.Text!);
 			Assert.DoesNotContain("rol.l", compiled.Text!);
 		}
+		if (method == nameof(IntegerArithmeticSelectionFixture.SwapWords))
+			Assert.DoesNotContain("or.l", compiled.Text!);
 		var host = typeof(IntegerArithmeticSelectionFixture).GetMethod(method)!;
 		foreach (var cpu in new[] { M68kCpuModel.M68000, M68kCpuModel.M68EC020 })
 		foreach (uint input in new uint[] { 0, 1, 0x12345678, 0x80000000, 0x80000001, uint.MaxValue }) {
@@ -300,10 +303,12 @@ public static class IntegerArithmeticSelectionFixture
 	public static uint HighWordEntry() => HighWord(ReadLeft(), ReadRight());
 	public static uint HighWord(uint x, uint y) => x >> 16;
 	public static uint RotateLeftByteEntry() => RotateLeftByte(ReadLeft(), ReadRight());
+	public static uint SwapWordsEntry() => SwapWords(ReadLeft(), ReadRight());
 	public static uint RotateRightOneEntry() => RotateRightOne(ReadLeft(), ReadRight());
 	public static uint RotateDifferentSourcesEntry() => RotateDifferentSources(ReadLeft(), ReadRight());
 	public static uint ArithmeticShiftOrEntry() => ArithmeticShiftOr(ReadLeft(), ReadRight());
 	public static uint RotateLeftByte(uint x, uint y) => (x << 8) | (x >> 24);
+	public static uint SwapWords(uint x, uint y) => (x << 16) | (x >> 16);
 	public static uint RotateRightOne(uint x, uint y) => (x >> 1) | (x << 31);
 	public static uint RotateDifferentSources(uint x, uint y) => (x >> 1) | (y << 31);
 	public static uint ArithmeticShiftOr(uint x, uint y) => (uint)((int)x >> 1) | (x << 31);

@@ -5213,6 +5213,17 @@ internal static class CilMachineIrBuilder
 		{
 			// A constant displacement leaves the value as a direct memory-store
 			// operand; it does not need the legacy D1 ABI scratch register.
+			if (target.ImportName is "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16")
+			{
+				// The store itself truncates. Keep the converted SSA value for
+				// other consumers that need its zero-extended upper bits.
+				var conversion = block.Instructions.LastOrDefault(i => i.Definitions.Contains(sourceUses[^1]));
+				var truncate = target.ImportName == "intrinsic:aptr-write-uint8" ? OpCodes.Conv_U1 : OpCodes.Conv_U2;
+				if (conversion is { Operation: M68kMachineOperation.Convert, Uses: [var input] } &&
+					conversion.SourceInstruction?.OpCode == truncate &&
+					function.Values[input] is { Kind: CilStackValueKind.Int32, Width: M68kMachineValueWidth.Long })
+					sourceUses[^1] = input;
+			}
 			argumentConstraints[^1] = CallArgumentConstraint.RegisterClass(
 				target.ImportName == "intrinsic:aptr-write-uint32" &&
 				function.Values[sourceUses[^1]].Width == M68kMachineValueWidth.Long
