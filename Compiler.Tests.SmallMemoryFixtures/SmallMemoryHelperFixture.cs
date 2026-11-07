@@ -6,6 +6,15 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class SmallMemoryHelperFixture
 {
+    public static void NativeNarrowLongStore() => NarrowLongStore(APTR.FromPointer(0x5000),
+        APTR.ReadUInt8(APTR.FromPointer(0x5010), 0), APTR.ReadUInt16(APTR.FromPointer(0x5012), 0));
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void NarrowLongStore(APTR address, byte narrow, ushort word)
+    {
+        APTR.WriteUInt32(address, 0, narrow);
+        APTR.WriteUInt32(address, 4, word);
+    }
     public static void LongStorePair(APTR address, uint value)
     {
         StoreLong(address, 0, value);

@@ -8,6 +8,42 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class SmallMemoryHelperInliningTests
 {
+    [Theory]
+    [InlineData(M68kCpuTarget.M68000, M68kCpuModel.M68000)]
+    [InlineData(M68kCpuTarget.M68020, M68kCpuModel.M68020)]
+    public void NarrowValuesStoredAsLongwordsRetainZeroExtensionAndLegalRegisterBanks(M68kCpuTarget target, M68kCpuModel model)
+    {
+        var result = AmigaM68kCompiler.Compile(new()
+        {
+            AssemblyPath = typeof(SmallMemoryHelperFixture).Assembly.Location,
+            EntryPoint = typeof(SmallMemoryHelperFixture).FullName + "::NativeNarrowLongStore",
+            IncludedExportNames = [], Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+            RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
+            ExceptionMode = M68kExceptionMode.Yolo
+        });
+        Assert.Empty(result.FrameworkAnalysis.ManagedAllocationSites);
+        var bus = new TestBus(0x100000);
+        result.Code.CopyTo(bus.Memory.AsSpan(0x10000));
+        foreach (var relocation in result.Relocations)
+        {
+            var address = 0x10000u + (uint)relocation.Offset;
+            bus.WriteLong(address, bus.ReadLong(address) + 0x10000);
+        }
+        foreach (var value in new byte[] { 0, 0x80, 0xFF })
+        {
+            bus.Memory.AsSpan(0x4FFC, 16).Fill(0xA5);
+            bus.Memory[0x5010] = value; bus.WriteWord(0x5012, (ushort)(0x8000 | value));
+            bus.WriteLong(0x80000, 0x1000);
+            using var cpu = M68kCoreFactory.Default.Create(model, bus);
+            cpu.Reset(0x10000 + result.EntryPoint, 0x80000);
+            for (var i = 0; i < 10000 && cpu.State.ProgramCounter != 0x1000; i++) cpu.ExecuteInstruction();
+            Assert.Equal(0x1000u, cpu.State.ProgramCounter);
+            Assert.Equal((uint)value, bus.ReadLong(0x5000));
+            Assert.Equal((uint)(0x8000 | value), bus.ReadLong(0x5004));
+            Assert.Equal(0xA5A5A5A5u, bus.ReadLong(0x4FFC));
+            Assert.Equal(0xA5A5A5A5u, bus.ReadLong(0x5008));
+        }
+    }
     [Fact]
     public void InlinedLongStoresKeepAddressRegistersAvailableAfterDisplacementFolding()
     {
