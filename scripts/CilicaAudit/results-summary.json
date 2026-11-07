@@ -1,0 +1,841 @@
+{
+  "Date": "2026-11-07",
+  "CilicaCommit": "a879c85f1608c764c7ab4f52b66b2b5db1ee60b6",
+  "EvidenceDirectory": "TestResults/CilicaAudit/verified-results",
+  "CliParitySha256": "6C764D6A09E511F7367BB708D918DBEB16B8E2FA69E84FB1427B8EE67EE414D7",
+  "Environment": {
+    "Runtime": ".NET 10.0.12",
+    "OS": "Microsoft Windows 10.0.26200",
+    "ProcessorCount": 12,
+    "CompilerSha256": "75DD8033D197E70FBB4FFF2E653FD03C8B22BCB8A2011D1584C8E9A89CCAA7FD",
+    "CilicaSha256": "DF29AAD8930DFE8D3045FCEBA4595B6F08666F84DCD9CA3CD145E332B3364CF6",
+    "Inputs": [
+      {
+        "Name": "baseline",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaAudit\\build\\bin\\Fixtures\\release\\CilicaAudit.Fixtures.dll",
+        "Sha256": "4FAAFC76625848059BF866B4E165D9300292FEFB9359C3380D9001F15BA6CC93"
+      },
+      {
+        "Name": "default",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaAudit\\build\\bin\\Fixtures\\release\\default\\CilicaAudit.Fixtures.dll",
+        "Sha256": "6C764D6A09E511F7367BB708D918DBEB16B8E2FA69E84FB1427B8EE67EE414D7"
+      },
+      {
+        "Name": "scalar",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaAudit\\build\\bin\\Fixtures\\release\\scalar\\CilicaAudit.Fixtures.dll",
+        "Sha256": "FD154C349E80125D11A1EAE0BD90FE1F2453AA71121A5418E35CACDBA66BB035"
+      },
+      {
+        "Name": "portable",
+        "Path": "C:\\Users\\ilkle\\Koodit\\GIT\\CopperSharp68k\\TestResults\\CilicaAudit\\build\\bin\\Fixtures\\release\\portable\\CilicaAudit.Fixtures.dll",
+        "Sha256": "FBF0A136E2F49402C314FB3E791D14BEA2CCE64015E13E89D53BF108CD32DAA6"
+      }
+    ],
+    "TimingScope": "In-process Compile only, one unrecorded warmup per variant/case/CPU, reversed variant order on odd rounds. Target cycles include cold startup. No preprocessing time included in Compile."
+  },
+  "Coverage": [
+    {
+      "Variant": "baseline",
+      "SuccessfulSamples": 126,
+      "FailedCombinations": 9,
+      "CheckedExecutions": 729
+    },
+    {
+      "Variant": "default",
+      "SuccessfulSamples": 81,
+      "FailedCombinations": 24,
+      "CheckedExecutions": 564
+    },
+    {
+      "Variant": "portable",
+      "SuccessfulSamples": 108,
+      "FailedCombinations": 15,
+      "CheckedExecutions": 663
+    },
+    {
+      "Variant": "scalar",
+      "SuccessfulSamples": 90,
+      "FailedCombinations": 21,
+      "CheckedExecutions": 597
+    }
+  ],
+  "StableSuccessfulGroups": 135,
+  "PortableComparison": [
+    {
+      "Kernel": "Aliasing",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3040,
+      "PortableLoadedBytes": 2928,
+      "BaselineCycles31": 892,
+      "PortableCycles31": 694,
+      "BaselineMedianCompileMs": 53.817,
+      "PortableMedianCompileMs": 50.4675
+    },
+    {
+      "Kernel": "Arithmetic",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3144,
+      "PortableLoadedBytes": 3088,
+      "BaselineCycles31": 1194,
+      "PortableCycles31": 1138,
+      "BaselineMedianCompileMs": 238.3126,
+      "PortableMedianCompileMs": 241.5342
+    },
+    {
+      "Kernel": "CommonExpressions",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3052,
+      "PortableLoadedBytes": 2984,
+      "BaselineCycles31": 1050,
+      "PortableCycles31": 946,
+      "BaselineMedianCompileMs": 59.4715,
+      "PortableMedianCompileMs": 68.9932
+    },
+    {
+      "Kernel": "Devirtualization",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3508,
+      "PortableLoadedBytes": 2936,
+      "BaselineCycles31": 2650,
+      "PortableCycles31": 716,
+      "BaselineMedianCompileMs": 51.5527,
+      "PortableMedianCompileMs": 52.8972
+    },
+    {
+      "Kernel": "Finally",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3536,
+      "PortableLoadedBytes": 3492,
+      "BaselineCycles31": 1092,
+      "PortableCycles31": 1082,
+      "BaselineMedianCompileMs": 52.1324,
+      "PortableMedianCompileMs": 51.3303
+    },
+    {
+      "Kernel": "Inlining",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3116,
+      "PortableLoadedBytes": 2980,
+      "BaselineCycles31": 1324,
+      "PortableCycles31": 836,
+      "BaselineMedianCompileMs": 50.8982,
+      "PortableMedianCompileMs": 50.9735
+    },
+    {
+      "Kernel": "ListGrowth",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 4944,
+      "PortableLoadedBytes": 5156,
+      "BaselineCycles31": 37690,
+      "PortableCycles31": 23668,
+      "BaselineMedianCompileMs": 61.1297,
+      "PortableMedianCompileMs": 66.7431
+    },
+    {
+      "Kernel": "Loop",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3016,
+      "PortableLoadedBytes": 2968,
+      "BaselineCycles31": 3322,
+      "PortableCycles31": 3280,
+      "BaselineMedianCompileMs": 49.5857,
+      "PortableMedianCompileMs": 66.9716
+    },
+    {
+      "Kernel": "NativeWidth",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 2976,
+      "PortableLoadedBytes": 2932,
+      "BaselineCycles31": 788,
+      "PortableCycles31": 754,
+      "BaselineMedianCompileMs": 49.4235,
+      "PortableMedianCompileMs": 49.0538
+    },
+    {
+      "Kernel": "ScalarReplacement",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3244,
+      "PortableLoadedBytes": 2932,
+      "BaselineCycles31": 2092,
+      "PortableCycles31": 704,
+      "BaselineMedianCompileMs": 52.7972,
+      "PortableMedianCompileMs": 48.6914
+    },
+    {
+      "Kernel": "StructPromotion",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3084,
+      "PortableLoadedBytes": 3052,
+      "BaselineCycles31": 1188,
+      "PortableCycles31": 1214,
+      "BaselineMedianCompileMs": 51.0453,
+      "PortableMedianCompileMs": 51.2953
+    },
+    {
+      "Kernel": "SwitchTable",
+      "Cpu": "M68000",
+      "BaselineLoadedBytes": 3080,
+      "PortableLoadedBytes": 3032,
+      "BaselineCycles31": 856,
+      "PortableCycles31": 818,
+      "BaselineMedianCompileMs": 52.5648,
+      "PortableMedianCompileMs": 53.8861
+    },
+    {
+      "Kernel": "Aliasing",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3080,
+      "PortableLoadedBytes": 2984,
+      "BaselineCycles31": 198,
+      "PortableCycles31": 162,
+      "BaselineMedianCompileMs": 50.1811,
+      "PortableMedianCompileMs": 50.0611
+    },
+    {
+      "Kernel": "Arithmetic",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3072,
+      "PortableLoadedBytes": 3016,
+      "BaselineCycles31": 252,
+      "PortableCycles31": 218,
+      "BaselineMedianCompileMs": 118.6917,
+      "PortableMedianCompileMs": 109.1318
+    },
+    {
+      "Kernel": "CommonExpressions",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3068,
+      "PortableLoadedBytes": 2996,
+      "BaselineCycles31": 229,
+      "PortableCycles31": 188,
+      "BaselineMedianCompileMs": 58.285,
+      "PortableMedianCompileMs": 56.9953
+    },
+    {
+      "Kernel": "Devirtualization",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3544,
+      "PortableLoadedBytes": 2976,
+      "BaselineCycles31": 608,
+      "PortableCycles31": 160,
+      "BaselineMedianCompileMs": 51.3984,
+      "PortableMedianCompileMs": 61.7273
+    },
+    {
+      "Kernel": "Finally",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3564,
+      "PortableLoadedBytes": 3516,
+      "BaselineCycles31": 236,
+      "PortableCycles31": 234,
+      "BaselineMedianCompileMs": 53.1309,
+      "PortableMedianCompileMs": 51.928
+    },
+    {
+      "Kernel": "Inlining",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3120,
+      "PortableLoadedBytes": 3020,
+      "BaselineCycles31": 230,
+      "PortableCycles31": 204,
+      "BaselineMedianCompileMs": 51.9232,
+      "PortableMedianCompileMs": 52.3642
+    },
+    {
+      "Kernel": "ListGrowth",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 4980,
+      "PortableLoadedBytes": 5196,
+      "BaselineCycles31": 7869,
+      "PortableCycles31": 4907,
+      "BaselineMedianCompileMs": 65.5766,
+      "PortableMedianCompileMs": 67.7511
+    },
+    {
+      "Kernel": "Loop",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3072,
+      "PortableLoadedBytes": 3024,
+      "BaselineCycles31": 1224,
+      "PortableCycles31": 1214,
+      "BaselineMedianCompileMs": 51.6966,
+      "PortableMedianCompileMs": 49.5784
+    },
+    {
+      "Kernel": "NativeWidth",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3024,
+      "PortableLoadedBytes": 2980,
+      "BaselineCycles31": 169,
+      "PortableCycles31": 161,
+      "BaselineMedianCompileMs": 48.6115,
+      "PortableMedianCompileMs": 49.281
+    },
+    {
+      "Kernel": "ScalarReplacement",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3292,
+      "PortableLoadedBytes": 2984,
+      "BaselineCycles31": 470,
+      "PortableCycles31": 162,
+      "BaselineMedianCompileMs": 54.5806,
+      "PortableMedianCompileMs": 48.9716
+    },
+    {
+      "Kernel": "StructPromotion",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3092,
+      "PortableLoadedBytes": 3052,
+      "BaselineCycles31": 225,
+      "PortableCycles31": 220,
+      "BaselineMedianCompileMs": 50.8716,
+      "PortableMedianCompileMs": 50.1362
+    },
+    {
+      "Kernel": "SwitchTable",
+      "Cpu": "M68020",
+      "BaselineLoadedBytes": 3116,
+      "PortableLoadedBytes": 3068,
+      "BaselineCycles31": 173,
+      "PortableCycles31": 164,
+      "BaselineMedianCompileMs": 53.3938,
+      "PortableMedianCompileMs": 52.1933
+    },
+    {
+      "Kernel": "Aliasing",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 2980,
+      "PortableLoadedBytes": 2884,
+      "BaselineCycles31": 68,
+      "PortableCycles31": 55,
+      "BaselineMedianCompileMs": 51.4353,
+      "PortableMedianCompileMs": 48.7721
+    },
+    {
+      "Kernel": "Arithmetic",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 2972,
+      "PortableLoadedBytes": 2916,
+      "BaselineCycles31": 72,
+      "PortableCycles31": 66,
+      "BaselineMedianCompileMs": 66.6245,
+      "PortableMedianCompileMs": 79.8678
+    },
+    {
+      "Kernel": "CommonExpressions",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 2968,
+      "PortableLoadedBytes": 2896,
+      "BaselineCycles31": 70,
+      "PortableCycles31": 60,
+      "BaselineMedianCompileMs": 60.6677,
+      "PortableMedianCompileMs": 50.7624
+    },
+    {
+      "Kernel": "Devirtualization",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 3444,
+      "PortableLoadedBytes": 2876,
+      "BaselineCycles31": 219,
+      "PortableCycles31": 55,
+      "BaselineMedianCompileMs": 57.6621,
+      "PortableMedianCompileMs": 52.5886
+    },
+    {
+      "Kernel": "Finally",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 3468,
+      "PortableLoadedBytes": 3420,
+      "BaselineCycles31": 81,
+      "PortableCycles31": 81,
+      "BaselineMedianCompileMs": 49.7675,
+      "PortableMedianCompileMs": 52.1709
+    },
+    {
+      "Kernel": "Inlining",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 3024,
+      "PortableLoadedBytes": 2920,
+      "BaselineCycles31": 76,
+      "PortableCycles31": 69,
+      "BaselineMedianCompileMs": 49.8812,
+      "PortableMedianCompileMs": 48.4606
+    },
+    {
+      "Kernel": "ListGrowth",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 4876,
+      "PortableLoadedBytes": 5088,
+      "BaselineCycles31": 3255,
+      "PortableCycles31": 2074,
+      "BaselineMedianCompileMs": 62.7287,
+      "PortableMedianCompileMs": 62.8589
+    },
+    {
+      "Kernel": "Loop",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 2968,
+      "PortableLoadedBytes": 2920,
+      "BaselineCycles31": 369,
+      "PortableCycles31": 366,
+      "BaselineMedianCompileMs": 52.6952,
+      "PortableMedianCompileMs": 63.888
+    },
+    {
+      "Kernel": "NativeWidth",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 2924,
+      "PortableLoadedBytes": 2880,
+      "BaselineCycles31": 59,
+      "PortableCycles31": 57,
+      "BaselineMedianCompileMs": 47.8855,
+      "PortableMedianCompileMs": 51.6053
+    },
+    {
+      "Kernel": "ScalarReplacement",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 3192,
+      "PortableLoadedBytes": 2884,
+      "BaselineCycles31": 181,
+      "PortableCycles31": 55,
+      "BaselineMedianCompileMs": 54.2215,
+      "PortableMedianCompileMs": 49.9023
+    },
+    {
+      "Kernel": "StructPromotion",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 2992,
+      "PortableLoadedBytes": 2952,
+      "BaselineCycles31": 77,
+      "PortableCycles31": 75,
+      "BaselineMedianCompileMs": 53.4422,
+      "PortableMedianCompileMs": 48.4403
+    },
+    {
+      "Kernel": "SwitchTable",
+      "Cpu": "M68040",
+      "BaselineLoadedBytes": 3028,
+      "PortableLoadedBytes": 2980,
+      "BaselineCycles31": 68,
+      "PortableCycles31": 65,
+      "BaselineMedianCompileMs": 51.0977,
+      "PortableMedianCompileMs": 50.9601
+    }
+  ],
+  "Failures": [
+    {
+      "Entry": "CilicaAudit.Kernels::Loop",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Loop IL_0009: External method reference 'Create' must be represented by a local [M68kImport] declaration."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Loop",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Loop IL_0009: External method reference 'Create' must be represented by a local [M68kImport] declaration."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Loop",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Loop IL_0009: External method reference 'Create' must be represented by a local [M68kImport] declaration."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::ArrayLoop",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::ArrayLoop IL_0015: Generic argument 'System.Int32' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_0050: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_0050: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0050: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0050: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0010: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_0050: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_0050: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0050: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0050: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0010: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0012: CilicaAudit.Kernels::Linq IL_0050: Reachable .NET framework member '[System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)' is unsupported. The compiler could not resolve an exact implementation for this constructed framework member: C68K0011: CilicaAudit.Kernels::Linq IL_0050: Framework member '[System.Linq]System.Linq.Enumerable::Select<System.Int32,System.Int32> [System.Runtime]System.Collections.Generic.IEnumerable`1<!!1>([System.Runtime]System.Collections.Generic.IEnumerable`1<!!0>,[System.Runtime]System.Func`2<!!0,!!1>)' is admitted only when closed-world analysis proves an Enumerable.Range, Enumerable.Repeat, or selected Select/Where source; the selected Select slice requires exact Range source provenance. Root path: CilicaAudit.Kernels::Linq -> [System.Linq]System.Linq.Enumerable::Select<int,int> static System.Collections.Generic.IEnumerable`1<!!1>(System.Collections.Generic.IEnumerable`1<!!0>,System.Func`2<!!0,!!1>)"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0050: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0050: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Linq",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::Linq IL_0010: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_004A: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_004A: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_000E: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_004A: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_004A: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_000E: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_004A: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_004A: Generic argument 'long' cannot use the shared four-byte representation."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::LinqRangeSelect",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0003: CilicaAudit.Kernels::LinqRangeSelect IL_000E: Managed generic method 'System.Private.CoreLib:System.ArgumentOutOfRangeException::ThrowIfNegative<int>' could not be resolved from ManagedAssemblyPaths."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68000",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_0005: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68020",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_0005: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68040",
+      "Variant": "baseline",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_0005: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Volatile",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: CilicaAudit.Kernels::Volatile IL_000C: Opcode 'volatile.' has unsupported typed stack effect for opcode 'volatile.'."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Finally",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: FixtureException::.ctor IL_0006: External fields are not supported."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Finally",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: FixtureException::.ctor IL_0006: External fields are not supported."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Finally",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: FixtureException::.ctor IL_0006: External fields are not supported."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Finally",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: FixtureException::.ctor IL_0006: External fields are not supported."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Finally",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: FixtureException::.ctor IL_0006: External fields are not supported."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::Finally",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "CopperSharp.Compiler.M68kCompilationException: C68K0004: FixtureException::.ctor IL_0006: External fields are not supported."
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::SwitchTable",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "System.InvalidOperationException: Incorrect SwitchTable(1): 0, expected 9029"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::SwitchTable",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "System.InvalidOperationException: Incorrect SwitchTable(1): 0, expected 9029"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::SwitchTable",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "System.InvalidOperationException: Incorrect SwitchTable(1): 0, expected 9029"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::SwitchTable",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "System.InvalidOperationException: Incorrect SwitchTable(1): 0, expected 9029"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::SwitchTable",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "System.InvalidOperationException: Incorrect SwitchTable(1): 0, expected 9029"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::SwitchTable",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "System.InvalidOperationException: Incorrect SwitchTable(1): 0, expected 9029"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "baseline",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000C assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "default",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "scalar",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68000",
+      "Variant": "portable",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "baseline",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000C assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "default",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "scalar",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68020",
+      "Variant": "portable",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "baseline",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000C assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "default",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "scalar",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    },
+    {
+      "Entry": "CilicaAudit.Kernels::CheckedOverflow",
+      "Cpu": "M68040",
+      "Variant": "portable",
+      "Error": "System.InvalidOperationException: Failed to emit CilicaAudit.Kernels::CheckedOverflow: Allocated emission is incomplete for 'CilicaAudit.Kernels::CheckedOverflow': phi=False, operations=Other/mul.ovf@IL_000E assigned=[D1,D0] uses=[uncolored,uncolored]"
+    }
+  ]
+}

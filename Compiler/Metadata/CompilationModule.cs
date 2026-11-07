@@ -9829,7 +9829,10 @@ internal sealed partial class CompilationModule : IDisposable
 			$"{GetTypeName(typeDefinition)}::{name}",
 			definition.DecodeSignature(_signatureProvider, CilGenericContext.Empty),
 			(definition.Attributes & FieldAttributes.Static) != 0,
-			ModuleName: _assemblyName);
+			ModuleName: _assemblyName)
+		{
+			HasRvaInitializer = (definition.Attributes & FieldAttributes.HasFieldRVA) != 0
+		};
 		_fieldCache.Add(handle, field);
 		return field;
 	}
@@ -10805,6 +10808,8 @@ internal sealed record CilField(
 	string ModuleName = "",
 	CilType? ConstructedDeclaringType = null)
 {
+	public bool HasRvaInitializer { get; init; }
+
 	public CilFieldIdentity Identity => new(
 		ModuleName,
 		Handle,

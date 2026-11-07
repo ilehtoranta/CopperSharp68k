@@ -269,7 +269,11 @@ admitted CoreLib surface; see the
 
 Framework identities without an exact binding or applicable audited CoreLib
 admission rule, general reflection, arbitrary P/Invoke, and unsupported CIL
-opcodes remain fail-closed. Floating point,
+opcodes remain fail-closed. Direct access to RVA-initialized static fields is
+also rejected: ordinary static storage cannot preserve arbitrary PE payloads
+with an unspecified target byte order. Supported initialized-array/span
+intrinsics and verified byte-span patterns emit their own initialized data.
+Floating point,
 boxing, and delegates are available only through their explicitly admitted
 compiler/runtime profiles; they are not general CoreCLR-compatible services. Allocation
 is supplied by the `__c68k_alloc` import. Optional explicit release can be

@@ -11129,6 +11129,12 @@ internal sealed partial class M68kCodeGenerator
 
 	private void EmitZeroInitializedStatic(CilField field)
 	{
+		// RVA payloads need an explicit target representation. Ordinary static
+		// storage must never silently replace their PE initializer with zeros.
+		// Supported array/span factories register separate, endian-aware data.
+		if (field.HasRvaInitializer)
+			throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction,
+				$"Direct access to RVA-initialized static field '{field.DisplayName}' is unsupported. Use supported initialized-array or initialized-span intrinsics for target byte-order conversion.");
 		_assembler.Mark(StaticFieldLabel(field));
 		var longs = SlotLongs(field.Type);
 		for (var index = 0; index < longs; index++) _assembler.EmitLong(0);
