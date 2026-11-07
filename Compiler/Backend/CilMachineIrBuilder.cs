@@ -5182,7 +5182,8 @@ internal static class CilMachineIrBuilder
 			// A constant displacement leaves the value as a direct memory-store
 			// operand; it does not need the legacy D1 ABI scratch register.
 			argumentConstraints[^1] = CallArgumentConstraint.RegisterClass(
-				target.ImportName == "intrinsic:aptr-write-uint32"
+				target.ImportName == "intrinsic:aptr-write-uint32" &&
+				function.Values[sourceUses[^1]].Width == M68kMachineValueWidth.Long
 					? M68kRegisterSet.DataOrAddress : M68kRegisterSet.Data);
 		}
 		var constrainedUses = sourceUses.ToArray();

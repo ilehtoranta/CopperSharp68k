@@ -334,7 +334,8 @@ internal static class M68kMachineModuleOptimizer
 						{
 							// MOVE.L can store An directly; narrowing to Dn here
 							// needlessly recreates pressure removed by the CIL builder.
-							AllowedRegisters = longStore ? M68kRegisterSet.DataOrAddress : M68kRegisterSet.Data,
+							AllowedRegisters = longStore && function.Values[stored].Width == M68kMachineValueWidth.Long
+								? M68kRegisterSet.DataOrAddress : M68kRegisterSet.Data,
 							PrecoloredRegister = null
 						};
 					}
