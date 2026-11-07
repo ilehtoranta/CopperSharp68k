@@ -21,7 +21,7 @@ internal sealed partial class M68kCodeGenerator
 			if (!_integerArithmeticPlans.TryGetValue(instruction.Id, out var plan) ||
 				plan.Kind is M68kIntegerArithmeticKind.SignedWordMultiply or M68kIntegerArithmeticKind.UnsignedWordMultiply or M68kIntegerArithmeticKind.UnsignedRegisterWordDivision)
 				continue;
-			var constantOperand = plan.Kind == M68kIntegerArithmeticKind.FactoredWordMultiply
+			var constantOperand = plan.Kind is M68kIntegerArithmeticKind.FactoredWordMultiply or M68kIntegerArithmeticKind.OrHighBitImmediate
 				? 1 - plan.SourceOperand : 1;
 			if (!TryCollectExclusiveConstantChain(instructions, instruction.Uses[constantOperand], instruction, out var chain))
 				continue;

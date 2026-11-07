@@ -67,5 +67,81 @@ internal sealed partial class M68kCodeGenerator
                 value = source;
             }
         }
+        PrepareSharedAbsoluteImmediateStores(method, allocated, instructions, phiInputs);
+    }
+
+    private void PrepareSharedAbsoluteImmediateStores(CilMethod method, M68kAllocatedFunction allocated,
+        M68kMachineInstruction[] instructions, HashSet<int> phiInputs)
+    {
+        if (allocated.Function.HasExceptionHandlers) return;
+        var users = instructions.SelectMany(i => i.Uses.Distinct().Select(v => (Value: v, Instruction: i)))
+            .GroupBy(p => p.Value).ToDictionary(g => g.Key, g => g.Select(p => p.Instruction).ToArray());
+        foreach (var root in instructions.Where(i => i.Operation == M68kMachineOperation.Constant && i.Definitions.Length == 1))
+        {
+            // Constant-copy forwarding may already have moved this load to an
+            // identity transport. Inspect the whole use graph in either case.
+            if (!IsAllocatedScalarIntegerConstant(allocated.Function, root.Definitions[0]) ||
+                !TryGetAllocatedConstant(allocated.Function, root.Definitions[0], out var address)) continue;
+            var transports = new HashSet<M68kMachineInstruction> { root };
+            var stores = new HashSet<M68kMachineInstruction>();
+            var values = new HashSet<int>();
+            var pending = new Stack<int>(); pending.Push(root.Definitions[0]);
+            var valid = true;
+            while (pending.TryPop(out var value) && valid)
+            {
+                if (!values.Add(value)) continue;
+                if (phiInputs.Contains(value)) { valid = false; break; }
+                foreach (var user in users.GetValueOrDefault(value) ?? [])
+                {
+                    if (_allocatedImmediateStores.ContainsKey(user.Id) && user.Uses[0] == value &&
+                        !user.Uses.Skip(1).Contains(value)) stores.Add(user);
+                    else if (user.Uses is [var source] && user.Definitions is [var result] &&
+                        allocated.Function.Values[source].Width == allocated.Function.Values[result].Width &&
+                        (user.Operation == M68kMachineOperation.Copy || IsAllocatedIdentityIntrinsic(method, user)))
+                    { transports.Add(user); pending.Push(result); }
+                    else { valid = false; break; }
+                }
+            }
+            // On 68000, replacing (An) with abs.L adds four cycles per write.
+            // At most two writes cost less than materializing the address,
+            // even before removing any callee-save traffic. Reject loops so
+            // that repeated writes cannot amortize the retained register.
+            if (!valid || stores.Count < 2 || !HasAtMostTwoStoresPerPath(allocated.Function, stores)) continue;
+            foreach (var store in stores)
+                _allocatedAbsoluteImmediateStores[store.Id] = unchecked((uint)(address + store.Immediate!.Value));
+            foreach (var transport in transports)
+            {
+                _allocatedSuppressedInstructions.Add(transport.Id);
+                _allocatedFoldedCopyConstants.Remove(transport.Id);
+                _allocatedBitBranchDeadValues.UnionWith(transport.Definitions);
+            }
+        }
+    }
+
+    private static bool HasAtMostTwoStoresPerPath(M68kMachineFunction function, HashSet<M68kMachineInstruction> stores)
+    {
+        var blocks = function.Blocks.ToDictionary(b => b.Id);
+        var reachable = new HashSet<int>();
+        var pending = new Stack<int>(); pending.Push(function.EntryBlockId);
+        while (pending.TryPop(out var id))
+            if (reachable.Add(id)) foreach (var next in blocks[id].Successors) pending.Push(next);
+        var incoming = reachable.ToDictionary(id => id, _ => 0);
+        foreach (var id in reachable)
+            foreach (var next in blocks[id].Successors) incoming[next]++;
+        var ready = new Queue<int>(reachable.Where(id => incoming[id] == 0));
+        var counts = reachable.ToDictionary(id => id, _ => 0);
+        var visited = 0;
+        while (ready.TryDequeue(out var id))
+        {
+            visited++;
+            counts[id] += blocks[id].Instructions.Count(stores.Contains);
+            if (counts[id] > 2) return false;
+            foreach (var next in blocks[id].Successors)
+            {
+                counts[next] = Math.Max(counts[next], counts[id]);
+                if (--incoming[next] == 0) ready.Enqueue(next);
+            }
+        }
+        return visited == reachable.Count;
     }
 }

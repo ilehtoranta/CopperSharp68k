@@ -11,6 +11,20 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kInstructionDataflowTests
 {
+	[Fact]
+	public void StatusRegisterImmediateCannotBeRemovedWhenFollowingCodeOverwritesTheConditionCodes()
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitWord(0x007C); assembler.EmitWord(0x0700); // ORI.W #$0700,SR
+		assembler.EmitWord(0x7000); // MOVEQ #0,D0 overwrites CCR, but must retain the IPL change.
+		assembler.EmitWord(0x4E75);
+		var effects = M68kInstructionDataflow.GetEffects(assembler.GetInstructionStream()[0]);
+		Assert.True(effects.IsBarrier);
+		Assert.False(effects.CanRemoveWhenOutputsDead);
+		assembler.OptimizeForCpu(M68kCpuTarget.M68000);
+		Assert.Contains(assembler.GetInstructionStream(), instruction => instruction.Opcode == 0x007C);
+	}
+
 	[Theory]
 	[InlineData(1, false)] [InlineData(1, true)]
 	[InlineData(2, false)] [InlineData(2, true)]

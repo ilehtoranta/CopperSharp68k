@@ -325,9 +325,16 @@ public sealed class M68kImportAttribute : Attribute
 }
 
 /// <summary>Uses parameter M68kRegister annotations for calls to a static scalar managed body.
+/// Boolean results use the canonical CIL Int32 value zero or one in D0.
 /// Callee-saved registers retain their usual preservation contract.</summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class M68kInternalRegisterAbiAttribute : Attribute { }
+
+/// <summary>Also preserves D0, D1, A0 and A1 on a static void internal-register-ABI
+/// body. Together with the usual callee-saved registers, this permits callable
+/// routines whose public ABI preserves every integer register.</summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+public sealed class M68kPreserveScratchRegistersAttribute : Attribute { }
 
 /// <summary>Maps a parameter or return value to a physical 68k register.</summary>
 [AttributeUsage(AttributeTargets.Parameter | AttributeTargets.ReturnValue, AllowMultiple = false)]

@@ -58,9 +58,19 @@ public sealed class AmigaLvoAttribute : Attribute
 public sealed class AmigaIndirectCallAttribute : Attribute
 {
 	public AmigaIndirectCallAttribute(M68kRegister targetRegister)
+		: this(targetRegister, false)
+	{
+	}
+
+	/// <summary>Opt in for a known ABI that preserves nonvolatile input and
+	/// target registers. D0/D1/A0/A1 and a non-void result remain clobbered;
+	/// argument setup still writes its declared registers.</summary>
+	public AmigaIndirectCallAttribute(M68kRegister targetRegister, bool preservesNonvolatileInputs)
 	{
 		TargetRegister = targetRegister;
+		PreservesNonvolatileInputs = preservesNonvolatileInputs;
 	}
 
 	public M68kRegister TargetRegister { get; }
+	public bool PreservesNonvolatileInputs { get; }
 }

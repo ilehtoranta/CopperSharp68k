@@ -133,7 +133,7 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 		{
 			if (!method.IsStatic)
 				throw Unsupported(method, "Amiga indirect calls must be static.");
-			if (indirectCall.FixedArguments.Count != 1 ||
+			if (indirectCall.FixedArguments.Count is < 1 or > 2 ||
 				indirectCall.FixedArguments[0] is not int registerValue ||
 				registerValue < (int)M68kRegister.A0 ||
 				registerValue > (int)M68kRegister.A6)
@@ -141,16 +141,20 @@ public sealed class AmigaExternalCallResolver : IM68kExternalCallResolver
 				throw Invalid(method,
 					"[AmigaIndirectCall] requires one A0-A6 target register.");
 			}
+			if (indirectCall.FixedArguments.Count == 2 && indirectCall.FixedArguments[1] is not bool)
+				throw Invalid(method, "[AmigaIndirectCall] preservation flag must be Boolean.");
+			var preservesInputs = indirectCall.FixedArguments.Count == 2 && (bool)indirectCall.FixedArguments[1]!;
 			var targetRegister = (M68kRegister)registerValue;
 			convention = new M68kExternalCallConvention(
-				$"amiga-indirect:{targetRegister}",
+				$"amiga-indirect:{targetRegister}" + (preservesInputs ? ":preserved-nonvolatile-inputs" : ""),
 				M68kExternalBaseSource.Argument,
 				targetRegister,
 				0,
 				ParameterRegisters: DecodeParameterRegisters(method),
 				ReturnRegister: DecodeReturnRegister(method))
 			{
-				ClobberedRegisters = VolatileRegisters
+				ClobberedRegisters = VolatileRegisters,
+				PreservesInputRegisters = preservesInputs
 			};
 			return true;
 		}

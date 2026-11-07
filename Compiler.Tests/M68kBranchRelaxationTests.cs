@@ -11,6 +11,25 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kBranchRelaxationTests
 {
 	[Theory]
+	[InlineData(true)]
+	[InlineData(false)]
+	public void ConditionalEdgeCanBypassAnInternalTailJump(bool external)
+	{
+		var assembler = new M68kAssembler();
+		assembler.EmitBranch(M68kCondition.Equal, "tail");
+		assembler.EmitWord(0x4E75);
+		assembler.Mark("tail");
+		assembler.EmitJmp("method:callee", external);
+		assembler.EmitWord(0x4E71);
+		assembler.Mark("method:callee");
+		assembler.EmitWord(0x4E75);
+		var linked = assembler.Link(0, new Dictionary<string, uint> { ["method:callee"] = 0x8000 });
+		int destination = 2 + (sbyte)linked.Bytes[1];
+		Assert.Equal(0x67, linked.Bytes[0]);
+		Assert.Equal(linked.Labels[external ? "tail" : "method:callee"], destination);
+	}
+
+	[Theory]
 	[InlineData(1)]
 	[InlineData(99)]
 	[InlineData(100)]

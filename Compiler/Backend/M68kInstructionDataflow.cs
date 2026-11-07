@@ -842,6 +842,19 @@ internal sealed class M68kInstructionDataflow
 				return;
 			}
 
+			if (opcode is 0x007C or 0x027C or 0x0A7C)
+			{
+				// Immediate operations on SR also change interrupt masking,
+				// privilege and potentially the active stack bank. They are not
+				// removable logical operations on a dead CCR result.
+				_barrier = true;
+				UseAddress(7); DefineAddress(7);
+				_readsConditions = _writesConditions = M68kConditionCodeSet.All;
+				_readsMemory = _writesMemory = M68kMemorySet.All;
+				_stackDelta = null;
+				return;
+			}
+
 			var logicalImmediate = opcode & 0x0F00;
 			if ((opcode & 0xF000) == 0 &&
 				logicalImmediate is 0x0000 or 0x0200 or 0x0A00)

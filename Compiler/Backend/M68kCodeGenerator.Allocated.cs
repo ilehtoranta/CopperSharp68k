@@ -136,6 +136,7 @@ internal sealed partial class M68kCodeGenerator
 		PrepareAllocatedQuickArithmetic(allocated);
 		PrepareAllocatedConstantMultiplies(allocated);
 		PrepareAllocatedIntegerArithmetic(allocated);
+		PrepareAllocatedOneHotShifts(allocated);
 		PrepareAllocatedDeferredNormalizations(allocated);
 		PrepareAllocatedFrameAddressFolds(method, allocated);
 		PrepareAllocatedExceptionFrameStores(allocated);
@@ -150,14 +151,24 @@ internal sealed partial class M68kCodeGenerator
         PrepareAllocatedAddressComparisons(allocated);
         PrepareAllocatedLowOnlyReads(method, allocated);
 		allocated = RefineAllocatedPreservation(allocated);
+		var previousAllocation = allocated.Allocation;
 		allocated = ReuseIncomingArgumentHomes(abi, allocated);
 		allocated = ReuseConditionalSaveScratch(method, allocated);
+		if (!ReferenceEquals(allocated.Allocation, previousAllocation))
+		{
+			// Rehoming may have removed the last use of a saved register.
+			allocated = RefineAllocatedPreservation(allocated);
+		}
 		PrepareConditionalSave(method, abi, allocated);
 		_emittingAllocatedFunction = allocated;
 		// Finalize preservation before recording either unwind layouts or
 		// incoming stack displacements. No already-emitted frame is resized.
 		RecordUnwindLayout(method, abi, allocated);
-		EmitAllocatedCalleeSaves(_conditionalSave?.Unconditional ?? allocated.Frame.CalleeSavedRegisters);
+		var entrySaves = _conditionalSave?.Unconditional ?? allocated.Frame.CalleeSavedRegisters;
+		if (AllowsNativeTailSaveReuse(method) && entrySaves is [var saved] &&
+			!allocated.Function.ReservedRegisters.Contains(saved))
+			_assembler.RecordNativeEntrySave(MethodLabel(method), _assembler.Offset, saved);
+		EmitAllocatedCalleeSaves(entrySaves);
 		EmitAllocateFrame(allocated.Frame.FrameBytes);
 		if (allocated.Function.HasDynamicStackAllocation)
 		{
@@ -1475,6 +1486,7 @@ internal sealed partial class M68kCodeGenerator
 			M68kMachineOperation.Xor or
 			M68kMachineOperation.Negate or
 			M68kMachineOperation.Not or
+			M68kMachineOperation.MultiplyWordHalves or M68kMachineOperation.RotateImmediate or
 			M68kMachineOperation.Shift or
 			M68kMachineOperation.Compare or
 			M68kMachineOperation.Convert or
@@ -1677,6 +1689,7 @@ internal sealed partial class M68kCodeGenerator
         {
             var destination = allocated.Allocation.Registers[instruction.Definitions[0]].Register;
             EmitAllocatedMove(allocated.Allocation.Registers[immediateAnd.Source].Register, destination, immediateAnd.Width);
+            if (immediateAnd.Complement) _assembler.EmitWord((ushort)(0x4640 | (int)destination));
             _assembler.EmitWord((ushort)(0x0200 | AllocatedSizeBits(immediateAnd.Width) | (int)destination));
             if (immediateAnd.Width == M68kMachineValueWidth.Word)
                 _assembler.EmitWord((ushort)immediateAnd.Mask);
@@ -2328,6 +2341,12 @@ internal sealed partial class M68kCodeGenerator
 			case M68kMachineOperation.And:
 			case M68kMachineOperation.Or:
 			case M68kMachineOperation.Xor:
+				if (_allocatedOneHotCountCopies.TryGetValue(instruction.Id, out var unmaskedCount))
+				{
+					EmitAllocatedMove(Location(unmaskedCount).Register,
+						Location(instruction.Definitions[0]).Register, M68kMachineValueWidth.Long);
+					return;
+				}
 				if (allocated.Function.Values[instruction.Definitions[0]].Kind is
 					CilStackValueKind.Float32 or CilStackValueKind.Float64)
 				{
@@ -2337,6 +2356,19 @@ internal sealed partial class M68kCodeGenerator
 						Location(instruction.Uses[1]),
 						Location(instruction.Definitions[0]),
 						allocated.Function.Values[instruction.Definitions[0]].Kind);
+					return;
+				}
+				if (instruction.Operation == M68kMachineOperation.Or &&
+					_integerArithmeticPlans.TryGetValue(instruction.Id, out var immediateOr) &&
+					immediateOr.Kind == M68kIntegerArithmeticKind.OrHighBitImmediate)
+				{
+					var result = Location(instruction.Definitions[0]).Register;
+					EmitAllocatedMove(Location(instruction.Uses[immediateOr.SourceOperand]).Register,
+						result, M68kMachineValueWidth.Long);
+					// ORI preserves the logical condition codes. Normal peephole
+					// selection may use BSET when the consumer ignores them.
+					_assembler.EmitWord((ushort)(0x0080 | (int)result));
+					_assembler.EmitLong(unchecked((uint)immediateOr.Constant));
 					return;
 				}
 				EmitAllocatedBinary(
@@ -2458,12 +2490,28 @@ internal sealed partial class M68kCodeGenerator
 				return;
 
 			case M68kMachineOperation.Shift:
+				if (_allocatedOneHotShifts.Contains(instruction.Id))
+				{
+					// Register BSET wraps the bit number modulo 32, matching IL's
+					// Int32 shift mask without a separate count normalization.
+					_assembler.EmitWord(0x7000); // MOVEQ #0,D0
+					_assembler.EmitWord(0x03C0); // BSET D1,D0
+					return;
+				}
 				if (instruction.Immediate is { } constantCount &&
 					allocated.Function.Values[instruction.Definitions[0]].Kind == CilStackValueKind.Int32)
 				{
 					var destination = Location(instruction.Definitions[0]).Register;
 					EmitAllocatedMove(Location(instruction.Uses[0]).Register, destination, M68kMachineValueWidth.Long);
-					EmitImmediateShift(instruction.SourceInstruction!.OpCode, 4, constantCount, destination);
+					if (constantCount == 16 && instruction.SourceInstruction!.OpCode == OpCodes.Shr_Un &&
+						!instruction.ProducesConditionCodes && !instruction.ConsumesConditionCodes) {
+						// The IL result is the zero-extended high word. Neither C nor X
+						// is an output of this value-only machine operation.
+						_assembler.EmitWord((ushort)(0x4240 | (int)destination)); // CLR.W Dn
+						_assembler.EmitWord((ushort)(0x4840 | (int)destination)); // SWAP Dn
+					} else {
+						EmitImmediateShift(instruction.SourceInstruction!.OpCode, 4, constantCount, destination);
+					}
 					return;
 				}
 				if (allocated.Function.Values[instruction.Definitions[0]].Kind == CilStackValueKind.Int64)
@@ -2476,6 +2524,27 @@ internal sealed partial class M68kCodeGenerator
 					allocated,
 					instruction,
 					M68kRegister.D0);
+				return;
+
+			case M68kMachineOperation.MultiplyWordHalves:
+				var packed = Location(instruction.Uses[0]).Register;
+				var product = Location(instruction.Definitions[0]).Register;
+				EmitAllocatedMove(packed, product, M68kMachineValueWidth.Long);
+				// Keep the low word in its original register when possible. With
+				// a single data register, the multiply consumes a temporary stack word.
+				bool useStack = packed == product || packed > M68kRegister.D7;
+				if (useStack) _assembler.EmitWord((ushort)(0x3F00 | (int)product)); // MOVE.W Dn,-(SP)
+				_assembler.EmitWord((ushort)(0x4840 | (int)product)); // SWAP Dn
+				int operand = useStack ? 0x1F : (int)packed;
+				_assembler.EmitWord((ushort)(0xC0C0 | ((int)product << 9) | operand)); // MULU.W <ea>,Dn
+				return;
+
+			case M68kMachineOperation.RotateImmediate:
+				var rotateRegister = Location(instruction.Definitions[0]).Register;
+				EmitAllocatedMove(Location(instruction.Uses[0]).Register, rotateRegister, M68kMachineValueWidth.Long);
+				int rotate = instruction.Immediate!.Value;
+				_assembler.EmitWord((ushort)((rotate > 0 ? 0xE198 : 0xE098) |
+					((Math.Abs(rotate) & 7) << 9) | (int)rotateRegister));
 				return;
 
 			case M68kMachineOperation.Negate:
@@ -5499,12 +5568,17 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitWord(0x2002); // MOVE.L D2,D0
 	}
 
+	private bool AllowsNativeTailSaveReuse(CilMethod method) => method.InternalRegisterAbi is not null &&
+		_request.ExceptionMode == M68kExceptionMode.Yolo && _request.MemoryManagement == M68kMemoryManagement.None &&
+		_request.EffectiveCodeSizeOptions?.RemoveRedundantTransport == true;
+
 	private bool TryEmitAllocatedTailCall(
 		CilMethod caller,
 		M68kAllocatedFunction allocated,
 		M68kMachineBlock block,
 		M68kMachineInstruction call)
 	{
+		if (caller.PreserveScratchRegisters) return false;
 		var callIndex = block.Instructions.IndexOf(call);
 		if (callIndex < 0 ||
 			block.Successors.Count != 0 ||
@@ -5567,10 +5641,13 @@ internal sealed partial class M68kCodeGenerator
 		{
 			_allocatedSuppressedInstructions.Add(instruction.Id);
 		}
+		var restoreStart = _assembler.Offset;
 		EmitAllocatedCalleeRestores(
 			allocated.Frame.CalleeSavedRegisters,
 			allocated.Frame.FrameBytes);
-		_assembler.EmitJmp(MethodLabel(callee), external: false);
+		_assembler.EmitJmp(MethodLabel(callee), external: false, nativeTailRestore:
+			AllowsNativeTailSaveReuse(caller) && AllowsNativeTailSaveReuse(callee) &&
+			_loadedPlatformBase is null && allocated.Frame.FrameBytes == 0 && _assembler.Offset == restoreStart + 2);
 		_loadedPlatformBase = null;
 		return true;
 	}
@@ -6749,7 +6826,14 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (name == "intrinsic:copperstart-disable-interrupts")
 		{
-			EmitCopperStartDisableInterruptsAllocated(Definition());
+			if (instruction.Definitions.IsEmpty)
+			{
+				// A discarded restoration token still masks interrupts. There is
+				// no result register to capture SR into, or live value to overwrite.
+				_assembler.EmitWord(0x007C); // ORI.W #$0700,SR
+				_assembler.EmitWord(0x0700);
+			}
+			else EmitCopperStartDisableInterruptsAllocated(Definition());
 			return;
 		}
 		if (name == "intrinsic:copperstart-restore-interrupts")
@@ -9225,10 +9309,11 @@ internal sealed partial class M68kCodeGenerator
 		}
 		if (name == "intrinsic:aptr-export-address")
 		{
+			var sourceCaller = instruction.Origin?.SourceMethod ?? caller;
 			var literal = AllocatedPrecedingStringLiteral(caller, instruction);
 			var exportName = _module.GetUserString(
 				literal,
-				caller,
+				sourceCaller,
 				instruction.IlOffset);
 			if (!_exports.Any(export => export.Name == exportName))
 			{
@@ -9274,16 +9359,18 @@ internal sealed partial class M68kCodeGenerator
 			if (displacement != 0) _assembler.EmitWord(unchecked((ushort)displacement.Value));
 			return;
 		}
-		if (name == "intrinsic:aptr-bit-test-and-set8")
+		if (name is "intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8")
 		{
 			var address = (int)Use(0) - (int)M68kRegister.A0;
+			var clear = name == "intrinsic:aptr-bit-test-and-clear8";
 			if (instruction.Immediate is { } bit) {
-				_assembler.EmitWord((ushort)(0x08D0 | address)); // BSET #bit,(An)
+				_assembler.EmitWord((ushort)((clear ? 0x0890 : 0x08D0) | address)); // BCLR/BSET #bit,(An)
 				_assembler.EmitWord((ushort)(bit & 7));
 			} else {
-				_assembler.EmitWord((ushort)(0x01D0 | ((int)Use(1) << 9) | address)); // BSET Dn,(An)
+				_assembler.EmitWord((ushort)((clear ? 0x0190 : 0x01D0) | ((int)Use(1) << 9) | address)); // BCLR/BSET Dn,(An)
 			}
-			EmitAllocatedConditionResult(M68kCondition.NotEqual, Definition());
+			if (!instruction.Definitions.IsEmpty)
+				EmitAllocatedConditionResult(M68kCondition.NotEqual, Definition());
 			return;
 		}
 		if (name is "intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32")
@@ -11152,6 +11239,7 @@ internal sealed partial class M68kCodeGenerator
 			"intrinsic:aptr-export-address" or
 			"intrinsic:aptr-or-uint32" or
 			"intrinsic:aptr-bit-test-and-set8" or
+			"intrinsic:aptr-bit-test-and-clear8" or
 			"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 			"intrinsic:aptr-read-uint8" or
 			"intrinsic:aptr-read-uint16" or
@@ -11204,14 +11292,16 @@ internal sealed partial class M68kCodeGenerator
 		CilMethod caller,
 		M68kMachineInstruction instruction)
 	{
+		caller = instruction.Origin?.SourceMethod ?? caller;
+		var ilOffset = instruction.Origin?.SourceInstruction.Offset ?? instruction.IlOffset;
 		if (instruction.Immediate is int literalToken) return literalToken;
 		var index = caller.Instructions
 			.ToList()
-			.FindIndex(candidate => candidate.Offset == instruction.IlOffset);
+			.FindIndex(candidate => candidate.Offset == ilOffset);
 		// A branch into the conversion can carry a different literal than the
 		// physically preceding ldstr. FromLiteral accepts one immediate literal,
 		// not a managed-string phi; never silently choose the fallthrough token.
-		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(instruction.IlOffset) ||
+		if (index <= 0 || GetBranchTargets(caller.Instructions).Contains(ilOffset) ||
 			caller.Instructions[index - 1] is not
 				{ OpCode: var op, Operand: int token } ||
 			op != OpCodes.Ldstr)
@@ -11230,6 +11320,7 @@ internal sealed partial class M68kCodeGenerator
 		M68kMachineInstruction instruction,
 		M68kRegister destination)
 	{
+		caller = instruction.Origin?.SourceMethod ?? caller;
 		var literal = AllocatedPrecedingStringLiteral(caller, instruction);
 		var identity = new CilUserStringIdentity(caller.ModuleName, literal);
 		_cStringLiterals.TryAdd(
@@ -12112,9 +12203,9 @@ internal sealed partial class M68kCodeGenerator
         if (_allocatedMemoryImmediateBranches.TryGetValue(instruction.Id, out var memoryCompare))
         {
             int address = (int)allocated.Allocation.Registers[memoryCompare.Base].Register - (int)M68kRegister.A0;
-            _assembler.EmitWord((ushort)(0x0C00 | memoryCompare.SizeBits |
+            _assembler.EmitWord((ushort)((memoryCompare.Constant == 0 ? 0x4A00 : 0x0C00) | memoryCompare.SizeBits |
                 (memoryCompare.Offset == 0 ? 0x10 : 0x28) | address));
-            _assembler.EmitWord(unchecked((ushort)memoryCompare.Constant));
+            if (memoryCompare.Constant != 0) _assembler.EmitWord(unchecked((ushort)memoryCompare.Constant));
             if (memoryCompare.Offset != 0) _assembler.EmitWord(unchecked((ushort)memoryCompare.Offset));
             EmitAllocatedConditionalTargets(method, allocated, block, memoryCompare.Condition, nextBlockId);
             return;
@@ -12122,9 +12213,17 @@ internal sealed partial class M68kCodeGenerator
         if (_allocatedCounterBranches.TryGetValue(instruction.Id, out var counter))
         {
             int address = (int)allocated.Allocation.Registers[counter.Base].Register - (int)M68kRegister.A0;
-            _assembler.EmitWord((ushort)((counter.Increment ? 0x5200 : 0x5300) | counter.SizeBits |
-                (counter.Offset == 0 ? 0x10 : 0x28) | address));
-            if (counter.Offset != 0) _assembler.EmitWord(unchecked((ushort)counter.Offset));
+            if (counter.Bit is { } bit)
+            {
+                _assembler.EmitWord((ushort)((counter.Increment ? 0x08D0 : 0x0890) | address));
+                _assembler.EmitWord((ushort)bit);
+            }
+            else
+            {
+                _assembler.EmitWord((ushort)((counter.Increment ? 0x5200 : 0x5300) | counter.SizeBits |
+                    (counter.Offset == 0 ? 0x10 : 0x28) | address));
+                if (counter.Offset != 0) _assembler.EmitWord(unchecked((ushort)counter.Offset));
+            }
             EmitAllocatedConditionalTargets(method, allocated, block, counter.Condition, nextBlockId);
             return;
         }
@@ -12132,8 +12231,12 @@ internal sealed partial class M68kCodeGenerator
         {
             var register = allocated.Allocation.Registers[immediateBranch.Source].Register;
             if (_allocatedWordImmediateBranches.Contains(instruction.Id)) {
-                _assembler.EmitWord((ushort)(0x0C40 | (int)register));
-                _assembler.EmitWord((ushort)immediateBranch.Constant);
+                if (immediateBranch.Constant == 0)
+                    _assembler.EmitWord((ushort)(0x4A40 | (int)register));
+                else {
+                    _assembler.EmitWord((ushort)(0x0C40 | (int)register));
+                    _assembler.EmitWord((ushort)immediateBranch.Constant);
+                }
             } else if (register >= M68kRegister.A0) {
                 _assembler.EmitWord((ushort)(0xB1FC | (((int)register - (int)M68kRegister.A0) << 9)));
                 _assembler.EmitLong(unchecked((uint)immediateBranch.Constant));

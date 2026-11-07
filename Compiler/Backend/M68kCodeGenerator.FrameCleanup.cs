@@ -37,6 +37,9 @@ internal sealed partial class M68kCodeGenerator
 			_allocatedFunctionAddressSwitches.Values.SelectMany(static plan =>
 				new[] { plan.Selector, plan.ValueRegister })
 				.Concat(allocated.ParallelCopies.ReferencedRegisters));
+		if (allocated.Function.SourceMethod?.PreserveScratchRegisters == true)
+			registers = registers.Concat(new[] { M68kRegister.D0, M68kRegister.D1,
+				M68kRegister.A0, M68kRegister.A1 }).Distinct().Order().ToArray();
 		return registers.Count == allocated.Frame.CalleeSavedRegisters.Count ? allocated : allocated with
 		{
 			Frame = allocated.Frame with { CalleeSavedRegisters = registers },

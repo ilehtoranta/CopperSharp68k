@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <CilicaSource Condition="'$(CilicaSource)' == ''">$(MSBuildThisFileDirectory)../../TestResults/CilicaAudit/upstream</CilicaSource>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Fixtures/**/*.cs" />
+    <ProjectReference Include="../../Compiler/CopperSharp.Compiler.csproj" />
+    <ProjectReference Include="../../Targets.Amiga/CopperSharp.Targets.Amiga.csproj" />
+    <ProjectReference Include="$(CilicaSource)/src/Cilica/Cilica.csproj" />
+    <PackageReference Include="Copper68k" Version="[1.5.4]" />
+    <Compile Include="../../Compiler.Tests/TestBus.cs" Link="TestBus.cs" />
+  </ItemGroup>
+</Project>

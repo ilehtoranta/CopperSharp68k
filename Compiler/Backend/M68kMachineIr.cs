@@ -85,7 +85,9 @@ internal enum M68kMachineOperation
 	Switch,
 	Return,
 	Throw,
-	Other
+	Other,
+	RotateImmediate,
+	MultiplyWordHalves
 }
 
 internal enum M68kMachineValueWidth
@@ -441,6 +443,10 @@ internal sealed record M68kMachineInstruction(
 	int MemorySize = 0)
 {
 	public M68kMachineBulkCopy? BulkCopy { get; init; }
+
+	// A long native memory load can use MOVEA without changing its memory
+	// operation. Eligibility still checks every consumer before widening it.
+	public bool AllowsAddressRegisterResult { get; init; }
 
 	// Object/array/offset projections use Uses[0]; span data uses Uses[1]
 	// for the owner loaded from the target span's third word. A span-element

@@ -121,6 +121,12 @@ internal sealed class M68kAssembler
 		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 	}
 
+	internal void DeclareDeferredDataSymbol(string label, int byteLength)
+	{
+		ArgumentOutOfRangeException.ThrowIfNegativeOrZero(byteLength);
+		_buffer.DeferredDataSizes.Add(label, byteLength);
+	}
+
 	internal void SetInstructionEffects(
 		int offset,
 		M68kInstructionEffects effects) =>
@@ -625,10 +631,11 @@ internal sealed class M68kAssembler
 		EmitAddress(target, external);
 	}
 
-	public void EmitJmp(string target, bool external)
+	public void EmitJmp(string target, bool external, bool nativeTailRestore = false)
 	{
 		EmitWord(0x4EF9);
 		EmitAddress(target, external);
+		if (nativeTailRestore) _addresses[^1] = _addresses[^1] with { NativeTailRestore = true };
 	}
 
 	public void EmitAddress(string target, bool external = false, int addend = 0,
@@ -644,6 +651,49 @@ internal sealed class M68kAssembler
 			if (scratch is not (M68kRegister.A0 or M68kRegister.A1) ||
 				(opcode & 0xFFF0) != 0x23C0 || (opcode & 15) == (int)scratch)
 				throw new InvalidOperationException("Static store requires a distinct dead A0/A1 scratch register.");
+		}
+	}
+
+	private readonly Dictionary<string, M68kRegister> _nativeEntrySaves = new(StringComparer.Ordinal);
+
+	internal void RecordNativeEntrySave(string entry, int offset, M68kRegister register)
+	{
+		if (_labels[entry] == offset && register is >= M68kRegister.D2 and <= M68kRegister.D7)
+			_nativeEntrySaves.Add(entry, register);
+	}
+
+	internal void FoldNativeTailRestores()
+	{
+		if (_nativeEntrySaves.Count == 0) return;
+		// Both the caller's restore and the callee's unconditional save were
+		// emitted from allocated frame metadata. Preserve the original slot and
+		// enter immediately after the push. Ordinary calls still use the entry.
+		for (int index = _addresses.Count - 1; index >= 0; index--) {
+			var jump = _addresses[index];
+			if (!jump.NativeTailRestore || !_nativeEntrySaves.TryGetValue(jump.Target, out var register)) continue;
+			int restore = jump.Offset - 4;
+			int entry = _labels[jump.Target];
+			if (_buffer.ReadWord(restore) != (0x201F | ((int)register << 9)) ||
+				_buffer.ReadWord(entry) != (0x2F00 | (int)register)) continue;
+			// A full MOVE.L from a different Dn kills both the old register
+			// value and the N/Z/V/C flags set by the omitted stack moves.
+			var first = _buffer.ReadWord(entry + 2);
+			if ((first & 0xFFF8) != (0x2000 | ((int)register << 9)) || (first & 7) == (int)register) continue;
+			var saved = jump.Target + ":after-native-save";
+			_labels.TryAdd(saved, entry + 2);
+			_addresses[index] = jump with { Target = saved };
+			_buffer.RemoveBytes(restore, 2);
+			// A conditional edge to the folded epilogue can take the same tail
+			// transfer directly. Only redirect a nearby word branch before
+			// relaxation; other entries can still use the original jump.
+			for (int i = 0; i < _branches.Count; i++) {
+				var branch = _branches[i];
+				var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+				if (opcode is < 0x6200 or > 0x6FFF || !IsWordBranchOpcode(opcode) ||
+					!_labels.TryGetValue(branch.Target, out var target) || target != restore ||
+					Math.Abs(_labels[saved] - branch.OpcodeOffset) > 126) continue;
+				_branches[i] = branch with { Target = saved };
+			}
 		}
 	}
 
@@ -841,6 +891,7 @@ internal sealed class M68kAssembler
 		// range decisions always see the aligned layout rather than a transiently
 		// smaller one.
 		ApplyRequestedAlignments();
+		ThreadConditionalTailBranches();
 		var wordBranches = new WordBranchWorklist(this);
 		var absoluteTransfers = new AbsoluteTransferWorklist(this);
 		while (true)
@@ -855,6 +906,41 @@ internal sealed class M68kAssembler
 				continue;
 			}
 			return;
+		}
+	}
+
+	// Branch directly to a local tail callee when a conditional edge lands
+	// on a bare jump. Other callers and fallthrough still enter the original stub.
+	private void ThreadConditionalTailBranches()
+	{
+		var tails = new Dictionary<int, string>();
+		foreach (var fixup in _addresses)
+			if (!fixup.External && fixup.Addend == 0 && fixup.CanRelaxToPcRelative &&
+				fixup.Offset >= 2 && _buffer.ReadWord(fixup.Offset - 2) == 0x4EF9 &&
+				fixup.Target.StartsWith("method:", StringComparison.Ordinal))
+				tails[fixup.Offset - 2] = fixup.Target;
+		foreach (var jump in _branches)
+			if ((_buffer.ReadWord(jump.OpcodeOffset) & 0xFF00) == 0x6000 &&
+				jump.Target.StartsWith("method:", StringComparison.Ordinal) &&
+				!jump.Target.Contains(":BB", StringComparison.Ordinal) &&
+				!jump.Target.Contains(":IL_", StringComparison.Ordinal))
+				tails[jump.OpcodeOffset] = jump.Target;
+		if (tails.Count == 0) return;
+		var alignments = GetSortedAlignmentOffsets();
+		for (int index = 0; index < _branches.Count; index++) {
+			var branch = _branches[index];
+			var opcode = _buffer.ReadWord(branch.OpcodeOffset);
+			if ((opcode & 0xF000) != 0x6000 || (opcode & 0x0F00) < 0x0200 ||
+				!_labels.TryGetValue(branch.Target, out var stub) ||
+				!tails.TryGetValue(stub, out var target) || !_labels.TryGetValue(target, out var offset) ||
+				offset == stub || offset == branch.OpcodeOffset ||
+				GetAlignmentRegion(branch.OpcodeOffset, alignments) != GetAlignmentRegion(offset, alignments))
+				continue;
+			var distance = offset - (branch.OpcodeOffset + 2);
+			if (distance is < short.MinValue or > short.MaxValue ||
+				!IsWordBranchOpcode(opcode) && (distance is < sbyte.MinValue or > sbyte.MaxValue || distance == 0))
+				continue;
+			_branches[index] = branch with { Target = target };
 		}
 	}
 
@@ -2695,6 +2781,7 @@ internal sealed class M68kAssembler
 			0xE188 => "lsl.l",
 			0xE158 => "rol.w",
 			0xE098 => "ror.l",
+			0xE198 => "rol.l",
 			_ => null
 		};
 		if (mnemonic is not null)

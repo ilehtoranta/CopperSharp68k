@@ -11,7 +11,8 @@ public sealed class NativeMemoryCompareTests
     public void MemoryPredicatesKeepTheReadWidthOrderAndPreservedRegisters(M68kCpuTarget target, M68kCpuModel model)
     {
         foreach (var mode in new[] { M68kPeepholeOptimizationMode.Disabled, M68kPeepholeOptimizationMode.FixedPoint })
-        foreach (var name in new[] { "byte", "word", "changed", "live", "byte.default", "word.default", "changed.default", "live.default" })
+        foreach (var name in new[] { "byte", "word", "changed", "live", "byte.default", "word.default", "changed.default", "live.default",
+            "byte.zero", "word.zero", "byte.zero.default", "word.zero.default" })
         {
             var result = AmigaM68kCompiler.Compile(new() {
                 AssemblyPath = typeof(NativeMemoryCompareFixture).Assembly.Location,
@@ -29,6 +30,7 @@ public sealed class NativeMemoryCompareTests
             using var core = M68kCoreFactory.Default.Create(model, bus);
             var kind = name.Split('.')[0];
             bool word = kind == "word";
+            bool zero = name.Contains(".zero");
             foreach (int value in word ? new[] { 0, 1, 4, 255, 256, 0x4000, 0x8000, 0xFFFF } : Enumerable.Range(0, 256))
             {
                 bus.Target = word ? 0x900Eu : 0x900Fu; bus.Width = word ? 2 : 1;
@@ -43,10 +45,10 @@ public sealed class NativeMemoryCompareTests
                 int predicates = 0; bus.Reads = bus.Writes = 0;
                 for (int n = 0; n < 1000 && core.State.ProgramCounter != 0x1000; n++) {
                     ushort op = bus.Inner.ReadWord(core.State.ProgramCounter);
-                    if ((op & 0xFFF8) == (word ? 0x0C68 : 0x0C28)) predicates++;
+                    if ((op & 0xFFF8) == (zero ? word ? 0x4A68 : 0x4A28 : word ? 0x0C68 : 0x0C28)) predicates++;
                     core.ExecuteInstruction();
                 }
-                bool match = value == (word ? 0x4000 : 4);
+                bool match = value == (zero ? 0 : word ? 0x4000 : 4);
                 uint expected = kind == "live" ? match ? 0x12345678u + (uint)value : 0x12345678u ^ (uint)value
                     : match ? 0x12345678u & 0x000F00F0u : 0x12345678u;
                 Assert.Equal(0x1000u, core.State.ProgramCounter); Assert.Equal(expected, core.State.D[0]);

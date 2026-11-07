@@ -272,9 +272,10 @@ internal static class CilOptimizer
 			(int)instruction.Operand!,
 			method,
 			instruction.Offset);
-		if (target.Definition is null ||
+		if ((target.Definition is null && target.ImportName is not
+			("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8")) ||
 			target.Signature.ReturnType.IsVoid ||
-			(target.Definition.ExternalCall is not null &&
+			(target.Definition?.ExternalCall is not null &&
 			 target.Signature.ParameterTypes.LastOrDefault()?.ElementType is not null))
 		{
 			// Stack-varargs calls need their preceding newarr/stelem sequence intact

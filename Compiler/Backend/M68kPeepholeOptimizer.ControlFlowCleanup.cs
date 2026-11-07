@@ -418,12 +418,25 @@ internal sealed partial class M68kPeepholeOptimizer
 		{
 			var load = instructions[index];
 			var add = instructions[index + 1];
+			// Allocation may copy an incoming address to its result register
+			// between materializing the displacement and applying ADDA/SUBA.
+			// MOVEA does not change the constant or the condition codes.
+			M68kEmittedInstruction? copy = null;
+			if ((add.Opcode & 0xF1F8) == 0x2048 && add.Length == 2 &&
+				index + 2 < instructions.Count)
+			{
+				copy = add;
+				add = instructions[index + 2];
+			}
 			var loadImmediate = (load.Opcode & 0xF100) == 0x7000 && load.Length == 2 ||
 				(load.Opcode & 0xF1FF) == 0x203C && load.Length == 6 ||
 				(load.Opcode & 0xF1FF) == 0x303C && load.Length == 4;
 			if (!loadImmediate || (add.Opcode & 0xF1F8) is not
 				(0xD1C0 or 0x91C0 or 0xD0C0 or 0x90C0) || add.Length != 2 ||
-				add.Offset != load.Offset + load.Length ||
+				(copy is { } move
+					? move.Offset != load.Offset + load.Length || add.Offset != move.Offset + move.Length ||
+					  ((move.Opcode >> 9) & 7) != ((add.Opcode >> 9) & 7) || HasAddressFixup(move)
+					: add.Offset != load.Offset + load.Length) ||
 				!CanFoldAcrossUnreferencedIlLabels(load.Offset, add.Offset + add.Length) ||
 				HasInternalLabel(load) || HasAddressFixup(load)) continue;
 			var temporary = (load.Opcode >> 9) & 7;
@@ -440,12 +453,14 @@ internal sealed partial class M68kPeepholeOptimizer
 			var displacement = (add.Opcode & 0xF000) == 0x9000 ? -(long)operand : operand;
 			if (displacement is < short.MinValue or > short.MaxValue) continue;
 			var address = (add.Opcode >> 9) & 7;
-			_buffer.WriteWord(load.Offset, 0x41E8 | (address << 9) | address);
+			var sourceAddress = copy is { } addressCopy ? addressCopy.Opcode & 7 : address;
+			_buffer.WriteWord(load.Offset, 0x41E8 | (address << 9) | sourceAddress);
 			_buffer.WriteWord(load.Offset + 2, unchecked((ushort)(short)displacement));
 			_buffer.InstructionEffectOverrides.Remove(load.Offset);
+			if (copy is { } removedCopy) _buffer.InstructionEffectOverrides.Remove(removedCopy.Offset);
 			_buffer.InstructionEffectOverrides.Remove(add.Offset);
 			MoveLabelsToOffset(load.Offset + 2, add.Offset + add.Length, load.Offset);
-			var removed = load.Length + add.Length - 4;
+			var removed = add.Offset + add.Length - load.Offset - 4;
 			if (removed != 0) _buffer.RemoveBytes(load.Offset + 4, removed);
 			return true;
 		}

@@ -5,6 +5,93 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class NativeImmediateStoreFixture
 {
+    [M68kInternalRegisterAbi, M68kExport("store.word.shared-float")]
+    public static uint SharedAddressAlongsideFloat()
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt16(pointer, 0, 0x4000);
+        StoreBarrier();
+        APTR.WriteUInt16(pointer, 0, 0xC000);
+        return FloatConstant() == 1.0f ? 0x3F800000u : 0u;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static float FloatConstant() => 1.0f;
+
+    [M68kInternalRegisterAbi, M68kExport("store.word.shared-null")]
+    public static uint SharedAddressAlongsideNull()
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt16(pointer, 0, 0x4000);
+        StoreBarrier();
+        APTR.WriteUInt16(pointer, 0, 0xC000);
+        return NullConstant() is null ? 0u : 1u;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static object? NullConstant() => null;
+
+    [M68kInternalRegisterAbi, M68kExport("store.long.address-register")]
+    public static void StoreAddressRegister([M68kRegister(M68kRegister.A0)] APTR value,
+        [M68kRegister(M68kRegister.A1)] APTR destination)
+    {
+        APTR.WriteUInt32(destination, 4, value.Raw);
+        APTR.WriteUInt32(destination, 8, value.Raw);
+    }
+
+    [M68kInternalRegisterAbi, M68kExport("store.word.shared-address")]
+    public static void SharedWordAddress([M68kRegister(M68kRegister.D0)] int mode)
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt16(pointer, 0, 0x4000);
+        StoreBarrier();
+        if (mode == 0) APTR.WriteUInt16(pointer, 0, 0);
+        else if (mode == 1) APTR.WriteUInt16(pointer, 0, 0xC000);
+    }
+
+    [M68kInternalRegisterAbi, M68kExport("store.byte.shared-address")]
+    public static void SharedByteAddress([M68kRegister(M68kRegister.D0)] int mode)
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt8(pointer, 0, 0x40);
+        StoreBarrier();
+        if (mode == 0) APTR.WriteUInt8(pointer, 0, 0);
+        else if (mode == 1) APTR.WriteUInt8(pointer, 0, 0xC0);
+    }
+
+    [M68kInternalRegisterAbi, M68kExport("store.word.shared-loop")]
+    public static void SharedWordLoop([M68kRegister(M68kRegister.D0)] int count)
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt16(pointer, 0, 0x4000);
+        StoreBarrier();
+        for (var n = 0; n < count; n++) APTR.WriteUInt16(pointer, 0, 0xC000);
+    }
+
+    [M68kInternalRegisterAbi, M68kExport("store.word.shared-three")]
+    public static void SharedWordThree()
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt16(pointer, 0, 0x4000);
+        StoreBarrier();
+        APTR.WriteUInt16(pointer, 0, 0xC000);
+        APTR.WriteUInt16(pointer, 0, 0x8000);
+    }
+
+    [M68kInternalRegisterAbi, M68kExport("store.word.shared-read")]
+    public static uint SharedWordRead()
+    {
+        var pointer = APTR.FromPointer(0x30000);
+        APTR.WriteUInt16(pointer, 0, 0x4000);
+        StoreBarrier();
+        var value = APTR.ReadUInt16(pointer, 0);
+        APTR.WriteUInt16(pointer, 0, 0xC000);
+        return value;
+    }
+
+    [M68kInternalRegisterAbi, MethodImpl(MethodImplOptions.NoInlining)]
+    private static void StoreBarrier() => APTR.WriteUInt8(APTR.FromPointer(0x34000), 0, 0x12);
+
     [M68kInternalRegisterAbi, M68kExport("store.byte.absolute")]
     public static void AbsoluteByte([M68kRegister(M68kRegister.D1)] bool zero) => AbsoluteByteBody(zero);
     [MethodImpl(MethodImplOptions.NoInlining)]

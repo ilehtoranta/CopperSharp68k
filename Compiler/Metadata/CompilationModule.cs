@@ -599,13 +599,21 @@ internal sealed partial class CompilationModule : IDisposable
 				signature.ParameterTypes.Any(type => type.Kind == CilTypeKind.ValueType
 					? !IsTransparentScalarType(type)
 					: type.Kind is CilTypeKind.GenericParameter or CilTypeKind.FloatingPoint || type.Size is < 1 or > 4) ||
-				!signature.ReturnType.IsVoid && (signature.ReturnType.Size != 4 || signature.ReturnType.Kind is not (CilTypeKind.SignedInteger or CilTypeKind.UnsignedInteger)) ||
+				!signature.ReturnType.IsVoid && signature.ReturnType.Kind != CilTypeKind.Boolean &&
+					(signature.ReturnType.Size != 4 || signature.ReturnType.Kind is not (CilTypeKind.SignedInteger or CilTypeKind.UnsignedInteger)) ||
 				abi.ReturnRegister != M68kRegister.D0 ||
 				abi.ParameterRegisters.Any(register => register < M68kRegister.D0 || register > M68kRegister.A6) ||
 				abi.ParameterRegisters.Distinct().Count() != abi.ParameterRegisters.Count)
 				throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature,
-					"Internal register ABI requires a static scalar body, distinct D0-D7/A0-A6 parameters and void/Int32 return in D0.", displayName);
+					"Internal register ABI requires a static scalar body, distinct D0-D7/A0-A6 parameters and void/Int32/Boolean return in D0.", displayName);
 			method = method with { InternalRegisterAbi = abi };
+		}
+		if (HasAttribute(definition.GetCustomAttributes(), typeof(M68kPreserveScratchRegistersAttribute).FullName!))
+		{
+			if (method.InternalRegisterAbi is null || !signature.ReturnType.IsVoid)
+				throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature,
+					"Scratch-register preservation requires a static void internal-register-ABI body.", displayName);
+			method = method with { PreserveScratchRegisters = true };
 		}
 		if (deferBody) return method with { HasDeferredBody = true };
 		_methodCache.Add(cacheKey, method);
@@ -10720,6 +10728,7 @@ internal sealed record CilMethod(
 	// canonical RuntimeType's ToString slot.
 	public bool HasDeferredBody { get; init; }
 	public CilRegisterAbi? InternalRegisterAbi { get; init; }
+	public bool PreserveScratchRegisters { get; init; }
 
 	public string Construction => FormatConstruction(
 		ConstructedDeclaringType,

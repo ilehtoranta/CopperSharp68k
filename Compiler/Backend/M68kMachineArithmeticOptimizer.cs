@@ -18,7 +18,8 @@ internal enum M68kIntegerArithmeticKind
 	UnsignedRegisterWordDivision,
 	SignedWordMultiply,
 	UnsignedWordMultiply,
-	FactoredWordMultiply
+	FactoredWordMultiply,
+	OrHighBitImmediate
 }
 
 internal sealed record M68kIntegerArithmeticPlan(
@@ -37,7 +38,7 @@ internal static class M68kMachineArithmeticOptimizer
 {
 	public static IReadOnlyDictionary<int, M68kIntegerArithmeticPlan> Run(
 		M68kMachineFunction function, M68kCpuTarget cpu, CompilationModule? module = null,
-		bool boundedRegisterDivision = false)
+		bool boundedRegisterDivision = false, bool narrowOperations = false)
 	{
 		var plans = new Dictionary<int, M68kIntegerArithmeticPlan>();
 		if (cpu != M68kCpuTarget.M68000) return plans;
@@ -113,6 +114,21 @@ internal static class M68kMachineArithmeticOptimizer
 									operand, wordFactor, remaining);
 								break;
 							}
+						}
+					}
+				}
+				else if (narrowOperations && instruction.Operation == M68kMachineOperation.Or &&
+					function.Values[instruction.Definitions[0]] is { Kind: CilStackValueKind.Int32,
+						Width: M68kMachineValueWidth.Long } result &&
+					!result.AllowedRegisters.Overlaps(M68kRegisterSet.Address))
+				{
+					for (var operand = 0; operand < 2; operand++)
+					{
+						if (ranges.TryGetConstant(instruction.Uses[1 - operand], out var mask) &&
+							unchecked((uint)mask) > ushort.MaxValue && BitOperations.IsPow2(unchecked((uint)mask)))
+						{
+							plan = new(M68kIntegerArithmeticKind.OrHighBitImmediate, mask, operand);
+							break;
 						}
 					}
 				}

@@ -38,6 +38,13 @@ public readonly struct APTR
 		throw new System.NotSupportedException(
 			"APTR.BitTestAndSet8 is lowered by CopperSharp.");
 
+	/// <summary>Atomically clears a bit in a native RAM byte and returns its
+	/// previous value. One guest BCLR instruction; the same modulo-eight and
+	/// CPU-interrupt-boundary contract as BitTestAndSet8. Not for MMIO.</summary>
+	public static bool BitTestAndClear8(APTR address, int bit) =>
+		throw new System.NotSupportedException(
+			"APTR.BitTestAndClear8 is lowered by CopperSharp.");
+
 	/// <summary>Atomically increments a native RAM word modulo 65536 and returns
 	/// whether the result is zero. One guest ADDQ.W, indivisible at CPU interrupt
 	/// boundaries; not synchronization with DMA writes. The address must be even.</summary>

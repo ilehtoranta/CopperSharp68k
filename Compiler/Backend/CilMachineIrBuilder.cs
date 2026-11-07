@@ -5140,7 +5140,7 @@ internal static class CilMachineIrBuilder
 			argumentConstraints[0] = CallArgumentConstraint.Fixed(M68kRegister.D0);
 		}
 		int? embeddedDisplacement = null;
-		if (target.ImportName == "intrinsic:aptr-bit-test-and-set8" &&
+		if (target.ImportName is "intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8" &&
 			TryGetMachineIntegerConstant(block, sourceUses[1], out var constantBit))
 		{
 			embeddedDisplacement = constantBit & 7;
@@ -5182,7 +5182,8 @@ internal static class CilMachineIrBuilder
 			// A constant displacement leaves the value as a direct memory-store
 			// operand; it does not need the legacy D1 ABI scratch register.
 			argumentConstraints[^1] = CallArgumentConstraint.RegisterClass(
-				M68kRegisterSet.Data);
+				target.ImportName == "intrinsic:aptr-write-uint32"
+					? M68kRegisterSet.DataOrAddress : M68kRegisterSet.Data);
 		}
 		var constrainedUses = sourceUses.ToArray();
 		int? aggregateReturnHome = null;
@@ -5327,7 +5328,7 @@ internal static class CilMachineIrBuilder
 		M68kMachineValue? fixedReturn = null;
 		if (!hasMultiwordReturn &&
 			definitions.Count == 1 &&
-			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
+			target.ImportName is not ("intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8" or "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32") &&
 			!HasFlexibleScalarReturn(target.ImportName))
 		{
@@ -5481,6 +5482,7 @@ internal static class CilMachineIrBuilder
 			platformBaseConvention: platformBaseConvention,
 			hasExplicitPlatformBase: hasExplicitPlatformBase) with
 		{
+			AllowsAddressRegisterResult = target.ImportName == "intrinsic:aptr-read-uint32",
 			ManagedByrefSourceArgumentCount = IsLengthCheckedSpanByrefConstructor(target.ImportName) ? 2 : 1,
 			// These private void methods consume the span synchronously in CopyTo.
 			// The source remains rooted in the caller for the complete operation;
@@ -6487,7 +6489,7 @@ internal static class CilMachineIrBuilder
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
 				CallArgumentConstraint.Fixed(M68kRegister.D0)];
 		}
-		if (target.ImportName == "intrinsic:aptr-bit-test-and-set8")
+		if (target.ImportName is "intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8")
 		{
 			return [CallArgumentConstraint.RegisterClass(M68kRegisterSet.Address),
 				CallArgumentConstraint.RegisterClass(M68kRegisterSet.Data)];
@@ -7261,6 +7263,7 @@ internal static class CilMachineIrBuilder
 			if (target.Definition is null &&
 				target.ImportName is
 					"intrinsic:aptr-bit-test-and-set8" or
+					"intrinsic:aptr-bit-test-and-clear8" or
 					"intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative" or
 				"intrinsic:aptr-read-uint8" or "intrinsic:aptr-read-uint16" or "intrinsic:aptr-read-uint32" or
 					"intrinsic:aptr-or-uint32" or "intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or "intrinsic:aptr-write-uint32" or

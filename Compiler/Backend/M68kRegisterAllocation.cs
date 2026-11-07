@@ -254,6 +254,8 @@ internal static class M68kAddressRegisterEligibility
 		foreach (var instruction in function.Blocks
 			.SelectMany(static block => block.Instructions))
 		{
+			if (instruction.AllowsAddressRegisterResult && instruction.Definitions is [var loaded])
+				AddCandidate(loaded);
 			if (!IsFlagIndependentLongArithmetic(instruction) ||
 				instruction.Uses.Length < 1 ||
 				instruction.Definitions.Length != 1)
@@ -373,6 +375,7 @@ internal static class M68kAddressRegisterEligibility
 	private static bool CanDefineAddressRegister(
 		M68kMachineInstruction instruction) =>
 		instruction.Operation == M68kMachineOperation.Copy ||
+		instruction.AllowsAddressRegisterResult && !instruction.ProducesConditionCodes && !instruction.ConsumesConditionCodes ||
 		IsFlagIndependentLongArithmetic(instruction);
 }
 
@@ -1370,6 +1373,8 @@ internal static class M68kGraphColoringAllocator
 				groupNeighbors, graph, allocatedGroups);
 		}
 
+		if (spilledGroups.Count == 0)
+			ImproveFlexibleLoadLocations(function, groups, groupForValue, groupNeighbors, graph, allocatedGroups);
 		var allocated = new Dictionary<int, M68kAllocatedLocation>();
 		var spilled = new HashSet<int>();
 		foreach (var group in groups.Values)
@@ -1386,6 +1391,67 @@ internal static class M68kGraphColoringAllocator
 			}
 		}
 		return new M68kAllocationResult(allocated, spilled);
+	}
+
+	private static void ImproveFlexibleLoadLocations(M68kMachineFunction function,
+		IReadOnlyDictionary<int, AllocationGroup> groups, IReadOnlyDictionary<int, int> groupForValue,
+		IReadOnlyDictionary<int, HashSet<int>> neighbors, M68kInterferenceGraph graph,
+		Dictionary<int, M68kAllocatedLocation> allocated)
+	{
+		// Saving an address register costs more than one long register copy.
+		// A flexible load may stay in a volatile data register instead, freeing
+		// its address register for a value otherwise requiring a save/restore.
+		// Reject loops: an added copy there could outweigh the entry/exit saving.
+		if (function.Blocks.Any(b => b.LoopDepth != 0)) return;
+		var loads = function.Blocks.SelectMany(b => b.Instructions)
+			.Where(i => i.AllowsAddressRegisterResult).SelectMany(i => i.Definitions)
+			.Select(v => groupForValue[v]).Distinct().ToArray();
+		if (loads.Length == 0) return;
+		var edges = graph.CopyPreferences.Select(p => (Left: groupForValue[p.Left], Right: groupForValue[p.Right],
+			Weight: graph.CopyPreferenceWeight(p.Left, p.Right))).Where(p => p.Left != p.Right).ToArray();
+		var edgesByGroup = groups.Keys.ToDictionary(id => id, _ => new List<int>());
+		for (var i = 0; i < edges.Length; i++)
+		{
+			edgesByGroup[edges[i].Left].Add(i); edgesByGroup[edges[i].Right].Add(i);
+		}
+		foreach (var id in loads)
+		{
+			var load = groups[id]; var oldLoad = allocated[id];
+			if (load.PrecoloredRegister is not null || load.IsPair ||
+				oldLoad.Register is not (M68kRegister.A0 or M68kRegister.A1)) continue;
+			foreach (var otherId in neighbors[id])
+			{
+				var other = groups[otherId]; var oldOther = allocated[otherId];
+				if (other.PrecoloredRegister is not null || other.IsPair ||
+					other.AllowedRegisters.Overlaps(M68kRegisterSet.Data) ||
+					oldOther.Register is < M68kRegister.A2 or > M68kRegister.A6 ||
+					allocated.Values.Count(l => l.OccupiedRegisters.Contains(oldOther.Register)) != 1) continue;
+				var movedOther = new M68kAllocatedLocation(oldLoad.Register, false);
+				foreach (var data in new[] { M68kRegister.D0, M68kRegister.D1 })
+				{
+					var movedLoad = new M68kAllocatedLocation(data, false);
+					if (!Legal(load, movedLoad, otherId, movedOther) || !Legal(other, movedOther, id, movedLoad)) continue;
+					var before = CopyCost(id, oldLoad, otherId, oldOther);
+					var after = CopyCost(id, movedLoad, otherId, movedOther);
+					// At most one added copy on any acyclic path; no new saved
+					// registers or spills. Both replacements remain interference-safe.
+					if (after > before + 1) continue;
+					allocated[id] = movedLoad; allocated[otherId] = movedOther;
+					goto NextLoad;
+				}
+			}
+		NextLoad:;
+		}
+
+		bool Legal(AllocationGroup group, M68kAllocatedLocation location, int replaced, M68kAllocatedLocation replacement) =>
+			CandidateIsAvailable(group, location.Register, group.ForbiddenRegisters) &&
+			neighbors[group.Id].All(n => !(n == replaced ? replacement : allocated[n]).OccupiedRegisters.Overlaps(location.OccupiedRegisters));
+		long CopyCost(int left, M68kAllocatedLocation a, int right, M68kAllocatedLocation b)
+		{
+			M68kAllocatedLocation At(int id) => id == left ? a : id == right ? b : allocated[id];
+			return edgesByGroup[left].Union(edgesByGroup[right]).Select(i => edges[i])
+				.Where(e => At(e.Left) != At(e.Right)).Sum(e => (long)e.Weight);
+		}
 	}
 
 	private sealed class CopyPreferenceIndex(

@@ -5,6 +5,24 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class NativeMemoryCompareFixture
 {
+    [M68kInternalRegisterAbi, M68kExport("compare.byte.zero")]
+    public static uint ByteZero([M68kRegister(M68kRegister.A1)] APTR pointer, [M68kRegister(M68kRegister.D0)] uint mask)
+        => APTR.ReadUInt8(pointer, 15) == 0 ? mask & APTR.ReadUInt32(pointer, 22) : mask;
+    [M68kInternalRegisterAbi, M68kExport("compare.word.zero")]
+    public static uint WordZero([M68kRegister(M68kRegister.A1)] APTR pointer, [M68kRegister(M68kRegister.D0)] uint mask)
+        => APTR.ReadUInt16(pointer, 14) == 0 ? mask & APTR.ReadUInt32(pointer, 22) : mask;
+    [M68kInternalRegisterAbi, M68kExport("compare.byte.zero.default")]
+    public static uint DefaultByteZero([M68kRegister(M68kRegister.A1)] APTR pointer, [M68kRegister(M68kRegister.D0)] uint mask)
+        => DefaultByteZeroBody(pointer, mask);
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static uint DefaultByteZeroBody(APTR pointer, uint mask)
+        => APTR.ReadUInt8(pointer, 15) == 0 ? mask & APTR.ReadUInt32(pointer, 22) : mask;
+    [M68kInternalRegisterAbi, M68kExport("compare.word.zero.default")]
+    public static uint DefaultWordZero([M68kRegister(M68kRegister.A1)] APTR pointer, [M68kRegister(M68kRegister.D0)] uint mask)
+        => DefaultWordZeroBody(pointer, mask);
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static uint DefaultWordZeroBody(APTR pointer, uint mask)
+        => APTR.ReadUInt16(pointer, 14) == 0 ? mask & APTR.ReadUInt32(pointer, 22) : mask;
     [M68kInternalRegisterAbi, M68kExport("compare.byte.default")]
     public static uint DefaultByte([M68kRegister(M68kRegister.A1)] APTR pointer, [M68kRegister(M68kRegister.D0)] uint mask)
         => DefaultByteBody(pointer, mask);

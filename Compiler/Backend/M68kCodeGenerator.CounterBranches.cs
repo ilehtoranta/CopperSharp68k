@@ -9,7 +9,7 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
-    private readonly Dictionary<int, (int Base, short Offset, bool Increment, int SizeBits, M68kCondition Condition)> _allocatedCounterBranches = new();
+    private readonly Dictionary<int, (int Base, short Offset, bool Increment, int SizeBits, M68kCondition Condition, int? Bit)> _allocatedCounterBranches = new();
     private readonly HashSet<int> _allocatedDiscardedCounterResults = new();
 
     private void PrepareAllocatedCounterBranches(CilMethod method, M68kAllocatedFunction allocated)
@@ -46,7 +46,8 @@ internal sealed partial class M68kCodeGenerator
                 _allocatedSuppressedInstructions.Contains(call.Id) ||
                 allocated.Allocation.Registers[address].Register is < M68kRegister.A0 or > M68kRegister.A6) continue;
             var name = ResolveAllocatedMachineMethod(method, call).ImportName;
-            if (name is not ("intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative")) continue;
+            var bitUpdate = name is "intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8";
+            if (!bitUpdate && name is not ("intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-decrement-word-negative" or "intrinsic:aptr-increment-byte-zero" or "intrinsic:aptr-decrement-byte-negative")) continue;
             M68kCondition testCondition;
             if (branch.BranchCondition is { } test) {
                 if (test.SourceKind != M68kMachineConditionSourceKind.Test ||
@@ -55,13 +56,15 @@ internal sealed partial class M68kCodeGenerator
             } else if (branch.SourceInstruction is not { } cil ||
                 !TryGetBooleanBranchCondition(cil.OpCode, out testCondition)) continue;
             bool increment = name is "intrinsic:aptr-increment-word-zero" or "intrinsic:aptr-increment-byte-zero";
-            int sizeBits = name.Contains("-byte-", StringComparison.Ordinal) ? 0 : 0x40;
-            var condition = increment ? M68kCondition.Equal : M68kCondition.Minus;
+            int sizeBits = name!.Contains("-byte-", StringComparison.Ordinal) ? 0 : 0x40;
+            var condition = bitUpdate ? M68kCondition.NotEqual : increment ? M68kCondition.Equal : M68kCondition.Minus;
             if (testCondition == M68kCondition.Equal) condition = InvertCondition(condition);
             // Consume the atomic counter update's flags directly. Its boolean
             // has exactly one adjacent branch consumer, so no scalar result,
             // extension or retest needs to be emitted or preserved.
-            _allocatedCounterBranches.Add(branch.Id, (address, (short)call.Immediate.Value, increment, sizeBits, condition));
+            _allocatedCounterBranches.Add(branch.Id, bitUpdate
+                ? (address, 0, name == "intrinsic:aptr-bit-test-and-set8", 0, condition, call.Immediate.Value & 7)
+                : (address, (short)call.Immediate.Value, increment, sizeBits, condition, null));
             _allocatedSuppressedInstructions.Add(call.Id);
             _allocatedBitBranchDeadValues.Add(result);
         }

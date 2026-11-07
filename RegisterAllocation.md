@@ -221,3 +221,10 @@ full-width address-to-data copy immediately preceding an immediate comparison
 can be replaced by CMPA.L on the original address register when intervening
 instructions are suppressed. Signed and unsigned branch flags retain the
 original full-width comparison semantics; no memory access is narrowed.
+
+A direct native tail call can carry one saved data register across the jump.
+The emitted caller restore must match the callee's unconditional entry push.
+The next instruction must replace the full register and its condition codes
+with a move from a different data register. Only that tail call enters after
+the push. Ordinary calls retain the full prologue, and both paths restore the
+original stack slot on return.

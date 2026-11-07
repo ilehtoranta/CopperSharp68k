@@ -35,7 +35,8 @@ internal sealed partial class M68kCodeGenerator
             if (block.Instructions.Any(i => i.Clobbers.Contains(source) ||
                 i.Operation is not (M68kMachineOperation.Constant or M68kMachineOperation.Copy or
                     M68kMachineOperation.Shift or M68kMachineOperation.Multiply or
-                    M68kMachineOperation.Convert or M68kMachineOperation.Branch) ||
+                    M68kMachineOperation.Convert or M68kMachineOperation.RotateImmediate or
+                    M68kMachineOperation.ConditionalBranch or M68kMachineOperation.Branch) ||
                 i.Operation == M68kMachineOperation.Multiply &&
                     (!_integerArithmeticPlans.TryGetValue(i.Id, out var plan) ||
                      plan.Kind is not (M68kIntegerArithmeticKind.SignedWordMultiply or M68kIntegerArithmeticKind.UnsignedWordMultiply)))) continue;

@@ -139,6 +139,13 @@ internal static class M68kMachineModuleOptimizer
 			M68kMachineIrVerifier.Verify(function);
 		}
 
+		// Normalize existing guest-memory calls as well as calls exposed by
+		// inlining. Otherwise dead displacement/ABI copies consume the small
+		// helper budget before a constant-selected path can be admitted.
+		foreach (var function in functions.Values)
+			if (FoldInlinedGuestMemoryDisplacements(function, module))
+				function.OptimizationStatistics = M68kMachineOptimizer.Run(function, cpu);
+
 		var graph = BuildCallGraph(functions, module, foldedMethodAliases);
 		var components = FindStronglyConnectedComponents(graph);
 		var singleUseCandidates = inlineSingleUseMethods || inlineMemoryHelpers
@@ -194,6 +201,28 @@ internal static class M68kMachineModuleOptimizer
 			functions,
 			module,
 			cpu);
+		// Devirtualized platform wrappers can expose a tiny memory helper only
+		// after argument-home promotion. Revisit that bounded class once; the
+		// original graph is conservative because cloning adds only intrinsics.
+		var lateInlined = 0;
+		foreach (var component in components)
+		foreach (var identity in component)
+		{
+			if (!functions.TryGetValue(identity, out var caller) ||
+				!methodsByIdentity.TryGetValue(identity, out var method)) continue;
+			lateInlined += InlineScalarCalls(method, caller, methodsByIdentity,
+				functions, componentByMethod, module, cpu, noInlineMethods,
+				foldedMethodAliases, singleUseCandidates, inlineMemoryHelpers,
+				sizeFirstCosts, ref singleUseInlined, tinyMemoryOnly: true);
+		}
+		if (lateInlined != 0)
+		{
+			inlined += lateInlined;
+			foreach (var function in functions.Values)
+				if (FoldInlinedGuestMemoryDisplacements(function, module))
+					function.OptimizationStatistics = M68kMachineOptimizer.Run(function, cpu);
+			RunMemoryPromotionFixedPoint(methods, methodsByIdentity, functions, module, cpu);
+		}
 		beforeRetention?.Invoke();
 		foreach (var function in functions.Values)
 			CilMachineIrBuilder.EliminateUnusedLocalHomes(function);
@@ -297,11 +326,18 @@ internal static class M68kMachineModuleOptimizer
 					// displacement embedded in the instruction any data register works.
 					if (instruction.Uses.Length == 3 && definitions.TryGetValue(instruction.Uses[2], out var valueCopy) &&
 						valueCopy.Operation == M68kMachineOperation.Copy && valueCopy.Definitions is [var stored])
+					{
+						var origin = instruction.Origin!;
+						var longStore = module.ResolveMethodToken((int)origin.SourceInstruction.Operand!,
+							origin.SourceMethod, origin.SourceInstruction.Offset).ImportName == "intrinsic:aptr-write-uint32";
 						function.Values[stored] = function.Values[stored] with
 						{
-							AllowedRegisters = M68kRegisterSet.Data,
+							// MOVE.L can store An directly; narrowing to Dn here
+							// needlessly recreates pressure removed by the CIL builder.
+							AllowedRegisters = longStore ? M68kRegisterSet.DataOrAddress : M68kRegisterSet.Data,
 							PrecoloredRegister = null
 						};
+					}
 					changed = true;
 				}
 				break;
@@ -560,7 +596,7 @@ internal static class M68kMachineModuleOptimizer
 		IReadOnlyDictionary<CilMethodIdentity, CilMethod>? foldedMethodAliases,
 		IReadOnlySet<CilMethodIdentity> singleUseCandidates,
 		bool inlineMemoryHelpers, bool sizeFirstCosts,
-		ref int singleUseInlined)
+		ref int singleUseInlined, bool tinyMemoryOnly = false)
 	{
 		var count = 0;
 		foreach (var block in caller.Blocks.OrderBy(static block => block.Id))
@@ -624,18 +660,35 @@ internal static class M68kMachineModuleOptimizer
 						targetMethod,
 						logicalCall,
 						module);
-				var additionalMemoryHelper = inlineMemoryHelpers && singleUseCandidates.Contains(bodyIdentity) &&
+				// A tiny private read/write helper can cost less than its ABI setup,
+				// even with multiple callers. Clone the existing ordered accesses;
+				// do not fuse them into a different memory operation.
+				var tinyMemoryHelper = !sizeFirstCosts &&
+					(targetMethod.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Private &&
+					target.Blocks.Count == 1 && target.Blocks[0].Instructions.Count <= 16 &&
+					target.Blocks[0].Instructions.Count(i => IsGuestMemoryIntrinsic(i, module)) == 2;
+				// Literal-address adapters emit a constant address, not two native
+				// subroutine calls. Preserve the intrinsic origins when cloning so
+				// emission resolves the literal in its defining assembly.
+				var tinyLiteralHelper = !sizeFirstCosts && target.Blocks.Count == 1 &&
+					target.Blocks[0].Instructions.Count <= 12 &&
+					target.Blocks[0].Instructions.Count(i => IsLiteralAddressIntrinsic(i, module)) == 2;
+				if (tinyMemoryOnly && !tinyMemoryHelper && !tinyLiteralHelper) continue;
+				var additionalMemoryHelper = (tinyMemoryHelper ||
+					inlineMemoryHelpers && singleUseCandidates.Contains(bodyIdentity)) &&
 					(targetMethod.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Private &&
 					!caller.HasExceptionHandlers && !caller.HasDynamicStackAllocation &&
 					!caller.Values.Values.Any(v => v.IsGcReference);
 				if (!TryGetScalarInlineBody(
 						target,
+						caller,
 						logicalCall,
 						module,
 						aggressive,
 						trivialValueTypeConstructor,
 						valueTypeAccessor,
 						additionalMemoryHelper,
+						tinyLiteralHelper,
 						out var body,
 						out var arguments,
 						out var returnValues,
@@ -711,7 +764,12 @@ internal static class M68kMachineModuleOptimizer
 					singleUseCandidates.Contains(bodyIdentity) &&
 					afterCost.Bytes + pressurePenalty <
 						beforeCost.Bytes + EstimateCost(target, cpu).Bytes;
-				if (!forceInline && !acceptedNormally && !acceptedAsSingleUse)
+				var acceptedAsTinyMemory = tinyMemoryHelper && body.Count <= 12 &&
+					M68kTargetCostModel.Accept(beforeCost + EstimateCost(target, cpu),
+						afterCost, cpu);
+				var acceptedAsTinyLiteral = tinyLiteralHelper && body.Count <= 8 &&
+					M68kTargetCostModel.Accept(beforeCost + EstimateCost(target, cpu), afterCost, cpu);
+				if (!forceInline && !acceptedNormally && !acceptedAsSingleUse && !acceptedAsTinyMemory && !acceptedAsTinyLiteral)
 				{
 					continue;
 				}
@@ -1288,12 +1346,14 @@ internal static class M68kMachineModuleOptimizer
 
 	private static bool TryGetScalarInlineBody(
 		M68kMachineFunction target,
+		M68kMachineFunction caller,
 		M68kMachineLogicalCall logicalCall,
 		CompilationModule module,
 		bool allowGuestMemoryIntrinsic,
 		bool allowTrivialValueTypeConstructor,
 		bool allowValueTypeAccessor,
 		bool allowAdditionalMemory,
+		bool allowLiteralAddress,
 		out IReadOnlyList<M68kMachineInstruction> body,
 		out IReadOnlyDictionary<int, int> arguments,
 		out ImmutableArray<int> returnValues,
@@ -1303,12 +1363,12 @@ internal static class M68kMachineModuleOptimizer
 		arguments = new Dictionary<int, int>();
 		returnValues = [];
 		guestMemoryIntrinsicWrapper = false;
-		if (target.Blocks.Count != 1 || target.ExceptionRegions.Count != 0 ||
-			target.HasDynamicStackAllocation || target.Blocks[0].Phis.Count != 0)
+		if (target.ExceptionRegions.Count != 0 || target.HasDynamicStackAllocation ||
+			!TryGetScalarInlineInstructions(target, caller, logicalCall,
+				allowGuestMemoryIntrinsic, out var instructions))
 		{
 			return false;
 		}
-		var instructions = target.Blocks[0].Instructions;
 		if (instructions.LastOrDefault() is not
 			{
 				Operation: M68kMachineOperation.Return
@@ -1329,7 +1389,6 @@ internal static class M68kMachineModuleOptimizer
 				return false;
 			}
 		}
-		if (allowValueTypeAccessor)
 		{
 			foreach (var load in instructions.Where(i => i.Operation == M68kMachineOperation.ArgumentLoad))
 			{
@@ -1338,6 +1397,16 @@ internal static class M68kMachineModuleOptimizer
 					!target.ArgumentHomes.TryGetValue(index, out var home) || home.Size != 4 || home.HasGcReferences ||
 					instructions.Any(i => i.ArgumentIndex == index && i.Operation is
 						M68kMachineOperation.ArgumentAddress or M68kMachineOperation.ArgumentStore)) continue;
+				// Transparent pointer values are passed as their four-byte carrier.
+				// A read-only home created for Raw does not require a memory load or
+				// prevent an ordinary static pointer-arithmetic helper from inlining.
+				if (!allowValueTypeAccessor)
+				{
+					if (target.SourceMethod is not { } method) continue;
+					var parameter = index - (method.Signature.Header.IsInstance ? 1 : 0);
+					if (parameter < 0 || parameter >= method.Signature.ParameterTypes.Length ||
+						!module.IsTransparentScalarType(method.Signature.ParameterTypes[parameter])) continue;
+				}
 				// An address-only scalar parameter may have no explicit Argument
 				// value; its prologue home is initialized by the ABI. Once Raw has
 				// become a read-only ArgumentLoad, the caller's argument is its seed.
@@ -1363,6 +1432,7 @@ internal static class M68kMachineModuleOptimizer
 				IsTrivialValueTypeConstructorStore(instruction));
 		if (inlineBody.Any(instruction =>
 			!IsPureScalarInstruction(instruction) &&
+			!(allowLiteralAddress && IsLiteralAddressIntrinsic(instruction, module)) &&
 			!(isTrivialValueTypeConstructorBody &&
 			  IsTrivialValueTypeConstructorStore(instruction)) &&
 			!(allowValueTypeAccessor && IsOrdinaryMemory(instruction) &&
@@ -1419,6 +1489,96 @@ internal static class M68kMachineModuleOptimizer
 			!instruction.RequiresLiveCallerFrame &&
 			instruction.LogicalCall is null;
 
+	}
+
+	// Constant arguments can select a straight-line path through a small helper.
+	// Keep the shared callee intact: a dynamic caller or address-taken root still
+	// needs every branch. The ordinary scalar/memory admission and cost checks
+	// below remain authoritative for the selected instructions.
+	private static bool TryGetScalarInlineInstructions(
+		M68kMachineFunction target,
+		M68kMachineFunction caller,
+		M68kMachineLogicalCall call,
+		bool allowConstantPath,
+		out IReadOnlyList<M68kMachineInstruction> instructions)
+	{
+		instructions = [];
+		if (target.Blocks.Count == 1 && target.Blocks[0].Phis.Count == 0)
+		{
+			instructions = target.Blocks[0].Instructions;
+			return true;
+		}
+		if (!allowConstantPath || target.Blocks.Any(static block => block.IsExceptionEntry ||
+			block.PredecessorEdges.Any(static edge => edge.Kind != M68kMachineEdgeKind.Normal) ||
+			block.SuccessorEdges.Any(static edge => edge.Kind != M68kMachineEdgeKind.Normal)))
+			return false;
+
+		var callerConstants = caller.Blocks.SelectMany(static block => block.Instructions)
+			.Where(static instruction => instruction.Operation == M68kMachineOperation.Constant &&
+				instruction.Definitions.Length == 1 && instruction.ConstantValue is not null)
+			.ToDictionary(static instruction => instruction.Definitions[0],
+				static instruction => instruction.ConstantValue!.Value);
+		var constants = new Dictionary<int, M68kMachineConstant>();
+		var blocks = target.Blocks.ToDictionary(static block => block.Id);
+		if (!blocks.TryGetValue(target.EntryBlockId, out var current)) return false;
+		var visited = new HashSet<int>();
+		var ordered = new List<M68kMachineInstruction>();
+		int? predecessor = null;
+		while (visited.Add(current.Id))
+		{
+			foreach (var phi in current.Phis)
+			{
+				if (predecessor is not { } incoming || !phi.Inputs.TryGetValue(incoming, out var value))
+					return false;
+				ordered.Add(M68kMachineInstruction.Create(-1, M68kMachineOperation.Copy,
+					current.StartIlOffset, uses: [value], definitions: [phi.Definition]));
+				if (constants.TryGetValue(value, out var known)) constants[phi.Definition] = known;
+			}
+			foreach (var instruction in current.Instructions)
+			{
+				if (instruction.Operation is M68kMachineOperation.Branch or M68kMachineOperation.ConditionalBranch)
+					continue;
+				ordered.Add(instruction);
+				if (instruction.Definitions is not [var definition]) continue;
+				if (instruction.Operation == M68kMachineOperation.Argument && instruction.ArgumentIndex is { } index &&
+					index >= 0 && index < call.ArgumentValueIds.Length &&
+					callerConstants.TryGetValue(call.ArgumentValueIds[index], out var argument))
+					constants[definition] = argument;
+				else if (instruction.Operation == M68kMachineOperation.Constant && instruction.ConstantValue is { } literal)
+					constants[definition] = literal;
+				else if (instruction.Operation == M68kMachineOperation.Copy && instruction.Uses is [var source] &&
+					constants.TryGetValue(source, out var copy))
+					constants[definition] = copy;
+				else if (M68kMachineOptimizer.TryEvaluate(target, instruction, constants, out var folded))
+					constants[definition] = folded;
+			}
+			if (current.Instructions.LastOrDefault() is not { } terminator) return false;
+			if (terminator.Operation == M68kMachineOperation.Return && current.Successors.Count == 0)
+			{
+				instructions = ordered;
+				return true;
+			}
+			int successor;
+			if (terminator.Operation == M68kMachineOperation.ConditionalBranch && current.Successors.Count == 2 &&
+				M68kMachineOptimizer.TryEvaluateBranch(terminator, constants, out var takeTarget))
+				successor = current.Successors[takeTarget ? 0 : 1];
+			else if (current.Successors is [var only] &&
+				terminator.Operation is not M68kMachineOperation.ConditionalBranch and not M68kMachineOperation.Switch)
+				successor = only;
+			else return false;
+			predecessor = current.Id;
+			if (!blocks.TryGetValue(successor, out current)) return false;
+		}
+		return false; // A loop cannot become a finite scalar inline body.
+	}
+
+	private static bool IsLiteralAddressIntrinsic(M68kMachineInstruction instruction, CompilationModule module)
+	{
+		if (instruction.Operation != M68kMachineOperation.Call || instruction.RequiresLiveCallerFrame ||
+			instruction.Origin is not { SourceInstruction.Operand: int token } origin ||
+			origin.SourceInstruction.OpCode != OpCodes.Call) return false;
+		var reference = module.ResolveMethodToken(token, origin.SourceMethod, origin.SourceInstruction.Offset);
+		return reference.ImportName is "intrinsic:cstring-from-literal" or "intrinsic:cstring-to-uint32";
 	}
 
 	private static bool IsGuestMemoryIntrinsic(

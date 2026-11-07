@@ -85,6 +85,31 @@ public sealed class IntegerArithmeticSelectionTests
 	}
 
 	[Theory]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.PackedProduct), true)]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.SharedPackedWords), true)]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.MixedPackedWords), false)]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.SignedPackedWords), false)]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.BytePackedWords), false)]
+	public void FusesOnlyTheTwoUnsignedWordsOfOneLong(string method, bool fused)
+	{
+		using var module = new CompilationModule(typeof(IntegerArithmeticSelectionFixture).Assembly.Location);
+		var cil = module.ResolveEntryPoint($"{typeof(IntegerArithmeticSelectionFixture).FullName}::{method}");
+		var function = CilMachineIrBuilder.Build(cil, module, M68kCpuTarget.M68000);
+		Assert.Equal(fused ? 1 : 0, function.Blocks.SelectMany(b => b.Instructions)
+			.Count(i => i.Operation == M68kMachineOperation.MultiplyWordHalves));
+
+		var compiled = Compile(method);
+		var host = typeof(IntegerArithmeticSelectionFixture).GetMethod(method)!;
+		foreach (var cpu in new[] { M68kCpuModel.M68000, M68kCpuModel.M68EC020 })
+		foreach (uint input in new uint[] { 0, 0x0000ffff, 0xffff0000, 0x00030003,
+			0x8000ffff, 0x1234abcd, uint.MaxValue })
+		{
+			uint other = ~input | 2u;
+			Assert.Equal((uint)host.Invoke(null, [input, other])!, Execute(compiled, cpu, input, other));
+		}
+	}
+
+	[Theory]
 	[MemberData(nameof(ExecutionCases))]
 	public void IntegerResultsAgreeWithClrAcrossBounds(string method, M68kCpuTarget target,
 		M68kCpuModel model, M68kPeepholeOptimizationMode mode)
@@ -188,16 +213,49 @@ public sealed class IntegerArithmeticSelectionTests
 		}
 	}
 
+	[Theory]
+	[InlineData(M68kPeepholeOptimizationMode.Disabled)]
+	[InlineData(M68kPeepholeOptimizationMode.FixedPoint)]
+	public void HighBitImmediateOrRetainsOtherBitsAndSignedResult(M68kPeepholeOptimizationMode mode)
+	{
+		var result = Compile(nameof(IntegerArithmeticSelectionFixture.HighBitOr), mode: mode, narrow: true);
+		foreach (uint input in new uint[] { 0, 1, 0x10000, 0x80000000, uint.MaxValue })
+			Assert.Equal(IntegerArithmeticSelectionFixture.HighBitOr(input), Execute(result, M68kCpuModel.M68000, input, 0));
+	}
+
+	[Theory]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.HighWord), "swap")]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.RotateLeftByte), "rol.l")]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.RotateRightOne), "ror.l")]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.RotateDifferentSources), null)]
+	[InlineData(nameof(IntegerArithmeticSelectionFixture.ArithmeticShiftOr), null)]
+	public void ComplementaryShiftsRotateOnlyTheSameLogicalValue(string method, string? mnemonic)
+	{
+		var compiled = Compile(method);
+		if (mnemonic is not null) Assert.Contains(mnemonic, compiled.Text!);
+		else {
+			Assert.DoesNotContain("ror.l", compiled.Text!);
+			Assert.DoesNotContain("rol.l", compiled.Text!);
+		}
+		var host = typeof(IntegerArithmeticSelectionFixture).GetMethod(method)!;
+		foreach (var cpu in new[] { M68kCpuModel.M68000, M68kCpuModel.M68EC020 })
+		foreach (uint input in new uint[] { 0, 1, 0x12345678, 0x80000000, 0x80000001, uint.MaxValue }) {
+			uint other = ~input;
+			Assert.Equal((uint)host.Invoke(null, [input, other])!, Execute(compiled, cpu, input, other));
+		}
+	}
+
 	private static M68kCompilationResult Compile(string method,
 		M68kCpuTarget target = M68kCpuTarget.M68000,
 		M68kPeepholeOptimizationMode mode = M68kPeepholeOptimizationMode.FixedPoint,
-		M68kExceptionMode exceptionMode = M68kExceptionMode.Yolo) =>
+		M68kExceptionMode exceptionMode = M68kExceptionMode.Yolo, bool narrow = false) =>
 		AmigaM68kCompiler.Compile(new M68kCompilationRequest
 		{
 			AssemblyPath = typeof(IntegerArithmeticSelectionFixture).Assembly.Location,
 			EntryPoint = $"{typeof(IntegerArithmeticSelectionFixture).FullName}::{method}Entry",
 			Cpu = target,
-			OutputFormat = M68kOutputFormat.Assembly,
+			OutputFormat = narrow ? M68kOutputFormat.Hunk : M68kOutputFormat.Assembly,
+			CodeSizeOptimizations = narrow ? new() { NarrowOperations = true } : null,
 			RuntimeProfile = M68kRuntimeProfile.Resident,
 			MemoryManagement = M68kMemoryManagement.None,
 			ExceptionMode = exceptionMode,
@@ -239,6 +297,23 @@ public sealed class IntegerArithmeticSelectionTests
 
 public static class IntegerArithmeticSelectionFixture
 {
+	public static uint HighWordEntry() => HighWord(ReadLeft(), ReadRight());
+	public static uint HighWord(uint x, uint y) => x >> 16;
+	public static uint RotateLeftByteEntry() => RotateLeftByte(ReadLeft(), ReadRight());
+	public static uint RotateRightOneEntry() => RotateRightOne(ReadLeft(), ReadRight());
+	public static uint RotateDifferentSourcesEntry() => RotateDifferentSources(ReadLeft(), ReadRight());
+	public static uint ArithmeticShiftOrEntry() => ArithmeticShiftOr(ReadLeft(), ReadRight());
+	public static uint RotateLeftByte(uint x, uint y) => (x << 8) | (x >> 24);
+	public static uint RotateRightOne(uint x, uint y) => (x >> 1) | (x << 31);
+	public static uint RotateDifferentSources(uint x, uint y) => (x >> 1) | (y << 31);
+	public static uint ArithmeticShiftOr(uint x, uint y) => (uint)((int)x >> 1) | (x << 31);
+	public static uint HighBitOrEntry() => HighBitOr(ReadLeft());
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint HighBitOr(uint input)
+	{
+		uint result = input | 0x10000u;
+		return (int)result < 0 ? ~result : result;
+	}
 	public static uint PowerQuotientEntry() => PowerQuotient(ReadLeft(), ReadRight());
 	public static uint PowerRemainderEntry() => PowerRemainder(ReadLeft(), ReadRight());
 	public static uint HighPowerQuotientEntry() => HighPowerQuotient(ReadLeft(), ReadRight());
@@ -285,6 +360,29 @@ public static class IntegerArithmeticSelectionFixture
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint LiveConstantShifts(uint left, uint right) =>
 		(left << 3) ^ (left >> 17) ^ unchecked((uint)((int)right >> 31)) ^ (right << 9) ^ left ^ right;
+
+	public static uint SharedPackedWordsEntry() => SharedPackedWords(ReadLeft(), ReadRight());
+	public static uint MixedPackedWordsEntry() => MixedPackedWords(ReadLeft(), ReadRight());
+	public static uint SignedPackedWordsEntry() => SignedPackedWords(ReadLeft(), ReadRight());
+	public static uint BytePackedWordsEntry() => BytePackedWords(ReadLeft(), ReadRight());
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint SharedPackedWords(uint value, uint salt)
+	{
+		uint high = value >> 16;
+		uint low = (ushort)value;
+		return low * high ^ high ^ low ^ value ^ salt;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint MixedPackedWords(uint left, uint right) => (left >> 16) * (ushort)right;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint SignedPackedWords(uint value, uint salt) =>
+		unchecked((uint)(((int)value >> 16) * (ushort)value)) ^ salt;
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint BytePackedWords(uint value, uint salt) => (value >> 16) * (byte)value ^ salt;
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint PackedProduct(uint count, uint flags) =>

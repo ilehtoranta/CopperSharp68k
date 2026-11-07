@@ -273,6 +273,7 @@ internal sealed partial class M68kCodeGenerator
 		_hasExceptionFrames = _usesExceptionRuntime &&
 			methods.Any(static method => method.ExceptionRegions.Count != 0);
 		var entryHasOtherInvocation =
+			entry.PreserveScratchRegisters ||
 			exports.Any(export => export.Method.Identity == entry.Identity) ||
 			methods.Any(method =>
 				method.Identity != entry.Identity &&
@@ -452,6 +453,7 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.Mark(SharedDivisionCoreLabel + "-limit");
 		}
 		VerifyAllocatedPrePeepholeOutput();
+		_assembler.FoldNativeTailRestores();
 		_assembler.ApplyRequestedAlignments();
 		var sizeFirstLoops = _request.Cpu == M68kCpuTarget.M68020
 			? M68kLoopFootprintAnalysis.SelectSizeFirstLayouts(
@@ -552,6 +554,10 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.MethodLocalTerminalRanges = applicationRanges;
 			}
 		}
+		// CString bytes are emitted after instruction layout. Publish their
+		// extents now so address folding can prove an offset stays within data.
+		foreach (var item in _cStringLiterals)
+			_assembler.DeclareDeferredDataSymbol(CStringLabel(item.Key), checked(item.Value.Length + 1));
 		_assembler.OptimizeForCpu(
 			_request.Cpu,
 			_request.ClrPolicy,
@@ -1314,6 +1320,7 @@ internal sealed partial class M68kCodeGenerator
 			FoldRelevantTypeAttributes(left.DeclaringTypeAttributes) !=
 				FoldRelevantTypeAttributes(right.DeclaringTypeAttributes) ||
 			left.InitializeLocals != right.InitializeLocals ||
+			left.PreserveScratchRegisters != right.PreserveScratchRegisters ||
 			(left.Name == ".ctor") != (right.Name == ".ctor") ||
 			IsTransparentScalarDeclaringType(left) !=
 				IsTransparentScalarDeclaringType(right) ||
@@ -1796,7 +1803,8 @@ internal sealed partial class M68kCodeGenerator
 		M68kCallAbiLowering.FinalizeLogicalCalls(machineFunction);
 		_integerArithmeticPlans = M68kMachineArithmeticOptimizer.Run(machineFunction, _request.Cpu, _module,
 			SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.ShareArithmeticCores &&
-			!machineFunction.HasExceptionHandlers && !machineFunction.HasDynamicStackAllocation);
+			!machineFunction.HasExceptionHandlers && !machineFunction.HasDynamicStackAllocation,
+			SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.NarrowOperations);
 		var allocatedFunction = M68kRegisterAllocatorPipeline.Run(
 			machineFunction,
 			!M68kCompiler.IsManagedRuntime(_request) ||
@@ -6850,13 +6858,16 @@ internal sealed partial class M68kCodeGenerator
 				_assembler.EmitWord(0x8190); // OR.L D0,(A0)
 				return;
 			}
-			if (target.ImportName == "intrinsic:aptr-bit-test-and-set8")
+			if (target.ImportName is "intrinsic:aptr-bit-test-and-set8" or "intrinsic:aptr-bit-test-and-clear8")
 			{
 				EmitPopRegister(M68kRegister.D0);
 				EmitPopRegister(M68kRegister.A0);
-				_assembler.EmitWord(0x01D0); // BSET D0,(A0)
-				EmitAllocatedConditionResult(M68kCondition.NotEqual, M68kRegister.D0);
-				if (pushResult) EmitPushRegister(M68kRegister.D0);
+				_assembler.EmitWord((ushort)(target.ImportName == "intrinsic:aptr-bit-test-and-clear8" ? 0x0190 : 0x01D0)); // BCLR/BSET D0,(A0)
+				if (pushResult)
+				{
+					EmitAllocatedConditionResult(M68kCondition.NotEqual, M68kRegister.D0);
+					EmitPushRegister(M68kRegister.D0);
+				}
 				return;
 			}
 			if (target.ImportName == "intrinsic:aptr-read-uint32")
@@ -8528,6 +8539,7 @@ internal sealed partial class M68kCodeGenerator
 
 	private bool TryEmitTailCall(CilMethod caller, CilInstruction instruction)
 	{
+		if (caller.PreserveScratchRegisters) return false;
 		if (CurrentFrameLayout.HasRuntimeFrame)
 		{
 			return false;

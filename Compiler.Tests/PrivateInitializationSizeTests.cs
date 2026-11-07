@@ -6,6 +6,28 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class PrivateInitializationSizeTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void VolatileEffectsCannotObserveUnexposedPrivateHomes(bool exposeHome)
+    {
+        var function = new M68kMachineFunction("volatile-private-initialization", 0);
+        function.LocalHomes.Add(0, new(0, 8, false));
+        var block = new M68kMachineBlock(0, 0); function.Blocks.Add(block);
+        var address = function.CreateValue(CilStackValueKind.ManagedPointer,
+            M68kMachineValueWidth.Long, M68kRegisterSet.Address).Id;
+        block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalAddress, 0,
+            definitions: [address], argumentIndex: 0));
+        block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Call, 1,
+            uses: exposeHome ? [address] : [],
+            memoryEffect: M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write | M68kMachineMemoryEffect.Volatile));
+        block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.AggregateIndirectInitialize, 2,
+            uses: [address], memorySize: 8, memoryEffect: M68kMachineMemoryEffect.Write));
+        block.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalLoad, 3, argumentIndex: 0));
+        var actual = M68kPrivateInitializationAnalysis.FindOverwrites(function, i => i.MemorySize);
+        Assert.Equal(exposeHome ? [] : new[] { (0, 0), (0, 4) }, actual.OrderBy(v => v.Offset));
+    }
+
+    [Theory]
     [InlineData(false, false, false, 8)]
     [InlineData(true, false, false, 8)]
     [InlineData(false, true, false, 0)]

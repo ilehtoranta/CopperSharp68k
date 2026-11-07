@@ -171,6 +171,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldZeroMoveQuickToAddress(dataflow) ||
 				TryFoldSmallAbsoluteAddressLoad(dataflow) ||
 				TryOptimizeSmallAddressImmediate(dataflow) ||
+				TryFoldLiteralAddressOffset(dataflow) ||
 				TryFoldConstantAddressDisplacement(dataflow) ||
 				TryNarrowAddressArithmeticImmediate() ||
 				TryRemoveDeadLongImmediateBeforeOverwrite(dataflow) ||
@@ -193,6 +194,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryFoldNativeRamUpdates(dataflow) ||
 				TryFoldNativeRamStoreRun(dataflow) ||
 				TryFoldNativeRamStoreIncrement(dataflow) ||
+				TryDropWordMultiplyMasks(dataflow) ||
 				TryRemoveQuickArithmeticTest(dataflow) ||
 				TryRemoveRedundantTest() ||
 				TryRemoveRedundantAndTest() ||
@@ -258,6 +260,8 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				TryRemoveRedundantLogicalImmediate() ||
 				TryRemoveRepeatedMaskAcrossUntouchedRegister(dataflow) ||
 				TryUseSingleBitLogicalImmediate(dataflow) ||
+				TryNarrowDeadMaskTest(dataflow) ||
+				TryFoldDeadWordOperands(dataflow) ||
 				TryUseMoveQuickAndMask(dataflow) ||
 				TryNarrowLogicalImmediate(dataflow) ||
 				TryFoldStackAllocationIntoRegisterPush() ||
@@ -10132,6 +10136,22 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		{
 			var and = instructions[index];
 			var test = instructions[index + 1];
+			// ANDI.W and TST.W define identical NZVC and both retain X.
+			if (_assembler.GeneratedCodeSizeOptions?.NarrowOperations == true &&
+				(and.Opcode & 0xFFF8) == 0x0240 && and.Length == 4 &&
+				test.Opcode == (0x4A40 | (and.Opcode & 7)) && test.Length == 2 &&
+				and.IsDecoded && test.IsDecoded && test.Offset == and.Offset + 4 &&
+				GeneratedSizeEligible(and.Offset, test.Offset + 2) &&
+				CanFoldAcrossUnreferencedIlLabels(and.Offset, test.Offset + 2) &&
+				!HasInternalLabel(test) && !HasAddressFixup(test) &&
+				!_assembler.TryGetInstructionEffects(and.Offset, out _) &&
+				!_assembler.TryGetInstructionEffects(test.Offset, out _))
+			{
+				MoveLabelsToOffset(test.Offset, test.Offset + 2, and.Offset);
+				_buffer.RemoveBytes(test.Offset, 2);
+				_assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.NarrowOperations), 2);
+				return true;
+			}
 			if ((and.Opcode & 0xF1C0) != 0xC080 ||
 				and.Length != 2 ||
 				(test.Opcode & 0xFFF8) != 0x4A80 ||

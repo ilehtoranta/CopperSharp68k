@@ -131,6 +131,9 @@ internal static class M68kAllocatedFramePlanner
 		{
 			calleeSaved = [];
 		}
+		if (function.SourceMethod?.PreserveScratchRegisters == true)
+			calleeSaved = calleeSaved.Concat(new[] { M68kRegister.D0, M68kRegister.D1,
+				M68kRegister.A0, M68kRegister.A1 }).Distinct().Order().ToArray();
 		return new M68kAllocatedFramePlan(
 			localOffsets,
 			argumentHomeOffsets,

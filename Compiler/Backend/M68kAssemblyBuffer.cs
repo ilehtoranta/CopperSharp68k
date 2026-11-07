@@ -17,6 +17,8 @@ internal sealed class M68kAssemblyBuffer
 
 	internal List<AddressFixup> Addresses { get; } = new();
 
+	internal Dictionary<string, int> DeferredDataSizes { get; } = new(StringComparer.Ordinal);
+
 	internal List<PcRelativeFixup> PcRelative { get; } = new();
 
 	internal Dictionary<int, M68kInstructionEffects> InstructionEffectOverrides { get; } = new();
@@ -357,6 +359,7 @@ internal readonly record struct AddressFixup(
 	bool External,
 	int Addend = 0,
 	bool CanRelaxToPcRelative = true,
-	M68kRegister? StoreAddressScratchRegister = null);
+	M68kRegister? StoreAddressScratchRegister = null,
+	bool NativeTailRestore = false);
 
 internal readonly record struct PcRelativeFixup(int DisplacementOffset, string Target);

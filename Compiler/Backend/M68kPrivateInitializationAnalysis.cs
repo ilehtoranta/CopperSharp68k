@@ -16,8 +16,11 @@ internal static class M68kPrivateInitializationAnalysis
         var result = new HashSet<(int Home, int Offset)>();
         if (function.HasExceptionHandlers || function.HasDynamicStackAllocation ||
             function.Values.Values.Any(v => v.IsGcReference) || function.LocalHomes.Values.Any(h => h.HasGcReferences) ||
-            function.ArgumentHomes.Values.Any(h => h.HasGcReferences) || function.Blocks.SelectMany(b => b.Instructions)
-                .Any(i => (i.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0)) return result;
+            function.ArgumentHomes.Values.Any(h => h.HasGcReferences)) return result;
+        // A volatile effect can observe an escaped home, as accounted for below.
+        // It cannot expose a private address that has not reached that operation.
+        // Keep the effect and its ordering; prove initialization separately for
+        // each home instead of rejecting every home in a volatile function.
         var homes = function.LocalHomes.Values.Where(h => h.Initialize && !h.HasGcReferences).ToArray();
         var addresses = new Dictionary<int, int>();
         var instructions = function.Blocks.SelectMany(b => b.Instructions).ToArray();

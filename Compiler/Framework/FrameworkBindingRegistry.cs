@@ -4068,12 +4068,12 @@ internal static class FrameworkBindingRegistry
 						FrameworkFeature.NativeMemory));
 			}
 
-			if (typeName == "Amiga.APTR" && name == "BitTestAndSet8" &&
+			if (typeName == "Amiga.APTR" && name is "BitTestAndSet8" or "BitTestAndClear8" &&
 				signature.ParameterTypes.Length == 2 &&
 				signature.ParameterTypes[0].DisplayName == typeName &&
 				signature.ParameterTypes[1].DisplayName == "int")
 			{
-				return Intrinsic(member, "intrinsic:aptr-bit-test-and-set8",
+				return Intrinsic(member, name == "BitTestAndSet8" ? "intrinsic:aptr-bit-test-and-set8" : "intrinsic:aptr-bit-test-and-clear8",
 					Effects(FrameworkEffects.ReadsNativeMemory | FrameworkEffects.WritesNativeMemory,
 						FrameworkFeature.NativeMemory));
 			}

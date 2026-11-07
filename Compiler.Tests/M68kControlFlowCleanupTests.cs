@@ -320,6 +320,35 @@ public sealed class M68kControlFlowCleanupTests
 	[InlineData(M68kCpuTarget.M68000, M68kCpuModel.M68000)]
 	[InlineData(M68kCpuTarget.M68020, M68kCpuModel.M68020)]
 	[InlineData(M68kCpuTarget.M68040, M68kCpuModel.M68040)]
+	public void AddressDisplacementAcrossMoveaPreservesSourceAndObservedState(
+		M68kCpuTarget target, M68kCpuModel model)
+	{
+		foreach (var constant in new[] { -32768, -1, 0, 20, 32767, 32768 })
+		foreach (var subtract in new[] { false, true })
+		// Keep the original sequence for live temporaries/flags, referenced
+		// interior instructions, or an ADD that updates a different address.
+		foreach (var hazard in new[] { "none", "value", "flags", "label", "destination" })
+		{
+			var original = CreateCopiedAddressDisplacement(constant, subtract, hazard)
+				.Link(Origin, new Dictionary<string, uint>());
+			var assembler = CreateCopiedAddressDisplacement(constant, subtract, hazard);
+			assembler.OptimizeForCpu(target);
+			var displacement = subtract ? -(long)constant : constant;
+			var folded = hazard == "none" && displacement is >= short.MinValue and <= short.MaxValue;
+			// A zero-displacement LEA is subsequently shortened to MOVEA.
+			Assert.True((folded && constant != 0) == assembler.GetExecutableInstructionStream().Any(i => i.Opcode == 0x41EE),
+				$"constant={constant}, subtract={subtract}, hazard={hazard}, expected fold={folded}");
+			var optimized = assembler.Link(Origin, new Dictionary<string, uint>());
+			if (folded) Assert.True(optimized.Bytes.Length < original.Bytes.Length);
+			for (ushort flags = 0; flags < 32; flags++)
+				AssertEquivalent(Execute(original, model, flags: flags), Execute(optimized, model, flags: flags));
+		}
+	}
+
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000, M68kCpuModel.M68000)]
+	[InlineData(M68kCpuTarget.M68020, M68kCpuModel.M68020)]
+	[InlineData(M68kCpuTarget.M68040, M68kCpuModel.M68040)]
 	public void AuditedLocalFirstBlockUsesLeaWithCallsAndSourceMarkers(
 		M68kCpuTarget target, M68kCpuModel model)
 	{
@@ -763,6 +792,29 @@ public sealed class M68kControlFlowCleanupTests
 			assembler.MarkDataStart();
 			assembler.Mark("referenced:marker");
 			assembler.EmitAddress(Entry + ":IL_0011");
+		}
+		return assembler;
+	}
+
+	private static M68kAssembler CreateCopiedAddressDisplacement(int constant, bool subtract, string hazard)
+	{
+		var assembler = new M68kAssembler();
+		assembler.Mark(Entry);
+		assembler.EmitWord(0x203C); // MOVE.L #constant,D0
+		assembler.EmitLong(unchecked((uint)constant));
+		assembler.Mark(Entry + ":IL_0010");
+		assembler.EmitWord(0x204E); // MOVEA.L A6,A0
+		assembler.EmitWord((ushort)((subtract ? 0x91C0 : 0xD1C0) |
+			(hazard == "destination" ? 6 << 9 : 0)));
+		if (hazard == "value") assembler.EmitWord(0x2400); // MOVE.L D0,D2
+		if (hazard == "flags") assembler.EmitWord(0x40C1); // MOVE.W SR,D1
+		assembler.EmitWord(0x2008); // MOVE.L A0,D0: kill the temporary and its flags
+		assembler.EmitWord(0x4E75);
+		assembler.Mark(Entry + ":end");
+		if (hazard == "label")
+		{
+			assembler.MarkDataStart();
+			assembler.EmitAddress(Entry + ":IL_0010");
 		}
 		return assembler;
 	}

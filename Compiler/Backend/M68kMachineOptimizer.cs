@@ -64,9 +64,9 @@ internal static class M68kMachineOptimizer
 	{
 		ArgumentNullException.ThrowIfNull(function);
 		using var profile = M68kOptimizationProfiler.Measure("machine.optimizer");
-		_ = cpu;
 		M68kMachineIrVerifier.Verify(function);
 		var statistics = new MutableStatistics();
+		FoldImmediateRotates(function);
 		var rounds = 0;
 		var changed = false;
 		do
@@ -87,6 +87,7 @@ internal static class M68kMachineOptimizer
 				// pass through CanSubstitute.
 				changed |= SimplifyCopiesAndPhis(function, statistics, simplifyCopies: false);
 			}
+			changed |= FoldOneHotCountMasks(function);
 			changed |= FoldConstantsAndIdentities(function, statistics);
 			changed |= FoldConstantBranches(function, statistics);
 			changed |= RemoveUnreachableBlocks(function, statistics);
@@ -105,7 +106,8 @@ internal static class M68kMachineOptimizer
 
 		statistics.LoopInstructionsHoisted +=
 			M68kMachineLoopOptimizer.HoistLoopInvariants(function);
-		if (statistics.LoopInstructionsHoisted != 0)
+		var packedProducts = cpu == M68kCpuTarget.M68000 && FoldPackedWordProducts(function);
+		if (statistics.LoopInstructionsHoisted != 0 || packedProducts)
 		{
 			RemoveDeadInstructions(function, statistics);
 			RemoveUnreferencedValues(function);
@@ -125,6 +127,189 @@ internal static class M68kMachineOptimizer
 			statistics.StoresRemoved,
 			statistics.LoopInstructionsHoisted,
 			changed && rounds == MaximumRounds);
+	}
+
+	private static bool FoldOneHotCountMasks(M68kMachineFunction function)
+	{
+		// Register BSET reduces its count modulo 32. Remove the explicit C#
+		// mask before allocation, so its constant and interference
+		// do not force an otherwise unnecessary saved register. Other consumers
+		// of the masked value, including phi inputs, must retain that value.
+		var instructions = function.Blocks.SelectMany(b => b.Instructions).ToArray();
+		if (!instructions.Any(i => i.Operation == M68kMachineOperation.Shift && i.Uses.Length == 2)) return false;
+		var definitions = function.Blocks.SelectMany(b => b.Instructions.Select((i, n) => (b, i, n)))
+			.SelectMany(s => s.i.Definitions.Select(v => (v, site: new DefinitionSite(s.b, s.n, s.i))))
+			.ToDictionary(s => s.v, s => s.site);
+		var constants = BuildConstantMap(function);
+		var changed = false;
+		bool IsScalarCount(int id) => function.Values[id].Kind is CilStackValueKind.Int32 or
+			CilStackValueKind.BooleanByte or CilStackValueKind.UnsignedByte or CilStackValueKind.SignedByte or
+			CilStackValueKind.UnsignedWord or CilStackValueKind.SignedWord;
+		bool IsConstant(int id, long expected)
+		{
+			var visited = new HashSet<int>();
+			while (visited.Add(id) && IsScalarCount(id))
+			{
+				if (constants.TryGetValue(id, out var constant))
+					return constant.TryGetIntegral(out var bits) && bits == expected;
+				if (!definitions.TryGetValue(id, out var site) ||
+					site.Instruction is not { Operation: M68kMachineOperation.Copy, Uses: [var source] }) return false;
+				id = source;
+			}
+			return false;
+		}
+		bool IsPrivateCount(int id, M68kMachineInstruction user)
+		{
+			// Early coalescing must not pull a count which is live elsewhere
+			// into the shift's fixed register. Retain the allocated late fold
+			// for those values instead of adding copies on their other paths.
+			var visited = new HashSet<int>();
+			while (visited.Add(id) && IsScalarCount(id))
+			{
+				if (function.Blocks.Any(b => b.Phis.Any(p => p.Inputs.Values.Contains(id)))) return false;
+				var users = instructions.Where(i => i.Uses.Contains(id)).ToArray();
+				if (users is not [var onlyUser] || onlyUser.Id != user.Id) return false;
+				if (!definitions.TryGetValue(id, out var site)) return false;
+				if (site.Instruction is not { Operation: M68kMachineOperation.Copy, Uses: [var source] }) return true;
+				id = source; user = site.Instruction;
+			}
+			return false;
+		}
+		foreach (var shift in instructions)
+		{
+			if (shift is not { Operation: M68kMachineOperation.Shift, Uses.Length: 2, Definitions.Length: 1,
+				Immediate: null, ProducesConditionCodes: false, ConsumesConditionCodes: false } ||
+				shift.SourceInstruction?.OpCode != OpCodes.Shl ||
+				function.Values[shift.Definitions[0]].Kind != CilStackValueKind.Int32 ||
+				!IsConstant(shift.Uses[0], 1)) continue;
+			var value = shift.Uses[1];
+			var user = shift;
+			var visited = new HashSet<int>();
+			while (visited.Add(value))
+			{
+				if (!IsScalarCount(value)) break;
+				if (function.Blocks.Any(b => b.Phis.Any(p => p.Inputs.Values.Contains(value)))) break;
+				var users = instructions.Where(i => i.Uses.Contains(value)).ToArray();
+				if (users is not [var onlyUser] || onlyUser.Id != user.Id ||
+					!definitions.TryGetValue(value, out var site)) break;
+				var definition = site.Instruction;
+				if (definition.ProducesConditionCodes || definition.ConsumesConditionCodes) break;
+				if (definition is { Operation: M68kMachineOperation.Copy, Uses: [var source] })
+				{
+					value = source; user = definition; continue;
+				}
+				if (definition is not { Operation: M68kMachineOperation.And, Uses.Length: 2 }) break;
+				for (var operand = 0; operand < 2; operand++)
+					if (IsConstant(definition.Uses[operand], 31) &&
+						IsPrivateCount(definition.Uses[1 - operand], definition))
+					{
+						site.Block.Instructions[site.InstructionIndex] = AsCopy(definition, definition.Uses[1 - operand]);
+						changed = true;
+						break;
+					}
+				break;
+			}
+		}
+		return changed;
+	}
+
+	// MULU.W can form the unsigned product of both words of one long. Keep
+	// just that input live and let ordinary dead-code removal retire the extracts.
+	private static bool FoldPackedWordProducts(M68kMachineFunction function)
+	{
+		bool changed = false;
+		foreach (var block in function.Blocks)
+		{
+			if (!block.Instructions.Any(i => i.Operation == M68kMachineOperation.Multiply)) continue;
+			var definitions = block.Instructions.Where(i => i.Definitions.Length == 1)
+				.ToDictionary(i => i.Definitions[0]);
+			for (int index = 0; index < block.Instructions.Count; index++)
+			{
+				var mul = block.Instructions[index];
+				if (mul.Operation != M68kMachineOperation.Multiply || mul.SourceInstruction?.OpCode != OpCodes.Mul ||
+					mul.Uses is not [var left, var right] || mul.Definitions is not [var result] ||
+					function.Values[result] is not { Kind: CilStackValueKind.Int32, Width: M68kMachineValueWidth.Long } value ||
+					!value.AllowedRegisters.Overlaps(M68kRegisterSet.Data) || value.PrecoloredRegister is > M68kRegister.D7 ||
+					mul.ProducesConditionCodes || mul.ConsumesConditionCodes) continue;
+				definitions.TryGetValue(ThroughCopies(left), out var high);
+				definitions.TryGetValue(ThroughCopies(right), out var low);
+				if (low?.Operation == M68kMachineOperation.Shift) (high, low) = (low, high);
+				if (high is not { Operation: M68kMachineOperation.Shift, Immediate: 16, Uses: [var highSource] } ||
+					high.SourceInstruction?.OpCode != OpCodes.Shr_Un ||
+					low is not { Operation: M68kMachineOperation.Convert, Uses: [var lowSource] } ||
+					low.SourceInstruction?.OpCode != OpCodes.Conv_U2) continue;
+				int packed = ThroughCopies(highSource);
+				if (packed != ThroughCopies(lowSource, lowWordOnly: true) ||
+					function.Values[packed] is not { Kind: CilStackValueKind.Int32, Width: M68kMachineValueWidth.Long }) continue;
+				function.Values[result] = value with { AllowedRegisters = value.AllowedRegisters.Intersect(M68kRegisterSet.Data) };
+				block.Instructions[index] = mul with
+				{
+					Operation = M68kMachineOperation.MultiplyWordHalves,
+					Uses = [packed], Clobbers = M68kRegisterSet.None
+				};
+				changed = true;
+			}
+
+			int ThroughCopies(int id, bool lowWordOnly = false)
+			{
+				while (definitions.TryGetValue(id, out var copy) && copy.Operation == M68kMachineOperation.Copy &&
+					!copy.TransportsManagedByrefOwner && copy.Uses is [var source])
+				{
+					var from = function.Values[source];
+					var to = function.Values[id];
+					bool widensUnsignedWord = from.Kind == CilStackValueKind.UnsignedWord && to.Kind == CilStackValueKind.Int32;
+					bool truncatesToWord = lowWordOnly && from.Width == M68kMachineValueWidth.Long && to.Width == M68kMachineValueWidth.Word;
+					if (from.Width != to.Width && !widensUnsignedWord && !truncatesToWord) break;
+					id = source;
+				}
+				return id;
+			}
+		}
+		return changed;
+	}
+
+	private static void FoldImmediateRotates(M68kMachineFunction function)
+	{
+		// C# expresses a rotate as two complementary logical shifts of the same
+		// value. Fold before allocation so neither shifted copy needs a register.
+		if (!function.Blocks.Any(b => b.Instructions.Any(i => i.Operation == M68kMachineOperation.Shift &&
+			i.Immediate is >= 24 and <= 31))) return;
+		var definitions = function.Blocks.SelectMany(b => b.Instructions)
+			.SelectMany(i => i.Definitions.Select(v => (v, i))).ToDictionary(p => p.v, p => p.i);
+		foreach (var block in function.Blocks)
+		for (int index = 0; index < block.Instructions.Count; index++)
+		{
+			var instruction = block.Instructions[index];
+			if (instruction.Operation != M68kMachineOperation.Or || instruction.ProducesConditionCodes ||
+				instruction.ConsumesConditionCodes || instruction.Uses is not [var a, var b] ||
+				instruction.Definitions is not [var result] || function.Values[result] is not
+					{ Kind: CilStackValueKind.Int32, Width: M68kMachineValueWidth.Long } value ||
+				!value.AllowedRegisters.Overlaps(M68kRegisterSet.Data) ||
+				value.PrecoloredRegister is > M68kRegister.D7) continue;
+			if (!definitions.TryGetValue(Source(a), out var left) || !definitions.TryGetValue(Source(b), out var right) ||
+				left.Operation != M68kMachineOperation.Shift || right.Operation != M68kMachineOperation.Shift) continue;
+			if (left.SourceInstruction?.OpCode == OpCodes.Shr_Un) (left, right) = (right, left);
+			if (left.SourceInstruction?.OpCode != OpCodes.Shl || right.SourceInstruction?.OpCode != OpCodes.Shr_Un ||
+				left.Definitions.Length != 1 || right.Definitions.Length != 1 ||
+				left.Uses is not [var x] || right.Uses is not [var y] || Source(x) != Source(y) ||
+				function.Values[x].Width != M68kMachineValueWidth.Long ||
+				function.Values[left.Definitions[0]].Width != M68kMachineValueWidth.Long ||
+				function.Values[right.Definitions[0]].Width != M68kMachineValueWidth.Long ||
+				left.Immediate is not int l || right.Immediate is not int r || l + r != 32 ||
+				l is < 1 or > 31 || Math.Min(l, r) > 8) continue;
+			block.Instructions[index] = instruction with { Operation = M68kMachineOperation.RotateImmediate,
+				Uses = [x], Immediate = l <= 8 ? l : -r, Clobbers = M68kRegisterSet.None };
+			function.Values[result] = value with { AllowedRegisters = value.AllowedRegisters.Intersect(M68kRegisterSet.Data) };
+		}
+
+		int Source(int id)
+		{
+			while (definitions.TryGetValue(id, out var copy) && copy.Operation == M68kMachineOperation.Copy &&
+				copy.Uses is [var input] && function.Values[id].Kind == function.Values[input].Kind &&
+				function.Values[id].Width == function.Values[input].Width && !copy.TransportsManagedByrefOwner)
+				id = input;
+			return id;
+		}
 	}
 
 	private static bool CanonicalizeScalarZeroComparisons(
@@ -729,7 +914,7 @@ internal static class M68kMachineOptimizer
 		return changed;
 	}
 
-	private static bool TryEvaluate(
+	internal static bool TryEvaluate(
 		M68kMachineFunction function,
 		M68kMachineInstruction instruction,
 		IReadOnlyDictionary<int, M68kMachineConstant> constants,
@@ -1004,7 +1189,7 @@ internal static class M68kMachineOptimizer
 		return false;
 	}
 
-	private static bool TryEvaluateBranch(
+	internal static bool TryEvaluateBranch(
 		M68kMachineInstruction branch,
 		IReadOnlyDictionary<int, M68kMachineConstant> constants,
 		out bool takeTarget)

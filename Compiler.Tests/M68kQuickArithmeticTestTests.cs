@@ -6,6 +6,34 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kQuickArithmeticTestTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void WordMultiplyIgnoresUpperOperandsButPreservesALiveSource(bool signed, bool keepSource)
+    {
+        var assembler = new M68kAssembler();
+        assembler.Mark("method:product");
+        assembler.EmitWord(0x2400); // MOVE.L D0,D2
+        assembler.EmitWord(0x4242); // CLR.W D2
+        assembler.EmitWord(0x4842); // SWAP D2
+        assembler.EmitWord(0x0280); // ANDI.L #$ffff,D0
+        assembler.EmitLong(0xffff);
+        assembler.EmitWord(signed ? (ushort)0xC1C2 : (ushort)0xC0C2);
+        if (keepSource) assembler.EmitWord(0x2202); // MOVE.L D2,D1
+        assembler.EmitWord(0x7400); // MOVEQ #0,D2
+        assembler.EmitWord(0x4E75);
+        assembler.Mark("method:product:end");
+        var before = assembler.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+        assembler.OptimizeForCpu(M68kCpuTarget.M68000);
+        var after = assembler.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+        Assert.True(after.Length <= before.Length - 6);
+        foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020 })
+        foreach (uint input in new uint[] { 0, 0x12345678, 0x80007fff, 0xffff8000 })
+            Assert.Equal(Run(before, model, input, 0x10), Run(after, model, input, 0x10));
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(0x40)]
     [InlineData(0x80)]

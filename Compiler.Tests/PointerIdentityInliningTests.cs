@@ -10,6 +10,35 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class PointerIdentityInliningTests
 {
 	[Fact]
+	public void ReadOnlyTransparentPointerHomeDoesNotPreventArithmeticHelperInlining()
+	{
+		using var module = new CompilationModule(Assembly.GetExecutingAssembly().Location);
+		var type = typeof(PointerIdentityFixtures).FullName;
+		var entry = module.ResolveEntryPoint($"{type}::OffsetRoundTrip");
+		var helper = module.ResolveEntryPoint($"{type}::AddOffset");
+		var caller = CilMachineIrBuilder.Build(entry, module);
+		var target = CilMachineIrBuilder.Build(helper, module);
+		var statistics = M68kMachineModuleOptimizer.Run([entry, helper],
+			new Dictionary<CilMethodIdentity, M68kMachineFunction> { [entry.Identity] = caller, [helper.Identity] = target },
+			module, M68kCpuTarget.M68000, new HashSet<CilMethodIdentity> { entry.Identity });
+		Assert.Equal(1, statistics.InlinedCalls);
+		Assert.DoesNotContain(caller.Blocks.SelectMany(b => b.Instructions),
+			i => i.LogicalCall?.ResolvedTargets.Contains(helper.Identity) == true);
+		Assert.DoesNotContain(helper.Identity, statistics.RetainedMethodIdentities);
+		M68kMachineIrVerifier.Verify(caller);
+	}
+
+	[Theory]
+	[InlineData(M68kCpuTarget.M68000, M68kCpuModel.M68000)]
+	[InlineData(M68kCpuTarget.M68020, M68kCpuModel.M68020)]
+	public void InlinedPointerArithmeticPreservesWrappingOffsets(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var result = Compile(nameof(PointerIdentityFixtures.OffsetEntry), target);
+		Assert.DoesNotContain(result.Symbols, s => s.Name.EndsWith("::AddOffset", StringComparison.Ordinal));
+		foreach (var value in new uint[] { 0, 1, 0x80000000, uint.MaxValue })
+			Assert.Equal(unchecked(value - 6), Execute(result, model, value));
+	}
+	[Fact]
 	public void PointerConversionIsAnSsaCopyWithoutCallEffects()
 	{
 		using var module = new CompilationModule(Assembly.GetExecutingAssembly().Location);
@@ -225,6 +254,9 @@ public sealed class PointerIdentityInliningTests
 
 public static class PointerIdentityFixtures
 {
+	public static APTR AddOffset(APTR pointer, int offset) => APTR.FromPointer(unchecked(pointer.Raw + (uint)offset));
+	public static uint OffsetRoundTrip(uint raw, int offset) => AddOffset(APTR.FromPointer(raw), offset).Raw;
+	public static uint OffsetEntry() => OffsetRoundTrip(ReadInput(), -6);
 	public static APTR Pointer(uint value) => APTR.FromPointer(value);
 	public static APTR PointerAlias(uint value) => APTR.FromPointer(value);
 	public static uint RoundTrip(uint value) => APTR.ToUInt32(Pointer(value));

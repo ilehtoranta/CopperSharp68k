@@ -14,7 +14,7 @@ internal sealed partial class M68kCodeGenerator
     private readonly HashSet<int> _allocatedBitBranchDeadValues = new();
     private readonly HashSet<int> _allocatedLowOnlyReads = new();
 
-    private readonly Dictionary<int, (int Source, int Mask, M68kMachineValueWidth Width)> _allocatedImmediateAnds = new();
+    private readonly Dictionary<int, (int Source, int Mask, M68kMachineValueWidth Width, bool Complement)> _allocatedImmediateAnds = new();
     private readonly HashSet<int> _allocatedWordImmediateBranches = new();
     private readonly Dictionary<int, (int Source, int Constant, M68kCondition Condition)> _allocatedImmediateBranches = new();
 
@@ -59,7 +59,7 @@ internal sealed partial class M68kCodeGenerator
                 } else { valid = false; break; }
             }
             if (!valid) continue;
-            foreach (var and in ands) _allocatedImmediateAnds.Add(and.Id, (and.Source, immediate, M68kMachineValueWidth.Long));
+            foreach (var and in ands) _allocatedImmediateAnds.Add(and.Id, (and.Source, immediate, M68kMachineValueWidth.Long, false));
             foreach (var branch in branches) _allocatedImmediateBranches.Add(branch.Id, (branch.Source, immediate, branch.Condition));
             _allocatedBitBranchDeadValues.Add(value);
             _allocatedSuppressedInstructions.Add(constant.Id);
@@ -77,7 +77,11 @@ internal sealed partial class M68kCodeGenerator
                 !_allocatedImmediateBranches.TryGetValue(branch.Id, out var compare) ||
                 compare.Source != result || (uint)compare.Constant > ushort.MaxValue ||
                 compare.Condition is not (M68kCondition.Equal or M68kCondition.NotEqual)) continue;
-            _allocatedImmediateAnds[id] = (selected.Source, selected.Mask, M68kMachineValueWidth.Word);
+            // The result has exactly one equality consumer. Test for missing
+            // bits when the comparison asks whether every mask bit is set.
+            bool allBits = !and.ProducesConditionCodes && selected.Mask != 0 && selected.Mask == compare.Constant;
+            _allocatedImmediateAnds[id] = (selected.Source, selected.Mask, M68kMachineValueWidth.Word, allBits);
+            if (allBits) _allocatedImmediateBranches[branch.Id] = (result, 0, compare.Condition);
             _allocatedWordImmediateBranches.Add(branch.Id);
         }
     }

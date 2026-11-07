@@ -20,11 +20,27 @@ internal sealed partial class M68kCodeGenerator
         foreach (var block in function.Blocks)
         foreach (var branch in block.Instructions)
         {
-            if (branch.Operation != M68kMachineOperation.ConditionalBranch || branch.Uses is not [var value, var literal] ||
-                branch.ConsumesConditionCodes || branch.BranchCondition is { SourceKind: not M68kMachineConditionSourceKind.Compare } ||
-                uses.GetValueOrDefault(literal) != 1 || !definitions.TryGetValue(literal, out var constant) ||
-                constant.Operation != M68kMachineOperation.Constant || !TryGetAllocatedConstant(function, literal, out int immediate)) continue;
-            var condition = branch.BranchCondition?.Condition ?? AllocatedRelationalBranchCondition(branch.SourceInstruction!.OpCode);
+            if (branch.Operation != M68kMachineOperation.ConditionalBranch || branch.ConsumesConditionCodes) continue;
+            int value, immediate;
+            M68kCondition condition;
+            M68kMachineInstruction? constant = null;
+            if (branch.Uses is [var compared, var literal] &&
+                branch.BranchCondition is null or { SourceKind: M68kMachineConditionSourceKind.Compare })
+            {
+                if (uses.GetValueOrDefault(literal) != 1 || !definitions.TryGetValue(literal, out constant) ||
+                    constant.Operation != M68kMachineOperation.Constant || !TryGetAllocatedConstant(function, literal, out immediate)) continue;
+                value = compared;
+                condition = branch.BranchCondition?.Condition ?? AllocatedRelationalBranchCondition(branch.SourceInstruction!.OpCode);
+            }
+            else if (branch.Uses is [var tested] &&
+                branch.BranchCondition is null or { SourceKind: M68kMachineConditionSourceKind.Test })
+            {
+                value = tested; immediate = 0;
+                if (branch.BranchCondition is { } test) condition = test.Condition;
+                else if (branch.SourceInstruction is { } source && TryGetBooleanBranchCondition(source.OpCode, out var boolean)) condition = boolean;
+                else continue;
+            }
+            else continue;
             if (condition is not (M68kCondition.Equal or M68kCondition.NotEqual)) continue;
             var copies = new List<M68kMachineInstruction>();
             var visited = new HashSet<int>();
@@ -42,7 +58,7 @@ internal sealed partial class M68kCodeGenerator
             var register = allocated.Allocation.Registers[address].Register;
             if (register is < M68kRegister.A0 or > M68kRegister.A6) continue;
             int start = block.Instructions.IndexOf(read), end = block.Instructions.IndexOf(branch);
-            if (start < 0 || start >= end || !block.Instructions.Contains(constant) ||
+            if (start < 0 || start >= end || constant is not null && !block.Instructions.Contains(constant) ||
                 copies.Any(c => !block.Instructions.Contains(c))) continue;
             // Move the read only across scalar copies/constants, with its base
             // register unchanged. A store, call or other effect is a barrier.
@@ -53,7 +69,9 @@ internal sealed partial class M68kCodeGenerator
             _allocatedImmediateBranches.Remove(branch.Id);
             _allocatedWordImmediateBranches.Remove(branch.Id);
             _allocatedMemoryImmediateBranches.Add(branch.Id, (address, (short)read.Immediate.Value, immediate, sizeBits, condition));
-            foreach (var removed in copies.Append(read).Append(constant)) {
+            copies.Add(read);
+            if (constant is not null) copies.Add(constant);
+            foreach (var removed in copies) {
                 _allocatedSuppressedInstructions.Add(removed.Id);
                 _allocatedBitBranchDeadValues.UnionWith(removed.Definitions);
             }
