@@ -66,13 +66,15 @@ foreach (var target in new[] { M68kCpuTarget.M68000, M68kCpuTarget.M68020, M68kC
         {
             long allocated = GC.GetTotalAllocatedBytes(true);
             var timer = Stopwatch.StartNew();
-            var result = AmigaM68kCompiler.Compile(new M68kCompilationRequest {
+            var request = new M68kCompilationRequest {
                 AssemblyPath = variant.Path, EntryPoint = entry, Cpu = target,
+                ManagedAssemblyPaths = Directory.GetFiles(AppContext.BaseDirectory, "CopperSharp*.dll"),
                 OutputFormat = M68kOutputFormat.Hunk, IncludedExportNames = [],
                 MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
                 Heap = new() { StartAddress = 0x100000, Size = 0x40000 },
                 ExceptionMode = M68kExceptionMode.Full,
-                RuntimeProfile = M68kRuntimeProfile.Application });
+                RuntimeProfile = M68kRuntimeProfile.Application };
+            var result = args[0] == "example" ? AmigaM68kCompiler.Compile(request) : M68kCompiler.Compile(request);
             timer.Stop();
             allocated = GC.GetTotalAllocatedBytes(true) - allocated;
             if (round < 0) continue;

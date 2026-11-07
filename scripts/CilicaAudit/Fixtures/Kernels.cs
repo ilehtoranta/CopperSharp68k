@@ -26,7 +26,8 @@ public static unsafe class Kernels
     static int Change(ref int a, ref int b) { a += 3; b *= 2; return a + b; }
     static volatile int observable;
     public static int Volatile() { observable = Input(); int a = observable; observable = a + 1; return a + observable; }
-    public static int Finally() { int x = Input(); try { if (x == 13) throw new InvalidOperationException(); x *= 3; } catch (InvalidOperationException) { x = 17; } finally { observable = x + 1; } return x + observable; }
+    sealed class FixtureException : Exception { }
+    public static int Finally() { int x = Input(); try { if (x == 13) throw new FixtureException(); x *= 3; } catch (FixtureException) { x = 17; } finally { observable = x + 1; } return x + observable; }
     public static int NativeWidth() { nuint x = (nuint)(uint)Input(); return (int)((x << 29) >> 29); }
     public static int CheckedOverflow() { int x = Input(); try { return checked(x * 100_000_000); } catch (OverflowException) { return 42; } }
 }
