@@ -110,6 +110,22 @@ internal sealed class M68kOptimizerPipeline
 		var batches = 0;
 		var rewrites = 0;
 		var rounds = 0;
+		if (_assembler.VolatileMethodLabels.Count != 0)
+		{
+			// Raw byte peepholes predate CIL volatile accesses. Keep those method
+			// bodies intact until every combining pass understands their fences.
+			// FixedPoint retains local optimization in other methods; Bounded
+			// skips byte rewrites rather than multiplying its global work budget
+			// across scopes. Cross-method byte rewrites are disabled in both modes.
+			var protectedMethodEnds = _assembler.Labels
+				.Where(label => label.Key.EndsWith(":end", StringComparison.Ordinal))
+				.OrderBy(label => label.Value).Select(label => label.Key).ToArray();
+			if (_peepholeOptimization == M68kPeepholeOptimizationMode.FixedPoint && protectedMethodEnds.Length != 0)
+				RunMethodPassesToFixedPoint(protectedMethodEnds, ref batches, ref rewrites, ref rounds);
+			_assembler.PeepholeOptimizationStatistics = new(_assembler.InstructionAnalysisBytes,
+				batches, rewrites, rounds, protectedMethodEnds.Length, true);
+			return;
+		}
 		if (_peepholeOptimization == M68kPeepholeOptimizationMode.Bounded)
 		{
 			foreach (var pass in _passes)
@@ -210,6 +226,11 @@ internal sealed class M68kOptimizerPipeline
 			for (var index = methodScopes.Length - 1; index >= 0; index--)
 			{
 				var scope = methodScopes[index];
+				var start = scope.StartLabel is null ? 0 : _assembler.Labels[scope.StartLabel];
+				var end = _assembler.Labels[scope.EndLabel];
+				if (_assembler.VolatileMethodLabels.Any(label =>
+					_assembler.Labels.TryGetValue(label, out var offset) && offset >= start && offset < end))
+					continue;
 				_assembler.SetAnalysisScope(
 					scope.StartLabel,
 					scope.EndLabel,

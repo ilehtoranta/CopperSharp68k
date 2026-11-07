@@ -194,6 +194,13 @@ internal static class M68kMethodMemorySummaryAnalyzer
 				continue;
 			}
 			var effect = M68kMemoryModel.Summarize(method, module, instruction);
+			if (effect.IsVolatile)
+			{
+				// A call performing acquire/release is an ordering boundary even for
+				// ordinary locations outside its explicit field/parameter aliases.
+				summary.ReadsUnknownGlobals = summary.WritesUnknownGlobals = true;
+				summary.ReadsUnknownHeap = summary.WritesUnknownHeap = true;
+			}
 			summary.GlobalReads.UnionWith(effect.ReadsExact.Where(static item =>
 				item.IsGlobalObject));
 			summary.GlobalWrites.UnionWith(effect.WritesExact.Where(static item =>

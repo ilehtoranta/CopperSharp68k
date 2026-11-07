@@ -10,6 +10,7 @@ internal sealed partial class M68kCodeGenerator
     private void PrepareAllocatedMemoryImmediateBranches(CilMethod method, M68kAllocatedFunction allocated)
     {
         _allocatedMemoryImmediateBranches.Clear();
+        if (_emittingVolatileMethod) return;
         if (_request.ExceptionMode != M68kExceptionMode.Yolo ||
             _request.MemoryManagement != M68kMemoryManagement.None) return;
         var function = allocated.Function;

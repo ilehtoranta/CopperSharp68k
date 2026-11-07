@@ -18,7 +18,10 @@
     <CopperSharpExceptionMode Condition="'$(CopperSharpExceptionMode)' == ''">full</CopperSharpExceptionMode>
     <CopperSharpSymbols Condition="'$(CopperSharpSymbols)' == ''">on</CopperSharpSymbols>
     <CopperSharpCodeSizeOptimizations Condition="'$(CopperSharpCodeSizeOptimizations)' == ''">off</CopperSharpCodeSizeOptimizations>
+    <CopperSharpCilica Condition="'$(CopperSharpCilica)' == '' and '$(RuntimeIdentifier)' == 'amiga-m68k'">true</CopperSharpCilica>
+    <CopperSharpCilica Condition="'$(CopperSharpCilica)' == ''">false</CopperSharpCilica>
     <CopperSharpCompilerAssembly>$(MSBuildThisFileDirectory)../tools/net10.0/any/CopperSharp.Compiler.Cli.dll</CopperSharpCompilerAssembly>
+    <CopperSharpCilicaOptimizerAssembly Condition="'$(CopperSharpCilicaOptimizerAssembly)' == ''">$(MSBuildThisFileDirectory)../tools/net10.0/any/cilica/CilicaOptimizer.dll</CopperSharpCilicaOptimizerAssembly>
     <CopperSharpOutputPath Condition="'$(CopperSharpOutputPath)' == ''">$(PublishDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpOutputPath>
     <CopperSharpFrameworkReportPath Condition="'$(CopperSharpFrameworkReportPath)' == ''">$(CopperSharpOutputPath).framework.json</CopperSharpFrameworkReportPath>
     <CopperSharpResponseManifestPath Condition="'$(CopperSharpResponseManifestPath)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp.publish.rsp'))</CopperSharpResponseManifestPath>
@@ -26,7 +29,15 @@
     <CopperSharpBuildOutputPath Condition="'$(CopperSharpBuildOutputPath)' == ''">$(TargetDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpBuildOutputPath>
     <CopperSharpBuildFrameworkReportPath Condition="'$(CopperSharpBuildFrameworkReportPath)' == ''">$(CopperSharpBuildOutputPath).framework.json</CopperSharpBuildFrameworkReportPath>
     <CopperSharpBuildResponseManifestPath Condition="'$(CopperSharpBuildResponseManifestPath)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp.build.rsp'))</CopperSharpBuildResponseManifestPath>
+    <CopperSharpCilicaOutputAssembly Condition="'$(CopperSharpCilicaOutputAssembly)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp', 'cilica', '$(TargetFileName)'))</CopperSharpCilicaOutputAssembly>
+    <_CopperSharpManagedInputAssembly Condition="'$(CopperSharpCilica)' == 'true'">$(CopperSharpCilicaOutputAssembly)</_CopperSharpManagedInputAssembly>
+    <_CopperSharpManagedInputAssembly Condition="'$(CopperSharpCilica)' != 'true'">$(TargetPath)</_CopperSharpManagedInputAssembly>
   </PropertyGroup>
+
+  <ItemGroup>
+    <_CopperSharpCilicaToolFile Include="$(MSBuildThisFileDirectory)../tools/net10.0/any/cilica/**/*" />
+    <FileWrites Include="$(CopperSharpCilicaOutputAssembly);$(CopperSharpCilicaOutputAssembly).cilica.json" />
+  </ItemGroup>
 
   <Target Name="CopperSharpWarnLegacyProperties"
           BeforeTargets="CopperSharpValidateSdk"
@@ -51,10 +62,24 @@
            Text="PublishSingleFile is a CoreCLR publish mode and is not supported for amiga-m68k." />
     <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(PublishTrimmed)' == 'true'"
            Text="Do not set PublishTrimmed for amiga-m68k; CopperSharp performs closed-world reachability." />
+    <Error Condition="'$(CopperSharpCilica)' != 'true' and '$(CopperSharpCilica)' != 'false'"
+           Text="CopperSharpCilica must be either 'true' or 'false'." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCilica)' == 'true' and !Exists('$(CopperSharpCilicaOptimizerAssembly)')"
+           Text="The CopperSharp SDK package is missing the restricted CILica optimizer at '$(CopperSharpCilicaOptimizerAssembly)'. Restore or repack the SDK package." />
+  </Target>
+
+  <Target Name="CopperSharpOptimizeManagedAssembly"
+          Condition="'$(CopperSharpCilica)' == 'true' and '$(RuntimeIdentifier)' == 'amiga-m68k'"
+          Inputs="$(TargetPath);@(ReferenceCopyLocalPaths);@(_CopperSharpCilicaToolFile)"
+          Outputs="$(CopperSharpCilicaOutputAssembly);$(CopperSharpCilicaOutputAssembly).cilica.json">
+    <Error Condition="!Exists('$(CopperSharpCilicaOptimizerAssembly)')"
+           Text="The CopperSharp SDK package is missing the restricted CILica optimizer at '$(CopperSharpCilicaOptimizerAssembly)'. Restore or repack the SDK package." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpCilicaOutputAssembly)'))" />
+    <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCilicaOptimizerAssembly)&quot; &quot;$(TargetPath)&quot; &quot;$(CopperSharpCilicaOutputAssembly)&quot; --resolver &quot;$(TargetDir)&quot;" />
   </Target>
 
   <Target Name="PrepareCopperSharpPublishManifest"
-          DependsOnTargets="CopperSharpValidateSdk"
+          DependsOnTargets="CopperSharpValidateSdk;CopperSharpOptimizeManagedAssembly"
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k'">
     <Error Condition="'$(CopperSharpEntry)' == ''"
            Text="CopperSharpEntry must name an entry point as Namespace.Type::Method." />
@@ -71,7 +96,7 @@
       <_CopperSharpManagedAssembly Include="@(ReferenceCopyLocalPaths)"
                                    Condition="'%(Extension)' == '.dll'" />
       <_CopperSharpResponseLine Include="coppersharp-response-v1" />
-      <_CopperSharpResponseLine Include="input=$(TargetPath)" />
+      <_CopperSharpResponseLine Include="input=$(_CopperSharpManagedInputAssembly)" />
       <_CopperSharpResponseLine Include="entry=$(CopperSharpEntry)" />
       <_CopperSharpResponseLine Include="output=$(CopperSharpOutputPath)" />
       <_CopperSharpResponseLine Include="platform=amiga" />
@@ -101,7 +126,7 @@
           AfterTargets="Publish"
           DependsOnTargets="PrepareCopperSharpPublishManifest"
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k'"
-          Inputs="$(CopperSharpResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpFrameworkImplementationManifest)"
+          Inputs="$(CopperSharpResponseManifestPath);$(_CopperSharpManagedInputAssembly);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpCilicaOptimizerAssembly);$(CopperSharpFrameworkImplementationManifest)"
           Outputs="$(CopperSharpOutputPath);$(CopperSharpOutputPath).map;$(CopperSharpFrameworkReportPath)">
     <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpResponseManifestPath)&quot;" />
     <ItemGroup>
@@ -110,7 +135,7 @@
   </Target>
 
   <Target Name="PrepareCopperSharpBuildManifest"
-          DependsOnTargets="CopperSharpValidateSdk"
+          DependsOnTargets="CopperSharpValidateSdk;CopperSharpOptimizeManagedAssembly"
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCompileOnBuild)' == 'true' and '$(_IsPublishing)' != 'true'">
     <Error Condition="'$(CopperSharpEntry)' == ''"
            Text="CopperSharpEntry must name an entry point as Namespace.Type::Method." />
@@ -127,7 +152,7 @@
       <_CopperSharpBuildManagedAssembly Include="@(ReferenceCopyLocalPaths)"
                                         Condition="'%(Extension)' == '.dll'" />
       <_CopperSharpBuildResponseLine Include="coppersharp-response-v1" />
-      <_CopperSharpBuildResponseLine Include="input=$(TargetPath)" />
+      <_CopperSharpBuildResponseLine Include="input=$(_CopperSharpManagedInputAssembly)" />
       <_CopperSharpBuildResponseLine Include="entry=$(CopperSharpEntry)" />
       <_CopperSharpBuildResponseLine Include="output=$(CopperSharpBuildOutputPath)" />
       <_CopperSharpBuildResponseLine Include="platform=amiga" />
@@ -157,7 +182,7 @@
           AfterTargets="Build"
           DependsOnTargets="PrepareCopperSharpBuildManifest"
           Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCompileOnBuild)' == 'true' and '$(_IsPublishing)' != 'true'"
-          Inputs="$(CopperSharpBuildResponseManifestPath);$(TargetPath);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpFrameworkImplementationManifest)"
+          Inputs="$(CopperSharpBuildResponseManifestPath);$(_CopperSharpManagedInputAssembly);@(ReferenceCopyLocalPaths);$(CopperSharpCompilerAssembly);$(CopperSharpCilicaOptimizerAssembly);$(CopperSharpFrameworkImplementationManifest)"
           Outputs="$(CopperSharpBuildOutputPath);$(CopperSharpBuildOutputPath).map;$(CopperSharpBuildFrameworkReportPath)">
     <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCompilerAssembly)&quot; &quot;@$(CopperSharpBuildResponseManifestPath)&quot;" />
     <ItemGroup>

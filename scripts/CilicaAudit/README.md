@@ -9,6 +9,85 @@ This directory contains the executable audit, its fixtures, and the retained
 [machine-readable summary](results-summary.json). Production projects do not
 reference CILica.
 
+## Restricted opt-in follow-up — 2026-11-07
+
+The standalone [restricted preprocessor](../CilicaOptimizer/README.md) is now
+available through `scripts/optimize-il.ps1`. Its explicit pass allowlist omits
+LINQ expansion, loop strength reduction, list presizing and vectorization, with
+cross-assembly IPO and little-endian assumptions disabled. It is never invoked
+by ordinary application builds. The audit and standalone tool share the same
+pipeline implementation.
+
+A fresh run against compiler source commit `4fedfc9b71ffc3b8e36822bb68cd740574508fd8`
+compared baseline, the earlier portable profile, and restricted output. Three
+recorded samples followed a warmup for each kernel/CPU/variant; tiered host
+compilation was disabled. The retained
+[restricted summary](restricted-results-summary.json) includes input/compiler
+hashes, compatibility outcomes, loaded sizes and cycle comparisons.
+
+| Kernel | CPU | Baseline cycles | Restricted cycles | Speedup |
+| --- | --- | ---: | ---: | ---: |
+| Scalar replacement | MC68000 | 2,092 | 704 | 2.97× |
+| Scalar replacement | MC68020 | 470 | 162 | 2.90× |
+| Scalar replacement | MC68040 | 181 | 55 | 3.29× |
+| Devirtualization | MC68000 | 2,650 | 716 | 3.70× |
+| Devirtualization | MC68020 | 608 | 160 | 3.80× |
+| Devirtualization | MC68040 | 219 | 55 | 3.98× |
+
+These are complete cold-invocation interpreter cycles at input 31, including
+startup. Both kernels have exactly the same measured cycles as portable output
+on every CPU. Their restricted IL contains arithmetic with no allocation or
+virtual calls. The standalone wrapper's output was byte-identical to the
+benchmarked rewrite: SHA-256
+`93CA8925601BB5C7954F23E23CCF43F4DB766A88E62E6B308D04D96B42D687D5`.
+An attempted in-place rewrite was rejected and left the input hash unchanged.
+
+Restricted compiled and passed **all 14 baseline-supported kernels on all three
+CPUs**, recovering the ArrayLoop and Range.Select.Sum cases rejected by portable.
+Its **720 checked executions** include all three recorded samples and scalar
+edge inputs. Across the three variants, 2,088 executions passed; all 120
+successful kernel/CPU/variant groups had stable image hashes and cycle results.
+Restricted introduced no compatibility regressions, and no successful variant
+produced a wrong result. The original three
+unsupported kernels (Range.Where.Select.Sum, volatile IL and checked multiply)
+remain unsupported in baseline and restricted output.
+
+Disabling list presizing deliberately loses its earlier speedup: MC68000
+ListGrowth at input 31 uses 37,632 cycles restricted versus 37,690 baseline and
+23,668 portable. Struct promotion still trades 1,188 baseline cycles for 1,214
+restricted cycles on MC68000. This profile preserves the requested gains, but
+does not promise every method becomes faster.
+
+Both bundled applications compile under restricted preprocessing. Their loaded
+sizes match portable output: Polymorphism is 4,872/4,872/4,776 bytes and
+StopwatchBenchmark is 12,028/11,872/11,724 bytes for MC68000/020/040. These remain
+compilation/size probes, not application execution benchmarks.
+
+Reproduce with:
+
+```powershell
+./scripts/CilicaAudit/run.ps1 -Restricted -SdkVersion 10.0.401 `
+  -ResultsDirectory TestResults/CilicaRestrictedRepeat
+```
+
+`summarize-restricted.ps1` checks stability, compatibility against baseline and
+retention of both gains against portable, and fails the run if any check fails.
+Raw evidence for this run is in `TestResults/CilicaRestrictedVerified`. The
+original broader-pipeline audit below is retained as historical evidence.
+
+## Volatile support follow-up — 2026-11-07
+
+CopperSharp now supports scalar/reference CIL `volatile.` accesses; the earlier
+volatile compilation failures below are historical. With this implementation,
+the original `Volatile` kernel returns the expected **3** at input 1 in both
+baseline and restricted assemblies on MC68000/020/040 (six executions). This
+follow-up checks compatibility and result correctness; the retained benchmark
+summaries and cycle measurements have not been regenerated.
+
+See [volatile memory support](../../Compiler/VolatileMemory.md) for semantics,
+scope, optimization tradeoffs and execution-test coverage. Local probe output
+is retained under `TestResults/VolatileSupport`.
+
 ## Inputs and measurement
 
 Upstream: [hez2010/Cilica](https://github.com/hez2010/Cilica), commit

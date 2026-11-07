@@ -1119,6 +1119,14 @@ internal static class M68kMachineIrVerifier
 		M68kMachineFunction function,
 		M68kMachineInstruction instruction)
 	{
+		// Volatility qualifies an existing memory operation without changing its
+		// operand/register shape. Validate the base operation below.
+		if ((instruction.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0)
+		{
+			if ((instruction.MemoryEffect & (M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write)) == 0)
+				throw Invalid(function, $"Volatile instruction {instruction.Id} has no memory access.");
+			instruction = instruction with { MemoryEffect = instruction.MemoryEffect & ~M68kMachineMemoryEffect.Volatile };
+		}
 		if (instruction.TransportsManagedByrefOwner &&
 			(instruction.Operation != M68kMachineOperation.Call ||
 			 instruction.ManagedByrefSourceArgumentCount is < 1 or > 2 ||

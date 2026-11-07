@@ -10,11 +10,12 @@ using Copper68k;
 using CopperSharp.Compiler;
 using CopperSharp.Compiler.Tests;
 using CopperSharp.Targets.Amiga;
+using CopperSharp.Tools;
 
 var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
 string Hash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 void Save(string path, object value) => File.WriteAllText(path, JsonSerializer.Serialize(value, jsonOptions));
-if (args.Length < 3) throw new ArgumentException("rewrite <input.dll> <output.dll> <default|scalar|portable> | inspect <input.dll> <output.txt> | bench <fixture.dll> <results-directory> [repetitions] | example <input.dll> <results-directory> <entry>");
+if (args.Length < 3) throw new ArgumentException("rewrite <input.dll> <output.dll> <default|scalar|portable|restricted> | inspect <input.dll> <output.txt> | bench <fixture.dll> <results-directory> [repetitions] [variants-csv] | example <input.dll> <results-directory> <entry>");
 if (args[0] == "inspect")
 {
     var context = new AssemblyLoadContext("IL inspection", isCollectible: true);
@@ -60,12 +61,13 @@ if (args[0] == "rewrite")
     resolver.AddTrustedSearchPaths();
     var module = resolver.Load(args[1]);
     bool portable = args[3] == "portable";
-    var compilation = new Compilation(module, logger, new CompilationSettings {
+    bool restricted = args[3] == "restricted";
+    var compilation = new Compilation(module, logger, restricted ? RestrictedPipeline.CreateSettings() : new CompilationSettings {
         VerifyEachPass = true, AssumeLittleEndian = !portable, AllowCrossAssemblyIPO = !portable });
-    var pipeline = CompilationPipeline.CreateDefault(compilation);
+    var pipeline = restricted ? RestrictedPipeline.Create(compilation) : CompilationPipeline.CreateDefault(compilation);
     // At the pinned revision the final segment is LoopVectorizer + cleanup.
     if (args[3] is "scalar" or "portable") pipeline.Pipeline.RemoveAt(pipeline.Pipeline.Count - 1);
-    else if (args[3] != "default") throw new ArgumentException("Unknown pipeline");
+    else if (args[3] != "default" && !restricted) throw new ArgumentException("Unknown pipeline");
     // Match the CLI candidate filter: rewrite the main module, allowing the
     // inliner to import dependencies as needed, without optimizing them first.
     var methods = PassManager.GetCandidateMethodsFromIL(module, (_, method) => method.Module == module);
@@ -85,9 +87,20 @@ var output = Path.GetFullPath(args[2]);
 Directory.CreateDirectory(output);
 var variants = new[] { (Name: "baseline", Path: input), (Name: "default", Path: Path.Combine(Path.GetDirectoryName(input)!, "default", Path.GetFileName(input))),
     (Name: "scalar", Path: Path.Combine(Path.GetDirectoryName(input)!, "scalar", Path.GetFileName(input))),
-    (Name: "portable", Path: Path.Combine(Path.GetDirectoryName(input)!, "portable", Path.GetFileName(input))) };
+    (Name: "portable", Path: Path.Combine(Path.GetDirectoryName(input)!, "portable", Path.GetFileName(input))),
+    (Name: "restricted", Path: Path.Combine(Path.GetDirectoryName(input)!, "restricted", Path.GetFileName(input))) };
+if (args[0] == "bench" && args.Length > 4)
+{
+    var selected = args[4].Split(',');
+    if (selected.Distinct().Count() != selected.Length || selected.Any(name => !variants.Any(v => v.Name == name)))
+        throw new ArgumentException("Unknown or duplicate benchmark variant");
+    variants = selected.Select(name => variants.Single(v => v.Name == name)).ToArray();
+    foreach (var variant in variants)
+        if (!File.Exists(variant.Path)) throw new FileNotFoundException($"Missing {variant.Name} input", variant.Path);
+}
 Save(Path.Combine(output, "environment.json"), new { Runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
     OS = System.Runtime.InteropServices.RuntimeInformation.OSDescription, ProcessorCount = Environment.ProcessorCount,
+    TieredCompilation = Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"),
     CompilerSha256 = Hash(typeof(M68kCompiler).Assembly.Location), CilicaSha256 = Hash(typeof(Compilation).Assembly.Location),
     Inputs = variants.Where(v => File.Exists(v.Path)).Select(v => new { v.Name, v.Path, Sha256 = Hash(v.Path) }),
     TimingScope = "In-process Compile only, one unrecorded warmup per variant/case/CPU, reversed variant order on odd rounds. Target cycles include cold startup. No preprocessing time included in Compile." });

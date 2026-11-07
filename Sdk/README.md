@@ -39,6 +39,34 @@ and memory-management settings remain unchanged.
 dotnet publish -c Release -p:CopperSharpSymbols=off -p:CopperSharpCodeSizeOptimizations=on
 ```
 
+For Amiga native publish and SDK native build, the SDK runs its bundled,
+restricted CILica preprocessor by default on a separate copy of the managed
+assembly before CopperSharp compiles it. Set `CopperSharpCilica=false` to opt
+out. The original managed assembly and dependency files remain in place; the
+rewritten assembly and its report are stored under `obj/`. The optimizer fails
+the build if rewriting fails.
+
+```powershell
+dotnet publish -c Release
+dotnet publish -c Release -p:CopperSharpCilica=false
+```
+
+For native compilation during `dotnet build`, enable
+`CopperSharpCompileOnBuild=true`; the restricted optimizer is also enabled by
+default for that target:
+
+```powershell
+dotnet build -p:CopperSharpCompileOnBuild=true
+```
+
+This profile enables local scalar simplification, scalar replacement,
+devirtualization and bounded inlining. It disables cross-assembly optimization,
+little-endian assumptions, LINQ expansion, loop strength reduction, list
+presizing and vectorization. The benchmark retained the measured
+scalar-replacement and devirtualization gains and matched the portable profile
+on those kernels across 68000, 68020 and 68040. The audit covers focused
+fixtures and does not establish compatibility across arbitrary .NET applications.
+
 To apply it only to Release configurations in a project:
 
 ```xml

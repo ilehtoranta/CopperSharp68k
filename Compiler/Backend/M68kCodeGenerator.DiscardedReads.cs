@@ -17,6 +17,7 @@ internal sealed partial class M68kCodeGenerator
     {
         _allocatedDiscardedReads.Clear();
         _allocatedDiscardedReadValues.Clear();
+        if (_emittingVolatileMethod) return;
         if (method.InternalRegisterAbi is null || _request.ExceptionMode != M68kExceptionMode.Yolo ||
             _request.MemoryManagement != M68kMemoryManagement.None) return;
         var function = allocated.Function;

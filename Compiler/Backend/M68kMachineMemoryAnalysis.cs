@@ -25,6 +25,11 @@ internal static class M68kMachineMemoryAnalysis
 			for (var index = 0; index < block.Instructions.Count; index++)
 			{
 				var instruction = block.Instructions[index];
+				if ((instruction.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0)
+				{
+					available.Clear();
+					continue;
+				}
 				if (TryGetExactFrameRead(instruction, out var read))
 				{
 					if (!escaped.Any(read.Overlaps) &&
@@ -79,6 +84,11 @@ internal static class M68kMachineMemoryAnalysis
 			for (var index = block.Instructions.Count - 1; index >= 0; index--)
 			{
 				var instruction = block.Instructions[index];
+				if ((instruction.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0)
+				{
+					overwritten.Clear();
+					continue;
+				}
 				if (TryGetExactFrameWrite(instruction, out var write))
 				{
 					if (!escaped.Any(write.Overlaps) && overwritten.Contains(write))

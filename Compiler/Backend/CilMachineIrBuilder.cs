@@ -48,6 +48,7 @@ internal static class CilMachineIrBuilder
 		IReadOnlyList<M68kRegister?>? argumentRegisters = null,
 		bool simplifyLoopPhis = false)
 	{
+		ValidateVolatileAccesses(method, module);
 		optimizations ??= CilOptimizer.Optimize(method, module);
 		var stackStates = CilStackAnalyzer.AnalyzeTypes(method, module, optimizations);
 		var reachableOffsets = stackStates.Keys.ToHashSet();
@@ -288,6 +289,7 @@ internal static class CilMachineIrBuilder
 			argumentValues,
 			argumentRegisters);
 		EliminateUnneededSpanElementOwners(function);
+		MarkVolatileMemoryEffects(function);
 		EliminateDeadMachineValues(function);
 		PropagateNarrowExpressionWidths(function);
 		M68kComparisonPromotion.Run(function);
@@ -300,6 +302,35 @@ internal static class CilMachineIrBuilder
 		M68kMachineCostAnalysis.Apply(function);
 		M68kMachineIrVerifier.Verify(function);
 		return function;
+	}
+
+	private static void ValidateVolatileAccesses(CilMethod method, CompilationModule module)
+	{
+		foreach (var source in method.Instructions.Where(i => i.IsVolatile))
+		{
+			CilType? type = source.OpCode == OpCodes.Ldfld || source.OpCode == OpCodes.Stfld ||
+				source.OpCode == OpCodes.Ldsfld || source.OpCode == OpCodes.Stsfld
+				? module.ResolveFieldToken((int)source.Operand!, method, source.Offset).Type
+				: source.OpCode == OpCodes.Ldobj || source.OpCode == OpCodes.Stobj
+					? module.ResolveTypeToken((int)source.Operand!, method, source.Offset) : null;
+			if (type is not null && !type.IsSupportedScalar && !type.IsReference &&
+				type.Kind is not (CilTypeKind.ManagedPointer or CilTypeKind.UnmanagedPointer or CilTypeKind.FunctionPointer) &&
+				!module.IsTransparentScalarType(type))
+				throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction,
+					"Volatile access currently requires a scalar or reference type; aggregate accesses are unsupported.", method.DisplayName, source.Offset);
+		}
+	}
+
+	private static void MarkVolatileMemoryEffects(M68kMachineFunction function)
+	{
+		foreach (var block in function.Blocks)
+		for (int index = 0; index < block.Instructions.Count; index++)
+		{
+			var instruction = block.Instructions[index];
+			if ((instruction.SourceInstruction?.IsVolatile == true || instruction.Origin?.SourceInstruction.IsVolatile == true) &&
+				(instruction.MemoryEffect & (M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Write)) != 0)
+				block.Instructions[index] = instruction with { MemoryEffect = instruction.MemoryEffect | M68kMachineMemoryEffect.Volatile };
+		}
 	}
 
 	private static void EliminateUnneededSpanElementOwners(M68kMachineFunction function)
@@ -829,6 +860,7 @@ internal static class CilMachineIrBuilder
 		int localIndex,
 		int addressInstructionIndex)
 	{
+		if (method.Instructions.Any(i => i.IsVolatile)) return false;
 		var localType = method.Locals[localIndex];
 		var isTransparentScalar = module.IsTransparentScalarType(localType);
 		var isCompactNullable =

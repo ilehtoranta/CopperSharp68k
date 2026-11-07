@@ -11,6 +11,26 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
+	private bool IsEmittingVolatileAccess => _emittingMachineInstruction is { } instruction &&
+		(instruction.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0;
+	private bool _emittingVolatileMethod;
+
+	private void EmitVolatileSynchronization()
+	{
+		var effects = new M68kInstructionEffects(0, 0, 0, 0,
+			M68kConditionCodeSet.None, M68kConditionCodeSet.None,
+			M68kMemorySet.All, M68kMemorySet.All, 0, true, false);
+		// NOP drains pending integer bus cycles (M68040UM section 7.7).
+		// With a native FPU, synchronize it too before draining the bus.
+		if (_request.FloatingPoint is M68kFloatingPointMode.M68040 or M68kFloatingPointMode.M68882)
+		{
+			_assembler.SetInstructionEffects(_assembler.Offset, effects);
+			_assembler.EmitWord(0xF280); // FNOP
+			_assembler.EmitWord(0);
+		}
+		_assembler.SetInstructionEffects(_assembler.Offset, effects);
+		_assembler.EmitWord(0x4E71);
+	}
 	private sealed record AllocatedIlLabelPlan(
 		IReadOnlyDictionary<int, IReadOnlyList<int>> BlockEntryOffsets,
 		IReadOnlyDictionary<int, int> InstructionOffsets);
@@ -115,6 +135,10 @@ internal sealed partial class M68kCodeGenerator
 		}
 
 		_emittingUnwindMethod = method;
+		_emittingVolatileMethod = allocated.Function.Blocks.SelectMany(b => b.Instructions).Any(i =>
+			(i.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0);
+		if (_emittingVolatileMethod)
+			_assembler.VolatileMethodLabels.Add(MethodLabel(method));
 		_emittingAllocatedFunction = allocated;
 		_allocatedSuppressedInstructions.Clear();
 		_allocatedBitBranchDeadValues.Clear();
@@ -300,6 +324,7 @@ internal sealed partial class M68kCodeGenerator
 				}
 				_emittingMachineInstruction = instruction;
 				_allocatedFrameAddressesEmitted.Clear();
+				if (IsEmittingVolatileAccess) EmitVolatileSynchronization();
 				EmitAllocatedInstruction(
 					method,
 					abi,
@@ -308,6 +333,7 @@ internal sealed partial class M68kCodeGenerator
 					instruction,
 					savedBytes,
 					nextBlockId);
+				if (IsEmittingVolatileAccess) EmitVolatileSynchronization();
 				_allocatedKnownNonNullValues.UnionWith(
 					GetAllocatedNonNullTransferValues(
 						method,

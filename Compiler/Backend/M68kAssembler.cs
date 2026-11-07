@@ -53,6 +53,7 @@ internal enum M68kFpuOperation : byte
 
 internal sealed class M68kAssembler
 {
+	internal HashSet<string> VolatileMethodLabels { get; } = new(StringComparer.Ordinal);
 	internal bool CompactApplicationAddresses { get; set; }
 	internal bool CompactApplicationStatics { get; set; }
 	private readonly M68kAssemblyBuffer _buffer = new();
@@ -2168,6 +2169,12 @@ internal sealed class M68kAssembler
 		InstructionRenderContext context,
 		out RenderedInstruction rendered)
 	{
+		if (context.Opcode == 0xF280 && context.Offset + 3 < _bytes.Count &&
+			_bytes[context.Offset + 2] == 0 && _bytes[context.Offset + 3] == 0)
+		{
+			rendered = new(context.RenderText ? "fnop" : string.Empty, 4);
+			return true;
+		}
 		if ((context.Opcode & 0xFFC0) != 0xF200 ||
 			context.Offset + 3 >= _bytes.Count)
 		{

@@ -1,0 +1,138 @@
+namespace Cilica.Analysis;
+
+/// <summary> Computes information that can be used to build expression trees from the linear IR. </summary>
+public class ForestAnalysis : IMethodAnalysis
+{
+    // Loosely based on:
+    //   "Example stackify algorithm for turning SSA into WASM" - https://gist.github.com/evanw/58a8a5b8b4a1da32fcdcfbf9da87c82a
+
+    // Leaf membership identifies values emitted as operands of their expression roots.
+    readonly RefSet<Instruction> _leafs = new();
+    readonly IReadOnlySet<Instruction>? _requiredRoots;
+
+    // CIL emission recursively visits each expression. Split deep trees into
+    // ordinary roots so input size cannot exhaust the compiler's native stack.
+    const int MaxExpressionDepth = 128;
+
+    public ForestAnalysis(MethodBody method, AliasAnalysis? aa = null, IReadOnlySet<Instruction>? requiredRoots = null)
+    {
+        _requiredRoots = requiredRoots;
+        aa ??= new(method);
+
+        foreach (var block in method) {
+            // Inline operands, traverse through non-phi instructions in reverse order
+            var first = block.FirstNonHeader.Prev;
+
+            for (var inst = block.Last; inst != first; inst = inst.Prev!) {
+                if (_leafs.Contains(inst)) continue; // already processed
+                InlineOperands(inst, inst, aa);
+            }
+        }
+    }
+
+    static IMethodAnalysis IMethodAnalysis.Create(IMethodAnalysisManager mgr)
+        => new ForestAnalysis(mgr.Method, mgr.GetAnalysis<AliasAnalysis>());
+
+    private void InlineOperands(Instruction inst, Instruction root, AliasAnalysis aa, int depth = 0)
+    {
+        if (depth >= MaxExpressionDepth) return;
+        var opers = inst.Operands;
+
+        if (inst is StoreInst { Flags: 0 } && opers[0] is FieldAddrInst or ArrayAddrInst) {
+            // For stores, inline the address first to hide hazards, assuming they
+            // will be combined into a single CIL instruction.
+            InlineOperand(0);
+            InlineOperand(1);
+            return;
+        }
+
+        for (int i = opers.Length - 1; i >= 0; i--) {
+            InlineOperand(i);
+        }
+
+        void InlineOperand(int i)
+        {
+            // Check for single-use instruction defined in the same block
+            if (inst.Operands[i] is not Instruction oper || oper.Block != inst.Block) return;
+            if (_requiredRoots?.Contains(oper) == true) return;
+            if (oper is PhiInst or FieldInsertInst) return; // needs own slot for codegen
+            // CIL localloc requires an empty evaluation stack apart from its size.
+            // Keep it rooted during scheduling so earlier effects also stay ordered.
+            if (oper is CilIntrinsic.Alloca) return;
+            if (oper.NumUses >= 2 && !IsCheaperToRematerialize(oper)) return;
+
+            if (HasHazardsBetweenDefUse(oper, root, aa)) return;
+
+            // Recursively inline defs, except when rematerializing
+            if (_leafs.Add(oper) && oper.NumUses == 1) {
+                InlineOperands(oper, root, aa, depth + 1);
+            }
+        }
+    }
+
+    // Checks if `def` can be safely inlined down to a tree at `use`, skipping over leafs.
+    private bool HasHazardsBetweenDefUse(Instruction def, Instruction use, AliasAnalysis aa)
+    {
+        Debug.Assert(def.Block == use.Block);
+
+        if (!def.HasSideEffects && !def.MayReadFromMemory) return false;
+
+        for (var inst = def.Next!; inst != use; inst = inst.Next!) {
+            // Assuming that instructions and their operands are inlined in reverse-order,
+            // we can safely skip over leafs because they will be evaluated later than `def`.
+            if (_leafs.Contains(inst)) continue;
+
+            if (HasTreeHazard(inst)) {
+                return true;
+            }
+        }
+        return false;
+
+        bool HasTreeHazard(Instruction inst)
+        {
+            // Effects of nested operands execute at their expression root.
+            bool ordersRead = inst.MayReadFromMemory && (def.MayWriteToMemory || def.IsMemoryBarrier);
+            if ((inst.HasSideEffects || ordersRead) && !AreInterchangeableHazards(def, inst, aa)) return true;
+            foreach (var operand in inst.Operands) {
+                if (operand is Instruction child && _leafs.Contains(child) && HasTreeHazard(child)) return true;
+            }
+            return false;
+        }
+    }
+
+    // A non-throwing load can commute with a disjoint store when neither access
+    // imposes memory ordering. Other observable effects retain their execution order.
+    private bool AreInterchangeableHazards(Instruction a, Instruction b, AliasAnalysis aa)
+    {
+        if (a.MayThrow || b.MayThrow || a.IsMemoryBarrier || b.IsMemoryBarrier) {
+            return false;
+        }
+        return a is LoadInst load && b is StoreInst store && !aa.MayAlias(load.Address, store.Address);
+    }
+
+    /// <summary> Checks if the specified instruction is a the root of a tree/statement (i.e. must be emitted and/or assigned into a temp variable). </summary>
+    public bool IsTreeRoot(Instruction inst) => !IsLeaf(inst);
+
+    /// <summary> Checks if the specified instruction is a leaf or branch (i.e. can be inlined into an operand). </summary>
+    public bool IsLeaf(Instruction inst) => _leafs.Contains(inst);
+
+    /// <summary> Marks the specified instruction as a leaf or root. </summary>
+    public void SetLeaf(Instruction inst, bool markAsLeaf)
+    {
+        if (markAsLeaf) {
+            _leafs.Add(inst);
+        } else {
+            _leafs.Remove(inst);
+        }
+    }
+
+    // Cheap address expressions may be rematerialized to reduce temporary locals.
+    private static bool IsCheaperToRematerialize(Instruction inst)
+    {
+        bool mayRematerialize =
+                (inst is ArrayAddrInst or PtrOffsetInst && inst.NumUses <= 3) ||
+                (inst is FieldAddrInst or FieldExtractInst or CilIntrinsic.ArrayLen or CilIntrinsic.SizeOf);
+
+        return mayRematerialize && !inst.Users().Any(u => u is PhiInst); // codegen doesn't support defs inlined into phis, they *must* be rooted
+    }
+}

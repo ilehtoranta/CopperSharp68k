@@ -13,12 +13,18 @@
     <IsPackable>true</IsPackable>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectCopperSharpCompilerTool</TargetsForTfmSpecificContentInPackage>
     <CopperSharpCompilerToolOutputPath Condition="'$(CopperSharpCompilerToolOutputPath)' == ''">../Compiler.Cli/bin/$(Configuration)/net10.0</CopperSharpCompilerToolOutputPath>
+    <CopperSharpCilicaToolOutputPath Condition="'$(CopperSharpCilicaToolOutputPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/bin/$(Configuration)/net10.0'))</CopperSharpCilicaToolOutputPath>
+    <CilicaSource Condition="'$(CilicaSource)' == ''">$(MSBuildThisFileDirectory)../ThirdParty/Cilica</CilicaSource>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Compiler.Cli\CopperSharp.Compiler.Cli.csproj"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
+    <ProjectReference Include="..\scripts\CilicaOptimizer\CilicaOptimizer.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all"
+                      AdditionalProperties="CilicaSource=$(CilicaSource)" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="Sdk\Sdk.props" Pack="true" PackagePath="Sdk\Sdk.props" />
     <None Include="Sdk\Sdk.targets" Pack="true" PackagePath="Sdk\Sdk.targets" />
@@ -34,6 +40,13 @@
       <TfmSpecificPackageFile Include="$(CopperSharpCompilerToolOutputPath)/**/*"
                               Exclude="$(CopperSharpCompilerToolOutputPath)/publish/**/*;$(CopperSharpCompilerToolOutputPath)/**/*.pdb;$(CopperSharpCompilerToolOutputPath)/**/*.xml">
         <PackagePath>tools/net10.0/any/%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(CopperSharpCilicaToolOutputPath)/**/*"
+                              Exclude="$(CopperSharpCilicaToolOutputPath)/publish/**/*;$(CopperSharpCilicaToolOutputPath)/**/*.pdb;$(CopperSharpCilicaToolOutputPath)/**/*.xml;$(CopperSharpCilicaToolOutputPath)/**/*.exe">
+        <PackagePath>tools/net10.0/any/cilica/</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)../ThirdParty/Cilica/LICENSE.md">
+        <PackagePath>tools/net10.0/any/cilica/LICENSE-Cilica.md</PackagePath>
       </TfmSpecificPackageFile>
     </ItemGroup>
   </Target>

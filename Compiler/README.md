@@ -40,6 +40,13 @@ arithmetic and conversion kernels in
 [`FloatingPointArithmetic.cs`](../Runtime.Managed/FloatingPointArithmetic.cs)
 and [`FloatingPointConversions.cs`](../Runtime.Managed/FloatingPointConversions.cs).
 
+## Volatile memory
+
+Scalar and reference CIL `volatile.` accesses are supported, including C# volatile
+fields, with acquire/release ordering and preserved access counts and widths.
+See [Volatile memory accesses](VolatileMemory.md) for supported instructions,
+the conservative optimization policy, execution coverage and hardware limits.
+
 ## Library API
 
 ```csharp

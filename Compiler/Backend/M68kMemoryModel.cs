@@ -175,6 +175,16 @@ internal static class M68kMemoryModel
 		CompilationModule module,
 		M68kMachineInstruction instruction)
 	{
+		var effect = SummarizeCore(method, module, instruction);
+		return (instruction.MemoryEffect & M68kMachineMemoryEffect.Volatile) != 0
+			? effect with { IsVolatile = true } : effect;
+	}
+
+	private static M68kObjectMemoryEffect SummarizeCore(
+		CilMethod method,
+		CompilationModule module,
+		M68kMachineInstruction instruction)
+	{
 		if (instruction.BulkCopy is { } copy)
 		{
 			// Exact accesses are complete only when both ranges are known. In

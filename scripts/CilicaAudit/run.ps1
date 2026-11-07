@@ -1,7 +1,8 @@
 param(
     [string]$ResultsDirectory = 'TestResults/CilicaAuditRun',
     [string]$SdkVersion = '10.0.301',
-    [ValidateRange(1, 20)][int]$Repetitions = 3
+    [ValidateRange(1, 20)][int]$Repetitions = 3,
+    [switch]$Restricted
 )
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -26,6 +27,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Checkout failed' }
 $build = Join-Path $results 'build'
 $driverProject = Join-Path $PSScriptRoot 'CilicaAudit.csproj'
 $fixtureProject = Join-Path $PSScriptRoot 'Fixtures/Fixtures.csproj'
+$pipelines = if ($Restricted) { @('portable', 'restricted') } else { @('default', 'scalar', 'portable', 'restricted') }
 $previousTiering = $env:DOTNET_TieredCompilation
 Push-Location $results
 try {
@@ -34,23 +36,30 @@ try {
     Invoke-Dotnet @('build', $fixtureProject, '-c', 'Release', '--artifacts-path', $build, '-m:1', '/nodeReuse:false')
     $driver = Join-Path $build 'bin/CilicaAudit/release/CilicaAudit.dll'
     $fixture = Join-Path $build 'bin/Fixtures/release/CilicaAudit.Fixtures.dll'
-    foreach ($pipeline in @('default', 'scalar', 'portable')) {
+    foreach ($pipeline in $pipelines) {
         $rewritten = Join-Path (Split-Path $fixture) "$pipeline/CilicaAudit.Fixtures.dll"
         Invoke-Dotnet @($driver, 'rewrite', $fixture, $rewritten, $pipeline)
         Invoke-Dotnet @($driver, 'inspect', $rewritten, (Join-Path $results "$pipeline.il.txt"))
     }
     Invoke-Dotnet @($driver, 'inspect', $fixture, (Join-Path $results 'baseline.il.txt'))
-    Invoke-Dotnet @('build', (Join-Path $source 'src/Cilica.Cli/Cilica.Cli.csproj'), '-c', 'Release', '--artifacts-path', $build, '-p:BuildProjectReferences=false', '-m:1', '/nodeReuse:false')
-    $cliOutput = Join-Path $results 'cli-default.dll'
-    Invoke-Dotnet @((Join-Path $build 'bin/Cilica.Cli/release/Cilica.Cli.dll'), '-i', $fixture, '-o', $cliOutput, '--strict', '--verify-each', '--no-pdb-gen', '--verbosity', 'Warn')
-    if ((Get-FileHash $cliOutput).Hash -ne (Get-FileHash (Join-Path (Split-Path $fixture) 'default/CilicaAudit.Fixtures.dll')).Hash) { throw 'Core API output differs from stock CLI' }
-    Invoke-Dotnet @($driver, 'bench', $fixture, (Join-Path $results 'kernels'), "$Repetitions")
+    if (!$Restricted) {
+        Invoke-Dotnet @('build', (Join-Path $source 'src/Cilica.Cli/Cilica.Cli.csproj'), '-c', 'Release', '--artifacts-path', $build, '-p:BuildProjectReferences=false', '-m:1', '/nodeReuse:false')
+        $cliOutput = Join-Path $results 'cli-default.dll'
+        Invoke-Dotnet @((Join-Path $build 'bin/Cilica.Cli/release/Cilica.Cli.dll'), '-i', $fixture, '-o', $cliOutput, '--strict', '--verify-each', '--no-pdb-gen', '--verbosity', 'Warn')
+        if ((Get-FileHash $cliOutput).Hash -ne (Get-FileHash (Join-Path (Split-Path $fixture) 'default/CilicaAudit.Fixtures.dll')).Hash) { throw 'Core API output differs from stock CLI' }
+    }
+    if ($Restricted) {
+        Invoke-Dotnet @($driver, 'bench', $fixture, (Join-Path $results 'kernels'), "$Repetitions", 'baseline,portable,restricted')
+        & (Join-Path $PSScriptRoot 'summarize-restricted.ps1') -ResultsDirectory (Join-Path $results 'kernels') -Repetitions $Repetitions
+    } else {
+        Invoke-Dotnet @($driver, 'bench', $fixture, (Join-Path $results 'kernels'), "$Repetitions")
+    }
     # Build examples against the same already-built compiler inputs. These are
     # compilation/footprint probes; native OS calls are not executed by this bus.
     foreach ($name in @('Polymorphism', 'StopwatchBenchmark')) {
         Invoke-Dotnet @('build', (Join-Path $repo "Sdk.Amiga/Examples/$name/$name.csproj"), '-c', 'Release', '--artifacts-path', $build, '-p:BuildProjectReferences=false', '-m:1', '/nodeReuse:false')
         $example = Join-Path $build "bin/$name/release/$name.dll"
-        foreach ($pipeline in @('default', 'scalar', 'portable')) {
+        foreach ($pipeline in $pipelines) {
             Invoke-Dotnet @($driver, 'rewrite', $example, (Join-Path (Split-Path $example) "$pipeline/$name.dll"), $pipeline)
         }
         $entry = if ($name -eq 'Polymorphism') { 'PolymorphismExample.Program::Main' } else { 'StopwatchBenchmarkExample.Program::Main' }

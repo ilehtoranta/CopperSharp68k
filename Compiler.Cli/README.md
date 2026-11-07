@@ -24,6 +24,12 @@ the reachable graph contains a `deferred` or `unsupported` member.
 
 `--platform amiga` enables Amiga SDK library-vector resolution and automatic
 library-base handling. The default `generic` platform remains freestanding.
+An experimental, explicitly invoked [restricted CILica preprocessor](../scripts/CilicaOptimizer/README.md)
+can optimize a separate copy of an input DLL before this driver runs. It keeps
+local scalar optimizations and disables host framework inlining, little-endian
+assumptions and the incompatible loop/LINQ passes. The driver does not enable it
+automatically; `CopperSharp.Sdk` enables it by default for Amiga native builds,
+with `CopperSharpCilica=false` available to opt out.
 `--managed-assemblies <file>` adds resolved dependency assemblies from one
 UTF-8 path per line. `@response-manifest` accepts the versioned SDK `key=value`
 format, including repeated `managed-assembly` entries, so dependency paths and

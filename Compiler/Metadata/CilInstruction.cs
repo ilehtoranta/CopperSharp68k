@@ -13,7 +13,8 @@ internal sealed record CilInstruction(
 	OpCode OpCode,
 	object? Operand,
 	int NextOffset,
-	int? ConstrainedTypeToken = null)
+	int? ConstrainedTypeToken = null,
+	bool IsVolatile = false)
 {
 	public int Size => NextOffset - Offset;
 }
@@ -28,6 +29,7 @@ internal static class CilInstructionDecoder
 		var offset = 0;
 		int? constrainedTypeToken = null;
 		var constrainedOffset = -1;
+		var volatileOffset = -1;
 		while (offset < il.Length)
 		{
 			var instructionOffset = offset;
@@ -69,6 +71,24 @@ internal static class CilInstructionDecoder
 					$"Unsupported operand encoding {opCode.OperandType}.")
 			};
 
+			if (opCode == OpCodes.Volatile)
+			{
+				if (volatileOffset >= 0 || constrainedTypeToken is not null)
+					throw InvalidIl(methodName, instructionOffset, "A volatile. prefix cannot be repeated or combined with constrained.");
+				volatileOffset = instructionOffset;
+				continue;
+			}
+			if (volatileOffset >= 0)
+			{
+				if (opCode == OpCodes.Unaligned || opCode == OpCodes.Cpblk || opCode == OpCodes.Initblk)
+					throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction,
+						$"The volatile. prefix does not yet support '{opCode.Name}'.", methodName, volatileOffset);
+				if (!IsVolatileMemoryOperation(opCode))
+					throw InvalidIl(methodName, volatileOffset, $"A volatile. prefix must immediately precede a memory access, not '{opCode.Name}'.");
+				result.Add(new CilInstruction(volatileOffset, opCode, operand, offset, IsVolatile: true));
+				volatileOffset = -1;
+				continue;
+			}
 			if (opCode == OpCodes.Constrained)
 			{
 				if (constrainedTypeToken is not null)
@@ -112,9 +132,17 @@ internal static class CilInstructionDecoder
 				constrainedOffset,
 				"A constrained. prefix at the end of a method has no following call or callvirt.");
 		}
+		if (volatileOffset >= 0)
+			throw InvalidIl(methodName, volatileOffset, "A volatile. prefix at the end of a method has no following memory access.");
 
 		return result;
 	}
+
+	private static bool IsVolatileMemoryOperation(OpCode op) =>
+		op == OpCodes.Ldfld || op == OpCodes.Stfld || op == OpCodes.Ldsfld || op == OpCodes.Stsfld ||
+		op == OpCodes.Ldobj || op == OpCodes.Stobj ||
+		op.Name?.StartsWith("ldind.", StringComparison.Ordinal) == true ||
+		op.Name?.StartsWith("stind.", StringComparison.Ordinal) == true;
 
 	private static IReadOnlyDictionary<ushort, OpCode> CreateOpCodeMap()
 	{

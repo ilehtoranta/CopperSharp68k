@@ -23,6 +23,7 @@ internal sealed partial class M68kCodeGenerator
         _allocatedImmediateAnds.Clear();
         _allocatedImmediateBranches.Clear();
         _allocatedWordImmediateBranches.Clear();
+        if (_emittingVolatileMethod) return;
         if (method.InternalRegisterAbi is null || allocated.Frame.CalleeSavedRegisters.Count > 2 ||
             allocated.Function.Blocks.Any(b => b.LoopDepth != 0)) return;
         var function = allocated.Function;
@@ -115,6 +116,7 @@ internal sealed partial class M68kCodeGenerator
 
     private void PrepareAllocatedNarrowImmediateBranches(CilMethod method, M68kAllocatedFunction allocated)
     {
+        if (_emittingVolatileMethod) return;
         if (method.InternalRegisterAbi is null || _request.ExceptionMode != M68kExceptionMode.Yolo ||
             _request.MemoryManagement != M68kMemoryManagement.None) return;
         var function = allocated.Function;
@@ -156,6 +158,7 @@ internal sealed partial class M68kCodeGenerator
     {
         _allocatedBitBranches.Clear();
         _allocatedBitBranchDeadValues.Clear();
+        if (_emittingVolatileMethod) return;
         if (method.InternalRegisterAbi is null || allocated.Frame.CalleeSavedRegisters.Count > 3) return;
         var function = allocated.Function;
         var uses = function.Blocks.SelectMany(b => b.Instructions.SelectMany(i => i.Uses)
@@ -237,6 +240,7 @@ internal sealed partial class M68kCodeGenerator
     private void PrepareAllocatedLowOnlyReads(CilMethod method, M68kAllocatedFunction allocated)
     {
         _allocatedLowOnlyReads.Clear();
+        if (_emittingVolatileMethod) return;
         if (method.InternalRegisterAbi is null || _request.ExceptionMode != M68kExceptionMode.Yolo ||
             _request.MemoryManagement != M68kMemoryManagement.None) return;
         var function = allocated.Function;

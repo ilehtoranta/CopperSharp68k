@@ -38,25 +38,25 @@
       "Variant": "baseline",
       "SuccessfulSamples": 126,
       "FailedCombinations": 9,
-      "CheckedExecutions": 729
+      "CheckedExecutions": 720
     },
     {
       "Variant": "default",
       "SuccessfulSamples": 81,
       "FailedCombinations": 24,
-      "CheckedExecutions": 564
+      "CheckedExecutions": 540
     },
     {
       "Variant": "portable",
       "SuccessfulSamples": 108,
       "FailedCombinations": 15,
-      "CheckedExecutions": 663
+      "CheckedExecutions": 648
     },
     {
       "Variant": "scalar",
       "SuccessfulSamples": 90,
       "FailedCombinations": 21,
-      "CheckedExecutions": 597
+      "CheckedExecutions": 576
     }
   ],
   "StableSuccessfulGroups": 135,

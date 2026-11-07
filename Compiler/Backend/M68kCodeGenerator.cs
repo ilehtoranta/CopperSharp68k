@@ -204,11 +204,11 @@ internal sealed partial class M68kCodeGenerator
 				: _managedPoolRuntime.Methods).Concat(
 				_usesFinalizers ? _managedPoolRuntime.FinalizerMethods : []);
 
-	private bool UseClr => _request.ClrPolicy switch
+	private bool UseClr => !IsEmittingVolatileAccess && (_request.ClrPolicy switch
 	{
 		M68kClrPolicy.Always => true,
 		_ => _request.Cpu != M68kCpuTarget.M68000
-	};
+	});
 
 	public M68kCodeGenerator(
 		CompilationModule module,
@@ -1288,6 +1288,7 @@ internal sealed partial class M68kCodeGenerator
 			hash.Add(instruction.OpCode);
 			hash.Add(instruction.NextOffset);
 			hash.Add(instruction.ConstrainedTypeToken);
+			hash.Add(instruction.IsVolatile);
 		}
 
 		return hash.ToHashCode();
@@ -1342,6 +1343,7 @@ internal sealed partial class M68kCodeGenerator
 			if (leftInstruction.Offset != rightInstruction.Offset ||
 				leftInstruction.OpCode != rightInstruction.OpCode ||
 				leftInstruction.NextOffset != rightInstruction.NextOffset ||
+				leftInstruction.IsVolatile != rightInstruction.IsVolatile ||
 				leftInstruction.ConstrainedTypeToken !=
 					rightInstruction.ConstrainedTypeToken ||
 				!HaveSameInstructionOperand(
