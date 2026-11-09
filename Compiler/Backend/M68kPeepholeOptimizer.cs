@@ -9264,6 +9264,8 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 				(facts.LiveConditionsAfter & (M68kConditionCodeSet.Negative | M68kConditionCodeSet.Zero)) !=
 				M68kConditionCodeSet.None ||
 				instruction.Length < 6 ||
+				HasInternalLabel(instruction) || HasAddressFixup(instruction) ||
+				_assembler.TryGetInstructionEffects(instruction.Offset, out _) ||
 				!TryReadLong(instruction.Offset + 2, out var immediate))
 			{
 				continue;
@@ -9274,6 +9276,13 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 			ushort wordOpcode;
 			if ((opcode & 0xFFF8) == 0x0280 && (immediate & 0xFFFF0000u) == 0xFFFF0000u)
 			{
+				if (immediate == 0xFFFF0000u)
+				{
+					// Keep the high word. CLR.W preserves X and clears V/C just like ANDI.L.
+					_buffer.WriteWord(instruction.Offset, (ushort)(0x4240 | dataRegister));
+					_buffer.RemoveBytes(instruction.Offset + 2, 4);
+					return true;
+				}
 				wordOpcode = (ushort)(0x0240 | dataRegister); // ANDI.L -> ANDI.W
 			}
 			else if ((opcode & 0xFFF8) == 0x0080 && (immediate & 0xFFFF0000u) == 0)

@@ -8,7 +8,7 @@ using CopperSharp.Tools;
 try
 {
     if (args.Length < 2 || (args.Length - 2) % 2 != 0)
-        throw new ArgumentException("Usage: CilicaOptimizer <input.dll> <output.dll> [--resolver <directory>]...");
+        throw new ArgumentException("Usage: CilicaOptimizer <input.dll> <output.dll> [--resolver <directory>]... [--inlining on|off]");
     var input = Path.GetFullPath(args[0]);
     var output = Path.GetFullPath(args[1]);
     var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -17,10 +17,25 @@ try
     if (!string.Equals(Path.GetFileName(input), Path.GetFileName(output), comparison))
         throw new ArgumentException("Preserve the DLL filename in a separate output directory so dependency resolution stays consistent.");
     var searchPaths = new List<string> { Path.GetDirectoryName(input)! };
+    var enableInlining = true;
     for (int i = 2; i < args.Length; i += 2)
     {
-        if (args[i] != "--resolver") throw new ArgumentException($"Unknown option: {args[i]}");
-        searchPaths.Add(Path.GetFullPath(args[i + 1]));
+        switch (args[i])
+        {
+            case "--resolver":
+                searchPaths.Add(Path.GetFullPath(args[i + 1]));
+                break;
+            case "--inlining":
+                enableInlining = args[i + 1] switch
+                {
+                    "on" => true,
+                    "off" => false,
+                    _ => throw new ArgumentException("--inlining must be either 'on' or 'off'.")
+                };
+                break;
+            default:
+                throw new ArgumentException($"Unknown option: {args[i]}");
+        }
     }
 
     var timer = Stopwatch.StartNew();
@@ -29,7 +44,7 @@ try
     resolver.AddSearchPaths(searchPaths);
     resolver.AddTrustedSearchPaths();
     var module = resolver.Load(input);
-    var settings = RestrictedPipeline.CreateSettings();
+    var settings = RestrictedPipeline.CreateSettings(enableInlining);
     var compilation = new Compilation(module, logger, settings);
     var methods = PassManager.GetCandidateMethodsFromIL(module, (_, method) => method.Module == module);
     var result = RestrictedPipeline.Create(compilation).Run(methods);
@@ -50,6 +65,8 @@ try
     File.WriteAllText(output + ".cilica.json", JsonSerializer.Serialize(new {
         Pipeline = "restricted", CilicaRevision = RestrictedPipeline.SourceRevision,
         settings.AssumeLittleEndian, settings.AllowCrossAssemblyIPO, settings.VerifyEachPass,
+        settings.EnableInlining,
+        EnableScalarReplacement = settings.EnableScalarReplacement ?? settings.EnableInlining,
         Input = input, Output = output,
         InputSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(input))),
         OutputSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(output))),

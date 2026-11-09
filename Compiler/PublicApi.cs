@@ -652,6 +652,10 @@ public sealed record M68kCodeSizeOptions
 	public bool CompactGuestMemory { get; init; }
 	/// <summary>Defer narrow normalization when consumers use only the low part.</summary>
 	public bool NarrowOperations { get; init; }
+
+	/// <summary>Keep an explicit test after a register rotate when its overflow flag is observed.
+	/// This can preserve the polling phase of cycle-sensitive native code.</summary>
+	public bool PreserveRotateOverflowTests { get; init; }
 	/// <summary>Remove implicit private initialization superseded before observation.</summary>
 	public bool EliminateRedundantInitialization { get; init; }
 	/// <summary>Prefer fewer bytes even when clear loops execute more instructions.</summary>

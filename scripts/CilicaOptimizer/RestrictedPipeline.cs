@@ -13,11 +13,12 @@ public static class RestrictedPipeline
 {
     public const string SourceRevision = "a879c85f1608c764c7ab4f52b66b2b5db1ee60b6";
 
-    public static CompilationSettings CreateSettings() => new() {
+    public static CompilationSettings CreateSettings(bool enableInlining = true) => new() {
         VerifyEachPass = true,
         AssumeLittleEndian = false,
         AllowCrossAssemblyIPO = false,
-        EnableInlining = true
+        EnableInlining = enableInlining,
+        EnableScalarReplacement = true
     };
 
     public static PassManager Create(Compilation compilation)

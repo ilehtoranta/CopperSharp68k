@@ -17,6 +17,30 @@ internal sealed partial class M68kPeepholeOptimizer
             int register = first.Opcode & 7;
             if (!first.IsDecoded || !next.IsDecoded || next.Offset != first.Offset + first.Length)
                 continue;
+            // MOVEQ supplies a zero high word for a nonnegative literal.
+            // A word move then replaces exactly the cleared part of Dn.
+            if ((first.Opcode & 0xFFF8) == 0x4240 && first.Length == 2 &&
+                (next.Opcode & 0xF180) == 0x7000 && next.Length == 2 &&
+                i + 2 < instructions.Count)
+            {
+                int source = (next.Opcode >> 9) & 7;
+                var combine = instructions[i + 2];
+                if (source != register && combine.IsDecoded && combine.Length == 2 &&
+                    combine.Offset == next.Offset + 2 &&
+                    combine.Opcode == (0x8080 | (register << 9) | source) &&
+                    CanRewrite(first, next) && CanRewrite(next, combine) &&
+                    !IsReferencedLabelAt(next.Offset) && !IsReferencedLabelAt(combine.Offset) &&
+                    dataflow.TryGetFacts(combine.Offset, out var result) &&
+                    (result.LiveConditionsAfter & (M68kConditionCodeSet.Negative | M68kConditionCodeSet.Zero)) == 0)
+                {
+                    _buffer.WriteWord(first.Offset, next.Opcode);
+                    _buffer.WriteWord(next.Offset, (ushort)(0x3000 | (register << 9) | source));
+                    MoveLabelsToOffset(combine.Offset, combine.Offset + 2, next.Offset);
+                    _buffer.RemoveBytes(combine.Offset, 2);
+                    _assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.NarrowOperations), 2);
+                    return true;
+                }
+            }
             if ((first.Opcode & 0xFFF8) != 0x4240 || next.Opcode != (0x4840 | register) ||
                 first.Length != 2 || next.Length != 2 || i + 2 >= instructions.Count) continue;
             var store = instructions[i + 2];

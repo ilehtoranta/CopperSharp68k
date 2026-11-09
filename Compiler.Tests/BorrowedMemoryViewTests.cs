@@ -106,6 +106,26 @@ public sealed class BorrowedMemoryViewTests
         Assert.Equal(0, state.Calls);
     }
 
+    [Theory]
+    [InlineData(M68kCpuTarget.M68000, M68kCpuModel.M68000)]
+    [InlineData(M68kCpuTarget.M68020, M68kCpuModel.M68020)]
+    public void ConstrainedAccessorsInlineInLargeCallersAndRetainWrites(M68kCpuTarget target, M68kCpuModel model)
+    {
+        foreach (var entry in new[] { "ScalarConstrained", "GuestConstrained" })
+        {
+            var code = Compile(target, entry);
+            Assert.DoesNotContain(code.Symbols, s => s.Name.Contains("::get_Count", StringComparison.Ordinal) ||
+                s.Name.Contains("::set_Count", StringComparison.Ordinal));
+            foreach (var count in new[] { 0u, 17u, uint.MaxValue })
+            {
+                var state = Execute(code, model, count);
+                Assert.Equal(unchecked(count + 37), state.Result);
+                Assert.Equal(unchecked(count + 37), state.Count);
+                Assert.Equal(36u, state.Bulk);
+            }
+        }
+    }
+
     private static M68kCompilationResult Compile(M68kCpuTarget target, string entry) =>
         M68kCompiler.Compile(new M68kCompilationRequest
         {
@@ -147,6 +167,33 @@ public sealed class BorrowedMemoryViewTests
         Assert.Equal(0x80004u, cpu.State.A[7]);
         return (cpu.State.D[0], bus.ReadLong(0x3002), bus.ReadLong(0x3016), cpu.State.Cycles, step, calls,
             bus.ReadLong(0x301A), bus.ReadLong(0x301E));
+    }
+}
+
+public interface IConstrainedCursor
+{
+    uint Count { get; set; }
+}
+
+public struct ScalarCursor : IConstrainedCursor
+{
+    private uint count;
+    public uint Count
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] get => count;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] set => count = value;
+    }
+}
+
+public readonly struct GuestCursor : IConstrainedCursor
+{
+    private readonly APTR address;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public GuestCursor(APTR address) => this.address = address;
+    public uint Count
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] get => APTR.ReadUInt32(address, 0);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)] set => APTR.WriteUInt32(address, 0, value);
     }
 }
 
@@ -211,6 +258,33 @@ public readonly struct ScalarPair
 
 public static class BorrowedMemoryViewFixtures
 {
+    public static uint ScalarConstrained()
+    {
+        var address = APTR.FromPointer(APTR.ReadUInt32(APTR.FromPointer(0x800), 0));
+        var cursor = new ScalarCursor { Count = APTR.ReadUInt32(address, 0) };
+        var result = UpdateCursor(ref cursor, address, 1, 2, 3, 4, 5, 6, 7, 8);
+        APTR.WriteUInt32(address, 0, cursor.Count);
+        return result;
+    }
+
+    public static uint GuestConstrained()
+    {
+        var address = APTR.FromPointer(APTR.ReadUInt32(APTR.FromPointer(0x800), 0));
+        var cursor = new GuestCursor(address);
+        return UpdateCursor(ref cursor, address, 1, 2, 3, 4, 5, 6, 7, 8);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static uint UpdateCursor<T>(ref T cursor, APTR address,
+        uint a, uint b, uint c, uint d, uint e, uint f, uint g, uint h) where T : struct, IConstrainedCursor
+    {
+        cursor.Count++;
+        // A real guest-memory effect between accesses must retain its ordering.
+        APTR.WriteUInt32(address, 20, a + b + c + d + e + f + g + h);
+        cursor.Count += APTR.ReadUInt32(address, 20);
+        return cursor.Count;
+    }
+
     public static uint Checksum()
     {
         var address = APTR.FromPointer(APTR.ReadUInt32(APTR.FromPointer(0x800), 0));

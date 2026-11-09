@@ -697,8 +697,11 @@ internal static class M68kMachineModuleOptimizer
 				{
 					continue;
 				}
+				// Resolved value-type accessors use the ordered scalar/field body
+				// admitted above; they need no guest-wrapper caller-arity limit.
 				if (logicalCall.DispatchKind == M68kMachineCallDispatchKind.Constrained &&
 					!trivialValueTypeConstructor &&
+					!valueTypeAccessor &&
 					(!guestMemoryIntrinsicWrapper ||
 					 !M68kMachineInliningPolicy.AllowsGuestMemoryWrapper(callerMethod)))
 				{
@@ -1437,8 +1440,10 @@ internal static class M68kMachineModuleOptimizer
 			!(isTrivialValueTypeConstructorBody &&
 			  IsTrivialValueTypeConstructorStore(instruction)) &&
 			!(allowValueTypeAccessor && IsOrdinaryMemory(instruction) &&
-			  instruction.Operation == M68kMachineOperation.Load &&
-			  instruction.SourceInstruction?.OpCode == OpCodes.Ldfld) &&
+			  (instruction.Operation == M68kMachineOperation.Load &&
+			   instruction.SourceInstruction?.OpCode == OpCodes.Ldfld ||
+			   instruction.Operation == M68kMachineOperation.Store &&
+			   instruction.SourceInstruction?.OpCode == OpCodes.Stfld)) &&
 			!(allowAdditionalMemory && IsOrdinaryMemory(instruction)) &&
 			!((allowGuestMemoryIntrinsic || allowAdditionalMemory) &&
 			  IsGuestMemoryIntrinsic(instruction, module))) ||

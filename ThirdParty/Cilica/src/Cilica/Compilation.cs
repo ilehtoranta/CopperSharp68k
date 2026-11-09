@@ -396,8 +396,11 @@ public class CompilationSettings
     /// <summary> Whether to allow optimizations to inline or make assumptions about methods defined in other assemblies. </summary>
     public bool AllowCrossAssemblyIPO { get; init; } = true;
 
-    /// <summary> Whether to inline method bodies and expand constructors, including scalar replacement. </summary>
+    /// <summary> Whether to run general method inlining passes. </summary>
     public bool EnableInlining { get; init; } = true;
+
+    /// <summary> Whether to run scalar replacement; null inherits <see cref="EnableInlining"/>. </summary>
+    public bool? EnableScalarReplacement { get; init; }
 
     /// <summary> Caller IL size budget in bytes; larger callers may only inline without growing. </summary>
     public int MaxInlinedMethodILSize { get; init; } = 32 * 1024;

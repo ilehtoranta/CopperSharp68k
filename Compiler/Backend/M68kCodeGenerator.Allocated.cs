@@ -4180,6 +4180,7 @@ internal sealed partial class M68kCodeGenerator
 		_assembler.EmitBranch(M68kCondition.True, success);
 
 		_assembler.Mark(forward);
+		if (elementSize == 1) EmitAllocatedForwardByteBlocks(forwardLoop, success);
 		_assembler.Mark(forwardLoop);
 		EmitAllocatedBaseLoad(
 			M68kRegister.A2,
@@ -9610,7 +9611,8 @@ internal sealed partial class M68kCodeGenerator
 				if (_allocatedAbsoluteImmediateStores.TryGetValue(instruction.Id, out var absoluteAddress))
 				{
 					_assembler.EmitWord((ushort)(size | 0x3FC)); // MOVE immediate,abs.L
-					_assembler.EmitWord(width == M68kMachineValueWidth.Byte ?
+					if (width == M68kMachineValueWidth.Long) _assembler.EmitLong(unchecked((uint)immediateValue));
+					else _assembler.EmitWord(width == M68kMachineValueWidth.Byte ?
 						unchecked((byte)immediateValue) : unchecked((ushort)immediateValue));
 					_assembler.EmitLong(absoluteAddress);
 					return;
@@ -13510,6 +13512,10 @@ internal sealed partial class M68kCodeGenerator
 			AllocatedRegisterEa(source)));
 	}
 
+	private bool CanLoadHighWordWithMoveQuick(int value) =>
+		SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.NarrowOperations &&
+		(value & 0xFFFF) == 0 && (uint)(value >> 16) <= sbyte.MaxValue;
+
 	private void EmitAllocatedImmediate(int value, M68kRegister destination)
 	{
 		if (destination <= M68kRegister.D7 && value is >= -128 and <= 127)
@@ -13520,8 +13526,7 @@ internal sealed partial class M68kCodeGenerator
 				(byte)(sbyte)value));
 			return;
 		}
-            if (destination <= M68kRegister.D7 && SupportsGeneratedCodeSizeProfile && _request.CodeSizeOptimizations!.NarrowOperations &&
-                (value & 0xFFFF) == 0 && (uint)(value >> 16) <= sbyte.MaxValue)
+            if (destination <= M68kRegister.D7 && CanLoadHighWordWithMoveQuick(value))
             {
                 // A small positive high word needs two instruction words,
                 // rather than a long immediate. SWAP leaves MOVE.L's flags.

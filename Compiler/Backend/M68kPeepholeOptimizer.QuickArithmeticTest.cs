@@ -9,8 +9,9 @@ internal sealed partial class M68kPeepholeOptimizer
         {
             var arithmetic = instructions[i];
             var test = instructions[i + 1];
-            // ADDQ/SUBQ to Dn, byte/word/long. Address arithmetic does not set CCR.
-            if (arithmetic.Length != 2 || (arithmetic.Opcode & 0xF038) != 0x5000 ||
+            bool quick = (arithmetic.Opcode & 0xF038) == 0x5000;
+            bool rotate = (arithmetic.Opcode & 0xF018) == 0xE018;
+            if (arithmetic.Length != 2 || !(quick || rotate) ||
                 (arithmetic.Opcode & 0xC0) == 0xC0 || test.Length != 2 ||
                 test.Offset != arithmetic.Offset + 2 ||
                 _assembler.TryGetInstructionEffects(arithmetic.Offset, out _) ||
@@ -19,11 +20,13 @@ internal sealed partial class M68kPeepholeOptimizer
                 IsReferencedLabelAt(test.Offset) ||
                 !CanFoldAcrossUnreferencedIlLabels(arithmetic.Offset, test.Offset + 2, true) ||
                 !dataflow.TryGetFacts(test.Offset, out var facts) ||
-                (facts.LiveConditionsAfter & (M68kConditionCodeSet.Carry | M68kConditionCodeSet.Overflow)) != 0)
+                (facts.LiveConditionsAfter & M68kConditionCodeSet.Carry) != 0 ||
+                ((quick || _assembler.GeneratedCodeSizeOptions?.PreserveRotateOverflowTests == true) &&
+                 (facts.LiveConditionsAfter & M68kConditionCodeSet.Overflow) != 0))
                 continue;
 
-            // NZ describe the identical-width result; TST preserves X. C/V are
-            // different, so their complete CFG liveness must permit removal.
+            // NZ describe the same result and TST preserves X. Register rotates
+            // also clear V, so a signed branch may consume their flags directly.
             RelocateLabels(test.Offset, arithmetic.Offset);
             _buffer.RemoveBytes(test.Offset, 2);
             return true;

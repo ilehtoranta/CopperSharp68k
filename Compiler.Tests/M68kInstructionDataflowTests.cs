@@ -5674,6 +5674,29 @@ public sealed class M68kInstructionDataflowTests
 	}
 
 	[Fact]
+	public void ClearsTheLowWordOnlyWhenTheFullWidthResultFlagsAreDead()
+	{
+		foreach (var flagsUsed in new[] { false, true })
+		{
+			var assembler = new M68kAssembler();
+			assembler.EmitWord(0x0283); // ANDI.L #$FFFF0000,D3
+			assembler.EmitLong(0xFFFF0000u);
+			if (flagsUsed)
+			{
+				assembler.EmitBranch(M68kCondition.Equal, "done");
+				assembler.EmitWord(0x7001);
+				assembler.Mark("done");
+			}
+			assembler.EmitWord(0x4E75);
+			assembler.OptimizeForM68000();
+			var bytes = assembler.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+			Assert.Equal(flagsUsed ? (byte)0x02 : (byte)0x42, bytes[0]);
+			Assert.Equal(flagsUsed ? (byte)0x83 : (byte)0x43, bytes[1]);
+			if (!flagsUsed) Assert.Equal(4, bytes.Length);
+		}
+	}
+
+	[Fact]
 	public void NarrowsLogicalImmediateOnlyWhenNegativeAndZeroFlagsAreDead()
 	{
 		var deadFlags = new M68kAssembler();

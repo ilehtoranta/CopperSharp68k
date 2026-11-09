@@ -56,11 +56,33 @@ public sealed class M68kQuickArithmeticTestTests
         }
     }
 
-    private static M68kAssembler Fixture(int size, bool subtract, bool carry, bool overflow)
+    [Theory]
+    [InlineData(0xE298)] // ROR.L #1,D0
+    [InlineData(0xE358)] // ROL.W #1,D0
+    [InlineData(0xE238)] // ROR.B D1,D0
+    public void RotateSuppliesSignedFlagsButKeepsTestForCarry(int opcode)
+    {
+        foreach (bool carry in new[] { false, true })
+        foreach (bool preserveTest in new[] { false, true })
+        {
+            var assembler = Fixture(opcode & 0xC0, false, carry, true, opcode);
+            assembler.GeneratedCodeSizeOptions = new() { PreserveRotateOverflowTests = preserveTest };
+            var symbols = new Dictionary<string, uint>();
+            var before = assembler.Link(0x10000, symbols).Bytes;
+            assembler.OptimizeForCpu(M68kCpuTarget.M68000);
+            var after = assembler.Link(0x10000, symbols).Bytes;
+            Assert.Equal(before.Length - (carry || preserveTest ? 0 : 2), after.Length);
+            foreach (var cpu in new[] { M68kCpuModel.M68000, M68kCpuModel.M68EC020 })
+            foreach (uint value in new uint[] { 0, 1, 0x8001, 0x80000001, uint.MaxValue })
+                Assert.Equal(Run(before, cpu, value, 0x1F), Run(after, cpu, value, 0x1F));
+        }
+    }
+
+    private static M68kAssembler Fixture(int size, bool subtract, bool carry, bool overflow, int? opcode = null)
     {
         var a = new M68kAssembler();
         a.Mark("method:quick-test");
-        a.EmitWord((ushort)((subtract ? 0x5300 : 0x5200) | size));
+        a.EmitWord((ushort)(opcode ?? ((subtract ? 0x5300 : 0x5200) | size)));
         a.EmitWord((ushort)(0x4A00 | size));
         a.EmitWord(0x57C1); // SEQ D1
         if (carry) a.EmitWord(0x55C2); // SCS D2
@@ -69,6 +91,33 @@ public sealed class M68kQuickArithmeticTestTests
         a.EmitWord(0x4E75);
         a.Mark("method:quick-test:end");
         return a;
+    }
+
+    [Theory]
+    [InlineData(1, false, true)]
+    [InlineData(0, false, true)]
+    [InlineData(-1, false, false)]
+    [InlineData(1, true, false)]
+    public void LowWordInsertionPreservesTheConstantAndObservableFlags(int literal, bool observeSign, bool fold)
+    {
+        var a = new M68kAssembler { GeneratedCodeSizeOptions = new() { NarrowOperations = true },
+            GeneratedCodeSizeRanges = [("start", "end")] };
+        a.Mark("start");
+        a.EmitWord(0x4240); // CLR.W D0
+        a.EmitWord((ushort)(0x7200 | (byte)literal)); // MOVEQ #literal,D1
+        a.EmitWord(0x8081); // OR.L D1,D0
+        if (observeSign) a.EmitWord(0x5BC2); // SMI D2
+        a.EmitWord(0x2080); // MOVE.L D0,(A0)
+        a.EmitWord(0x4E75);
+        a.Mark("end");
+        var symbols = new Dictionary<string, uint>();
+        var before = a.Link(0x10000, symbols).Bytes;
+        a.OptimizeForCpu(M68kCpuTarget.M68000);
+        var after = a.Link(0x10000, symbols).Bytes;
+        Assert.Equal(before.Length - (fold ? 2 : 0), after.Length);
+        foreach (var cpu in new[] { M68kCpuModel.M68000, M68kCpuModel.M68EC020 })
+        foreach (uint value in new uint[] { 0, 1, 0x80000000, 0x12345678, uint.MaxValue })
+            Assert.Equal(Run(before, cpu, value, 0x1F), Run(after, cpu, value, 0x1F));
     }
 
     private static string Run(byte[] code, M68kCpuModel model, uint input, ushort ccr)

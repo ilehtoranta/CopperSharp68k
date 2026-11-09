@@ -205,7 +205,10 @@ internal static class M68kStaticAnalyzer
 
 		// Value-type construction uses frame storage. Still traverse its body below
 		// so any real heap allocations performed by that constructor are checked.
+		// A pointer-backed Span constructor returns a borrowed value, not an
+		// object. Its compiler intrinsic has no managed constructor body.
 		if ((op == OpCodes.Newobj && target?.IsConstructorFactory != true &&
+			target?.ImportName?.StartsWith("intrinsic:span-from-pointer:", StringComparison.Ordinal) != true &&
 			(target is null || target.Definition is not { } constructor ||
 				(!module.IsTransparentScalarConstructor(constructor) &&
 				 !module.IsValueTypeConstructor(constructor)))) ||

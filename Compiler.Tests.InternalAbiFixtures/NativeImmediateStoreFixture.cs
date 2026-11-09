@@ -5,6 +5,15 @@ namespace CopperSharp.Compiler.Tests;
 
 public static class NativeImmediateStoreFixture
 {
+    [M68kInternalRegisterAbi, M68kExport("store.long.literal")]
+    public static void LiteralLong([M68kRegister(M68kRegister.A1)] APTR pointer)
+    {
+        APTR.WriteUInt32(pointer, 6, 0x010100FFu);
+        APTR.WriteUInt32(APTR.FromPointer(0x30000), 10, 0xABCD0123u);
+        APTR.WriteUInt32(pointer, 14, 0x01AA0000u);
+        APTR.WriteUInt32(pointer, 18, 0xFFFF0000u);
+    }
+
     [M68kInternalRegisterAbi, M68kExport("store.truncated-integer")]
     public static uint StoreTruncatedInteger([M68kRegister(M68kRegister.A1)] APTR pointer,
         [M68kRegister(M68kRegister.D0)] uint value)

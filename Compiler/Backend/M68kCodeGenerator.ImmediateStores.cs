@@ -18,17 +18,20 @@ internal sealed partial class M68kCodeGenerator
         var phiInputs = allocated.Function.Blocks.SelectMany(b => b.Phis).SelectMany(p => p.Inputs.Values).ToHashSet();
         foreach (var store in instructions)
         {
-            if (store.Operation != M68kMachineOperation.Call || store.Uses is not [_, var value] ||
+            if (store.Operation != M68kMachineOperation.Call || store.Uses is not [var addressValue, var value] ||
+                addressValue == value ||
                 store.Immediate is not (>= short.MinValue and <= short.MaxValue) || phiInputs.Contains(value) ||
                 instructions.Count(i => i.Uses.Contains(value)) != 1) continue;
             var name = ResolveAllocatedMachineMethod(method, store).ImportName;
-            // Small long constants can use MOVEQ plus a register store faster
-            // than MOVE.L immediate. Limit this fold to byte/word stores.
-            if (name is not ("intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16")) continue;
+            if (name is not ("intrinsic:aptr-write-uint8" or "intrinsic:aptr-write-uint16" or
+                "intrinsic:aptr-write-uint32")) continue;
             var producer = instructions.FirstOrDefault(i => i.Definitions is [var defined] && defined == value);
             if (producer is null || _allocatedSuppressedInstructions.Contains(producer.Id) ||
                 (producer.Operation != M68kMachineOperation.Constant && !_allocatedFoldedCopyConstants.ContainsKey(producer.Id)) ||
                 !TryGetAllocatedConstant(allocated.Function, value, out int immediate)) continue;
+            // Keep literals that can share the emitter's compact MOVEQ forms.
+            if (name == "intrinsic:aptr-write-uint32" &&
+                (immediate is >= sbyte.MinValue and <= sbyte.MaxValue || CanLoadHighWordWithMoveQuick(immediate))) continue;
             // Only replace a private, single-use materialization. Reusing an
             // already-live constant register can be cheaper than an immediate.
             _allocatedImmediateStores.Add(store.Id, immediate);

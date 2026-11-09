@@ -8,6 +8,48 @@ public sealed class NativeImmediateStoreTests
     [Theory]
     [InlineData(M68kCpuModel.M68000)]
     [InlineData(M68kCpuModel.M68EC020)]
+    public void LongLiteralsKeepBothWordsForRelativeAndAbsoluteStores(M68kCpuModel model)
+    {
+        const string export = "store.long.literal";
+        var result = AmigaM68kCompiler.Compile(new() {
+            AssemblyPath = typeof(NativeImmediateStoreFixture).Assembly.Location,
+            EntryPoint = typeof(NativeImmediateStoreFixture).FullName + "::Empty", IncludedExportNames = [export],
+            Cpu = M68kCpuTarget.M68000, MemoryManagement = M68kMemoryManagement.None, ExceptionMode = M68kExceptionMode.Yolo,
+            RuntimeProfile = M68kRuntimeProfile.Freestanding, OutputFormat = M68kOutputFormat.Hunk,
+            PeepholeOptimization = M68kPeepholeOptimizationMode.Disabled
+        });
+        var bus = new StoreBus { Target = 0x30006, Width = 16 };
+        result.Code.CopyTo(bus.Inner.Memory.AsSpan(0x10000));
+        foreach (var reloc in result.Relocations) {
+            uint at = 0x10000u + (uint)reloc.Offset;
+            bus.Inner.WriteLong(at, bus.Inner.ReadLong(at) + 0x10000);
+        }
+        bus.Inner.Memory.AsSpan(0x30005, 18).Fill(0xA5);
+        bus.Inner.WriteLong(0x80000, 0x1000);
+        using var core = M68kCoreFactory.Default.Create(model, bus);
+        core.Reset(0x10000 + result.Symbols.Single(s => s.Name == export).Address, 0x80000);
+        core.State.A[1] = 0x30000;
+        var executed = new List<ushort>();
+        for (int i = 0; i < 100 && core.State.ProgramCounter != 0x1000; i++) {
+            executed.Add(bus.Inner.ReadWord(core.State.ProgramCounter));
+            core.ExecuteInstruction();
+        }
+        Assert.Equal(0x1000u, core.State.ProgramCounter);
+        Assert.Equal(3, executed.Count(op => op == 0x237C)); // MOVE.L #imm,d16(A1)
+        Assert.Contains((ushort)0x23FC, executed); // MOVE.L #imm,abs.L
+        Assert.Equal(0x010100FFu, bus.Inner.ReadLong(0x30006));
+        Assert.Equal(0xABCD0123u, bus.Inner.ReadLong(0x3000A));
+        Assert.Equal(0x01AA0000u, bus.Inner.ReadLong(0x3000E));
+        Assert.Equal(0xFFFF0000u, bus.Inner.ReadLong(0x30012));
+        Assert.Equal(0, bus.ReadBytes);
+        Assert.Equal(16, bus.WriteBytes);
+        Assert.Equal(0xA5, bus.Inner.Memory[0x30005]);
+        Assert.Equal(0xA5, bus.Inner.Memory[0x30016]);
+    }
+
+    [Theory]
+    [InlineData(M68kCpuModel.M68000)]
+    [InlineData(M68kCpuModel.M68EC020)]
     public void NarrowStoresPreserveTheFullInputAndOtherConsumersOfTheConversion(M68kCpuModel model)
     {
         const string export = "store.truncated-integer";
