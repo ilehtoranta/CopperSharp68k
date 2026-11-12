@@ -148,8 +148,12 @@ internal sealed partial class M68kCodeGenerator
 		EmitDivide(signed, remainder && !paired, divisorKnownNonZero);
 		if (paired && remainder)
 		{
-			_assembler.EmitWord(0x2400); // MOVE.L D0,D2; preserve quotient for the second definition
-			_assembler.EmitWord(0x2003); // MOVE.L D3,D0; primary remainder result
+			if (_request.Cpu == M68kCpuTarget.M68000)
+			{
+				_assembler.EmitWord(0x2400); // MOVE.L D0,D2; preserve quotient for the second definition
+				_assembler.EmitWord(0x2003); // MOVE.L D3,D0; primary remainder result
+			}
+			else _assembler.EmitWord(0xC142); // EXG D0,D2; native quotient/remainder become secondary/primary
 		}
 	}
 }

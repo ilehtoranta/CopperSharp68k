@@ -41,8 +41,10 @@ internal static class M68kMachineArithmeticOptimizer
 		bool boundedRegisterDivision = false, bool narrowOperations = false)
 	{
 		var plans = new Dictionary<int, M68kIntegerArithmeticPlan>();
+		// Pairing is also useful for native long division on 68020 and later.
+		// The remaining strength reductions select MC68000 instructions only.
+		CombineDivisions(function, cpu, module);
 		if (cpu != M68kCpuTarget.M68000) return plans;
-		CombineDivisions(function, module);
 		var ranges = new M68kIntegerRangeAnalysis(function);
 		foreach (var block in function.Blocks)
 		{
@@ -207,7 +209,7 @@ internal static class M68kMachineArithmeticOptimizer
 
 	private readonly record struct DivisionKey(int Left, int Right, bool Unsigned);
 
-	private static void CombineDivisions(M68kMachineFunction function, CompilationModule? module)
+	private static void CombineDivisions(M68kMachineFunction function, M68kCpuTarget cpu, CompilationModule? module)
 	{
 		var definitions = function.Blocks.SelectMany(static block => block.Instructions)
 			.SelectMany(instruction => instruction.Definitions.Select(value => (value, instruction)))
@@ -247,7 +249,10 @@ internal static class M68kMachineArithmeticOptimizer
 				else if (previous.Other is { } saved) reused = saved;
 				else
 				{
-					var secondaryRegister = first.Operation == M68kMachineOperation.Divide
+					// The software core returns its remainder in D3; native long
+					// division returns it in D2. Remainder-first pairs keep D0 as
+					// the primary result and preserve their quotient in D2.
+					var secondaryRegister = first.Operation == M68kMachineOperation.Divide && cpu == M68kCpuTarget.M68000
 						? M68kRegister.D3 : M68kRegister.D2;
 					var secondary = function.CreateValue(CilStackValueKind.Int32,
 						M68kMachineValueWidth.Long, M68kRegisterSet.From(secondaryRegister), secondaryRegister);

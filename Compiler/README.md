@@ -56,6 +56,15 @@ multiplication remains unsupported. See the
 [audit follow-up](../scripts/CilicaAudit/README.md) for boundary coverage and
 baseline/restricted pipeline results.
 
+## Paired integer division
+
+Matching 32-bit quotient and remainder operations in one basic block share a
+single division. MC68000 output retains both results from its existing arithmetic
+selection; MC68020/040/060 output uses the native long division's two results.
+Operand changes, signedness differences and control-flow boundaries prevent
+pairing. See [division pairing](DivisionPairing.md) for the register contract,
+regression coverage and measured MC68020 results.
+
 ## Volatile memory
 
 Scalar and reference CIL `volatile.` accesses are supported, including C# volatile
