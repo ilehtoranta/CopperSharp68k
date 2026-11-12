@@ -4,9 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <CilicaSource Condition="'$(CilicaSource)' == ''">$(MSBuildThisFileDirectory)../../ThirdParty/Cilica</CilicaSource>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="$(CilicaSource)/src/Cilica/Cilica.csproj" />
+    <PackageReference Include="Cilica.Core" Version="[0.20.2-preview]" />
   </ItemGroup>
 </Project>

@@ -46,6 +46,11 @@ out. The original managed assembly and dependency files remain in place; the
 rewritten assembly and its report are stored under `obj/`. The optimizer fails
 the build if rewriting fails.
 
+General CILica inlining defaults to `off` for ROM output or the ROM runtime
+profile and to `on` for other outputs. Set `CopperSharpCilicaInlining` to `on`
+or `off` to override this choice. Scalar replacement remains enabled in either
+mode.
+
 ```powershell
 dotnet publish -c Release
 dotnet publish -c Release -p:CopperSharpCilica=false

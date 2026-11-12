@@ -20,6 +20,8 @@
     <CopperSharpCodeSizeOptimizations Condition="'$(CopperSharpCodeSizeOptimizations)' == ''">off</CopperSharpCodeSizeOptimizations>
     <CopperSharpCilica Condition="'$(CopperSharpCilica)' == '' and '$(RuntimeIdentifier)' == 'amiga-m68k'">true</CopperSharpCilica>
     <CopperSharpCilica Condition="'$(CopperSharpCilica)' == ''">false</CopperSharpCilica>
+    <CopperSharpCilicaInlining Condition="'$(CopperSharpCilicaInlining)' == '' and ('$(CopperSharpOutputFormat)' == 'rom' or '$(CopperSharpRuntimeProfile)' == 'rom')">off</CopperSharpCilicaInlining>
+    <CopperSharpCilicaInlining Condition="'$(CopperSharpCilicaInlining)' == ''">on</CopperSharpCilicaInlining>
     <CopperSharpCompilerAssembly>$(MSBuildThisFileDirectory)../tools/net10.0/any/CopperSharp.Compiler.Cli.dll</CopperSharpCompilerAssembly>
     <CopperSharpCilicaOptimizerAssembly Condition="'$(CopperSharpCilicaOptimizerAssembly)' == ''">$(MSBuildThisFileDirectory)../tools/net10.0/any/cilica/CilicaOptimizer.dll</CopperSharpCilicaOptimizerAssembly>
     <CopperSharpOutputPath Condition="'$(CopperSharpOutputPath)' == ''">$(PublishDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpOutputPath>
@@ -30,13 +32,14 @@
     <CopperSharpBuildFrameworkReportPath Condition="'$(CopperSharpBuildFrameworkReportPath)' == ''">$(CopperSharpBuildOutputPath).framework.json</CopperSharpBuildFrameworkReportPath>
     <CopperSharpBuildResponseManifestPath Condition="'$(CopperSharpBuildResponseManifestPath)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp.build.rsp'))</CopperSharpBuildResponseManifestPath>
     <CopperSharpCilicaOutputAssembly Condition="'$(CopperSharpCilicaOutputAssembly)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp', 'cilica', '$(TargetFileName)'))</CopperSharpCilicaOutputAssembly>
+    <_CopperSharpCilicaSettingsPath>$(CopperSharpCilicaOutputAssembly).settings</_CopperSharpCilicaSettingsPath>
     <_CopperSharpManagedInputAssembly Condition="'$(CopperSharpCilica)' == 'true'">$(CopperSharpCilicaOutputAssembly)</_CopperSharpManagedInputAssembly>
     <_CopperSharpManagedInputAssembly Condition="'$(CopperSharpCilica)' != 'true'">$(TargetPath)</_CopperSharpManagedInputAssembly>
   </PropertyGroup>
 
   <ItemGroup>
     <_CopperSharpCilicaToolFile Include="$(MSBuildThisFileDirectory)../tools/net10.0/any/cilica/**/*" />
-    <FileWrites Include="$(CopperSharpCilicaOutputAssembly);$(CopperSharpCilicaOutputAssembly).cilica.json" />
+    <FileWrites Include="$(CopperSharpCilicaOutputAssembly);$(CopperSharpCilicaOutputAssembly).cilica.json;$(_CopperSharpCilicaSettingsPath)" />
   </ItemGroup>
 
   <Target Name="CopperSharpWarnLegacyProperties"
@@ -64,18 +67,28 @@
            Text="Do not set PublishTrimmed for amiga-m68k; CopperSharp performs closed-world reachability." />
     <Error Condition="'$(CopperSharpCilica)' != 'true' and '$(CopperSharpCilica)' != 'false'"
            Text="CopperSharpCilica must be either 'true' or 'false'." />
+    <Error Condition="'$(CopperSharpCilicaInlining)' != 'on' and '$(CopperSharpCilicaInlining)' != 'off'"
+           Text="CopperSharpCilicaInlining must be either 'on' or 'off'." />
     <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(CopperSharpCilica)' == 'true' and !Exists('$(CopperSharpCilicaOptimizerAssembly)')"
            Text="The CopperSharp SDK package is missing the restricted CILica optimizer at '$(CopperSharpCilicaOptimizerAssembly)'. Restore or repack the SDK package." />
   </Target>
 
+  <Target Name="_CopperSharpWriteCilicaSettings"
+          Condition="'$(CopperSharpCilica)' == 'true' and '$(RuntimeIdentifier)' == 'amiga-m68k'">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpCilicaOutputAssembly)'))" />
+    <WriteLinesToFile File="$(_CopperSharpCilicaSettingsPath)" Lines="inlining=$(CopperSharpCilicaInlining)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
   <Target Name="CopperSharpOptimizeManagedAssembly"
           Condition="'$(CopperSharpCilica)' == 'true' and '$(RuntimeIdentifier)' == 'amiga-m68k'"
-          Inputs="$(TargetPath);@(ReferenceCopyLocalPaths);@(_CopperSharpCilicaToolFile)"
+          DependsOnTargets="_CopperSharpWriteCilicaSettings"
+          Inputs="$(TargetPath);@(ReferenceCopyLocalPaths);@(_CopperSharpCilicaToolFile);$(CopperSharpCilicaOptimizerAssembly);$(_CopperSharpCilicaSettingsPath)"
           Outputs="$(CopperSharpCilicaOutputAssembly);$(CopperSharpCilicaOutputAssembly).cilica.json">
     <Error Condition="!Exists('$(CopperSharpCilicaOptimizerAssembly)')"
            Text="The CopperSharp SDK package is missing the restricted CILica optimizer at '$(CopperSharpCilicaOptimizerAssembly)'. Restore or repack the SDK package." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(CopperSharpCilicaOutputAssembly)'))" />
-    <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCilicaOptimizerAssembly)&quot; &quot;$(TargetPath)&quot; &quot;$(CopperSharpCilicaOutputAssembly)&quot; --resolver &quot;$(TargetDir)&quot;" />
+    <!-- A trailing backslash before a quote would swallow the following option on Windows. -->
+    <Exec Command="&quot;$(CopperSharpDotNetHost)&quot; &quot;$(CopperSharpCilicaOptimizerAssembly)&quot; &quot;$(TargetPath)&quot; &quot;$(CopperSharpCilicaOutputAssembly)&quot; --resolver &quot;$(TargetDir).&quot; --inlining $(CopperSharpCilicaInlining)" />
   </Target>
 
   <Target Name="PrepareCopperSharpPublishManifest"

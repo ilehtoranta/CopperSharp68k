@@ -136,6 +136,7 @@ try {
         if ($project -eq "Sdk\CopperSharp.Sdk.csproj") {
             $toolOutput = Join-Path $packBuildRoot "$Configuration\net10.0"
             $packArguments += "-p:CopperSharpCompilerToolOutputPath=$toolOutput"
+            $packArguments += "-p:CopperSharpCilicaToolOutputPath=$toolOutput"
         }
         Invoke-DotNet @packArguments
     }
@@ -257,7 +258,11 @@ try {
             "tools/net10.0/any/CopperSharp.Compiler.Cli.runtimeconfig.json",
             "tools/net10.0/any/CopperSharp.Runtime.Managed.dll",
             "tools/net10.0/any/CopperSharp.Runtime.AmigaPal.dll",
-            "tools/net10.0/any/CopperSharp.Targets.Amiga.dll"
+            "tools/net10.0/any/CopperSharp.Targets.Amiga.dll",
+            "tools/net10.0/any/cilica/CilicaOptimizer.dll",
+            "tools/net10.0/any/cilica/CilicaOptimizer.deps.json",
+            "tools/net10.0/any/cilica/Cilica.dll",
+            "tools/net10.0/any/cilica/LICENSE-Cilica.md"
         )) {
             if ($requiredEntry -notin $sdkEntries) {
                 throw "$sdkPackage does not contain $requiredEntry."
@@ -458,6 +463,13 @@ try {
     if (-not $compatibleReport.isCompatible) {
         throw "The compatible package consumer report is not compatible."
     }
+    $cilicaReport = @(Get-ChildItem -LiteralPath $compatibleIntermediate -Recurse -Filter 'Compatible.dll.cilica.json')
+    if ($cilicaReport.Count -ne 1) { throw 'Expected one compatible consumer CILica report.' }
+    $cilicaSettings = Get-Content -LiteralPath $cilicaReport[0].FullName -Raw | ConvertFrom-Json
+    if (-not $cilicaSettings.EnableInlining -or -not $cilicaSettings.EnableScalarReplacement -or
+        $cilicaSettings.CilicaPackageVersion -ne '0.20.2-preview') {
+        throw 'Application preprocessing did not use the expected CILica package and optimization settings.'
+    }
 
     $formatMatrixRoot = Join-Path $auditRoot "format-matrix"
     $assemblyOutput = Join-Path $formatMatrixRoot "Compatible.s"
@@ -487,6 +499,20 @@ try {
         $romMap.IndexOf("FORMAT KickstartRom", [StringComparison]::Ordinal) -lt 0 -or
         $romMap.IndexOf("PROFILE Rom", [StringComparison]::Ordinal) -lt 0) {
         throw "ROM publish did not emit the requested 512 KiB ROM/profile."
+    }
+    $cilicaSettings = Get-Content -LiteralPath $cilicaReport[0].FullName -Raw | ConvertFrom-Json
+    if ($cilicaSettings.EnableInlining -or -not $cilicaSettings.EnableScalarReplacement) {
+        throw 'ROM preprocessing must disable general inlining while retaining scalar replacement.'
+    }
+    Invoke-DotNet publish $compatibleProject -c $Configuration --no-restore --nologo `
+        "-p:BaseOutputPath=$(Join-Path $auditRoot 'compatible-bin')/" `
+        "-p:BaseIntermediateOutputPath=$compatibleIntermediate/" `
+        "-p:CopperSharpOutputFormat=hunk" `
+        "-p:CopperSharpRuntimeProfile=application" `
+        "-p:CopperSharpOutputPath=$compatibleHunk"
+    $cilicaSettings = Get-Content -LiteralPath $cilicaReport[0].FullName -Raw | ConvertFrom-Json
+    if (-not $cilicaSettings.EnableInlining -or -not $cilicaSettings.EnableScalarReplacement) {
+        throw 'Switching back to application output must rerun preprocessing with inlining enabled.'
     }
 
     $incompatibleProject = Join-Path $repoRoot "Compiler.Tests.PackageConsumers\Incompatible\Incompatible.csproj"

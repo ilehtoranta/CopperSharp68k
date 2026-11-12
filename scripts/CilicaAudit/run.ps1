@@ -9,7 +9,7 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $results = if ([IO.Path]::IsPathRooted($ResultsDirectory)) { [IO.Path]::GetFullPath($ResultsDirectory) } else { [IO.Path]::GetFullPath((Join-Path $repo $ResultsDirectory)) }
 if (Test-Path -LiteralPath $results) { throw "Choose a fresh results directory: $results" }
 New-Item -ItemType Directory -Path $results | Out-Null
-$revision = 'a879c85f1608c764c7ab4f52b66b2b5db1ee60b6'
+$revision = 'ca199fd583f492e156f2617dff43b5f28ff8684d'
 $source = Join-Path $results 'upstream'
 function Invoke-Dotnet {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -32,7 +32,7 @@ $previousTiering = $env:DOTNET_TieredCompilation
 Push-Location $results
 try {
     $env:DOTNET_TieredCompilation = '0'
-    Invoke-Dotnet @('build', $driverProject, '-c', 'Release', '--artifacts-path', $build, "-p:CilicaSource=$source", '-m:1', '/nodeReuse:false')
+    Invoke-Dotnet @('build', $driverProject, '-c', 'Release', '--artifacts-path', $build, '-m:1', '/nodeReuse:false')
     Invoke-Dotnet @('build', $fixtureProject, '-c', 'Release', '--artifacts-path', $build, '-m:1', '/nodeReuse:false')
     $driver = Join-Path $build 'bin/CilicaAudit/release/CilicaAudit.dll'
     $fixture = Join-Path $build 'bin/Fixtures/release/CilicaAudit.Fixtures.dll'
@@ -43,9 +43,9 @@ try {
     }
     Invoke-Dotnet @($driver, 'inspect', $fixture, (Join-Path $results 'baseline.il.txt'))
     if (!$Restricted) {
-        Invoke-Dotnet @('build', (Join-Path $source 'src/Cilica.Cli/Cilica.Cli.csproj'), '-c', 'Release', '--artifacts-path', $build, '-p:BuildProjectReferences=false', '-m:1', '/nodeReuse:false')
+        Invoke-Dotnet @('build', (Join-Path $source 'src/Cilica.Cli/Cilica.Cli.csproj'), '-c', 'Release', '--artifacts-path', (Join-Path $results 'upstream-build'), '-m:1', '/nodeReuse:false')
         $cliOutput = Join-Path $results 'cli-default.dll'
-        Invoke-Dotnet @((Join-Path $build 'bin/Cilica.Cli/release/Cilica.Cli.dll'), '-i', $fixture, '-o', $cliOutput, '--strict', '--verify-each', '--no-pdb-gen', '--verbosity', 'Warn')
+        Invoke-Dotnet @((Join-Path $results 'upstream-build/bin/Cilica.Cli/release/Cilica.Cli.dll'), '-i', $fixture, '-o', $cliOutput, '--strict', '--verify-each', '--no-pdb-gen', '--verbosity', 'Warn')
         if ((Get-FileHash $cliOutput).Hash -ne (Get-FileHash (Join-Path (Split-Path $fixture) 'default/CilicaAudit.Fixtures.dll')).Hash) { throw 'Core API output differs from stock CLI' }
     }
     if ($Restricted) {

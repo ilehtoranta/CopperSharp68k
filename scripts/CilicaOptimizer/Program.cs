@@ -64,9 +64,10 @@ try
     timer.Stop();
     File.WriteAllText(output + ".cilica.json", JsonSerializer.Serialize(new {
         Pipeline = "restricted", CilicaRevision = RestrictedPipeline.SourceRevision,
+        CilicaPackageVersion = RestrictedPipeline.PackageVersion,
         settings.AssumeLittleEndian, settings.AllowCrossAssemblyIPO, settings.VerifyEachPass,
         settings.EnableInlining,
-        EnableScalarReplacement = settings.EnableScalarReplacement ?? settings.EnableInlining,
+        settings.EnableScalarReplacement,
         Input = input, Output = output,
         InputSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(input))),
         OutputSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(output))),

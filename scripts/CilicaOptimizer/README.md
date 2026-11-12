@@ -11,12 +11,12 @@ compiler does not reference CILica.
   -OutputAssembly ./artifacts/optimized/MyApp.dll
 ```
 
-The wrapper builds the standalone tool from the vendored, pinned CILica source
-revision and writes an optimization report alongside the output DLL
+The wrapper builds the standalone tool against `Cilica.Core` 0.20.2-preview
+and writes an optimization report alongside the output DLL
 (`MyApp.dll.cilica.json`). It uses the repository's pinned SDK by default;
 `-SdkVersion 10.0.401` explicitly selects the SDK used for the retained audit.
-`-CilicaSource <directory>` can select an unmodified checkout at the required
-revision. `-ResolverPaths <directory[]>` supplies additional dependency locations.
+`-ResolverPaths <directory[]>` supplies additional dependency locations.
+Use `-Inlining off` for a ROM build; scalar replacement remains enabled.
 
 Use the original dependency assemblies when compiling the rewritten application.
 Only the selected DLL is rewritten; dependencies are not copied to the output

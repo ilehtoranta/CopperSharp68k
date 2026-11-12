@@ -36,7 +36,7 @@ $incorrect = @($samples | Where-Object { $_.Error -match 'Incorrect|Unbalanced s
 $gains = @($comparisons | Where-Object Kernel -in @('ScalarReplacement', 'Devirtualization'))
 $gainsRetained = $gains.Count -eq 6 -and @($gains | Where-Object { $_.Speedup -le 1 -or !$_.PortableCycles31 -or $_.RestrictedCycles31 -gt $_.PortableCycles31 }).Count -eq 0
 $summary = [ordered]@{
-    CilicaRevision = 'a879c85f1608c764c7ab4f52b66b2b5db1ee60b6'
+    CilicaRevision = 'ca199fd583f492e156f2617dff43b5f28ff8684d'
     CompilerHead = (Get-Content -LiteralPath (Join-Path (Split-Path $ResultsDirectory) 'compiler-head.txt') -Raw).Trim()
     Environment = $environment; Repetitions = $Repetitions; Coverage = $coverage
     StableSuccessfulGroups = $successfulGroups.Count; CompatibilityRegressions = $regressions

@@ -14,7 +14,6 @@
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectCopperSharpCompilerTool</TargetsForTfmSpecificContentInPackage>
     <CopperSharpCompilerToolOutputPath Condition="'$(CopperSharpCompilerToolOutputPath)' == ''">../Compiler.Cli/bin/$(Configuration)/net10.0</CopperSharpCompilerToolOutputPath>
     <CopperSharpCilicaToolOutputPath Condition="'$(CopperSharpCilicaToolOutputPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/bin/$(Configuration)/net10.0'))</CopperSharpCilicaToolOutputPath>
-    <CilicaSource Condition="'$(CilicaSource)' == ''">$(MSBuildThisFileDirectory)../ThirdParty/Cilica</CilicaSource>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,8 +22,7 @@
                       PrivateAssets="all" />
     <ProjectReference Include="..\scripts\CilicaOptimizer\CilicaOptimizer.csproj"
                       ReferenceOutputAssembly="false"
-                      PrivateAssets="all"
-                      AdditionalProperties="CilicaSource=$(CilicaSource)" />
+                      PrivateAssets="all" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="Sdk\Sdk.props" Pack="true" PackagePath="Sdk\Sdk.props" />
     <None Include="Sdk\Sdk.targets" Pack="true" PackagePath="Sdk\Sdk.targets" />
@@ -45,7 +43,7 @@
                               Exclude="$(CopperSharpCilicaToolOutputPath)/publish/**/*;$(CopperSharpCilicaToolOutputPath)/**/*.pdb;$(CopperSharpCilicaToolOutputPath)/**/*.xml;$(CopperSharpCilicaToolOutputPath)/**/*.exe">
         <PackagePath>tools/net10.0/any/cilica/</PackagePath>
       </TfmSpecificPackageFile>
-      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)../ThirdParty/Cilica/LICENSE.md">
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/LICENSE-Cilica.md">
         <PackagePath>tools/net10.0/any/cilica/LICENSE-Cilica.md</PackagePath>
       </TfmSpecificPackageFile>
     </ItemGroup>

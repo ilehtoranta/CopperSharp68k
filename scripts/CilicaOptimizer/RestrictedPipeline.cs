@@ -11,7 +11,8 @@ namespace CopperSharp.Tools;
 /// <summary>Explicitly selected scalar IL optimizations for CopperSharp inputs.</summary>
 public static class RestrictedPipeline
 {
-    public const string SourceRevision = "a879c85f1608c764c7ab4f52b66b2b5db1ee60b6";
+    public const string SourceRevision = "ca199fd583f492e156f2617dff43b5f28ff8684d";
+    public const string PackageVersion = "0.20.2-preview";
 
     public static CompilationSettings CreateSettings(bool enableInlining = true) => new() {
         VerifyEachPass = true,

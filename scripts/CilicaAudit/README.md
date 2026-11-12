@@ -6,8 +6,12 @@ promising improvements to bring into our compiler. Even a constrained CILica
 pipeline regressed compatibility for two previously supported kernels.
 
 This directory contains the executable audit, its fixtures, and the retained
-[machine-readable summary](results-summary.json). Production projects do not
-reference CILica.
+[machine-readable summary](results-summary.json). The compiler itself does not
+reference CILica; the SDK bundles the restricted preprocessor.
+
+The retained results below describe the revisions named in each run. New runs
+use the pinned `Cilica.Core` 0.20.2-preview package; results are not expected
+to be byte-identical to historical runs.
 
 ## Restricted opt-in follow-up — 2026-11-07
 
