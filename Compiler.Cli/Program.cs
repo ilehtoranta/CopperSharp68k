@@ -136,6 +136,7 @@ static int Run(string[] args)
 		var request = new M68kCompilationRequest
 		{
 			AssemblyPath = input,
+			FrameworkTargetFramework = GetOptional(args, "--framework-target-framework") ?? "net10.0",
 			EntryPoint = entry,
 			Cpu = cpu,
 			FloatingPoint = floatingPoint,
@@ -322,6 +323,7 @@ static string[] ExpandResponseManifest(string[] args)
 			"framework-report" => "--framework-report",
 			"compatibility-report" => "--compatibility-report",
 			"framework-implementation-manifest" => "--framework-implementation-manifest",
+			"framework-target-framework" => "--framework-target-framework",
 			"managed-assembly" => "--managed-assembly",
 			"include-export" => "--include-export",
 			"import" => "--import",
@@ -739,6 +741,7 @@ static void PrintUsage()
 		  [--import name=address ...]
 		  [--managed-assemblies <UTF-8 path-list>]
 		  [--framework-implementation-manifest <JSON manifest>]
+		  [--framework-target-framework <net10.0|net11.0>]
 		  [--compatibility-report <file|->]
 		""");
 }

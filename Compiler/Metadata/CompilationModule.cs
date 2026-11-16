@@ -65,6 +65,7 @@ internal sealed partial class CompilationModule : IDisposable
 	private readonly Dictionary<CilTypeIdentity, CilTypeLayout> _reachableDispatchLayouts = new();
 	private readonly IReadOnlyDictionary<string, string> _managedAssemblyPaths;
 	private readonly FrameworkImplementationPackCatalog? _frameworkImplementationPack;
+	private FrameworkContractProfile _frameworkContract = FrameworkContractProfile.Default;
 	private string _assemblyName = string.Empty;
 
 	public CompilationModule(
@@ -72,12 +73,14 @@ internal sealed partial class CompilationModule : IDisposable
 		IReadOnlyList<IM68kExternalCallResolver>? externalCallResolvers = null,
 		IReadOnlyList<string>? managedAssemblyPaths = null,
 		FrameworkImplementationPackCatalog? frameworkImplementationPack = null,
-		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled)
+		M68kFloatingPointMode floatingPoint = M68kFloatingPointMode.Disabled,
+		string frameworkTargetFramework = "net10.0")
 		: this(assemblyPath, externalCallResolvers, root: null)
 	{
 		_managedAssemblyPaths = CreateManagedAssemblyPathMap(
 			managedAssemblyPaths ?? Array.Empty<string>());
 		_frameworkImplementationPack = frameworkImplementationPack;
+		_frameworkContract = FrameworkContractProfile.ForTargetFramework(frameworkTargetFramework);
 		_floatingPointMode = floatingPoint;
 		if (_frameworkImplementationPack is not null)
 		{
@@ -92,6 +95,8 @@ internal sealed partial class CompilationModule : IDisposable
 
 	internal FrameworkImplementationPackCatalog? FrameworkImplementationPack =>
 		_root._frameworkImplementationPack;
+
+	internal FrameworkContractProfile FrameworkContract => _root._frameworkContract;
 
 	internal bool IsPinnedCultureStorageCaller(CilMethod caller) =>
 		FrameworkImplementationPack?.IsPinnedStringBuilderInput == true && caller.ModuleName == "CopperSharp.Runtime.Managed" &&
@@ -1286,7 +1291,7 @@ internal sealed partial class CompilationModule : IDisposable
 		// Stateless application receivers still need addressable native storage.
 		if (isValueType && size == 0 &&
 			(FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || _assemblyName != "System.Private.CoreLib") &&
-			!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName))
+			!FrameworkContract.IsFrameworkAssembly(_assemblyName))
 			size = Math.Max(4, definition.GetLayout().Size);
 		var layout = new CilTypeLayout(
 			handle,
@@ -2090,7 +2095,7 @@ internal sealed partial class CompilationModule : IDisposable
 		if (FrameworkImplementationPack?.EnableUnlistedManagedBodies != true && IsPinnedApplicationScalarFormattingCaller(caller) &&
 			type != caller.MethodTypeArguments[0]) return false;
 		if (type.Kind != CilTypeKind.ValueType || !TryGetReferenceFreeStructLayout(type, caller.ModuleName, out var layout) || layout.Handle.IsNil ||
-			Net10FrameworkContract.Default.IsFrameworkAssembly(layout.ModuleName) && !IsExperimentalDecimalFormattingLayout(layout)) return false;
+			FrameworkContract.IsFrameworkAssembly(layout.ModuleName) && !IsExperimentalDecimalFormattingLayout(layout)) return false;
 		var owner = GetModule(layout.ModuleName);
 		var originalSlot = declaration.ModuleName == "System.Private.CoreLib" &&
 			declaration.DisplayName is "System.Object::ToString" or "System.Decimal::ToString" or "System.ValueType::ToString";
@@ -2562,7 +2567,7 @@ internal sealed partial class CompilationModule : IDisposable
 	private CilTypeLayout? TryGetExperimentalValueTypeBase(TypeDefinitionHandle handle)
 	{
 		if ((FrameworkImplementationPack?.EnableUnlistedManagedBodies != true && FrameworkImplementationPack?.IsPinnedStringBuilderInput != true) ||
-			_assemblyName is "System.Private.CoreLib" or "CopperSharp.Compiler" || Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName)) return null;
+			_assemblyName is "System.Private.CoreLib" or "CopperSharp.Compiler" || FrameworkContract.IsFrameworkAssembly(_assemblyName)) return null;
 		var definition = Reader.GetTypeDefinition(handle);
 		if (definition.BaseType.Kind != HandleKind.TypeReference) return null;
 		var reference = Reader.GetTypeReference((TypeReferenceHandle)definition.BaseType);
@@ -4084,7 +4089,7 @@ internal sealed partial class CompilationModule : IDisposable
 		if (IsExperimentalApplicationJoinValue(type)) return true;
 		if (FrameworkImplementationPack?.EnableUnlistedManagedBodies == true && type.Kind == CilTypeKind.ValueType &&
 			!type.GenericArguments.IsDefaultOrEmpty && TryFindConstructedGenericDefinition(type, out var applicationType) &&
-			!Net10FrameworkContract.Default.IsFrameworkAssembly(applicationType.ModuleName))
+			!FrameworkContract.IsFrameworkAssembly(applicationType.ModuleName))
 			return TryGetReferenceFreeStructLayout(type, _assemblyName, out _);
 		if (IsCompositeFormatSegment(type) ||
 			type.Kind == CilTypeKind.ValueType && type.DisplayName is "System.Text.ValueStringBuilder" or "CopperSharp.Runtime.ShadowValueStringBuilder")
@@ -4096,7 +4101,7 @@ internal sealed partial class CompilationModule : IDisposable
 			foreach (var module in _root._modules.Values)
 				if (module.TryFindConstructedGenericDefinition(type, out var importedType) &&
 					importedType.ModuleName != "System.Private.CoreLib" &&
-					!Net10FrameworkContract.Default.IsFrameworkAssembly(importedType.ModuleName))
+					!FrameworkContract.IsFrameworkAssembly(importedType.ModuleName))
 					return module.TryGetReferenceFreeStructLayout(type, importedType.ModuleName, out _);
 		if (IsSupportedSpanLikeType(type) ||
 			IsSupportedMemoryLikeType(type) ||
@@ -4138,7 +4143,7 @@ internal sealed partial class CompilationModule : IDisposable
 				.Where(static field => !field.IsStatic)
 				.ToArray();
 			return fields.Length != 0 ||
-				!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName) &&
+				!FrameworkContract.IsFrameworkAssembly(_assemblyName) &&
 				(IsValueTypeDefinition(definition) && _assemblyName != "System.Private.CoreLib" ||
 				 FrameworkImplementationPack?.EnableUnlistedManagedBodies == true &&
 				 IsExperimentalManagedStructLayout(GetTypeLayout(handle)));
@@ -4305,7 +4310,7 @@ internal sealed partial class CompilationModule : IDisposable
 		// contract assembly. Its layouts still require their exact stable gates.
 		if (FrameworkImplementationPack?.EnableUnlistedManagedBodies != true && layout.ModuleName == "System.Private.CoreLib") return false;
 		if ((FrameworkImplementationPack?.EnableUnlistedManagedBodies != true && FrameworkImplementationPack?.IsPinnedStringBuilderInput != true) ||
-			Net10FrameworkContract.Default.IsFrameworkAssembly(layout.ModuleName) ||
+			FrameworkContract.IsFrameworkAssembly(layout.ModuleName) ||
 			layout.Size is <= 0 or > 128 || (layout.Size & 3) != 0 || layout.Handle.IsNil) return false;
 		var owner = GetModule(layout.ModuleName);
 		var definition = owner.Reader.GetTypeDefinition(layout.Handle);
@@ -4963,7 +4968,7 @@ internal sealed partial class CompilationModule : IDisposable
 		{
 			var reference = Reader.GetTypeReference((TypeReferenceHandle)handle);
 			var assembly = GetReferencedAssemblyName(reference.ResolutionScope);
-			if (assembly is not null && Net10FrameworkContract.Default.IsFrameworkAssembly(assembly))
+			if (assembly is not null && FrameworkContract.IsFrameworkAssembly(assembly))
 			{
 				var identity = ResolveRuntimeTypeIdentity(type, assembly);
 				// A TypeRef does not encode the interface bit. Resolve it through
@@ -5253,7 +5258,7 @@ internal sealed partial class CompilationModule : IDisposable
 		// Stateless application receivers still need addressable native storage.
 		if (isValueType && size == 0 &&
 			(FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || _assemblyName != "System.Private.CoreLib") &&
-			!Net10FrameworkContract.Default.IsFrameworkAssembly(_assemblyName))
+			!FrameworkContract.IsFrameworkAssembly(_assemblyName))
 			size = Math.Max(4, definition.GetLayout().Size);
 		var layout = new CilTypeLayout(
 			handle,
@@ -5313,7 +5318,7 @@ internal sealed partial class CompilationModule : IDisposable
 		// no implementation module. Resolve its identity in the verified CoreLib
 		// before examining other loaded definitions, as for ordinary forwarding.
 		if (!_root._modules.ContainsKey(preferredModuleName) &&
-			Net10FrameworkContract.Default.IsFrameworkAssembly(preferredModuleName) &&
+			FrameworkContract.IsFrameworkAssembly(preferredModuleName) &&
 			CanResolveImplementationRuntimeType(type) &&
 			GetOrLoadImplementationModule("System.Private.CoreLib") is { } forwardedImplementation)
 			preferredModuleName = forwardedImplementation._assemblyName;
@@ -6689,7 +6694,7 @@ internal sealed partial class CompilationModule : IDisposable
 				return registered;
 			}
 			foreach (var owner in new[] { this }.Concat(_root._managedAssemblyPaths.Keys
-				.Where(assembly => assembly != _assemblyName && assembly != "System.Private.CoreLib" && !Net10FrameworkContract.Default.IsFrameworkAssembly(assembly))
+				.Where(assembly => assembly != _assemblyName && assembly != "System.Private.CoreLib" && !FrameworkContract.IsFrameworkAssembly(assembly))
 				.Select(GetOrLoadModule).OfType<CompilationModule>()))
 			{
 				if (parentType.GenericArguments.Length == 0 ||
@@ -8103,7 +8108,7 @@ internal sealed partial class CompilationModule : IDisposable
 	{
 		binding = null!;
 		if (FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } || caller is null ||
-			caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" || Net10FrameworkContract.Default.IsFrameworkAssembly(caller.ModuleName) ||
+			caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" || FrameworkContract.IsFrameworkAssembly(caller.ModuleName) ||
 			caller.Instructions.FirstOrDefault(instruction => instruction.Offset == ilOffset) is not { OpCode: var opcode, ConstrainedTypeToken: null } || opcode != OpCodes.Callvirt) return false;
 		var member = FrameworkImplementationProfile.Canonicalize(referenced);
 		if (!member.Equals(new FrameworkMemberId(FrameworkTypeId.Named("System.Runtime", "System.Object"), "ToString",
@@ -8121,7 +8126,7 @@ internal sealed partial class CompilationModule : IDisposable
 		binding = null!;
 		if (TryCreatePinnedJoinTypeIdentityBinding(referenced, caller, ilOffset, out binding)) return true;
 		if (FrameworkImplementationPack is not { IsPinnedStringBuilderInput: true, EnableUnlistedManagedBodies: false } || caller is null ||
-			caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" || Net10FrameworkContract.Default.IsFrameworkAssembly(caller.ModuleName) ||
+			caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" || FrameworkContract.IsFrameworkAssembly(caller.ModuleName) ||
 			caller.Instructions.FirstOrDefault(instruction => instruction.Offset == ilOffset) is not { OpCode: var opcode } ||
 			!FrameworkImplementationProfile.TryCreateTargetRuntimeOverride(referenced, true, out var candidate)) return false;
 		if (opcode == OpCodes.Newobj && candidate.ShadowMethod is { TypeName: "CopperSharp.Runtime.ShadowStringData", MethodName: "FromCharacters" })
@@ -8138,7 +8143,7 @@ internal sealed partial class CompilationModule : IDisposable
 	private bool IsPinnedApplicationFormatProviderCaller(CilMethod caller)
 	{
 		if (FrameworkImplementationPack?.IsPinnedStringBuilderInput != true || caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" ||
-			Net10FrameworkContract.Default.IsFrameworkAssembly(caller.ModuleName) ||
+			FrameworkContract.IsFrameworkAssembly(caller.ModuleName) ||
 			caller.Signature.Header.RawValue != 0x20 || caller.Signature.GenericParameterCount != 0 || !caller.MethodTypeArguments.IsDefaultOrEmpty ||
 			caller.Signature.ReturnType is not { Kind: CilTypeKind.ManagedReference, Size: 4, DisplayName: "object" } ||
 			caller.Signature.ParameterTypes is not [{ Kind: CilTypeKind.ManagedReference, Size: 4, DisplayName: "System.Type" }]) return false;
@@ -8251,7 +8256,7 @@ internal sealed partial class CompilationModule : IDisposable
 		if (receiver.Kind != CilTypeKind.ManagedReference || !receiver.GenericArguments.IsDefaultOrEmpty) return false;
 		var identity = ResolveRuntimeTypeIdentity(receiver, caller.ModuleName);
 		if (identity.Handle.Kind != HandleKind.TypeDefinition || identity.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" ||
-			Net10FrameworkContract.Default.IsFrameworkAssembly(identity.ModuleName)) return false;
+			FrameworkContract.IsFrameworkAssembly(identity.ModuleName)) return false;
 		var owner = GetModule(identity.ModuleName);
 		var definition = owner.Reader.GetTypeDefinition((TypeDefinitionHandle)identity.Handle);
 		if ((definition.Attributes & TypeAttributes.Sealed) == 0 || owner.IsValueTypeDefinition(definition) || !owner.IsFrameworkObjectReference(definition.BaseType)) return false;
@@ -9724,7 +9729,7 @@ internal sealed partial class CompilationModule : IDisposable
 		// Consult the released metadata for stable enum identity as well;
 		// matching names from unrelated assemblies must retain their own identity.
 		if ((FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || FrameworkImplementationPack?.IsPinnedStringBuilderInput == true) &&
-			Net10FrameworkContract.Default.IsFrameworkAssembly(assemblyName) &&
+			FrameworkContract.IsFrameworkAssembly(assemblyName) &&
 			GetOrLoadImplementationModule("System.Private.CoreLib") is { } implementation &&
 			implementation._signatureProvider.TryGetDefinedEnumType(implementation.Reader, displayName, out enumType))
 			return enumType;
@@ -9962,7 +9967,7 @@ internal sealed partial class CompilationModule : IDisposable
 		if (TryResolveTargetRuntimeField(assemblyName, typeName, fieldName, fieldType, caller, ilOffset) is { } targetField)
 			return targetField;
 		if ((FrameworkImplementationPack?.EnableUnlistedManagedBodies == true || FrameworkImplementationPack?.IsPinnedStringBuilderInput == true) &&
-			Net10FrameworkContract.Default.IsFrameworkAssembly(assemblyName) && typeName == "System.Decimal" &&
+			FrameworkContract.IsFrameworkAssembly(assemblyName) && typeName == "System.Decimal" &&
 			fieldName is "Zero" or "One" or "MinusOne" &&
 			fieldType is { Kind: CilTypeKind.ValueType, Size: 0, DisplayName: "System.Decimal" } &&
 			TryGetDecimalLayout(fieldType, out _) &&
@@ -10169,7 +10174,7 @@ internal sealed partial class CompilationModule : IDisposable
 			(assemblyName is "System.Runtime" or "System.Private.CoreLib") &&
 			(name == "System.Decimal" && TryGetDecimalLayout(new CilType(CilTypeKind.ValueType, 0, name), out _) ||
 			 name == "System.Guid" && TryGetGuidLayout(new CilType(CilTypeKind.ValueType, 0, name), out _))) &&
-			Net10FrameworkContract.Default.IsFrameworkAssembly(assemblyName)
+			FrameworkContract.IsFrameworkAssembly(assemblyName)
 			? GetOrLoadImplementationModule("System.Private.CoreLib") : null;
 		foreach (var definitionModule in new[] { module, implementation }.Distinct())
 		{

@@ -21,6 +21,9 @@ rooting paths, call sites, compatibility status, binding, effects, required
 runtime features, and pinned reference-pack contract as JSON. Use `-` for
 standard output. The command returns a non-zero exit code when
 the reachable graph contains a `deferred` or `unsupported` member.
+`--framework-target-framework net10.0|net11.0` selects the matching pinned
+reference-pack compatibility contract. The CopperSharp SDK sets this from the
+application project's `TargetFramework` automatically.
 
 `--platform amiga` enables Amiga SDK library-vector resolution and automatic
 library-base handling. The default `generic` platform remains freestanding.

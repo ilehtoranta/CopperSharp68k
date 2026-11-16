@@ -31,14 +31,14 @@ Main CI runs the fast suite and every compiler execution case. See
 [CI execution-test scheduling](scripts/ci/README.md) for isolated workers,
 duration-based balancing, coverage checks, and timing-profile updates.
 
-## .NET 10 compatibility profile
+## .NET 10 and .NET 11 input support
 
-CopperSharp compiles an explicitly bounded subset of ordinary `net10.0`
-assemblies using exact framework bindings, verified implementation packs, a
-private managed runtime, and an Amiga platform layer. It never discovers an
-installed host runtime implicitly. Start with the consolidated
-[.NET 10 profile documentation](Compiler/Framework/README.md); the exact member
-inventory remains machine-readable in the profile manifest.
+CopperSharp compiles an explicitly bounded subset of ordinary `net10.0` and
+`net11.0` assemblies using exact framework bindings, verified implementation
+packs, a private managed runtime, and an Amiga platform layer. It never
+discovers an installed host runtime implicitly. Start with the consolidated
+[framework profile documentation](Compiler/Framework/README.md); the exact
+member inventories remain machine-readable in the profile manifests.
 
 Pinned CoreLib is the recommended `Stopwatch` implementation when a verified
 pack is available, with `ShadowStopwatch` retained as a deterministic fallback.

@@ -22,8 +22,8 @@
     <CopperSharpCilica Condition="'$(CopperSharpCilica)' == ''">false</CopperSharpCilica>
     <CopperSharpCilicaInlining Condition="'$(CopperSharpCilicaInlining)' == '' and ('$(CopperSharpOutputFormat)' == 'rom' or '$(CopperSharpRuntimeProfile)' == 'rom')">off</CopperSharpCilicaInlining>
     <CopperSharpCilicaInlining Condition="'$(CopperSharpCilicaInlining)' == ''">on</CopperSharpCilicaInlining>
-    <CopperSharpCompilerAssembly>$(MSBuildThisFileDirectory)../tools/net10.0/any/CopperSharp.Compiler.Cli.dll</CopperSharpCompilerAssembly>
-    <CopperSharpCilicaOptimizerAssembly Condition="'$(CopperSharpCilicaOptimizerAssembly)' == ''">$(MSBuildThisFileDirectory)../tools/net10.0/any/cilica/CilicaOptimizer.dll</CopperSharpCilicaOptimizerAssembly>
+    <CopperSharpCompilerAssembly>$(MSBuildThisFileDirectory)../tools/$(TargetFramework)/any/CopperSharp.Compiler.Cli.dll</CopperSharpCompilerAssembly>
+    <CopperSharpCilicaOptimizerAssembly Condition="'$(CopperSharpCilicaOptimizerAssembly)' == ''">$(MSBuildThisFileDirectory)../tools/$(TargetFramework)/any/cilica/CilicaOptimizer.dll</CopperSharpCilicaOptimizerAssembly>
     <CopperSharpOutputPath Condition="'$(CopperSharpOutputPath)' == ''">$(PublishDir)$(AssemblyName).$(CopperSharpOutputFormat)</CopperSharpOutputPath>
     <CopperSharpFrameworkReportPath Condition="'$(CopperSharpFrameworkReportPath)' == ''">$(CopperSharpOutputPath).framework.json</CopperSharpFrameworkReportPath>
     <CopperSharpResponseManifestPath Condition="'$(CopperSharpResponseManifestPath)' == ''">$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'coppersharp.publish.rsp'))</CopperSharpResponseManifestPath>
@@ -38,7 +38,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <_CopperSharpCilicaToolFile Include="$(MSBuildThisFileDirectory)../tools/net10.0/any/cilica/**/*" />
+    <_CopperSharpCilicaToolFile Include="$(MSBuildThisFileDirectory)../tools/$(TargetFramework)/any/cilica/**/*" />
     <FileWrites Include="$(CopperSharpCilicaOutputAssembly);$(CopperSharpCilicaOutputAssembly).cilica.json;$(_CopperSharpCilicaSettingsPath)" />
   </ItemGroup>
 
@@ -53,8 +53,8 @@
           BeforeTargets="PrepareForBuild;Publish">
     <Error Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'amiga-m68k'"
            Text="CopperSharp.Sdk supports RuntimeIdentifier 'amiga-m68k'; received '$(RuntimeIdentifier)'." />
-    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(TargetFramework)' != 'net10.0'"
-           Text="CopperSharp.Sdk amiga-m68k publishing requires TargetFramework 'net10.0'; received '$(TargetFramework)'." />
+    <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(TargetFramework)' != 'net10.0' and '$(TargetFramework)' != 'net11.0'"
+           Text="CopperSharp.Sdk amiga-m68k publishing requires TargetFramework 'net10.0' or 'net11.0'; received '$(TargetFramework)'." />
     <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(SelfContained)' == 'true'"
            Text="amiga-m68k is emitted by CopperSharp and cannot use a Microsoft self-contained runtime pack. Set SelfContained to false." />
     <Error Condition="'$(RuntimeIdentifier)' == 'amiga-m68k' and '$(UseAppHost)' == 'true'"
@@ -110,6 +110,7 @@
                                    Condition="'%(Extension)' == '.dll'" />
       <_CopperSharpResponseLine Include="coppersharp-response-v1" />
       <_CopperSharpResponseLine Include="input=$(_CopperSharpManagedInputAssembly)" />
+      <_CopperSharpResponseLine Include="framework-target-framework=$(TargetFramework)" />
       <_CopperSharpResponseLine Include="entry=$(CopperSharpEntry)" />
       <_CopperSharpResponseLine Include="output=$(CopperSharpOutputPath)" />
       <_CopperSharpResponseLine Include="platform=amiga" />
@@ -166,6 +167,7 @@
                                         Condition="'%(Extension)' == '.dll'" />
       <_CopperSharpBuildResponseLine Include="coppersharp-response-v1" />
       <_CopperSharpBuildResponseLine Include="input=$(_CopperSharpManagedInputAssembly)" />
+      <_CopperSharpBuildResponseLine Include="framework-target-framework=$(TargetFramework)" />
       <_CopperSharpBuildResponseLine Include="entry=$(CopperSharpEntry)" />
       <_CopperSharpBuildResponseLine Include="output=$(CopperSharpBuildOutputPath)" />
       <_CopperSharpBuildResponseLine Include="platform=amiga" />

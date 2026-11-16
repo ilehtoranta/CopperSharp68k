@@ -191,7 +191,7 @@ internal sealed partial class CompilationModule
 			type.Kind != CilTypeKind.ValueType || type.IsNullable || HasOpenJoinTypeArgument(type))
 			return false;
 		var target = ResolveRuntimeTypeIdentity(type, _root.AssemblyName);
-		if (Net10FrameworkContract.Default.IsFrameworkAssembly(target.ModuleName) ||
+		if (_root.FrameworkContract.IsFrameworkAssembly(target.ModuleName) ||
 			target.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler") return false;
 		if (!TryGetStructLayout(type, target.ModuleName, out var layout)) return false;
 		return IsExperimentalManagedStructLayout(layout);
@@ -203,7 +203,7 @@ internal sealed partial class CompilationModule
 			type is not { Kind: CilTypeKind.ManagedReference, Size: 4, ElementType: null } || HasOpenJoinTypeArgument(type)) return false;
 		var target = ResolveRuntimeTypeIdentity(type, _root.AssemblyName);
 		return !target.Handle.IsNil && target.Handle.Kind == HandleKind.TypeDefinition &&
-			!Net10FrameworkContract.Default.IsFrameworkAssembly(target.ModuleName) &&
+			!_root.FrameworkContract.IsFrameworkAssembly(target.ModuleName) &&
 			target.ModuleName is not ("System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler") &&
 			!GetModule(target.ModuleName).IsValueTypeDefinition(GetModule(target.ModuleName).Reader.GetTypeDefinition((TypeDefinitionHandle)target.Handle));
 	}
@@ -327,7 +327,7 @@ internal sealed partial class CompilationModule
 	{
 		if (FrameworkImplementationPack?.IsPinnedStringBuilderInput != true || caller.MethodTypeArguments.IsDefault ||
 			caller.MethodTypeArguments is not [var element] || !IsPinnedNullableJoinElement(element) ||
-			Net10FrameworkContract.Default.IsFrameworkAssembly(caller.ModuleName) || caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" ||
+			FrameworkContract.IsFrameworkAssembly(caller.ModuleName) || caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" ||
 			!_root._modules.TryGetValue(caller.ModuleName, out var owner) || caller.Handle.IsNil ||
 			System.Reflection.Metadata.Ecma335.MetadataTokens.GetRowNumber(caller.Handle) > owner.Reader.GetTableRowCount(System.Reflection.Metadata.Ecma335.TableIndex.MethodDef)) return false;
 		var definition = owner.Reader.GetMethodDefinition(caller.Handle);
@@ -338,7 +338,7 @@ internal sealed partial class CompilationModule
 	private bool IsPinnedApplicationValueFormattingCaller(CilMethod caller)
 	{
 		if (FrameworkImplementationPack?.IsPinnedStringBuilderInput != true || !caller.MethodTypeArguments.IsDefaultOrEmpty ||
-			caller.ConstructedDeclaringType is not null || Net10FrameworkContract.Default.IsFrameworkAssembly(caller.ModuleName) ||
+			caller.ConstructedDeclaringType is not null || FrameworkContract.IsFrameworkAssembly(caller.ModuleName) ||
 			caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" ||
 			!_root._modules.TryGetValue(caller.ModuleName, out var owner) || caller.Handle.IsNil ||
 			MetadataTokens.GetRowNumber(caller.Handle) > owner.Reader.GetTableRowCount(TableIndex.MethodDef)) return false;
@@ -431,7 +431,7 @@ internal sealed partial class CompilationModule
 	private bool IsActualClosedApplicationCaller(CilMethod caller)
 	{
 		if (caller.ModuleName is "System.Private.CoreLib" or "CopperSharp.Runtime.Managed" or "CopperSharp.Compiler" ||
-			Net10FrameworkContract.Default.IsFrameworkAssembly(caller.ModuleName) || caller.Handle.IsNil ||
+			FrameworkContract.IsFrameworkAssembly(caller.ModuleName) || caller.Handle.IsNil ||
 			!_root._modules.TryGetValue(caller.ModuleName, out var owner) || MetadataTokens.GetRowNumber(caller.Handle) > owner.Reader.MethodDefinitions.Count ||
 			caller.ConstructedDeclaringType is not { } construction) return false;
 		var definition = owner.Reader.GetMethodDefinition(caller.Handle);

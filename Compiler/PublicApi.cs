@@ -730,6 +730,12 @@ public sealed record M68kCompilationRequest
 	public required string AssemblyPath { get; init; }
 
 	/// <summary>
+	/// Target framework of the managed input. Defaults to .NET 10 for source compatibility.
+	/// .NET 11 inputs select the separately pinned .NET 11 compatibility profile.
+	/// </summary>
+	public string FrameworkTargetFramework { get; init; } = "net10.0";
+
+	/// <summary>
 	/// Additional managed assemblies whose IL method bodies may enter the closed-world
 	/// compilation graph. Other references remain metadata-only platform dependencies.
 	/// </summary>

@@ -40,7 +40,7 @@ internal sealed partial class M68kCodeGenerator
 			if (_module.FrameworkImplementationPack?.EnableUnlistedManagedBodies != true && !_module.IsExperimentalDecimalFormattingLayout(layout)) continue;
 			var type = _boxedTypes[name];
 			if (type.Kind != CilTypeKind.ValueType || type.IsEnum || !_allocatedBoxedTypes.Contains(name) ||
-				Net10FrameworkContract.Default.IsFrameworkAssembly(layout.ModuleName) && !_module.IsExperimentalDecimalFormattingLayout(layout)) continue;
+				_module.FrameworkContract.IsFrameworkAssembly(layout.ModuleName) && !_module.IsExperimentalDecimalFormattingLayout(layout)) continue;
 			var slots = _module.GetVirtualTable(layout).Slots;
 			var target = slots.FirstOrDefault(method => (method.ModuleName == layout.ModuleName ||
 				method.ModuleName == "System.Private.CoreLib" && method.DisplayName == "System.ValueType::ToString") && method.Name == "ToString" &&

@@ -216,9 +216,9 @@ and `CopperSharp.Sdk.Amiga` packages.
 ## Supported subset
 
 This overview covers the compiler's broader CIL and output capabilities. The
-exact admitted .NET 10 framework surface and its limitations are defined by the
-[compatibility profile](Framework/Net10Profile.md) and its machine-readable
-manifest. The current JSON manifest declares 305 exact bindings: 158
+exact admitted .NET 10 and .NET 11 framework surfaces and their limitations are
+defined by the [compatibility profiles](Framework/README.md) and their
+machine-readable manifests. The .NET 10 JSON manifest declares 305 exact bindings: 158
 `Implemented`, 90 `Intrinsic`, and 57 `Platform`, spanning 47 declaring-type
 patterns and 23 feature groups. These are manifest-entry counts, not the entire
 admitted CoreLib surface; see the

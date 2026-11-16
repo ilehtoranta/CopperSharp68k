@@ -1,6 +1,6 @@
 # CopperSharpAmiga
 
-This project builds a managed .NET 10 assembly and then compiles its declared
+This project builds a managed .NET 11 assembly and then compiles its declared
 entry point into a Motorola 68k Amiga HUNK executable.
 
 Build the managed input:

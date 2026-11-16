@@ -1,11 +1,12 @@
 # CopperSharp.Sdk
 
-MSBuild project SDK for publishing ordinary .NET 10 C# applications through
+MSBuild project SDK for publishing ordinary .NET 10 and .NET 11 C# applications through
 CopperSharp to Motorola 68k Amiga output.
 
 The SDK supplies the `amiga-m68k` runtime graph, rejects host-runtime publish
 modes that cannot describe a CopperSharp image, and carries the compiler host
-used by `dotnet publish`. No global compiler tool is required.
+used by `dotnet publish`. It selects matching .NET 10 or .NET 11 compiler and
+optimizer payloads from the application TFM. No global compiler tool is required.
 
 Publish writes the target artifact, a `.map` file with exact compiler,
 framework-contract, target-package, profile, CPU, and format provenance, and a

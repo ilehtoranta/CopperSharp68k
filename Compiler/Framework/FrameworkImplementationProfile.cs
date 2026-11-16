@@ -2193,7 +2193,7 @@ internal static class FrameworkImplementationProfile
 
 	public static bool IsFrameworkImplementationCandidate(FrameworkMemberId member) =>
 		string.Equals(member.AssemblyName, ImplementationAssembly, StringComparison.Ordinal) ||
-		Net10FrameworkContract.Default.IsFrameworkAssembly(member.AssemblyName);
+		FrameworkContractProfile.IsFrameworkAssemblyInAnyProfile(member.AssemblyName);
 
 	private static string PinnedTarget(FrameworkMemberId member) =>
 		$"pinned:[{ImplementationAssembly}]{GetNamedDeclaringType(member.DeclaringType).FullMetadataName}::{member.Name}";

@@ -7,22 +7,16 @@
     <PackageType>MSBuildSdk</PackageType>
     <PackageId>CopperSharp.Sdk</PackageId>
     <Title>CopperSharp MSBuild SDK</Title>
-    <Description>MSBuild SDK and amiga-m68k restore policy for CopperSharp .NET 10 AOT applications.</Description>
-    <PackageTags>msbuild-sdk;compiler;aot;amiga;m68k;net10</PackageTags>
+    <Description>MSBuild SDK and amiga-m68k restore policy for CopperSharp .NET 10 and .NET 11 AOT applications.</Description>
+    <PackageTags>msbuild-sdk;compiler;aot;amiga;m68k;net10;net11</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <IsPackable>true</IsPackable>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectCopperSharpCompilerTool</TargetsForTfmSpecificContentInPackage>
-    <CopperSharpCompilerToolOutputPath Condition="'$(CopperSharpCompilerToolOutputPath)' == ''">../Compiler.Cli/bin/$(Configuration)/net10.0</CopperSharpCompilerToolOutputPath>
-    <CopperSharpCilicaToolOutputPath Condition="'$(CopperSharpCilicaToolOutputPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/bin/$(Configuration)/net10.0'))</CopperSharpCilicaToolOutputPath>
+    <CopperSharpCompilerToolOutputPath Condition="'$(CopperSharpCompilerToolOutputPath)' == ''">../Compiler.Cli/bin/$(Configuration)</CopperSharpCompilerToolOutputPath>
+    <CopperSharpCilicaToolOutputPath Condition="'$(CopperSharpCilicaToolOutputPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/bin/$(Configuration)'))</CopperSharpCilicaToolOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Compiler.Cli\CopperSharp.Compiler.Cli.csproj"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
-    <ProjectReference Include="..\scripts\CilicaOptimizer\CilicaOptimizer.csproj"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <None Include="Sdk\Sdk.props" Pack="true" PackagePath="Sdk\Sdk.props" />
     <None Include="Sdk\Sdk.targets" Pack="true" PackagePath="Sdk\Sdk.targets" />
@@ -32,20 +26,38 @@
   </ItemGroup>
 
   <Target Name="CollectCopperSharpCompilerTool"
-          DependsOnTargets="Build"
+          DependsOnTargets="BuildCopperSharpPackagedTools"
           Returns="@(TfmSpecificPackageFile)">
     <ItemGroup>
-      <TfmSpecificPackageFile Include="$(CopperSharpCompilerToolOutputPath)/**/*"
-                              Exclude="$(CopperSharpCompilerToolOutputPath)/publish/**/*;$(CopperSharpCompilerToolOutputPath)/**/*.pdb;$(CopperSharpCompilerToolOutputPath)/**/*.xml">
-        <PackagePath>tools/net10.0/any/%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      <TfmSpecificPackageFile Include="$(CopperSharpCompilerToolOutputPath)/net10.0/*"
+                              Exclude="$(CopperSharpCompilerToolOutputPath)/net10.0/publish/**/*;$(CopperSharpCompilerToolOutputPath)/net10.0/**/*.pdb;$(CopperSharpCompilerToolOutputPath)/net10.0/**/*.xml">
+        <PackagePath>tools/net10.0/any/</PackagePath>
       </TfmSpecificPackageFile>
-      <TfmSpecificPackageFile Include="$(CopperSharpCilicaToolOutputPath)/**/*"
-                              Exclude="$(CopperSharpCilicaToolOutputPath)/publish/**/*;$(CopperSharpCilicaToolOutputPath)/**/*.pdb;$(CopperSharpCilicaToolOutputPath)/**/*.xml;$(CopperSharpCilicaToolOutputPath)/**/*.exe">
+      <TfmSpecificPackageFile Include="$(CopperSharpCompilerToolOutputPath)/net11.0/*"
+                              Exclude="$(CopperSharpCompilerToolOutputPath)/net11.0/publish/**/*;$(CopperSharpCompilerToolOutputPath)/net11.0/**/*.pdb;$(CopperSharpCompilerToolOutputPath)/net11.0/**/*.xml">
+        <PackagePath>tools/net11.0/any/</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(CopperSharpCilicaToolOutputPath)/net10.0/*"
+                              Exclude="$(CopperSharpCilicaToolOutputPath)/net10.0/publish/**/*;$(CopperSharpCilicaToolOutputPath)/net10.0/**/*.pdb;$(CopperSharpCilicaToolOutputPath)/net10.0/**/*.xml;$(CopperSharpCilicaToolOutputPath)/net10.0/**/*.exe">
         <PackagePath>tools/net10.0/any/cilica/</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(CopperSharpCilicaToolOutputPath)/net11.0/*"
+                              Exclude="$(CopperSharpCilicaToolOutputPath)/net11.0/publish/**/*;$(CopperSharpCilicaToolOutputPath)/net11.0/**/*.pdb;$(CopperSharpCilicaToolOutputPath)/net11.0/**/*.xml;$(CopperSharpCilicaToolOutputPath)/net11.0/**/*.exe">
+        <PackagePath>tools/net11.0/any/cilica/</PackagePath>
       </TfmSpecificPackageFile>
       <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/LICENSE-Cilica.md">
         <PackagePath>tools/net10.0/any/cilica/LICENSE-Cilica.md</PackagePath>
       </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/LICENSE-Cilica.md">
+        <PackagePath>tools/net11.0/any/cilica/LICENSE-Cilica.md</PackagePath>
+      </TfmSpecificPackageFile>
     </ItemGroup>
+  </Target>
+
+  <Target Name="BuildCopperSharpPackagedTools">
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../Compiler.Cli/CopperSharp.Compiler.Cli.csproj;$(MSBuildThisFileDirectory)../scripts/CilicaOptimizer/CilicaOptimizer.csproj"
+             Targets="Restore;Build"
+             BuildInParallel="true"
+             Properties="Configuration=$(Configuration);NoBuild=false;NoRestore=false" />
   </Target>
 </Project>

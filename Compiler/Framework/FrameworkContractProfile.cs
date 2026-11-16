@@ -9,34 +9,50 @@ using CopperSharp.Compiler.Metadata;
 
 namespace CopperSharp.Compiler.Framework;
 
-internal sealed class Net10FrameworkContract
+internal sealed class FrameworkContractProfile
 {
 	internal const int SupportedManifestSchemaVersion = 1;
 	internal const string SupportedTargetFramework = "net10.0";
 	internal const string SupportedReferencePack = "Microsoft.NETCore.App.Ref";
 	internal const string SupportedReferencePackVersion = "10.0.9";
-	private const string ResourceName =
-		"CopperSharp.Compiler.Framework." + SupportedTargetFramework + "-" +
-		SupportedReferencePackVersion + ".json";
+	internal const string Net11TargetFramework = "net11.0";
+	internal const string Net11ReferencePackVersion = "11.0.0";
+	private static readonly Lazy<FrameworkContractProfile> Net10 =
+		new(() => Load(SupportedTargetFramework));
+	private static readonly Lazy<FrameworkContractProfile> Net11 =
+		new(() => Load(Net11TargetFramework));
 
 	private readonly HashSet<string> _assemblies;
 	private readonly FrameworkBindingRule[] _bindings;
 	private readonly string[] _deferredTypePrefixes;
 
-	private Net10FrameworkContract(FrameworkContractManifest manifest)
+	private FrameworkContractProfile(FrameworkContractManifest manifest)
 	{
-		Validate(manifest);
 		Contract = new M68kFrameworkContract(
 			manifest.TargetFramework,
 			manifest.ReferencePack,
 			manifest.ReferencePackVersion,
 			manifest.SchemaVersion);
+		Validate(manifest, Contract.TargetFramework, Contract.ReferencePackVersion);
 		_assemblies = manifest.Assemblies.ToHashSet(StringComparer.Ordinal);
 		_bindings = manifest.Bindings.ToArray();
 		_deferredTypePrefixes = manifest.DeferredTypePrefixes.ToArray();
 	}
 
-	public static Net10FrameworkContract Default { get; } = Load();
+	public static FrameworkContractProfile Default => Net10.Value;
+
+	public static FrameworkContractProfile ForTargetFramework(string targetFramework) =>
+		targetFramework switch
+		{
+			SupportedTargetFramework => Net10.Value,
+			Net11TargetFramework => Net11.Value,
+			_ => throw new ArgumentException(
+				$"Target framework '{targetFramework}' is not supported. Supported values are 'net10.0' and 'net11.0'.",
+				nameof(targetFramework))
+		};
+
+	public static bool IsFrameworkAssemblyInAnyProfile(string assemblyName) =>
+		Net10.Value.IsFrameworkAssembly(assemblyName) || Net11.Value.IsFrameworkAssembly(assemblyName);
 
 	public M68kFrameworkContract Contract { get; }
 
@@ -50,7 +66,7 @@ internal sealed class Net10FrameworkContract
 			json,
 			new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ??
 			throw new InvalidOperationException("The framework contract manifest is empty.");
-		Validate(manifest);
+		Validate(manifest, SupportedTargetFramework, SupportedReferencePackVersion);
 	}
 
 	public FrameworkBindingDecision Classify(
@@ -296,27 +312,36 @@ internal sealed class Net10FrameworkContract
 			? actual.StartsWith(pattern[..^1], StringComparison.Ordinal)
 			: string.Equals(pattern, actual, StringComparison.Ordinal);
 
-	private static Net10FrameworkContract Load()
+	private static FrameworkContractProfile Load(string targetFramework)
 	{
-		using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourceName) ??
+		var referencePackVersion = targetFramework == Net11TargetFramework
+			? Net11ReferencePackVersion
+			: SupportedReferencePackVersion;
+		var resourceName = "CopperSharp.Compiler.Framework." + targetFramework + "-" +
+			referencePackVersion + ".json";
+		using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName) ??
 			throw new InvalidOperationException(
-				$"Embedded framework contract '{ResourceName}' was not found.");
+				$"Embedded framework contract '{resourceName}' was not found.");
 		var manifest = JsonSerializer.Deserialize<FrameworkContractManifest>(
 			stream,
 			new JsonSerializerOptions
 			{
 				PropertyNameCaseInsensitive = true
 			}) ?? throw new InvalidOperationException(
-				$"Embedded framework contract '{ResourceName}' is empty.");
-		return new Net10FrameworkContract(manifest);
+				$"Embedded framework contract '{resourceName}' is empty.");
+		Validate(manifest, targetFramework, referencePackVersion);
+		return new FrameworkContractProfile(manifest);
 	}
 
-	private static void Validate(FrameworkContractManifest manifest)
+	private static void Validate(
+		FrameworkContractManifest manifest,
+		string targetFramework,
+		string referencePackVersion)
 	{
 		if (manifest.SchemaVersion != SupportedManifestSchemaVersion ||
 			!string.Equals(
 				manifest.TargetFramework,
-				SupportedTargetFramework,
+				targetFramework,
 				StringComparison.Ordinal) ||
 			!string.Equals(
 				manifest.ReferencePack,
@@ -324,7 +349,7 @@ internal sealed class Net10FrameworkContract
 				StringComparison.Ordinal) ||
 			!string.Equals(
 				manifest.ReferencePackVersion,
-				SupportedReferencePackVersion,
+				referencePackVersion,
 				StringComparison.Ordinal))
 		{
 			throw new InvalidOperationException(

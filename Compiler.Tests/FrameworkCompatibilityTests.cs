@@ -53,7 +53,7 @@ public sealed class FrameworkCompatibilityTests
 			""";
 
 		var exception = Assert.Throws<InvalidOperationException>(
-			() => Net10FrameworkContract.ValidateManifestJson(ledger));
+			() => FrameworkContractProfile.ValidateManifestJson(ledger));
 		Assert.Contains("invalid or unsupported", exception.Message, StringComparison.Ordinal);
 	}
 
@@ -86,7 +86,7 @@ public sealed class FrameworkCompatibilityTests
 			""";
 
 		var exception = Assert.Throws<InvalidOperationException>(
-			() => Net10FrameworkContract.ValidateManifestJson(duplicateLedger));
+			() => FrameworkContractProfile.ValidateManifestJson(duplicateLedger));
 		Assert.Contains("duplicate", exception.Message, StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -120,7 +120,7 @@ public sealed class FrameworkCompatibilityTests
 			}
 			""";
 
-		Net10FrameworkContract.ValidateManifestJson(specializedLedger);
+		FrameworkContractProfile.ValidateManifestJson(specializedLedger);
 	}
 
 	[Fact]
@@ -199,7 +199,7 @@ public sealed class FrameworkCompatibilityTests
 		Assert.NotNull(binding);
 		var description = new CilMethodReferenceIdentity(
 			assemblyName, "System.String", "get_Length", false, 0, "int", [], []);
-		var decision = Net10FrameworkContract.Default.Classify(
+		var decision = FrameworkContractProfile.Default.Classify(
 			StringLength(assemblyName, returnType), description,
 			MethodReference.ForBinding(binding, default), null,
 			useVerifiedCoreLibIdentity: verified);

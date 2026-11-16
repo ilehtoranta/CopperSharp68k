@@ -119,11 +119,11 @@ public sealed class FrameworkImplementationPackTests
 			}) Assert.False(module.TryCreateExperimentalNumberGroupCloneBinding(changed, accessor, out _));
 			var description = module.DescribeMethodToken((int)clone.Operand!, accessor, clone.Offset)!;
 			var resolved = module.ResolveMethodToken((int)clone.Operand!, accessor, clone.Offset);
-			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, Net10FrameworkContract.Default.Classify(member, description, resolved, null,
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, FrameworkContractProfile.Default.Classify(member, description, resolved, null,
 				useVerifiedCoreLibIdentity: true, callSiteOverride: binding).Status);
-			Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, Net10FrameworkContract.Default.Classify(member, description, resolved, null,
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, FrameworkContractProfile.Default.Classify(member, description, resolved, null,
 				useVerifiedCoreLibIdentity: false, callSiteOverride: binding).Status);
-			Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, Net10FrameworkContract.Default.Classify(member, description, resolved, null,
+			Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, FrameworkContractProfile.Default.Classify(member, description, resolved, null,
 				useVerifiedCoreLibIdentity: true).Status);
 			using var disabled = new CompilationModule(FixtureAssembly);
 			Assert.False(disabled.TryCreateExperimentalNumberGroupCloneBinding(member, accessor, out _));
@@ -211,7 +211,7 @@ public sealed class FrameworkImplementationPackTests
 			{
 				var description = new CilMethodReferenceIdentity(assembly, "System.Collections.Generic.IEnumerable`1", operation, false, 0, "IEnumerator", [], []);
 				FrameworkBindingDecision Classify(FrameworkBinding candidate, bool verified = true, bool scoped = true) =>
-					Net10FrameworkContract.Default.Classify(member, description, MethodReference.ForBinding(candidate, default), null,
+					FrameworkContractProfile.Default.Classify(member, description, MethodReference.ForBinding(candidate, default), null,
 						useVerifiedCoreLibIdentity: verified, callSiteOverride: scoped ? binding : null);
 				Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, Classify(binding).Status);
 				Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, Classify(binding, verified: false).Status);
@@ -274,7 +274,7 @@ public sealed class FrameworkImplementationPackTests
 					[indexType, caller.Signature.ParameterTypes[1]])
 			}, out _));
 		var description = new CilMethodReferenceIdentity("System.Runtime", "System.Object", "ToString", false, 0, "string", [], []);
-		FrameworkBindingDecision Classify(bool verified, bool scoped) => Net10FrameworkContract.Default.Classify(member, description,
+		FrameworkBindingDecision Classify(bool verified, bool scoped) => FrameworkContractProfile.Default.Classify(member, description,
 			MethodReference.ForBinding(binding, default), null, useVerifiedCoreLibIdentity: verified, callSiteOverride: scoped ? binding : null);
 		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, Classify(true, true).Status);
 		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, Classify(false, true).Status);
@@ -335,7 +335,7 @@ public sealed class FrameworkImplementationPackTests
 			}) Assert.False(module.TryCreateExperimentalObjectJoinTextBinding(new FrameworkMemberId(type, "ToString", wrong), core, out _));
 			var description = new CilMethodReferenceIdentity(assembly, "System.Object", "ToString", false, 0, "string", [], []);
 			FrameworkBindingDecision Classify(FrameworkBinding candidate, bool verified = true, bool scoped = true) =>
-				Net10FrameworkContract.Default.Classify(member, description, MethodReference.ForBinding(candidate, default), null,
+				FrameworkContractProfile.Default.Classify(member, description, MethodReference.ForBinding(candidate, default), null,
 					useVerifiedCoreLibIdentity: verified, callSiteOverride: scoped ? binding : null);
 			Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, Classify(binding).Status);
 			Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, Classify(binding, verified: false).Status);
@@ -401,7 +401,7 @@ public sealed class FrameworkImplementationPackTests
 		}) Assert.False(module.TryCreateExperimentalObjectJoinDispatchBinding(new FrameworkMemberId(member.DeclaringType, "ToString", wrong), caller, out _));
 		var description = new CilMethodReferenceIdentity("System.Runtime", "System.Object", "ToString", false, 0, "string", [], []);
 		FrameworkBindingDecision Classify(FrameworkBinding candidate, bool verified = true, bool scoped = true) =>
-			Net10FrameworkContract.Default.Classify(member, description, MethodReference.ForBinding(candidate, default), null,
+			FrameworkContractProfile.Default.Classify(member, description, MethodReference.ForBinding(candidate, default), null,
 				useVerifiedCoreLibIdentity: verified, callSiteOverride: scoped ? binding : null);
 		Assert.Equal(M68kFrameworkCompatibilityStatus.Implemented, Classify(binding).Status);
 		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, Classify(binding, verified: false).Status);

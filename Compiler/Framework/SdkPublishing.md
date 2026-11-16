@@ -2,11 +2,11 @@
 
 ## Developer experience
 
-A CopperSharp68k application is an ordinary SDK-style C# project targeting `net10.0`. It restores the official .NET reference pack plus CopperSharp68k SDK/runtime packages, compiles managed IL with the normal C# toolchain, and invokes the CopperSharp68k compiler for compatibility analysis and target emission.
+A CopperSharp application is an ordinary SDK-style C# project targeting `net10.0` or `net11.0`. It restores the official .NET reference pack plus CopperSharp SDK/runtime packages, compiles managed IL with the normal C# toolchain, and invokes the matching compiler tool for compatibility analysis and target emission.
 
 ```mermaid
 flowchart LR
-    A["C# project targeting net10.0"] --> B["dotnet restore"]
+    A["C# project targeting net10.0 or net11.0"] --> B["dotnet restore"]
     B --> C["C# compiler and official reference assemblies"]
     C --> D["managed application assembly"]
     D --> E["CopperSharp68k compatibility analysis"]
@@ -26,7 +26,7 @@ The publishing surface is split by responsibility:
 |---|---|
 | SDK | MSBuild targets, tasks, default properties, compatibility invocation, and publish integration |
 | Compiler tool | CLI/compiler executable and target emitters |
-| Contract | machine-readable exact .NET 10 binding manifest |
+| Contract | TFM-specific machine-readable framework binding manifest |
 | Implementation pack | pinned managed implementation assemblies plus hashes and mapping manifest |
 | Runtime/PAL | private runtime objects, shadows, PAL implementations, and link inputs |
 | Amiga SDK | optional public declarations for applications that intentionally call Amiga APIs |
@@ -52,11 +52,16 @@ Packages may be delivered together during preview releases, but their version ax
 </Project>
 ```
 
-The SDK owns the exact package graph needed by the selected release coordinate. Applications should not independently choose a different implementation pack.
+The SDK selects its .NET 10 or .NET 11 compiler and optimizer payload from the
+project TFM and passes that TFM into compatibility analysis. The SDK owns the
+exact package graph needed by the selected release coordinate. Applications
+should not independently choose a different implementation pack.
 
 ## Runtime identifier policy
 
-`amiga-m68k` describes the target platform and is intentionally separate from `net10.0`. Restore uses RID-specific CopperSharp68k assets and may fall back only to RID-agnostic managed assets explicitly marked `any`.
+`amiga-m68k` describes the target platform and is intentionally separate from
+`net10.0` and `net11.0`. Restore uses RID-specific CopperSharp assets and may
+fall back only to RID-agnostic managed assets explicitly marked `any`.
 
 Microsoft host publishing features are not target emitters for this toolchain. The SDK rejects conflicting requests such as `PublishAot`, `PublishSingleFile`, `PublishTrimmed`, a host app launcher, or `SelfContained=true` when they would cause the .NET SDK to construct an unrelated native application.
 

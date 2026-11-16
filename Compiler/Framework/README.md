@@ -1,10 +1,16 @@
-# .NET 10 profile documentation
+# Framework target profiles
 
-CopperSharp68k accepts ordinary `net10.0` assemblies, analyzes their reachable code as a closed world, and ahead-of-time compiles the supported subset for Motorola 68k targets. It does not embed CoreCLR, load framework assemblies on the Amiga, or attempt to reproduce every .NET runtime service.
+CopperSharp accepts `net10.0` and `net11.0` assemblies, analyzes their reachable code as a closed world, and ahead-of-time compiles the supported subset for Motorola 68k targets. It does not embed CoreCLR, load framework assemblies on the Amiga, or attempt to reproduce every .NET runtime service.
+
+Each target selects a separate pinned reference-pack contract and assembly
+inventory. The .NET 11 profile currently reuses the audited .NET 10 binding
+rules; newly introduced framework members remain unsupported until they receive
+explicit rules.
 
 The documentation is organized by stable responsibility rather than implementation phase:
 
 - [Profile and compatibility contract](Net10Profile.md) — target identity, supported surface, exclusions, and compatibility rules.
+- [.NET 11 profile](Net11Profile.md) — .NET 11 contract identity and admission boundary.
 - [Framework binding](FrameworkBinding.md) — how official .NET identities bind to managed IL, compiler intrinsics, private shadows, or platform services.
 - [Managed runtime](ManagedRuntime.md) — object layout, type identity, boxing, delegates, generics, byrefs, strings, and collections.
 - [Amiga platform abstraction layer](AmigaPal.md) — console, filesystem, environment, and clock services.
@@ -21,7 +27,7 @@ Related runtime specifications remain separate because they are useful beyond th
 
 ## Current source scope
 
-These pages describe the current `main` source build, reviewed on 31 October
+These pages describe the current `main` source build, reviewed on 16 November
 2026. Published preview packages can expose an earlier subset. The
 [profile's manifest inventory](Net10Profile.md#manifest-inventory) records the
 current counts, and [numeric support](Net10Profile.md#numeric-support) describes

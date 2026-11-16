@@ -19,7 +19,7 @@ internal static class FrameworkReachabilityAnalyzer
 		M68kFloatingPointMode floatingPoint,
 		IEnumerable<CilMethod>? additionalRoots = null)
 	{
-		var contract = Net10FrameworkContract.Default;
+		var contract = module.FrameworkContract;
 		var members = new Dictionary<MemberObservationKey, MemberAccumulator>();
 		var managedAllocationSites = new HashSet<M68kManagedAllocationSite>();
 		var discoveredPaths = new Dictionary<CilMethodIdentity, IReadOnlyList<string>>();
@@ -564,7 +564,7 @@ internal static class FrameworkReachabilityAnalyzer
 		return separator < 0 ? methodDisplayName : methodDisplayName[..separator];
 	}
 
-	private static bool IsUnresolvedFrameworkCall(CompilationModule module, Net10FrameworkContract contract,
+	private static bool IsUnresolvedFrameworkCall(CompilationModule module, FrameworkContractProfile contract,
 		CilMethod method, M68kCompilationException exception)
 	{
 		if (method.HasDeferredBody || method.IsImport || exception.DiagnosticId != M68kDiagnosticIds.UnsupportedInstruction ||

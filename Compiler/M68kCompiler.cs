@@ -27,13 +27,14 @@ public static class M68kCompiler
 		ArgumentException.ThrowIfNullOrWhiteSpace(request.AssemblyPath);
 		ValidateRuntimeOptions(request);
 		var implementationPack = FrameworkImplementationPackLoader.Load(
-			request.FrameworkImplementationPack);
+			request.FrameworkImplementationPack,
+			request.FrameworkTargetFramework);
 
 		using var module = new CompilationModule(
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
 			GetManagedAssemblyPaths(request),
-			implementationPack, request.FloatingPoint);
+			implementationPack, request.FloatingPoint, request.FrameworkTargetFramework);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);
@@ -74,13 +75,14 @@ public static class M68kCompiler
 
 		var managedAssemblyPaths = GetManagedAssemblyPaths(request);
 		var implementationPack = FrameworkImplementationPackLoader.Load(
-			request.FrameworkImplementationPack);
+			request.FrameworkImplementationPack,
+			request.FrameworkTargetFramework);
 
 		using var module = new CompilationModule(
 			request.AssemblyPath,
 			request.ExternalCallResolvers,
 			managedAssemblyPaths,
-			implementationPack, request.FloatingPoint);
+			implementationPack, request.FloatingPoint, request.FrameworkTargetFramework);
 		var entry = module.ResolveEntryPoint(request.EntryPoint);
 		var exports = SelectExports(module, request.IncludedExportNames);
 		var bulkCopyMethod = BulkCopyProviderBinding.Resolve(module, request.BulkCopy);

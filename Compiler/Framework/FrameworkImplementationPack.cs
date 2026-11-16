@@ -43,14 +43,15 @@ internal sealed class FrameworkImplementationPackCatalog
 internal static class FrameworkImplementationPackLoader
 {
 	public const int SchemaVersion = 1;
-	public const string TargetFramework = Net10FrameworkContract.SupportedTargetFramework;
-	public const string ReferencePack = Net10FrameworkContract.SupportedReferencePack;
-	public const string ReferencePackVersion = Net10FrameworkContract.SupportedReferencePackVersion;
+	public const string TargetFramework = FrameworkContractProfile.SupportedTargetFramework;
+	public const string ReferencePack = FrameworkContractProfile.SupportedReferencePack;
+	public const string ReferencePackVersion = FrameworkContractProfile.SupportedReferencePackVersion;
 	public const string CoreLibProfile = "corelib-common-il-v1";
 	private const string CoreLibAssembly = "System.Private.CoreLib";
 
 	public static FrameworkImplementationPackCatalog? Load(
-		M68kFrameworkImplementationPackOptions? options)
+		M68kFrameworkImplementationPackOptions? options,
+		string targetFramework = TargetFramework)
 	{
 		if (options is null)
 		{
@@ -88,7 +89,8 @@ internal static class FrameworkImplementationPackLoader
 				exception);
 		}
 
-		ValidateManifest(manifest, manifestPath);
+		var contract = FrameworkContractProfile.ForTargetFramework(targetFramework).Contract;
+		ValidateManifest(manifest, manifestPath, contract);
 		var directory = Path.GetDirectoryName(manifestPath)!;
 		var paths = new Dictionary<string, string>(StringComparer.Ordinal);
 		var provenance = new List<M68kFrameworkImplementationAssemblyProvenance>();
@@ -121,17 +123,18 @@ internal static class FrameworkImplementationPackLoader
 
 	private static void ValidateManifest(
 		ImplementationPackManifest manifest,
-		string manifestPath)
+		string manifestPath,
+		M68kFrameworkContract contract)
 	{
 		RequireEqual("schemaVersion", SchemaVersion, manifest.SchemaVersion, manifestPath);
 		RequireText("packId", manifest.PackId, manifestPath);
 		RequireText("packVersion", manifest.PackVersion, manifestPath);
 		RequireText("runtimeIdentifier", manifest.RuntimeIdentifier, manifestPath);
-		RequireEqual("targetFramework", TargetFramework, manifest.TargetFramework, manifestPath);
-		RequireEqual("referencePack", ReferencePack, manifest.ReferencePack, manifestPath);
+		RequireEqual("targetFramework", contract.TargetFramework, manifest.TargetFramework, manifestPath);
+		RequireEqual("referencePack", contract.ReferencePack, manifest.ReferencePack, manifestPath);
 		RequireEqual(
 			"referencePackVersion",
-			ReferencePackVersion,
+			contract.ReferencePackVersion,
 			manifest.ReferencePackVersion,
 			manifestPath);
 		RequireEqual(
