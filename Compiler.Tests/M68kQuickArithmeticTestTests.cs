@@ -5,6 +5,32 @@ namespace CopperSharp.Compiler.Tests;
 
 public sealed class M68kQuickArithmeticTestTests
 {
+    [Fact]
+    public void IndexedAddressExtensionIsNotTreatedAsAFlagSettingMove()
+    {
+        var assembler = new M68kAssembler();
+        assembler.EmitWord(0x2780); // MOVE.L D0,12(A3,D2.L*4)
+        assembler.EmitWord(0x2C0C); // Extension resembles MOVE.L A4,D6.
+        assembler.EmitWord(0x4A86); // TST.L D6
+        assembler.EmitWord(0x57C1); // SEQ D1
+        assembler.EmitWord(0x4E75);
+        assembler.OptimizeForCpu(M68kCpuTarget.M68020);
+        var code = assembler.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+        var bus = new TestBus(0x20000);
+        code.CopyTo(bus.Memory, 0x10000);
+        bus.WriteLong(0x18000, 0x1000);
+        using var cpu = M68kCoreFactory.Default.Create(M68kCpuModel.M68020, bus);
+        cpu.Reset(0x10000, 0x18000);
+        cpu.State.A[3] = 0x3000;
+        cpu.State.D[0] = 1;
+        cpu.State.D[2] = 0;
+        cpu.State.D[6] = 0;
+        for (var i = 0; i < 16 && cpu.State.ProgramCounter != 0x1000; i++) cpu.ExecuteInstruction();
+        Assert.Equal(0x1000u, cpu.State.ProgramCounter);
+        Assert.Equal(1u, bus.ReadLong(0x300C));
+        Assert.Equal(0xFFu, cpu.State.D[1] & 0xFF);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]

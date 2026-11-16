@@ -50,7 +50,23 @@ public sealed class EnumFormattingTests
 		var caller = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::EnumInterfaceBranchEntry");
 		var call = caller.Instructions.Single(instruction => instruction.OpCode == OpCodes.Call);
 		var constructed = module.ResolveMethodToken((int)call.Operand!, caller, call.Offset).Definition!;
-		var raw = module.GetMethod(constructed.Handle) with { Signature = constructed.Signature, MethodTypeArguments = constructed.MethodTypeArguments };
+		var original = module.GetMethod(constructed.Handle) with { Signature = constructed.Signature, MethodTypeArguments = constructed.MethodTypeArguments };
+		var box = Assert.Single(original.Instructions, instruction => instruction.OpCode == OpCodes.Box);
+		var isinst = Assert.Single(original.Instructions, instruction => instruction.OpCode == OpCodes.Isinst);
+		// Use the real metadata tokens with a direct branch, independent of the
+		// extra comparison and locals emitted by the Debug C# compiler.
+		var raw = original with { Instructions = [
+			new CilInstruction(0, OpCodes.Ldarg_0, null, 1),
+			new CilInstruction(1, OpCodes.Box, box.Operand, 2),
+			new CilInstruction(2, OpCodes.Isinst, isinst.Operand, 3),
+			new CilInstruction(3, OpCodes.Brtrue_S, 6, 4),
+			new CilInstruction(4, OpCodes.Ldc_I4_S, 29, 5),
+			new CilInstruction(5, OpCodes.Ret, null, 6),
+			new CilInstruction(6, OpCodes.Ldc_I4_S, 17, 7),
+			new CilInstruction(7, OpCodes.Ret, null, 8)
+		] };
+		if (original.Instructions.Any(instruction => instruction.OpCode == OpCodes.Ldnull))
+			Assert.Same(original, CilTypePredicateSpecializer.Specialize(original, module));
 		var folded = CilTypePredicateSpecializer.Specialize(raw, module);
 		Assert.DoesNotContain(folded.Instructions, instruction => instruction.OpCode == OpCodes.Box || instruction.OpCode == OpCodes.Isinst);
 		Assert.Single(folded.Instructions, instruction => instruction.OpCode == OpCodes.Ret);

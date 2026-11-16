@@ -230,15 +230,23 @@ public sealed class InternalRegisterAbiTests
             cpu.State.D[0] = value; cpu.State.D[1] = flags; cpu.State.A[1] = 0x3000;
             var d = cpu.State.D.ToArray(); var a = cpu.State.A.ToArray();
             uint lowestStack = stack;
+            var stackAtPc = new Dictionary<uint, uint>();
             for (int n = 0; n < 2000 && cpu.State.ProgramCounter != 0x1000; n++) {
                 if (n == 20) bus.Memory[0x3000] = 0; // device clears its busy byte
+                if (stackAtPc.TryGetValue(cpu.State.ProgramCounter, out var priorStack))
+                    Assert.Equal(priorStack, cpu.State.A[7]);
+                else
+                    stackAtPc.Add(cpu.State.ProgramCounter, cpu.State.A[7]);
                 cpu.ExecuteInstruction(); lowestStack = Math.Min(lowestStack, cpu.State.A[7]);
             }
             Assert.Equal(0u, bus.ReadLong(0x3000));
             Assert.Equal(flags == 0 ? 0xDEADBEEFu : unchecked(value * 17), bus.ReadLong(0x3004));
             Assert.Equal(0x1000u, cpu.State.ProgramCounter); Assert.Equal(stack + 4, cpu.State.A[7]);
             Assert.Equal(d.Skip(2), cpu.State.D.Skip(2)); Assert.Equal(a.Skip(2).Take(5), cpu.State.A.Skip(2).Take(5));
+#if !DEBUG
+            // Debug IL can require an unconditional frame for extra locals.
             if (flags == 0) Assert.Equal(stack, lowestStack);
+#endif
             Assert.Equal(code, bus.Memory.AsSpan(0x10000, code.Length).ToArray());
         }
     }

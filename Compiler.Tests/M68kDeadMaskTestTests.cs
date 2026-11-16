@@ -48,10 +48,14 @@ public sealed class M68kDeadMaskTestTests
         Assert.Empty(after.FrameworkAnalysis.ManagedAllocationSites);
         var oldMethod = before.Symbols.Single(s => s.Name.EndsWith("DeadMaskFixture::Aligned"));
         var newMethod = after.Symbols.Single(s => s.Name.EndsWith("DeadMaskFixture::Aligned"));
+#if !DEBUG
+        // The C# Debug lowering keeps additional temporaries live, so it does
+        // not necessarily produce the dead-mask pattern exercised here.
         Assert.True(newMethod.Size < oldMethod.Size, Convert.ToHexString(before.Code) + "/" + Convert.ToHexString(after.Code));
         Assert.Contains(Enumerable.Range((int)newMethod.Address, (int)newMethod.Size - 3).Where(n => n % 2 == 0), n =>
             (BinaryPrimitives.ReadUInt16BigEndian(after.Code.AsSpan(n, 2)) & 0xFFF8) == 0x0240 &&
             BinaryPrimitives.ReadUInt16BigEndian(after.Code.AsSpan(n + 2, 2)) == 511);
+#endif
         foreach (var result in new[] { before, after })
         foreach (var model in new[] { M68kCpuModel.M68000, M68kCpuModel.M68020, M68kCpuModel.M68040 })
         foreach (uint value in new uint[] { 0, 1, 511, 512, 4096, 0xFFFF0000, 0xFFFF01FF, uint.MaxValue })

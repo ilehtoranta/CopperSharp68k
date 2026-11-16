@@ -4,6 +4,7 @@
  */
 using Copper68k;
 using CopperSharp.Compiler.Framework;
+using CopperSharp.Compiler.Metadata;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
@@ -30,7 +31,11 @@ public sealed partial class CompilerExecutionTests
 		Assert.False(analysis.IsCompatible);
 		var append = Assert.Single(analysis.Members.Where(member => member.Member.TypeName == "System.Text.StringBuilder" && member.Member.Name == "Append"));
 		Assert.Equal(M68kFrameworkCompatibilityStatus.Unsupported, append.Status);
-		Assert.Contains(append.CallSites, site => site.Caller.EndsWith("::StringBuilderBenchmarkPresizedTextEntry", StringComparison.Ordinal) && site.IlOffset == 0x12 && site.RootPath.Count != 0);
+		using var module = new CompilationModule(FixtureAssembly);
+		var entry = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::StringBuilderBenchmarkPresizedTextEntry");
+		var appendCall = Assert.Single(entry.Instructions, instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Callvirt &&
+			module.DescribeFrameworkMethodToken((int)instruction.Operand!, entry, instruction.Offset).Name == "Append");
+		Assert.Contains(append.CallSites, site => site.Caller.EndsWith("::StringBuilderBenchmarkPresizedTextEntry", StringComparison.Ordinal) && site.IlOffset == appendCall.Offset && site.RootPath.Count != 0);
 		var exception = Assert.Throws<M68kCompilationException>(() => M68kCompiler.Compile(request));
 		Assert.Equal(M68kDiagnosticIds.UnsupportedFrameworkMember, exception.DiagnosticId);
 		Assert.Contains("Root path:", exception.Message, StringComparison.Ordinal);

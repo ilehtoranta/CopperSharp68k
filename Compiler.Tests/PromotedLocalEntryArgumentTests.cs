@@ -23,14 +23,17 @@ public sealed class PromotedLocalEntryArgumentTests
         var entry = new M68kMachineBlock(0, 0);
         function.Blocks.Add(entry);
         function.LocalHomes.Add(0, new M68kFrameHome(0, 4, false));
+        function.LocalHomes.Add(1, new M68kFrameHome(1, 4, false));
         int Value(M68kRegister? fixedRegister = null) => function.CreateValue(
             CilStackValueKind.Int32, M68kMachineValueWidth.Long,
             fixedRegister is { } r ? M68kRegisterSet.From(r) : M68kRegisterSet.Data,
             precoloredRegister: fixedRegister).Id;
         var incoming = Value(M68kRegister.D0);
         var argument = Value();
+        var volatileRead = Value();
         var loaded = Value();
         var memory = new M68kMemoryObject(M68kMemoryObjectKind.FrameSlot, "0", Offset: 0, Size: 4);
+        var boundaryMemory = new M68kMemoryObject(M68kMemoryObjectKind.FrameSlot, "1", Offset: 0, Size: 4);
         entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Argument, 0,
             definitions: [incoming], argumentIndex: 0));
         entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Copy, 0,
@@ -39,8 +42,10 @@ public sealed class PromotedLocalEntryArgumentTests
             uses: [argument], argumentIndex: 0, memorySize: 4,
             memoryEffect: M68kMachineMemoryEffect.Write,
             exactMemoryAccesses: [new(memory, M68kExactMemoryAccessKind.Write, argument)]));
-        entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.Other, 2,
-            memoryEffect: M68kMachineMemoryEffect.Volatile));
+        entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalLoad, 2,
+            definitions: [volatileRead], argumentIndex: 1, memorySize: 4,
+            memoryEffect: M68kMachineMemoryEffect.Read | M68kMachineMemoryEffect.Volatile,
+            exactMemoryAccesses: [new(boundaryMemory, M68kExactMemoryAccessKind.Read, volatileRead)]));
         entry.Instructions.Add(function.CreateInstruction(M68kMachineOperation.LocalLoad, 3,
             definitions: [loaded], argumentIndex: 0, memorySize: 4,
             memoryEffect: M68kMachineMemoryEffect.Read,

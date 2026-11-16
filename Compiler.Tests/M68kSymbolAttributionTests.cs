@@ -32,16 +32,16 @@ public sealed class M68kSymbolAttributionTests
 			PeepholeOptimization = M68kPeepholeOptimizationMode.FixedPoint
 		});
 
-		var finalMethod = Assert.Single(result.Symbols, static symbol =>
+		Assert.Single(result.Symbols, static symbol =>
 			symbol.Name.EndsWith("::LargeDenseSwitch", StringComparison.Ordinal));
+		// Debug IL can introduce additional reachable helper methods after the
+		// switch method. Check whichever managed method was emitted last.
+		var finalMethod = result.Symbols
+			.Where(static symbol => symbol.Name.Contains("::", StringComparison.Ordinal))
+			.MaxBy(static symbol => symbol.Address)!;
 		var export = Assert.Single(result.Symbols, static symbol =>
 			symbol.Name == "fixture.add");
 		var finalMethodEnd = checked(finalMethod.Address + (uint)finalMethod.Size);
-		var lastManagedAddress = result.Symbols
-			.Where(static symbol => symbol.Name.Contains("::", StringComparison.Ordinal))
-			.Max(static symbol => symbol.Address);
-
-		Assert.Equal(lastManagedAddress, finalMethod.Address);
 		Assert.True(finalMethod.Address < export.Address);
 		Assert.True(
 			finalMethodEnd <= export.Address,

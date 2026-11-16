@@ -17,7 +17,9 @@ public sealed class StringBuilderNullableJoinAdmissionTests
 			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowGenericJoinEnumeration).Assembly.Location],
 			frameworkImplementationPack: FrameworkImplementationPackLoader.Load(new M68kFrameworkImplementationPackOptions(pack.ManifestPath)));
 		var entry = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibGenericDecimalNullableOwnershipEntry");
-		var call = entry.Instructions.Single(instruction => instruction.Offset == 0x53);
+		var call = entry.Instructions.Single(instruction => instruction.OpCode == System.Reflection.Emit.OpCodes.Call &&
+			module.DescribeFrameworkMethodToken((int)instruction.Operand!, entry, instruction.Offset) is var member &&
+			member.Name == "GetBits" && member.DeclaringType.FullMetadataName == "System.Decimal");
 		var target = module.ResolveMethodToken((int)call.Operand!, entry, call.Offset);
 		Assert.True(target.Definition is not null, $"{module.DescribeFrameworkMethodToken((int)call.Operand!, entry, call.Offset)} => {target.ImportName}");
 	}
@@ -57,7 +59,8 @@ public sealed class StringBuilderNullableJoinAdmissionTests
 			managedAssemblyPaths: [typeof(CopperSharp.Runtime.ShadowGenericJoinEnumeration).Assembly.Location],
 			frameworkImplementationPack: FrameworkImplementationPackLoader.Load(new M68kFrameworkImplementationPackOptions(pack.ManifestPath)));
 		var entry = module.ResolveEntryPoint("CopperSharp.Compiler.Tests.CompilerFixtures::CoreLibSmallNullableEnumTransportEntry");
-		var call = entry.Instructions.Single(instruction => instruction.Offset == 0x21);
+		var call = entry.Instructions.Single(instruction => instruction.ConstrainedTypeToken is not null &&
+			module.DescribeFrameworkMethodToken((int)instruction.Operand!, entry, instruction.Offset).Name == "ToString");
 		var type = module.ResolveTypeToken(call.ConstrainedTypeToken!.Value, entry, call.Offset);
 		var declaration = module.ResolveMethodToken((int)call.Operand!, entry, call.Offset).Definition!;
 		Assert.True(CompilationModule.AreSameClosedJoinType(type, declaration.ConstructedDeclaringType));

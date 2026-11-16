@@ -9984,22 +9984,24 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 
 	private bool TryRemoveRedundantTest()
 	{
-		var (startOffset, endOffset) = _assembler.GetAnalysisRange();
-		for (var offset = startOffset; offset + 1 < endOffset; offset += 2)
+		var instructions = _assembler.GetInstructionStream();
+		for (var index = 0; index + 1 < instructions.Count; index++)
 		{
+			var move = instructions[index];
+			var testInstruction = instructions[index + 1];
+			var offset = move.Offset;
+			if (!move.IsDecoded || !testInstruction.IsDecoded ||
+				testInstruction.Offset != move.Offset + move.Length || testInstruction.Length != 2)
+				continue;
 			if (!TryGetFlagSettingMoveLength(
 				offset,
 				out var moveLength,
-				out var destination))
+				out var destination) || moveLength != move.Length)
 			{
 				continue;
 			}
 
 			var testOffset = offset + moveLength;
-			if (testOffset + 1 >= endOffset)
-			{
-				continue;
-			}
 			if (HasLabelAt(testOffset) &&
 				!CanRelocateLabels(testOffset))
 			{

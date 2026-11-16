@@ -828,7 +828,9 @@ internal static class CilMachineIrBuilder
 							item.Index)) &&
 				(method.Locals[index].IsSupportedScalar ||
 				 method.Locals[index].IsReference ||
-				 method.Locals[index].IsNullable ||
+				 // Wider nullable values use aggregate-address stack values and
+				 // therefore require an addressable local home.
+				 module.IsCompactNullableType(method.Locals[index]) ||
 				 IsAddressType(method.Locals[index]) ||
 				 module.IsTransparentScalarType(method.Locals[index]));
 		}

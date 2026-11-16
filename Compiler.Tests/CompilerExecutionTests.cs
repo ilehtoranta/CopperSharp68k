@@ -2439,7 +2439,8 @@ public sealed partial class CompilerExecutionTests
 				Heap = new M68kHeapOptions { StartAddress = 0x0004_0000, Size = 0x0000_8000 },
 				FrameworkImplementationPack = new M68kFrameworkImplementationPackOptions(pack.ManifestPath) { EnableUnlistedManagedBodies = true }
 			});
-			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000));
+			var returned = Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, maxInstructions: 200_000_000);
+			Assert.True(returned == 42, $"Memory fixture '{entry}' returned {returned}.");
 			Assert.DoesNotContain(result.Symbols, static symbol => symbol.Name.Contains("System.Reflection.", StringComparison.Ordinal));
 		}
 	}

@@ -104,7 +104,21 @@ public sealed class ParsedCompositeFormatTests
 		foreach (var call in caller.Instructions.Where(instruction => instruction.OpCode == OpCodes.Call))
 		{
 			var closed = module.ResolveMethodToken((int)call.Operand!, caller, call.Offset).Definition!;
-			var method = module.GetMethod(closed.Handle) with { MethodTypeArguments = closed.MethodTypeArguments };
+			var original = module.GetMethod(closed.Handle) with { MethodTypeArguments = closed.MethodTypeArguments };
+			var start = original.Instructions.ToList().FindIndex(instruction => instruction.OpCode == OpCodes.Ldtoken);
+			Assert.True(start >= 0);
+			var sequence = original.Instructions.Skip(start).Take(5).ToArray();
+			Assert.Equal(new[] { OpCodes.Ldtoken, OpCodes.Call, OpCodes.Ldtoken, OpCodes.Call, OpCodes.Call },
+				sequence.Select(instruction => instruction.OpCode));
+			var notEqual = original.Name == "CompositeTypeNotEqual";
+			var method = original with { Instructions = [
+				.. sequence.Select((instruction, offset) => instruction with { Offset = offset, NextOffset = offset + 1 }),
+				new CilInstruction(5, OpCodes.Brtrue_S, 8, 6),
+				new CilInstruction(6, OpCodes.Ldc_I4_S, notEqual ? 43 : 29, 7),
+				new CilInstruction(7, OpCodes.Ret, null, 8),
+				new CilInstruction(8, OpCodes.Ldc_I4_S, notEqual ? 31 : 17, 9),
+				new CilInstruction(9, OpCodes.Ret, null, 10)
+			] };
 			var folded = CilTypePredicateSpecializer.Specialize(method, module);
 			Assert.DoesNotContain(folded.Instructions, instruction => instruction.OpCode == OpCodes.Ldtoken);
 			Assert.Equal(expected[index++], Convert.ToInt32(Assert.Single(folded.Instructions, instruction => instruction.OpCode == OpCodes.Ldc_I4_S).Operand));
