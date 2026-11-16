@@ -116,6 +116,23 @@ a speedup. Overall, seven of eight full-ROM timing comparisons pass.
   `CoreLibGenericSingleNullableJoinsEntry` case passes in 70 seconds; the broad
   run is not classified as a reproduced deadlock.
 
+## Pinned SDK rerun
+
+On 12 November 2026, the focused Release arithmetic tests were rebuilt and
+rerun with .NET SDK **10.0.301**, installed per-user under
+`C:\Users\ilkle\.dotnet`. The selected SDK was verified with `dotnet --version`;
+`global.json` retained version `10.0.301` and `rollForward: disable` unchanged.
+The run at compiler commit `12427cb03` passed **318 tests, with zero failures
+and zero skips**, in 50 seconds. The filter selected `LongDivisionPairTests`
+and `IntegerArithmeticSelectionTests`. Build output included the existing
+nullable-assignment warning in `AhiBindingTests.cs`.
+
+The log is retained in the sibling CopperFS checkout's ignored
+`artifacts/divrem-68020-20261112/divrem-sdk301.log`, with the machine-readable
+receipt at `artifacts/divrem-68020-20261112/results/divrem-sdk301.trx`.
+This rerun covers the focused arithmetic suite; the native replay and full-ROM
+measurements above were not repeated.
+
 ## Reproduction and scope
 
 ```powershell
