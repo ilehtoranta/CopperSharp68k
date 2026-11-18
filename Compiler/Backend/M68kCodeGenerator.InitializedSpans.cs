@@ -13,9 +13,13 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
-	private sealed record InitializedData(string Label, byte[] Bytes);
+	private sealed record InitializedData(string Label, byte[] Bytes)
+	{
+		public bool RequiresDistinctAddress { get; set; }
+	}
+
 	private readonly Dictionary<string, InitializedData> _initializedDataBySource = new(StringComparer.Ordinal);
-	private static readonly IEqualityComparer<byte[]> InitializedArrayPayloadComparer = EqualityComparer<byte[]>.Create(
+	private static readonly IEqualityComparer<byte[]> InitializedPayloadComparer = EqualityComparer<byte[]>.Create(
 		static (left, right) => left.AsSpan().SequenceEqual(right),
 		static bytes =>
 		{
@@ -23,7 +27,6 @@ internal sealed partial class M68kCodeGenerator
 			hash.AddBytes(bytes);
 			return hash.ToHashCode();
 		});
-	private readonly Dictionary<byte[], InitializedData> _initializedArrayPayloads = new(InitializedArrayPayloadComparer);
 
 	private (InitializedData Data, int Length) RegisterInitializedSpanData(CilMethod caller, CilInstruction fieldToken, CilInstruction call)
 	{
@@ -37,16 +40,20 @@ internal sealed partial class M68kCodeGenerator
 			throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, "Initialized spans require fixed-size primitive elements.", caller.DisplayName, call.Offset);
 		var token = (int)fieldToken.Operand!;
 		var key = $"{caller.ModuleName}:{token:X8}:{size}";
-		if (_initializedDataBySource.TryGetValue(key, out var existing)) return (existing, existing.Bytes.Length / size);
-		var source = _module.ReadInitializedFieldRva(token, caller, fieldToken.Offset);
-		if (source.Length % size != 0)
-			throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata, "Initialized field size is not a multiple of the span element size.", caller.DisplayName, call.Offset);
-		var bytes = new byte[source.Length];
-		for (var offset = 0; offset < bytes.Length; offset += size)
-		for (var lane = 0; lane < size; lane++) bytes[offset + lane] = source[offset + size - 1 - lane];
-		var data = new InitializedData($"runtime:initialized-span:{_initializedDataBySource.Count:X4}", bytes);
-		_initializedDataBySource.Add(key, data);
-		return (data, bytes.Length / size);
+		if (!_initializedDataBySource.TryGetValue(key, out var data))
+		{
+			var source = _module.ReadInitializedFieldRva(token, caller, fieldToken.Offset);
+			if (source.Length % size != 0)
+				throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata, "Initialized field size is not a multiple of the span element size.", caller.DisplayName, call.Offset);
+			var bytes = new byte[source.Length];
+			for (var offset = 0; offset < bytes.Length; offset += size)
+			for (var lane = 0; lane < size; lane++) bytes[offset + lane] = source[offset + size - 1 - lane];
+			data = new InitializedData($"runtime:initialized-span:{_initializedDataBySource.Count:X4}", bytes);
+			_initializedDataBySource.Add(key, data);
+		}
+		data.RequiresDistinctAddress = data.RequiresDistinctAddress ||
+			!HasPrivateInitializedSpanUses(caller, fieldToken, call, element);
+		return (data, data.Bytes.Length / size);
 	}
 
 	private bool TryEmitInitializedFieldAddress(CilMethod caller, CilInstruction source, M68kRegister destination)
@@ -91,11 +98,7 @@ internal sealed partial class M68kCodeGenerator
 		for (var offset = 0; offset < bytes.Length; offset += size)
 		for (var lane = 0; lane < size; lane++) bytes[offset + lane] = source[offset + size - 1 - lane];
 		// The array initializer only copies target-order bytes into a new array.
-		if (!_initializedArrayPayloads.TryGetValue(bytes, out var data))
-		{
-			data = new InitializedData($"runtime:initialized-array:{_initializedDataBySource.Count:X4}", bytes);
-			_initializedArrayPayloads.Add(bytes, data);
-		}
+		var data = new InitializedData($"runtime:initialized-array:{_initializedDataBySource.Count:X4}", bytes);
 		_initializedDataBySource.Add(key, data);
 		return data;
 	}
@@ -106,7 +109,7 @@ internal sealed partial class M68kCodeGenerator
 			!(caller.Name == "get_Log2DeBruijn" && _module.IsPinnedFloatingHardwareMethod(caller))) || source.OpCode != OpCodes.Ldsflda ||
 			!_module.HasInitializedFieldRva((int)source.Operand!, caller, source.Offset)) return false;
 		var length = caller.Instructions.FirstOrDefault(instruction => instruction.Offset == source.NextOffset);
-		if (length is null || !length.OpCode.Name!.StartsWith("ldc.i4", StringComparison.Ordinal)) return false;
+		if (length is null || !TryGetConstant(length, out var byteCount)) return false;
 		var constructor = caller.Instructions.FirstOrDefault(instruction => instruction.Offset == length.NextOffset);
 		if (constructor is null || constructor.OpCode != OpCodes.Newobj) return false;
 		var member = FrameworkImplementationProfile.Canonicalize(_module.DescribeFrameworkMethodToken((int)constructor.Operand!, caller, constructor.Offset));
@@ -125,15 +128,74 @@ internal sealed partial class M68kCodeGenerator
 			data = new InitializedData($"runtime:initialized-span:{_initializedDataBySource.Count:X4}", bytes);
 			_initializedDataBySource.Add(key, data);
 		}
+		data.RequiresDistinctAddress = data.RequiresDistinctAddress ||
+			(uint)byteCount > (uint)data.Bytes.Length ||
+			!HasPrivateInitializedSpanUses(caller, source, constructor, new CilType(CilTypeKind.UnsignedInteger, 1, "byte"));
 		EmitAllocatedAddress(data.Label, destination); return true;
+	}
+
+	private bool HasPrivateInitializedSpanUses(CilMethod caller, CilInstruction source, CilInstruction factory, CilType element)
+	{
+		// Keep the proof local: the factory result goes straight into a local, and
+		// every use of that local reads its length or one primitive value.
+		var instructions = caller.Instructions;
+		var store = instructions.FirstOrDefault(instruction => instruction.Offset == factory.NextOffset);
+		if (caller.ExceptionRegions.Count != 0 || store is null || !TryGetStoreLocalIndex(store, out var localIndex) ||
+			(uint)localIndex >= (uint)caller.Locals.Length ||
+			!caller.Locals[localIndex].DisplayName.StartsWith("System.ReadOnlySpan`1<", StringComparison.Ordinal) ||
+			caller.Locals[localIndex].GenericArguments is not [var localElement] || !localElement.Equals(element))
+			return false;
+
+		var branchTargets = GetBranchTargets(instructions);
+		if (branchTargets.Any(offset => offset > source.Offset && offset <= store.Offset)) return false;
+
+		for (var index = 0; index < instructions.Count; index++)
+		{
+			var instruction = instructions[index];
+			if (TryGetLoadLocalIndex(instruction, out var loadedLocal) && loadedLocal == localIndex) return false;
+			if (TryGetLoadLocalAddressIndex(instruction, out var addressedLocal) && addressedLocal == localIndex &&
+				!IsInitializedSpanValueRead(caller, index, element, branchTargets)) return false;
+		}
+		return true;
+	}
+
+	private bool IsInitializedSpanValueRead(CilMethod caller, int addressIndex, CilType element, HashSet<int> branchTargets)
+	{
+		var instructions = caller.Instructions;
+		if (addressIndex + 1 >= instructions.Count) return false;
+		var next = instructions[addressIndex + 1];
+		if (branchTargets.Contains(next.Offset)) return false;
+		if (next.OpCode == OpCodes.Call || next.OpCode == OpCodes.Callvirt)
+		{
+			var accessor = _module.ResolveMethodToken((int)next.Operand!, caller, next.Offset);
+			return accessor.ImportName == $"intrinsic:readonly-span-length:{element.DisplayName}" ||
+				accessor.ImportName == $"intrinsic:readonly-span-is-empty:{element.DisplayName}";
+		}
+
+		if (addressIndex + 3 >= instructions.Count ||
+			!(TryGetConstant(next, out _) || TryGetLoadLocalIndex(next, out _) || TryGetArgumentIndex(next, out _))) return false;
+		var call = instructions[addressIndex + 2];
+		var load = instructions[addressIndex + 3];
+		if ((call.OpCode != OpCodes.Call && call.OpCode != OpCodes.Callvirt) || branchTargets.Contains(call.Offset) ||
+			branchTargets.Contains(load.Offset) || !IsIndirectLoad(load.OpCode) ||
+			load.OpCode == OpCodes.Ldobj || load.OpCode == OpCodes.Ldind_Ref || load.OpCode == OpCodes.Ldind_I ||
+			GetIndirectAccess(load.OpCode).Size != element.Size) return false;
+		var indexer = _module.ResolveMethodToken((int)call.Operand!, caller, call.Offset);
+		return indexer.ImportName == $"intrinsic:readonly-span-get-item:{element.DisplayName}";
 	}
 
 	private void EmitInitializedData()
 	{
-		foreach (var data in _initializedDataBySource.Values.DistinctBy(static data => data.Label, StringComparer.Ordinal))
+		// By now all emitted references have been seen. An escaping use of any
+		// view of the same backing data keeps the source at its own address.
+		var pooledLabels = _initializedDataBySource.Values.Where(static data => !data.RequiresDistinctAddress)
+			.ToLookup(static data => data.Bytes, static data => data.Label, InitializedPayloadComparer);
+		foreach (var data in _initializedDataBySource.Values)
 		{
+			IEnumerable<string> labels = data.RequiresDistinctAddress ? [data.Label] : pooledLabels[data.Bytes];
+			if (labels.First() != data.Label) continue;
 			_assembler.AlignWord();
-			_assembler.Mark(data.Label);
+			foreach (var label in labels) _assembler.Mark(label);
 			foreach (var value in data.Bytes) _assembler.EmitByte(value);
 		}
 	}

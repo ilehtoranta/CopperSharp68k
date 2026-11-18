@@ -45,6 +45,16 @@ public static class ExternalMethods
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static uint[] CreateInitializedWords() => new uint[] { 0x12345678, 0x9ABCDE01, 0xA742E35D };
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint ReadInitializedSpan(int index)
+	{
+		ReadOnlySpan<uint> data = [0x1234A55A, 0x89ABCDEF, 0xC53B10EA];
+		return data[index];
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static ReadOnlySpan<uint> GetInitializedSpan() => [0x1234A55A, 0x89ABCDEF, 0xC53B10EA];
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static uint ReadGuestUInt32(APTR address, int offset) =>
 		APTR.ReadUInt32(address, offset);

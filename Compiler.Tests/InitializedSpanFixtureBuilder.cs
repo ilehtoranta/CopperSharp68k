@@ -54,4 +54,36 @@ internal static class InitializedSpanFixtureBuilder
 		assembly.Save(path);
 		return path;
 	}
+
+	public static string CreateByteSpanPoolingProbe(string directory, byte[] bytes, bool oversized)
+	{
+		var assembly = new PersistedAssemblyBuilder(new AssemblyName("ByteSpanPoolingProbe"), typeof(object).Assembly);
+		var module = assembly.DefineDynamicModule("ByteSpanPoolingProbe");
+		var type = module.DefineType("ByteSpanPoolingProbe", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed);
+		var first = type.DefineInitializedData("First", bytes, FieldAttributes.Static | FieldAttributes.Private);
+		var second = type.DefineInitializedData("Second", bytes, FieldAttributes.Static | FieldAttributes.Private);
+		var entry = type.DefineMethod("Entry", MethodAttributes.Public | MethodAttributes.Static, typeof(int), Type.EmptyTypes);
+		var il = entry.GetILGenerator();
+		var spanType = typeof(ReadOnlySpan<byte>);
+		var local = il.DeclareLocal(spanType);
+		var constructor = spanType.GetConstructor([typeof(void).MakePointerType(), typeof(int)])!;
+		var indexer = spanType.GetProperty("Item")!.GetMethod!;
+		foreach (var (field, length) in new[] { (first, bytes.Length), (second, bytes.Length + (oversized ? 1 : 0)) })
+		{
+			il.Emit(OpCodes.Ldsflda, field);
+			il.Emit(OpCodes.Ldc_I4, length);
+			il.Emit(OpCodes.Newobj, constructor);
+			il.Emit(OpCodes.Stloc, local);
+			il.Emit(OpCodes.Ldloca, local);
+			il.Emit(OpCodes.Ldc_I4_0);
+			il.Emit(OpCodes.Call, indexer);
+			il.Emit(OpCodes.Ldind_U1);
+		}
+		il.Emit(OpCodes.Add);
+		il.Emit(OpCodes.Ret);
+		type.CreateType();
+		var path = Path.Combine(directory, "ByteSpanPoolingProbe.dll");
+		assembly.Save(path);
+		return path;
+	}
 }
