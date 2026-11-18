@@ -304,7 +304,9 @@ admission rule, general reflection, arbitrary P/Invoke, and unsupported CIL
 opcodes remain fail-closed. Direct access to RVA-initialized static fields is
 also rejected: ordinary static storage cannot preserve arbitrary PE payloads
 with an unspecified target byte order. Supported initialized-array/span
-intrinsics and verified byte-span patterns emit their own initialized data.
+intrinsics and verified byte-span patterns emit initialized data. The compiler
+shares identical array initializer payloads across modules after encoding them
+in target byte order. Each initialization copies the payload into a fresh array.
 Floating point,
 boxing, and delegates are available only through their explicitly admitted
 compiler/runtime profiles; they are not general CoreCLR-compatible services. Allocation

@@ -8242,10 +8242,10 @@ internal sealed partial class M68kCodeGenerator
 			var field = caller.Instructions.LastOrDefault(source => source.NextOffset == call.Offset);
 			if (field is null) throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction,
 				"Initialized spans require an immediate field token.", caller.DisplayName, call.Offset);
-			var data = RegisterInitializedSpanData(caller, field, call);
+			var (_, length) = RegisterInitializedSpanData(caller, field, call);
 			EmitAllocatedStackLoad(M68kRegister.A1, 0);
 			EmitAllocatedBaseStore(Use(0), M68kRegister.A1, M68kMachineValueWidth.Long, 0);
-			EmitAllocatedImmediate(data.Bytes.Length / data.ElementSize, M68kRegister.D3);
+			EmitAllocatedImmediate(length, M68kRegister.D3);
 			EmitAllocatedBaseStore(M68kRegister.D3, M68kRegister.A1, M68kMachineValueWidth.Long, 4);
 			EmitAllocatedBaseClearLong(M68kRegister.A1, 8);
 			return;

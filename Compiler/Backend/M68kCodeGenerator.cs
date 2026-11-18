@@ -10327,7 +10327,7 @@ internal sealed partial class M68kCodeGenerator
 		}) : null;
 		_assembler.AlignWord();
 		EmitEnumData();
-		EmitInitializedSpanData();
+		EmitInitializedData();
 		// A final byte blob can have odd length. The descriptors and dispatch
 		// tables that follow contain word/long fields read by native code and GC.
 		_assembler.AlignWord();

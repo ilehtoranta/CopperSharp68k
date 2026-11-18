@@ -5,6 +5,7 @@
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using CopperSharp.Compiler.Tests.MultiModule;
 
 namespace CopperSharp.Compiler.Tests;
 
@@ -68,10 +69,42 @@ public sealed partial class CompilerExecutionTests
 			Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, initialStackPointer: 0x0020_0000));
 		}
 	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
+	public void InitializedArrayPayloadsArePooledAcrossModules(M68kCpuTarget target, Copper68k.M68kCpuModel model)
+	{
+		var result = M68kCompiler.Compile(new M68kCompilationRequest {
+			AssemblyPath = FixtureAssembly, EntryPoint = "CopperSharp.Compiler.Tests.CompilerFixtures::PooledArrayInitializersEntry",
+			ManagedAssemblyPaths = [typeof(ExternalMethods).Assembly.Location],
+			IncludedExportNames = [], Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.ManagedPoolMarkSweepGc,
+			GcSweepStrategy = M68kGcSweepStrategy.EveryAllocation,
+			Heap = new M68kHeapOptions { StartAddress = 0x0010_0000, Size = 0x8000 }
+		});
+		Assert.Equal(42u, Execute(CreateHunkBus(result), model, HunkLoadAddress + result.EntryPoint, initialStackPointer: 0x0020_0000));
+
+		var payload = Convert.FromHexString("123456789ABCDE01A742E35D");
+		var offset = result.Code.AsSpan().IndexOf(payload);
+		Assert.True(offset >= 0, "The array initializer payload should be present in the image.");
+		Assert.Equal(-1, result.Code.AsSpan(offset + 1).IndexOf(payload));
+		Assert.True(result.Code.AsSpan().IndexOf(Convert.FromHexString("123456789ABCDE01A742E35E")) >= 0);
+	}
 }
 
 public static partial class CompilerFixtures
 {
+	public static int PooledArrayInitializersEntry()
+	{
+		var bytes = new byte[] { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0x01, 0xA7, 0x42, 0xE3, 0x5D };
+		var different = new byte[] { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0x01, 0xA7, 0x42, 0xE3, 0x5E };
+		var words = ExternalMethods.CreateInitializedWords();
+		var otherWords = ExternalMethods.CreateInitializedWords();
+		words[0] = 0;
+		return bytes[0] == 0x12 && bytes[11] == 0x5D && different[11] == 0x5E && words[0] == 0 &&
+			otherWords[0] == 0x12345678 && otherWords[1] == 0x9ABCDE01 && otherWords[2] == 0xA742E35D ? 42 : 1;
+	}
+
 	public static int InitializedPrimitiveArraysEntry()
 	{
 		var bytes = new byte[] { 1, 0x80, 0xFE, 0xFF };

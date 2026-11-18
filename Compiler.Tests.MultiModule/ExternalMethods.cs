@@ -42,6 +42,9 @@ public static class ExternalMethods
 	[MethodImpl(MethodImplOptions.NoInlining)]
 	public static int AddOne<T>(int value) where T : struct => value + 1;
 
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static uint[] CreateInitializedWords() => new uint[] { 0x12345678, 0x9ABCDE01, 0xA742E35D };
+
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public static uint ReadGuestUInt32(APTR address, int offset) =>
 		APTR.ReadUInt32(address, offset);

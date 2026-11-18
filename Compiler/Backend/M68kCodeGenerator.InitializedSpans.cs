@@ -13,10 +13,19 @@ namespace CopperSharp.Compiler.Backend;
 
 internal sealed partial class M68kCodeGenerator
 {
-	private sealed record InitializedSpanData(string Label, byte[] Bytes, int ElementSize);
-	private readonly Dictionary<string, InitializedSpanData> _initializedSpanData = new(StringComparer.Ordinal);
+	private sealed record InitializedData(string Label, byte[] Bytes);
+	private readonly Dictionary<string, InitializedData> _initializedDataBySource = new(StringComparer.Ordinal);
+	private static readonly IEqualityComparer<byte[]> InitializedArrayPayloadComparer = EqualityComparer<byte[]>.Create(
+		static (left, right) => left.AsSpan().SequenceEqual(right),
+		static bytes =>
+		{
+			var hash = new HashCode();
+			hash.AddBytes(bytes);
+			return hash.ToHashCode();
+		});
+	private readonly Dictionary<byte[], InitializedData> _initializedArrayPayloads = new(InitializedArrayPayloadComparer);
 
-	private InitializedSpanData RegisterInitializedSpanData(CilMethod caller, CilInstruction fieldToken, CilInstruction call)
+	private (InitializedData Data, int Length) RegisterInitializedSpanData(CilMethod caller, CilInstruction fieldToken, CilInstruction call)
 	{
 		var target = _module.ResolveMethodToken((int)call.Operand!, caller, call.Offset);
 		if (target.ImportName != "intrinsic:initialized-data-span" || fieldToken.OpCode != OpCodes.Ldtoken ||
@@ -28,16 +37,16 @@ internal sealed partial class M68kCodeGenerator
 			throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, "Initialized spans require fixed-size primitive elements.", caller.DisplayName, call.Offset);
 		var token = (int)fieldToken.Operand!;
 		var key = $"{caller.ModuleName}:{token:X8}:{size}";
-		if (_initializedSpanData.TryGetValue(key, out var existing)) return existing;
+		if (_initializedDataBySource.TryGetValue(key, out var existing)) return (existing, existing.Bytes.Length / size);
 		var source = _module.ReadInitializedFieldRva(token, caller, fieldToken.Offset);
 		if (source.Length % size != 0)
 			throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata, "Initialized field size is not a multiple of the span element size.", caller.DisplayName, call.Offset);
 		var bytes = new byte[source.Length];
 		for (var offset = 0; offset < bytes.Length; offset += size)
 		for (var lane = 0; lane < size; lane++) bytes[offset + lane] = source[offset + size - 1 - lane];
-		var data = new InitializedSpanData($"runtime:initialized-span:{_initializedSpanData.Count:X4}", bytes, size);
-		_initializedSpanData.Add(key, data);
-		return data;
+		var data = new InitializedData($"runtime:initialized-span:{_initializedDataBySource.Count:X4}", bytes);
+		_initializedDataBySource.Add(key, data);
+		return (data, bytes.Length / size);
 	}
 
 	private bool TryEmitInitializedFieldAddress(CilMethod caller, CilInstruction source, M68kRegister destination)
@@ -49,12 +58,12 @@ internal sealed partial class M68kCodeGenerator
 			throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedInstruction, "Initialized field handles may only feed an immediate span factory.", caller.DisplayName, source.Offset);
 		var target = _module.ResolveMethodToken((int)next.Operand!, caller, next.Offset);
 		var data = target.ImportName == "intrinsic:initialize-array"
-			? RegisterInitializedArrayData(caller, next) : RegisterInitializedSpanData(caller, source, next);
+			? RegisterInitializedArrayData(caller, next) : RegisterInitializedSpanData(caller, source, next).Data;
 		EmitAllocatedAddress(data.Label, destination);
 		return true;
 	}
 
-	private InitializedSpanData RegisterInitializedArrayData(CilMethod caller, CilInstruction call)
+	private InitializedData RegisterInitializedArrayData(CilMethod caller, CilInstruction call)
 	{
 		var index = caller.Instructions.ToList().FindIndex(instruction => instruction.Offset == call.Offset);
 		if (index < 4 || caller.Instructions[index - 1].OpCode != OpCodes.Ldtoken ||
@@ -74,15 +83,20 @@ internal sealed partial class M68kCodeGenerator
 			throw new M68kCompilationException(M68kDiagnosticIds.UnsupportedSignature, "Initialized arrays require fixed-size primitive elements.", caller.DisplayName, call.Offset);
 		var field = caller.Instructions[index - 1];
 		var key = $"array:{caller.ModuleName}:{field.Operand}:{size}:{count}";
-		if (_initializedSpanData.TryGetValue(key, out var existing)) return existing;
+		if (_initializedDataBySource.TryGetValue(key, out var existing)) return existing;
 		var source = _module.ReadInitializedFieldRva((int)field.Operand!, caller, field.Offset);
 		if ((long)count * size != source.Length)
 			throw new M68kCompilationException(M68kDiagnosticIds.InvalidMetadata, "Initialized field size does not match the array's primitive storage size.", caller.DisplayName, call.Offset);
 		var bytes = new byte[source.Length];
 		for (var offset = 0; offset < bytes.Length; offset += size)
 		for (var lane = 0; lane < size; lane++) bytes[offset + lane] = source[offset + size - 1 - lane];
-		var data = new InitializedSpanData($"runtime:initialized-array:{_initializedSpanData.Count:X4}", bytes, size);
-		_initializedSpanData.Add(key, data);
+		// The array initializer only copies target-order bytes into a new array.
+		if (!_initializedArrayPayloads.TryGetValue(bytes, out var data))
+		{
+			data = new InitializedData($"runtime:initialized-array:{_initializedDataBySource.Count:X4}", bytes);
+			_initializedArrayPayloads.Add(bytes, data);
+		}
+		_initializedDataBySource.Add(key, data);
 		return data;
 	}
 
@@ -105,18 +119,18 @@ internal sealed partial class M68kCodeGenerator
 		// A byte view preserves PE byte order. No typed multi-byte reinterpretation
 		// or ordinary zero-initialized field receives this ROM address substitution.
 		var key = $"{caller.ModuleName}:{(int)source.Operand!:X8}:1";
-		if (!_initializedSpanData.TryGetValue(key, out var data))
+		if (!_initializedDataBySource.TryGetValue(key, out var data))
 		{
 			var bytes = _module.ReadInitializedFieldRva((int)source.Operand!, caller, source.Offset).ToArray();
-			data = new InitializedSpanData($"runtime:initialized-span:{_initializedSpanData.Count:X4}", bytes, 1);
-			_initializedSpanData.Add(key, data);
+			data = new InitializedData($"runtime:initialized-span:{_initializedDataBySource.Count:X4}", bytes);
+			_initializedDataBySource.Add(key, data);
 		}
 		EmitAllocatedAddress(data.Label, destination); return true;
 	}
 
-	private void EmitInitializedSpanData()
+	private void EmitInitializedData()
 	{
-		foreach (var data in _initializedSpanData.Values)
+		foreach (var data in _initializedDataBySource.Values.DistinctBy(static data => data.Label, StringComparer.Ordinal))
 		{
 			_assembler.AlignWord();
 			_assembler.Mark(data.Label);
