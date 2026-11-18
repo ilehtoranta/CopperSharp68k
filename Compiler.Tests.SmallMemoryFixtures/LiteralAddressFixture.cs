@@ -18,4 +18,7 @@ public static class LiteralAddressFixture
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static APTR RetainedAddress() => APTR.FromPointer(CString.ToUInt32(CString.FromLiteral("CZBX")));
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static uint PooledCStringAddress() => CString.ToUInt32(CString.FromLiteral("A\u00E9\0Z"));
 }

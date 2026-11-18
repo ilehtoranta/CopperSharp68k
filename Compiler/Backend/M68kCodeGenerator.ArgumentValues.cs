@@ -443,10 +443,9 @@ internal sealed partial class M68kCodeGenerator
 		if (value.IsCStringLiteral)
 		{
 			var token = (int)instruction.Operand!;
-			var identity = new CilUserStringIdentity(caller.ModuleName, token);
-			_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
+			var label = GetCStringLiteralLabel(token, caller, instruction.Offset);
 			_assembler.EmitWord(0x2F3C); // MOVE.L #cstring,-(A7)
-			_assembler.EmitAddress(CStringLabel(identity));
+			_assembler.EmitAddress(label);
 			return;
 		}
 
@@ -592,9 +591,7 @@ internal sealed partial class M68kCodeGenerator
 		if (value.IsCStringLiteral)
 		{
 			var token = (int)instruction.Operand!;
-			var identity = new CilUserStringIdentity(caller.ModuleName, token);
-			_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
-			EmitAddressImmediateToRegister(register, CStringLabel(identity));
+			EmitAddressImmediateToRegister(register, GetCStringLiteralLabel(token, caller, instruction.Offset));
 			return;
 		}
 
@@ -734,9 +731,7 @@ internal sealed partial class M68kCodeGenerator
 		if (value.IsCStringLiteral)
 		{
 			var token = (int)instruction.Operand!;
-			var identity = new CilUserStringIdentity(caller.ModuleName, token);
-			_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
-			EmitAddressImmediateToFrame(CStringLabel(identity), destination);
+			EmitAddressImmediateToFrame(GetCStringLiteralLabel(token, caller, instruction.Offset), destination);
 			return true;
 		}
 

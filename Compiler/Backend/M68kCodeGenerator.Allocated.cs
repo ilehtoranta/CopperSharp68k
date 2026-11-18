@@ -11421,11 +11421,7 @@ internal sealed partial class M68kCodeGenerator
 	{
 		caller = instruction.Origin?.SourceMethod ?? caller;
 		var literal = AllocatedPrecedingStringLiteral(caller, instruction);
-		var identity = new CilUserStringIdentity(caller.ModuleName, literal);
-		_cStringLiterals.TryAdd(
-			identity,
-			_module.GetUserString(literal, caller, instruction.IlOffset));
-		EmitAllocatedAddress(CStringLabel(identity), destination);
+		EmitAllocatedAddress(GetCStringLiteralLabel(literal, caller, instruction.IlOffset), destination);
 	}
 
 	private void EmitAllocatedAddress(string label, M68kRegister destination)

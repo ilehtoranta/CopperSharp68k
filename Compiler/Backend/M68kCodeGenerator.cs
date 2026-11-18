@@ -44,7 +44,7 @@ internal sealed partial class M68kCodeGenerator
 	private readonly Dictionary<CilFieldIdentity, CilField> _staticFields = new();
 	private readonly Dictionary<CilUserStringIdentity, string> _stringLiterals = new();
 	private readonly Dictionary<string, CilRuntimeTypeTarget> _runtimeTypeObjects = new(StringComparer.Ordinal);
-	private readonly Dictionary<CilUserStringIdentity, string> _cStringLiterals = new();
+	private readonly Dictionary<string, CilUserStringIdentity> _cStringLiterals = new(StringComparer.Ordinal);
 	private bool _usesDynamicStrings;
 	private bool _usesRuntimeEmptyString;
 	private CilType? _runtimeEmptyCharArrayElementType;
@@ -556,8 +556,8 @@ internal sealed partial class M68kCodeGenerator
 		}
 		// CString bytes are emitted after instruction layout. Publish their
 		// extents now so address folding can prove an offset stays within data.
-		foreach (var item in _cStringLiterals)
-			_assembler.DeclareDeferredDataSymbol(CStringLabel(item.Key), checked(item.Value.Length + 1));
+		foreach (var (literal, identity) in _cStringLiterals)
+			_assembler.DeclareDeferredDataSymbol(CStringLabel(identity), checked(literal.Length + 1));
 		_assembler.OptimizeForCpu(
 			_request.Cpu,
 			_request.ClrPolicy,
@@ -7822,10 +7822,22 @@ internal sealed partial class M68kCodeGenerator
 				instruction.Offset);
 		}
 
-		var identity = new CilUserStringIdentity(caller.ModuleName, token);
-		_cStringLiterals.TryAdd(identity, _module.GetUserString(token, caller, instruction.Offset));
+		var label = GetCStringLiteralLabel(token, caller, instruction.Offset);
 		_assembler.EmitWord(0x2F3C); // MOVE.L #cstring,-(A7)
-		_assembler.EmitAddress(CStringLabel(identity));
+		_assembler.EmitAddress(label);
+	}
+
+	private string GetCStringLiteralLabel(int token, CilMethod caller, int ilOffset)
+	{
+		// Each supported character maps to one byte, including embedded NULs.
+		var literal = _module.GetUserString(token, caller, ilOffset);
+		if (!_cStringLiterals.TryGetValue(literal, out var identity))
+		{
+			identity = new CilUserStringIdentity(caller.ModuleName, token);
+			_cStringLiterals.Add(literal, identity);
+		}
+
+		return CStringLabel(identity);
 	}
 
 	private bool IsNextCStringFromLiteralCall(CilMethod caller, CilInstruction instruction)
@@ -10541,19 +10553,19 @@ internal sealed partial class M68kCodeGenerator
 			_assembler.EmitLong(0);
 		}
 
-		foreach (var item in _cStringLiterals
-			.OrderBy(item => item.Key.ModuleName, StringComparer.Ordinal)
-			.ThenBy(item => item.Key.Token))
+		foreach (var (literal, identity) in _cStringLiterals
+			.OrderBy(item => item.Value.ModuleName, StringComparer.Ordinal)
+			.ThenBy(item => item.Value.Token))
 		{
 			_assembler.AlignWord();
-			_assembler.Mark(CStringLabel(item.Key));
-			foreach (var character in item.Value)
+			_assembler.Mark(CStringLabel(identity));
+			foreach (var character in literal)
 			{
 				if (character > byte.MaxValue)
 				{
 					throw new M68kCompilationException(
 						M68kDiagnosticIds.UnsupportedInstruction,
-						$"CString literal '{item.Value}' contains a non-8-bit character.");
+						$"CString literal '{literal}' contains a non-8-bit character.");
 				}
 				_assembler.EmitByte((byte)character);
 			}

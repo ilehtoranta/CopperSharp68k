@@ -17881,6 +17881,28 @@ public sealed partial class CompilerExecutionTests
 
 	[Theory]
 	[MemberData(nameof(CpuTargets))]
+	public void PoolsIdenticalCStringLiteralsAcrossAssemblies(M68kCpuTarget target, M68kCpuModel model)
+	{
+		var result = AmigaM68kCompiler.Compile(new()
+		{
+			AssemblyPath = typeof(CrossAssemblyLiteralFixture).Assembly.Location,
+			ManagedAssemblyPaths = [typeof(LiteralAddressFixture).Assembly.Location],
+			EntryPoint = "CrossAssemblyLiteralFixture::CStringPoolingEntry",
+			Cpu = target,
+			RuntimeProfile = M68kRuntimeProfile.Freestanding,
+			OutputFormat = M68kOutputFormat.Hunk,
+			MemoryManagement = M68kMemoryManagement.None,
+			ExceptionMode = M68kExceptionMode.Yolo,
+		});
+		var bus = CreateHunkBus(result);
+
+		var address = checked((int)Execute(bus, model, HunkLoadAddress + result.EntryPoint));
+		Assert.True(address >= HunkLoadAddress, "Identical C strings should share one address and distinct C strings should have different addresses.");
+		Assert.Equal(new byte[] { 0x41, 0xE9, 0, 0x5A, 0 }, bus.Memory.AsSpan(address, 5).ToArray());
+	}
+
+	[Theory]
+	[MemberData(nameof(CpuTargets))]
 	public void ScopedCStringBufferEncodesAndReleasesNativeStorage(
 		M68kCpuTarget target,
 		M68kCpuModel model)
