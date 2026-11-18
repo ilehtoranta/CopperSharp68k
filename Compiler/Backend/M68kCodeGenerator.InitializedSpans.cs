@@ -3,6 +3,7 @@
 - SPDX-License-Identifier: MIT
 */
 
+using System.Reflection;
 using System.Reflection.Emit;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
@@ -19,6 +20,7 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private readonly Dictionary<string, InitializedData> _initializedDataBySource = new(StringComparer.Ordinal);
+	private readonly HashSet<CilMethodIdentity> _privateInitializedSpanHelpers = [];
 	private static readonly IEqualityComparer<byte[]> InitializedPayloadComparer = EqualityComparer<byte[]>.Create(
 		static (left, right) => left.AsSpan().SequenceEqual(right),
 		static bytes =>
@@ -135,6 +137,64 @@ internal sealed partial class M68kCodeGenerator
 	}
 
 	private bool HasPrivateInitializedSpanUses(CilMethod caller, CilInstruction source, CilInstruction factory, CilType element)
+	{
+		return (_privateInitializedSpanHelpers.Contains(caller.Identity) &&
+			caller.Signature.ReturnType.GenericArguments[0].Equals(element)) ||
+			HasPrivateInitializedSpanLocalUses(caller, source, factory, element);
+	}
+
+	private void AnalyzeInitializedSpanHelperCallers(
+		IReadOnlyList<CilMethod> methods, CilMethod entry, IReadOnlyList<CilExport> exports)
+	{
+		var candidates = methods.Where(static method =>
+			(method.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Private &&
+			!method.IsVirtual && !method.IsImport && !method.Signature.Header.IsInstance &&
+			method.Signature.GenericParameterCount == 0 && method.Signature.ParameterTypes.Length == 0 &&
+			method.ExceptionRegions.Count == 0 &&
+			method.Signature.ReturnType.DisplayName.StartsWith("System.ReadOnlySpan`1<", StringComparison.Ordinal) &&
+			method.Signature.ReturnType.GenericArguments.Length == 1 &&
+			(method.Instructions is [var token, var factory, var ret] && token.OpCode == OpCodes.Ldtoken &&
+			 factory.OpCode == OpCodes.Call && ret.OpCode == OpCodes.Ret ||
+			 method.Instructions is [var address, var length, var constructor, var returnSpan] &&
+			 address.OpCode == OpCodes.Ldsflda && TryGetConstant(length, out _) &&
+			 constructor.OpCode == OpCodes.Newobj && returnSpan.OpCode == OpCodes.Ret))
+			.ToDictionary(static method => method.Identity, static method => method.Signature.ReturnType.GenericArguments[0]);
+		if (candidates.Count == 0) return;
+
+		candidates.Remove(entry.Identity);
+		if (_bulkCopyMethod is not null) candidates.Remove(_bulkCopyMethod.Identity);
+		foreach (var export in exports) candidates.Remove(export.Method.Identity);
+		foreach (var method in ReachableManagedPoolMethods) candidates.Remove(method.Identity);
+		foreach (var lifecycle in _managedLifecycles)
+			foreach (var method in lifecycle.Methods) candidates.Remove(method.Identity);
+		foreach (var (alias, canonical) in _foldedMethodAliases)
+		{
+			candidates.Remove(alias);
+			candidates.Remove(canonical.Identity);
+		}
+
+		// Use original reachable IL so pruning or inlining cannot hide an escape.
+		foreach (var caller in methods)
+		{
+			if (candidates.Count == 0) break;
+			foreach (var instruction in caller.Instructions)
+			{
+				if (!IsCallInstruction(instruction) && instruction.OpCode != OpCodes.Ldftn && instruction.OpCode != OpCodes.Ldvirtftn)
+					continue;
+				var target = _module.ResolveMethodToken((int)instruction.Operand!, caller, instruction.Offset);
+				if (target.Definition is not { } helper || !candidates.TryGetValue(helper.Identity, out var element)) continue;
+				if (instruction.OpCode == OpCodes.Call && HasPrivateInitializedSpanLocalUses(caller, instruction, instruction, element))
+					_privateInitializedSpanHelpers.Add(helper.Identity);
+				else
+				{
+					candidates.Remove(helper.Identity);
+					_privateInitializedSpanHelpers.Remove(helper.Identity);
+				}
+			}
+		}
+	}
+
+	private bool HasPrivateInitializedSpanLocalUses(CilMethod caller, CilInstruction source, CilInstruction factory, CilType element)
 	{
 		// Keep the proof local: the factory result goes straight into a local, and
 		// every use of that local reads its length or one primitive value.

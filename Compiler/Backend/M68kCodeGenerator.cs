@@ -242,7 +242,8 @@ internal sealed partial class M68kCodeGenerator
 		}
 		ValidateMethodSignature(entry, isEntry: true, isExport: false);
 		var exports = _exports;
-		var methods = PruneAlwaysInlinedMethods(DiscoverReachableMethods(entry, exports), entry, exports);
+		var reachableMethods = DiscoverReachableMethods(entry, exports);
+		var methods = PruneAlwaysInlinedMethods(reachableMethods, entry, exports);
 		if (_usesFinalizers && _managedPoolRuntime is { } finalizerRuntime)
 		{
 			foreach (var field in finalizerRuntime.FinalizerFields)
@@ -251,6 +252,7 @@ internal sealed partial class M68kCodeGenerator
 			}
 		}
 		PlanIdenticalMethodFolds(methods, entry, exports);
+		AnalyzeInitializedSpanHelperCallers(reachableMethods, entry, exports);
 		var exportedMethods = exports
 			.Select(static export => export.Method.Identity)
 			.ToHashSet();

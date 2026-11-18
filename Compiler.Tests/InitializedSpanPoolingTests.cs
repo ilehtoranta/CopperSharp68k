@@ -18,7 +18,9 @@ public sealed partial class CompilerExecutionTests
 		using var pack = FrameworkImplementationPackTests.CoreLibPack.CreatePinned();
 		foreach (var (entry, copies) in new[] {
 			(nameof(CompilerFixtures.PooledReadOnlySpanEntry), 1),
-			(nameof(CompilerFixtures.ObservableReadOnlySpanEntry), 2)
+			(nameof(CompilerFixtures.ObservableReadOnlySpanEntry), 2),
+			(nameof(CompilerFixtures.PrivateHelperReadOnlySpanEntry), 1),
+			(nameof(CompilerFixtures.ObservablePrivateHelperSpanEntry), 2)
 		})
 		{
 			var result = M68kCompiler.Compile(new M68kCompilationRequest
@@ -87,5 +89,22 @@ public static partial class CompilerFixtures
 		var external = ExternalMethods.GetInitializedSpan();
 		var second = Unsafe.AsPointer(ref Unsafe.AsRef(in external[0]));
 		return first != second ? PooledReadOnlySpanEntry() : 2;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<uint> PrivateInitializedSpan() => [0x1234A55A, 0x89ABCDEF, 0xC53B10EA];
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	public static int PrivateHelperReadOnlySpanEntry()
+	{
+		var data = PrivateInitializedSpan();
+		return data[1] == 0x89ABCDEF && ExternalMethods.ReadInitializedSpan(2) == 0xC53B10EA ? 42 : 1;
+	}
+
+	public static unsafe int ObservablePrivateHelperSpanEntry()
+	{
+		var data = PrivateInitializedSpan();
+		var address = Unsafe.AsPointer(ref Unsafe.AsRef(in data[0]));
+		return *(uint*)address == 0x1234A55A ? PrivateHelperReadOnlySpanEntry() : 2;
 	}
 }

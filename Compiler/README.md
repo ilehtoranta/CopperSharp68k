@@ -309,7 +309,9 @@ shares identical array initializer payloads across modules after encoding them
 in target byte order. Each initialization copies the payload into a fresh array.
 Identical initialized span bytes can share storage when every use of the backing
 field stays in a local span and reads only its length, emptiness, or an element
-value through the bounds-checked indexer.
+value through the bounds-checked indexer. A private parameterless static helper
+that directly returns a span can participate when every reachable use is a
+direct call whose result meets the same local-use proof.
 Floating point,
 boxing, and delegates are available only through their explicitly admitted
 compiler/runtime profiles; they are not general CoreCLR-compatible services. Allocation
