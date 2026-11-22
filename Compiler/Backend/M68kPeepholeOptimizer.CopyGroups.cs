@@ -8,7 +8,6 @@ internal sealed partial class M68kPeepholeOptimizer
 {
     private bool TryFoldPostincrementLongCopy(M68kInstructionDataflow dataflow)
     {
-        if (_assembler.GeneratedCodeSizeOptions?.CompactGuestMemory != true) return false;
         var instructions = dataflow.Instructions;
         for (var n = 0; n + 1 < instructions.Count; n++)
         {
@@ -19,7 +18,6 @@ internal sealed partial class M68kPeepholeOptimizer
                 (store.Opcode & 7) != temporary || store.Offset != load.Offset + 2 ||
                 (load.Opcode & 7) == 7 || (store.Opcode >> 9 & 7) == 7 ||
                 (load.Opcode & 7) == (store.Opcode >> 9 & 7) ||
-                !GeneratedSizeEligible(load.Offset, store.Offset + 2) ||
                 !CanFoldAcrossUnreferencedIlLabels(load.Offset, store.Offset + 2) ||
                 HasInternalLabel(load) || HasInternalLabel(store) || HasAddressFixup(load) || HasAddressFixup(store) ||
                 _assembler.TryGetInstructionEffects(load.Offset, out _) || _assembler.TryGetInstructionEffects(store.Offset, out _) ||
@@ -30,7 +28,6 @@ internal sealed partial class M68kPeepholeOptimizer
             MoveLabelsToOffset(store.Offset, store.Offset + 2, load.Offset);
             _buffer.WriteWord(load.Offset, (ushort)((store.Opcode & 0xFFC0) | (load.Opcode & 0x3F)));
             _buffer.RemoveBytes(store.Offset, 2);
-            _assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.CompactGuestMemory), 2);
             return true;
         }
         return false;
@@ -38,7 +35,6 @@ internal sealed partial class M68kPeepholeOptimizer
 
     private bool TryFoldLongMemoryPointerAdvance(M68kInstructionDataflow dataflow)
     {
-        if (_assembler.GeneratedCodeSizeOptions?.CompactGuestMemory != true) return false;
         var instructions = dataflow.Instructions;
         for (var n = 0; n + 1 < instructions.Count; n++)
         {
@@ -53,7 +49,6 @@ internal sealed partial class M68kPeepholeOptimizer
                 advance.Offset != move.Offset + 2 ||
                 !(advance.Opcode == (0x5888 | address) && advance.Length == 2 ||
                   advance.Opcode == (0x41E8 | address << 9 | address) && advance.Length == 4 && advance.ExtensionWord == 4) ||
-                !GeneratedSizeEligible(move.Offset, advance.Offset + advance.Length) ||
                 !CanFoldAcrossUnreferencedIlLabels(move.Offset, advance.Offset + advance.Length) ||
                 HasInternalLabel(move) || HasInternalLabel(advance) || HasAddressFixup(move) || HasAddressFixup(advance) ||
                 _assembler.TryGetInstructionEffects(move.Offset, out _) || _assembler.TryGetInstructionEffects(advance.Offset, out _)) continue;
@@ -63,7 +58,6 @@ internal sealed partial class M68kPeepholeOptimizer
             MoveLabelsToOffset(advance.Offset, advance.Offset + advance.Length, move.Offset);
             _buffer.WriteWord(move.Offset, (ushort)(move.Opcode | (load ? 8 : 64)));
             _buffer.RemoveBytes(advance.Offset, advance.Length);
-            _assembler.RecordCodeSizeRewrite(nameof(M68kCodeSizeOptions.CompactGuestMemory), advance.Length);
             return true;
         }
         return false;

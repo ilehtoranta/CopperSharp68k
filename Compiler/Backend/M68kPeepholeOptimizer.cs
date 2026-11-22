@@ -131,12 +131,12 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 					M68kInstructionDataflow.Analyze(_assembler, _addressFixupOffsets, "dataflow.caller.peephole");
 				// A successful rewrite always starts a fresh analysis next round.
 				initialAnalysis = null;
-				var groupedTransfer = _rewriteBudget == int.MaxValue &&
-					(TryFoldLongMemoryPointerAdvance(dataflow) ||
-					 TryFoldPostincrementLongCopy(dataflow) ||
-					 TryGroupLoadedLongMemoryCopy(dataflow) ||
-					 TryGroupContiguousLongMemoryPush(dataflow));
-				if (!groupedTransfer && _rewriteBudget == int.MaxValue)
+				var foldedTransfer = TryFoldLongMemoryPointerAdvance(dataflow) ||
+					TryFoldPostincrementLongCopy(dataflow) ||
+					(_rewriteBudget == int.MaxValue &&
+						(TryGroupLoadedLongMemoryCopy(dataflow) ||
+						 TryGroupContiguousLongMemoryPush(dataflow)));
+				if (!foldedTransfer && _rewriteBudget == int.MaxValue)
 				{
 					appliedRewrites = ApplyIndependentLocalBatch(
 						dataflow.Instructions);
@@ -145,7 +145,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 						appliedRewrites = ApplyMemoryCopyBatch(dataflow);
 					}
 				}
-				changed = groupedTransfer || appliedRewrites != 0 ||
+				changed = foldedTransfer || appliedRewrites != 0 ||
 					(!_assembler.HasAnalysisScope &&
 						(TryInlineBareReturnBranches() ||
 						 TryBypassEmptySwitchEdges() ||

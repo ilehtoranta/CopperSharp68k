@@ -65,8 +65,7 @@ public sealed class M68kLoadedCopyTests
 
     private static byte[] PostincrementCopy(bool enabled, string guard = "")
     {
-        var a = new M68kAssembler { GeneratedCodeSizeOptions = new() { CompactGuestMemory = enabled },
-            GeneratedCodeSizeRanges = [("start", "end")] };
+        var a = new M68kAssembler();
         a.Mark("start"); if (guard == "entry") a.EmitBranch(M68kCondition.Equal, "store");
         int load = a.Offset; a.EmitWord(0x2018); // MOVE.L (A0)+,D0
         if (guard == "effects") a.SetInstructionEffects(load, new(0, 1, 1, 1, M68kConditionCodeSet.None,
@@ -90,26 +89,56 @@ public sealed class M68kLoadedCopyTests
         return a.Link(0x10000, new Dictionary<string, uint>()).Bytes;
     }
 
-    [Fact]
-    public void CompiledCSharpPointerAdvancesUsePostincrementInTheFullPipeline()
+    [Theory]
+    [InlineData(M68kCpuTarget.M68000)]
+    [InlineData(M68kCpuTarget.M68020)]
+    [InlineData(M68kCpuTarget.M68040)]
+    [InlineData(M68kCpuTarget.M68060)]
+    public void CompiledCSharpPointerAdvancesUsePostincrementInTheFullPipeline(M68kCpuTarget target)
     {
         var result = AmigaM68kCompiler.Compile(new()
         {
             AssemblyPath = typeof(LoadedCopyFixture).Assembly.Location,
             EntryPoint = typeof(LoadedCopyFixture).FullName + "::EntryIncrementing", IncludedExportNames = [],
-            Cpu = M68kCpuTarget.M68000, OutputFormat = M68kOutputFormat.Hunk,
+            Cpu = target, OutputFormat = M68kOutputFormat.Hunk,
             RuntimeProfile = M68kRuntimeProfile.Freestanding, MemoryManagement = M68kMemoryManagement.None,
-            ExceptionMode = M68kExceptionMode.Yolo, PeepholeOptimization = M68kPeepholeOptimizationMode.FixedPoint,
-            CodeSizeOptimizations = new() { CompactGuestMemory = true, RemoveRedundantTransport = true,
-                InlineMemoryHelpers = true, EliminateRedundantInitialization = true, SimplifyLoopPhis = true }
+            ExceptionMode = M68kExceptionMode.Yolo, PeepholeOptimization = M68kPeepholeOptimizationMode.FixedPoint
         });
         Assert.Empty(result.FrameworkAnalysis.ManagedAllocationSites);
         var method = result.Symbols.Single(s => s.Name.EndsWith("LoadedCopyFixture::CopyIncrementing"));
         var a = new M68kAssembler();
         for (var n = (int)method.Address; n < method.Address + method.Size; n += 2)
             a.EmitWord((ushort)((result.Code[n] << 8) | result.Code[n + 1]));
-        var text = a.RenderAssembly(M68kCpuTarget.M68000);
+        var text = a.RenderAssembly(target);
         Assert.Matches(@"move\.l\s+\(a[0-6]\)\+,\(a[0-6]\)\+", text);
+    }
+
+    [Theory]
+    [InlineData(M68kCpuTarget.M68000)]
+    [InlineData(M68kCpuTarget.M68020)]
+    [InlineData(M68kCpuTarget.M68040)]
+    [InlineData(M68kCpuTarget.M68060)]
+    public void BoundedPeepholesFoldAnOrderedCopyWhileDisabledPreservesIt(M68kCpuTarget target)
+    {
+        byte[] Compile(M68kPeepholeOptimizationMode mode)
+        {
+            var a = new M68kAssembler();
+            a.EmitWord(0x2010); // MOVE.L (A0),D0
+            a.EmitWord(0x5888); // ADDQ.L #4,A0
+            a.EmitWord(0x2280); // MOVE.L D0,(A1)
+            a.EmitWord(0x43E9); // LEA 4(A1),A1
+            a.EmitWord(4);
+            int ret = a.Offset;
+            a.EmitWord(0x4E75);
+            a.SetInstructionEffects(ret, new(0, 0, 128, 128, M68kConditionCodeSet.None,
+                M68kConditionCodeSet.None, M68kMemorySet.Stack, M68kMemorySet.None, 4, true, false));
+            a.OptimizeForCpu(target, peepholeOptimization: mode);
+            return a.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+        }
+
+        Assert.Equal(new byte[] { 0x22, 0xD8, 0x4E, 0x75 }, Compile(M68kPeepholeOptimizationMode.Bounded));
+        Assert.Equal(new byte[] { 0x20, 0x10, 0x58, 0x88, 0x22, 0x80, 0x43, 0xE9, 0, 4, 0x4E, 0x75 },
+            Compile(M68kPeepholeOptimizationMode.Disabled));
     }
 
     [Theory]
@@ -140,8 +169,7 @@ public sealed class M68kLoadedCopyTests
 
     private static byte[] PointerAdvance(bool enabled, bool store, bool lea, string guard = "")
     {
-        var a = new M68kAssembler { GeneratedCodeSizeOptions = new() { CompactGuestMemory = enabled },
-            GeneratedCodeSizeRanges = [("start", "end")] };
+        var a = new M68kAssembler();
         a.Mark("start");
         if (guard == "entry") a.EmitBranch(M68kCondition.Equal, "advance");
         int address = guard == "stack" ? 7 : store ? 1 : 0;

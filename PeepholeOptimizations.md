@@ -140,11 +140,11 @@ bytes, registers, CCR and the complete data-access trace on 68000, 68020 and
 68040, and checks that observable values, flags and independent entries retain
 their original sequences.
 
-The same profile folds a longword access followed by an address-register
+The ordinary peephole pass on every CPU target folds a longword access followed by an address-register
 advance into ordinary MOVE postincrement. Consecutive postincrement load/store
 pairs can then become one memory-to-memory MOVE when the data temporary is
 dead. Both rewrites preserve all CCR bits, data-access widths and order, and
 the address updates. Stack pointers, base aliases, explicit effects, fixups and
 independent interior entries are excluded. Tests compare complete execution
-and data-access traces on three CPU models and check the full C# compilation
+and data-access traces on three CPU models and check every target in the full C# compilation
 pipeline, including unreferenced IL labels.
