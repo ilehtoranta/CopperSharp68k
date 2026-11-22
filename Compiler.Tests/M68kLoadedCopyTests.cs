@@ -10,6 +10,40 @@ namespace CopperSharp.Compiler.Tests;
 public sealed class M68kLoadedCopyTests
 {
     [Theory]
+    [InlineData(M68kCpuModel.M68000)]
+    [InlineData(M68kCpuModel.M68020)]
+    public void OrderedMemoryMovesKeepOverlappingCopiesAndExactBusAccesses(M68kCpuModel model)
+    {
+        var original = OrderedMemoryMoves(optimize: false);
+        var optimized = OrderedMemoryMoves(optimize: true);
+        foreach (int distance in new[] { -4, 4, 128 })
+        {
+            var before = Execute(original, model, distance, 0);
+            var after = Execute(optimized, model, distance, 0);
+            Assert.Equal(before.Memory, after.Memory);
+            Assert.Equal(before.Accesses, after.Accesses);
+        }
+    }
+
+    private static byte[] OrderedMemoryMoves(bool optimize)
+    {
+        var a = new M68kAssembler();
+        a.EmitWord(0x2290); // MOVE.L (A0),(A1)
+        for (ushort offset = 4; offset <= 8; offset += 4)
+        {
+            a.EmitWord(0x2368); // MOVE.L d16(A0),d16(A1)
+            a.EmitWord(offset);
+            a.EmitWord(offset);
+        }
+        int ret = a.Offset;
+        a.EmitWord(0x4E75);
+        a.SetInstructionEffects(ret, new(0, 0, 128, 128, M68kConditionCodeSet.None,
+            M68kConditionCodeSet.None, M68kMemorySet.Stack, M68kMemorySet.None, 4, true, false));
+        if (optimize) a.OptimizeForM68000();
+        return a.Link(0x10000, new Dictionary<string, uint>()).Bytes;
+    }
+
+    [Theory]
     [InlineData(M68kCpuModel.M68000)] [InlineData(M68kCpuModel.M68020)] [InlineData(M68kCpuModel.M68040)]
     public void CombinedPostincrementCopiesPreserveEveryAccessAndAllFlags(M68kCpuModel model)
     {

@@ -1771,19 +1771,15 @@ public sealed class M68kInstructionDataflowTests
 		}
 	}
 
-	[Fact]
-	public void GroupsContiguousLongStructCopyIntoMovem()
+	[Theory]
+	[InlineData(0x4CD2, 0x00FF)] // MOVEM.L (A2),D0-D7
+	[InlineData(0x4CD6, 0x3C00)] // MOVEM.L (A6),A2-A5
+	public void KeepsOrderedLongCopiesWhenScratchRegistersAreDead(ushort restoreOpcode, ushort restoreMask)
 	{
 		var assembler = new M68kAssembler();
-		assembler.EmitWord(0x2290); // MOVE.L (A0),(A1)
-		for (ushort displacement = 4; displacement <= 12; displacement += 4)
-		{
-			assembler.EmitWord(0x2368); // MOVE.L d16(A0),d16(A1)
-			assembler.EmitWord(displacement);
-			assembler.EmitWord(displacement);
-		}
-		assembler.EmitWord(0x4CD2); // MOVEM.L (A2),D0-D7; generated epilogue restore
-		assembler.EmitWord(0x00FF);
+		EmitContiguousLongCopy(assembler);
+		assembler.EmitWord(restoreOpcode);
+		assembler.EmitWord(restoreMask);
 		assembler.EmitWord(0x4E75); // RTS
 
 		assembler.OptimizeForM68000();
@@ -1795,9 +1791,11 @@ public sealed class M68kInstructionDataflowTests
 
 		Assert.Equal(new ushort[]
 		{
-			0x4CD0, 0x000F, // MOVEM.L (A0),D0-D3
-			0x48D1, 0x000F, // MOVEM.L D0-D3,(A1)
-			0x4CD2, 0x00FF, // MOVEM.L (A2),D0-D7
+			0x2290,
+			0x2368, 4, 4,
+			0x2368, 8, 8,
+			0x2368, 12, 12,
+			restoreOpcode, restoreMask,
 			0x4E75,
 		}, words);
 	}
@@ -1875,31 +1873,6 @@ public sealed class M68kInstructionDataflowTests
 
 		Assert.Equal(0x2290,
 			BinaryPrimitives.ReadUInt16BigEndian(linked.Bytes));
-	}
-
-	[Fact]
-	public void UsesDeadAddressRegistersForContiguousLongStructCopy()
-	{
-		var assembler = new M68kAssembler();
-		EmitContiguousLongCopy(assembler);
-		assembler.EmitWord(0x4CD6); // MOVEM.L (A6),A2-A5; generated epilogue restore
-		assembler.EmitWord(0x3C00);
-		assembler.EmitWord(0x4E75);
-
-		assembler.OptimizeForM68000();
-		var linked = assembler.Link(0, new Dictionary<string, uint>());
-		var words = Enumerable.Range(0, linked.Bytes.Length / 2)
-			.Select(index => BinaryPrimitives.ReadUInt16BigEndian(
-				linked.Bytes.AsSpan(index * 2)))
-			.ToArray();
-
-		Assert.Equal(new ushort[]
-		{
-			0x4CD0, 0x3C00, // MOVEM.L (A0),A2-A5
-			0x48D1, 0x3C00, // MOVEM.L A2-A5,(A1)
-			0x4CD6, 0x3C00,
-			0x4E75,
-		}, words);
 	}
 
 	[Fact]

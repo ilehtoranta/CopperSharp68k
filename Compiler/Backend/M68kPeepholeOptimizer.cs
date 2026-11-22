@@ -135,8 +135,7 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 					(TryFoldLongMemoryPointerAdvance(dataflow) ||
 					 TryFoldPostincrementLongCopy(dataflow) ||
 					 TryGroupLoadedLongMemoryCopy(dataflow) ||
-					 TryGroupContiguousLongMemoryPush(dataflow) ||
-					 TryGroupContiguousLongMemoryCopy(dataflow));
+					 TryGroupContiguousLongMemoryPush(dataflow));
 				if (!groupedTransfer && _rewriteBudget == int.MaxValue)
 				{
 					appliedRewrites = ApplyIndependentLocalBatch(
@@ -5280,113 +5279,6 @@ internal sealed partial class M68kPeepholeOptimizer : IM68kOptimizerPass
 		}
 
 		return false;
-	}
-
-	private bool TryGroupContiguousLongMemoryCopy(
-		M68kInstructionDataflow dataflow)
-	{
-		var instructions = dataflow.Instructions;
-		for (var start = 0; start + 2 < instructions.Count; start++)
-		{
-			if (!TryDecodeCopy(instructions[start], out var sourceBase,
-				out var destinationBase, out var firstDisplacement) ||
-				sourceBase == destinationBase ||
-				HasAddressFixup(instructions[start]))
-			{
-				continue;
-			}
-
-			var run = 1;
-			while (start + run < instructions.Count && run < 8 &&
-				TryDecodeCopy(instructions[start + run], out var nextSource,
-					out var nextDestination, out var nextDisplacement) &&
-				nextSource == sourceBase && nextDestination == destinationBase &&
-				nextDisplacement == firstDisplacement + run * 4 &&
-				!HasLabelAt(instructions[start + run].Offset) &&
-				!HasAddressFixup(instructions[start + run]))
-			{
-				run++;
-			}
-			if (run < 3 || !dataflow.TryGetFacts(
-				instructions[start + run - 1].Offset, out var facts) ||
-				facts.LiveConditionsAfter != M68kConditionCodeSet.None)
-			{
-				continue;
-			}
-
-			var available = (ushort)(
-				(~facts.LiveDataAfter & 0x00FF) |
-				((~facts.LiveAddressAfter & 0x00FF) << 8));
-			available &= (ushort)~(1 << (8 + sourceBase));
-			available &= (ushort)~(1 << (8 + destinationBase));
-			ushort mask = 0;
-			var count = 0;
-			for (var register = 0; register < 16 && count < run; register++)
-			{
-				if ((available & (1 << register)) == 0) continue;
-				mask |= (ushort)(1 << register);
-				count++;
-			}
-			if (count < 3)
-			{
-				continue;
-			}
-
-			var originalLength = 0;
-			for (var index = 0; index < count; index++)
-				originalLength += instructions[start + index].Length;
-			var replacementLength = (firstDisplacement == 0 ? 4 : 6) * 2;
-			if (replacementLength >= originalLength)
-			{
-				continue;
-			}
-
-			var offset = instructions[start].Offset;
-			offset += WriteMovem(offset, load: true, sourceBase,
-				firstDisplacement, mask);
-			offset += WriteMovem(offset, load: false, destinationBase,
-				firstDisplacement, mask);
-			_buffer.RemoveBytes(offset, originalLength - replacementLength);
-			return true;
-		}
-		return false;
-
-		bool TryDecodeCopy(M68kEmittedInstruction instruction,
-			out int sourceBase, out int destinationBase, out int displacement)
-		{
-			sourceBase = destinationBase = displacement = 0;
-			var opcode = instruction.Opcode;
-			if ((opcode & 0xF000) != 0x2000) return false;
-			var sourceMode = opcode >> 3 & 7;
-			var destinationMode = opcode >> 6 & 7;
-			if (sourceMode is not (2 or 5) || destinationMode is not (2 or 5))
-				return false;
-			sourceBase = opcode & 7;
-			destinationBase = opcode >> 9 & 7;
-			var sourceDisplacement = sourceMode == 5
-				? unchecked((short)instruction.ExtensionWord) : 0;
-			var destinationExtensionOffset = instruction.Offset + 2 +
-				(sourceMode == 5 ? 2 : 0);
-			var destinationDisplacement = destinationMode == 5
-				? unchecked((short)_buffer.ReadWord(destinationExtensionOffset)) : 0;
-			if (sourceDisplacement != destinationDisplacement ||
-				instruction.Length != 2 + (sourceMode == 5 ? 2 : 0) +
-					(destinationMode == 5 ? 2 : 0)) return false;
-			displacement = sourceDisplacement;
-			return true;
-		}
-
-		int WriteMovem(int offset, bool load, int addressRegister,
-			int displacement, ushort mask)
-		{
-			var mode = displacement == 0 ? 2 : 5;
-			_buffer.WriteWord(offset, (ushort)((load ? 0x4CC0 : 0x48C0) |
-				(mode << 3) | addressRegister));
-			_buffer.WriteWord(offset + 2, mask);
-			if (displacement == 0) return 4;
-			_buffer.WriteWord(offset + 4, unchecked((ushort)displacement));
-			return 6;
-		}
 	}
 
 	private bool TryGroupContiguousLongMemoryPush(
