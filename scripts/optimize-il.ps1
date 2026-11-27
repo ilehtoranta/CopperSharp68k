@@ -17,11 +17,12 @@ New-Item -ItemType Directory -Path $cache -Force | Out-Null
 if (!$SdkVersion) { $SdkVersion = (Get-Content -LiteralPath (Join-Path $repo 'global.json') -Raw | ConvertFrom-Json).sdk.version }
 @{ sdk = @{ version = $SdkVersion; rollForward = 'disable' } } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $cache 'global.json')
 $build = Join-Path $cache 'build'
+$outputDirectory = Join-Path $build 'bin/CilicaOptimizer/release'
 Push-Location $cache
 try {
-    & dotnet build (Join-Path $PSScriptRoot 'CilicaOptimizer/CilicaOptimizer.csproj') -c Release --artifacts-path $build -m:1 /nodeReuse:false
+    & dotnet build (Join-Path $PSScriptRoot 'CilicaOptimizer/CilicaOptimizer.csproj') -c Release -p:TargetFrameworks=net10.0 -f net10.0 --artifacts-path $build --output $outputDirectory -m:1 /nodeReuse:false
     if ($LASTEXITCODE -ne 0) { throw 'Restricted optimizer build failed' }
-    $optimizerArgs = @((Join-Path $build 'bin/CilicaOptimizer/release/CilicaOptimizer.dll'), $inputPath, $outputPath, '--inlining', $Inlining)
+    $optimizerArgs = @((Join-Path $outputDirectory 'CilicaOptimizer.dll'), $inputPath, $outputPath, '--inlining', $Inlining)
     foreach ($path in $resolvedSearchPaths) { $optimizerArgs += @('--resolver', $path) }
     & dotnet @optimizerArgs
     if ($LASTEXITCODE -ne 0) { throw 'Restricted IL optimization failed' }
